@@ -1,22 +1,46 @@
-from app.core.logger import logger
-from app.config.settings import APP_NAME
-from app.chains.bsc import connect, chain_id, latest_block
-from app.wallet.account import wallet_address, bnb_balance
+from app.scanner.bsc_scanner import latest_bsc
+from app.analyzer.token import analyze as token_analyze
+from app.analyzer.pair import analyze as pair_analyze
+from app.risk.bytecode import analyze as risk_analyze
 
-logger.info(APP_NAME)
+def main():
 
-if not connect():
-    logger.error("RPC bağlantısı kurulamadı.")
-    raise SystemExit(1)
+    print("=" * 60)
+    print("Coinoskobi DEX Bot v0.3")
+    print("=" * 60)
 
-logger.success("RPC bağlantısı başarılı.")
-logger.info(f"Chain ID      : {chain_id()}")
-logger.info(f"Latest Block  : {latest_block()}")
+    tokens = latest_bsc()
 
-address = wallet_address()
+    if not tokens:
+        print("Aday bulunamadı.")
+        return
 
-if address:
-    logger.success(f"Wallet        : {address}")
-    logger.success(f"BNB Balance   : {bnb_balance()} BNB")
-else:
-    logger.warning("PRIVATE_KEY bulunamadı. Wallet modülü pasif.")
+    print(f"{len(tokens)} aday bulundu.")
+
+    for i, item in enumerate(tokens, start=1):
+
+        token = item["tokenAddress"]
+
+        print()
+        print("=" * 60)
+        print(f"Aday #{i}")
+        print(token)
+        print("=" * 60)
+
+        try:
+            print("\\n[1] ERC20")
+            token_analyze(token)
+
+            print("\\n[2] Pair")
+            pair_analyze(token)
+
+            print("\\n[3] Risk")
+            risk_analyze(token)
+
+            print("\\nAnaliz tamamlandı.")
+
+        except Exception as e:
+            print("Analiz hatası:", e)
+
+if __name__ == "__main__":
+    main()

@@ -43,6 +43,8 @@ class PaperDatabase:
 
             amount_bnb REAL,
 
+            token_amount REAL,
+
             gross_pnl REAL,
 
             net_pnl REAL,
@@ -93,6 +95,7 @@ class PaperDatabase:
             "sl_price": 0.0,
 
             "amount_bnb": 0.0,
+            "token_amount": 0.0,
 
             "gross_pnl": 0.0,
             "net_pnl": 0.0,
@@ -143,6 +146,7 @@ class PaperDatabase:
             tp_price,
             sl_price,
             amount_bnb,
+            token_amount,
             gross_pnl,
             net_pnl,
             roi,
@@ -172,6 +176,7 @@ class PaperDatabase:
             :tp_price,
             :sl_price,
             :amount_bnb,
+            :token_amount,
             :gross_pnl,
             :net_pnl,
             :roi,
@@ -262,3 +267,22 @@ class PaperDatabase:
         ))
 
         self.conn.commit()
+
+
+    def has_open_position(self, token):
+
+        row = self.conn.execute(
+
+            """
+            SELECT 1
+            FROM paper_trades
+            WHERE token=?
+              AND status='OPEN'
+            LIMIT 1
+            """,
+
+            (token,)
+
+        ).fetchone()
+
+        return row is not None

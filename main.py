@@ -66,15 +66,28 @@ for i, row in enumerate(candidates, start=1):
 
     if decision["decision"] == "PAPER_BUY":
 
+        if paper.has_open_position(token_address):
+            print(">>> OPEN POSITION EXISTS")
+            watch += 1
+            continue
+
         try:
             price = manager.price.get_price(token_address)
         except Exception:
             price = 0.0
 
+        if price <= 0:
+            print(f">>> SKIP (price unavailable): {token_address}")
+            reject += 1
+            continue
+
+        amount_bnb = 0.01
+        token_amount = amount_bnb / price
+
         paper.insert({
 
             "token": token_address,
-            "symbol": token.get("symbol","?"),
+            "symbol": token.get("symbol", "?"),
 
             "entry_price": price,
             "current_price": price,
@@ -84,7 +97,8 @@ for i, row in enumerate(candidates, start=1):
             "tp_price": price * 1.20 if price else 0,
             "sl_price": price * 0.90 if price else 0,
 
-            "amount_bnb": 0.01,
+            "amount_bnb": amount_bnb,
+            "token_amount": token_amount,
 
             "gas_buy": 0.00018,
             "gas_sell": 0.00018,

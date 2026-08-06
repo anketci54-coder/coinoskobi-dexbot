@@ -1,0 +1,16 @@
+web3
+eth-account
+python-dotenv
+fastapi
+uvicorn
+sqlalchemy
+alembic
+psycopg2-binary
+redis
+aiohttp
+requests
+loguru
+pydantic
+pytest
+black
+isort

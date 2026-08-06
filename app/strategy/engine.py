@@ -1,48 +1,106 @@
 class StrategyEngine:
 
-    def evaluate(self, token_info, pair_info, risk_info):
+    def evaluate(self, token, pair, risk):
 
         score = 0
         reasons = []
 
-        if token_info["name"] != "?":
-            score += 10
+        # ERC20
+
+        if token.get("name") not in ("", "?"):
+            score += 5
             reasons.append("ERC20 OK")
 
-        if token_info["symbol"] != "?":
+        if token.get("symbol") not in ("", "?"):
             score += 5
             reasons.append("Symbol OK")
 
-        if pair_info["exists"]:
+        # Pair
+
+        if pair.get("exists"):
             score += 20
             reasons.append("Pair bulundu")
 
-        if pair_info["quote_ok"]:
-            score += 20
+        if pair.get("quote_ok"):
+            score += 15
             reasons.append("Quote alınabiliyor")
 
-        if not risk_info["mint"]:
+        # Bytecode
+
+        code_size = risk.get("code_size", 0)
+
+        if code_size >= 6000:
+            score += 20
+            reasons.append("Büyük kontrat")
+
+        elif code_size >= 3000:
+            score += 15
+            reasons.append("Kontrat yeterli")
+
+        elif code_size >= 1500:
+            score += 10
+            reasons.append("Kontrat küçük")
+
+        else:
+            reasons.append("Kontrat çok küçük")
+
+        # Owner
+
+        if not risk.get("owner"):
+            score += 10
+            reasons.append("Owner yok")
+
+        elif risk.get("renounce_owner"):
+            score += 8
+            reasons.append("Owner renounce")
+
+        # Mint
+
+        if not risk.get("mint"):
             score += 15
             reasons.append("Mint yok")
+        else:
+            score -= 30
+            reasons.append("Mint var")
 
-        if not risk_info["pause"]:
+        # Pause
+
+        if not risk.get("pause"):
             score += 5
             reasons.append("Pause yok")
+        else:
+            score -= 10
+            reasons.append("Pause var")
 
-        if not risk_info["max_tx"]:
+        # Blacklist
+
+        if not risk.get("blacklist"):
+            score += 5
+            reasons.append("Blacklist yok")
+        else:
+            score -= 15
+            reasons.append("Blacklist var")
+
+        # MaxTx
+
+        if not risk.get("max_tx"):
             score += 5
             reasons.append("MaxTx yok")
 
-        if not risk_info["max_wallet"]:
+        # MaxWallet
+
+        if not risk.get("max_wallet"):
             score += 5
             reasons.append("MaxWallet yok")
 
+        # Karar
+
         if score >= 90:
-            decision = "BUY_READY"
+            decision = "PAPER_BUY"
+
         elif score >= 70:
             decision = "WATCH"
-        elif score >= 50:
-            decision = "WAIT"
+
         else:
             decision = "REJECT"
 

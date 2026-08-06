@@ -6,41 +6,64 @@ from app.config.abis.factory_full import FACTORY_ABI
 from app.config.abis.pair import PAIR_ABI
 from app.config.tokens import WBNB
 
-factory=w3.eth.contract(
+factory = w3.eth.contract(
     address=Web3.to_checksum_address(PANCAKE_FACTORY),
     abi=FACTORY_ABI
 )
 
+
 def analyze(token):
 
-    pair=factory.functions.getPair(
+    pair = factory.functions.getPair(
         Web3.to_checksum_address(token),
         Web3.to_checksum_address(WBNB)
     ).call()
 
-    if pair=="0x0000000000000000000000000000000000000000":
-        print("WBNB Pair bulunamadı.")
-        return
+    if pair == "0x0000000000000000000000000000000000000000":
 
-    print()
-    print("Pair :",pair)
+        return {
+            "exists": False,
+            "pair": None,
+            "token0": None,
+            "token1": None,
+            "reserve0": 0,
+            "reserve1": 0,
+            "quote_ok": False
+        }
 
-    contract=w3.eth.contract(
+    contract = w3.eth.contract(
         address=Web3.to_checksum_address(pair),
         abi=PAIR_ABI
     )
 
-    print("Token0 :",contract.functions.token0().call())
-    print("Token1 :",contract.functions.token1().call())
+    token0 = contract.functions.token0().call()
+    token1 = contract.functions.token1().call()
 
-    reserves=contract.functions.getReserves().call()
+    reserves = contract.functions.getReserves().call()
 
-    print()
-    print("Reserve0 :",reserves[0])
-    print("Reserve1 :",reserves[1])
+    return {
 
-if __name__=="__main__":
+        "exists": True,
 
-    token=input("Token : ").strip()
+        "pair": pair,
 
-    analyze(token)
+        "token0": token0,
+
+        "token1": token1,
+
+        "reserve0": reserves[0],
+
+        "reserve1": reserves[1],
+
+        "quote_ok": True
+
+    }
+
+
+if __name__ == "__main__":
+
+    token = input("Token : ").strip()
+
+    info = analyze(token)
+
+    print(info)

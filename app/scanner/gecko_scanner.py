@@ -56,11 +56,11 @@ class GeckoScanner:
 
             candidates.append({
 
-                "pool": attr.get("address"),
+                "pool": pool,
 
                 "name": attr.get("name"),
 
-                "price_usd": float(attr.get("base_token_price_usd") or 0),
+                "price_usd": price_usd,
 
                 "fdv": fdv,
 
@@ -74,7 +74,7 @@ class GeckoScanner:
 
                 "buys_24h": buys_24h,
 
-                "created_at": attr.get("pool_created_at"),
+                "created_at": created_at,
 
                 "dex": rel.get("dex", {})
                          .get("data", {})

@@ -32,6 +32,8 @@ class GeckoCache:
 
             fdv REAL,
 
+            price_usd REAL DEFAULT 0,
+
             created_at TEXT,
 
             updated_at TEXT
@@ -56,12 +58,13 @@ class GeckoCache:
             volume24,
             buys24,
             fdv,
+            price_usd,
             created_at,
             updated_at
 
         )
 
-        VALUES(?,?,?,?,?,?,?,?,?,datetime('now'))
+        VALUES(?,?,?,?,?,?,?,?,?,?,datetime('now'))
 
         """,(
 
@@ -73,6 +76,7 @@ class GeckoCache:
             row["volume_24h"],
             row["buys_24h"],
             row["fdv"],
+            row["price_usd"],
             row["created_at"]
 
         ))
@@ -93,6 +97,7 @@ class GeckoCache:
         volume24,
         buys24,
         fdv,
+        price_usd,
         created_at
 
         FROM gecko_pool_cache

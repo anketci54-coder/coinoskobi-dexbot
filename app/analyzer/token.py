@@ -6,51 +6,55 @@ from app.config.abis.erc20 import ERC20_ABI
 
 def analyze(address):
 
-    token=w3.eth.contract(
+    token = w3.eth.contract(
         address=Web3.to_checksum_address(address),
         abi=ERC20_ABI
     )
 
     try:
-        name=token.functions.name().call()
+        name = token.functions.name().call()
     except:
-        name="?"
+        name = "?"
 
     try:
-        symbol=token.functions.symbol().call()
+        symbol = token.functions.symbol().call()
     except:
-        symbol="?"
+        symbol = "?"
 
     try:
-        decimals=token.functions.decimals().call()
+        decimals = token.functions.decimals().call()
     except:
-        decimals=0
+        decimals = 0
 
     try:
-        supply=token.functions.totalSupply().call()
+        supply = token.functions.totalSupply().call()
 
-        if decimals>0:
-            supply=supply/(10**decimals)
+        if decimals > 0:
+            supply = supply / (10 ** decimals)
 
     except:
-        supply=0
+        supply = 0
 
     return {
-        "name":name,
-        "symbol":symbol,
-        "decimals":decimals,
-        "supply":supply
+        "success": True,
+        "source": "token",
+        "data": {
+            "name": name,
+            "symbol": symbol,
+            "decimals": decimals,
+            "supply": supply
+        }
     }
 
 
-if __name__=="__main__":
+if __name__ == "__main__":
 
-    addr=input("Token : ").strip()
+    addr = input("Token : ").strip()
 
-    info=analyze(addr)
+    info = analyze(addr)["data"]
 
     print()
-    print("Name      :",info["name"])
-    print("Symbol    :",info["symbol"])
-    print("Decimals  :",info["decimals"])
-    print("Supply    :",info["supply"])
+    print("Name      :", info["name"])
+    print("Symbol    :", info["symbol"])
+    print("Decimals  :", info["decimals"])
+    print("Supply    :", info["supply"])

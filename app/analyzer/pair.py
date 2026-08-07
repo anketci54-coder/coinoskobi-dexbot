@@ -22,13 +22,17 @@ def analyze(token):
     if pair == "0x0000000000000000000000000000000000000000":
 
         return {
-            "exists": False,
-            "pair": None,
-            "token0": None,
-            "token1": None,
-            "reserve0": 0,
-            "reserve1": 0,
-            "quote_ok": False
+            "success": True,
+            "source": "pair",
+            "data": {
+                "exists": False,
+                "pair": None,
+                "token0": None,
+                "token1": None,
+                "reserve0": 0,
+                "reserve1": 0,
+                "quote_ok": False
+            }
         }
 
     contract = w3.eth.contract(
@@ -42,21 +46,17 @@ def analyze(token):
     reserves = contract.functions.getReserves().call()
 
     return {
-
-        "exists": True,
-
-        "pair": pair,
-
-        "token0": token0,
-
-        "token1": token1,
-
-        "reserve0": reserves[0],
-
-        "reserve1": reserves[1],
-
-        "quote_ok": True
-
+        "success": True,
+        "source": "pair",
+        "data": {
+            "exists": True,
+            "pair": pair,
+            "token0": token0,
+            "token1": token1,
+            "reserve0": reserves[0],
+            "reserve1": reserves[1],
+            "quote_ok": True
+        }
     }
 
 
@@ -64,6 +64,4 @@ if __name__ == "__main__":
 
     token = input("Token : ").strip()
 
-    info = analyze(token)
-
-    print(info)
+    print(analyze(token))

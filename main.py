@@ -36,11 +36,15 @@ for i, row in enumerate(candidates, start=1):
     print(f"Aday #{i}")
     print("=" * 60)
 
-    token_address = row["token"].split("_",1)[1]
+    token_address = row["token"].split("_", 1)[1]
 
-    token = token_analyze(token_address)
-    pair = pair_analyze(token_address)
-    risk = risk_analyze(token_address)
+    token_result = token_analyze(token_address)
+    pair_result = pair_analyze(token_address)
+    risk_result = risk_analyze(token_address)
+
+    token = token_result.get("data", {})
+    pair = pair_result.get("data", {})
+    risk = risk_result.get("data", {})
 
     decision = strategy.evaluate(
         token,
@@ -49,15 +53,15 @@ for i, row in enumerate(candidates, start=1):
     )
 
     print("TOKEN")
-    print(token)
+    print(token_result)
     print()
 
     print("PAIR")
-    print(pair)
+    print(pair_result)
     print()
 
     print("RISK")
-    print(risk)
+    print(risk_result)
     print()
 
     print("STRATEGY")

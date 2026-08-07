@@ -1,146 +1,103 @@
+import logging
+
 from app.cache.gecko_cache import GeckoCache
 from app.filter.cache_filter import CacheFilter
-from app.analyzer.token import analyze as token_analyze
-from app.analyzer.pair import analyze as pair_analyze
-from app.risk.bytecode import analyze as risk_analyze
-from app.strategy.engine import StrategyEngine
-from app.paper.database import PaperDatabase
+from app.pipeline.engine import PipelineEngine
 from app.paper.manager import PaperManager
 
-print("=" * 60)
-print("Coinoskobi Pipeline v5")
-print("=" * 60)
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s : %(message)s",
+)
 
-cache = GeckoCache()
-flt = CacheFilter()
-strategy = StrategyEngine()
-paper = PaperDatabase()
-manager = PaperManager()
+logger = logging.getLogger(__name__)
 
-rows = cache.all()
 
-print(f"Cache      : {len(rows)}")
+def main():
 
-candidates = flt.filter(rows)
-
-print(f"Candidates : {len(candidates)}")
-
-paper_buy = 0
-watch = 0
-reject = 0
-
-for i, row in enumerate(candidates, start=1):
-
-    print()
     print("=" * 60)
-    print(f"Aday #{i}")
+    print("Coinoskobi Pipeline v6")
     print("=" * 60)
 
-    token_address = row["token"].split("_", 1)[1]
+    cache    = GeckoCache()
+    flt      = CacheFilter()
+    pipeline = PipelineEngine()
+    manager  = PaperManager()
 
-    token_result = token_analyze(token_address)
-    pair_result = pair_analyze(token_address)
-    risk_result = risk_analyze(token_address)
+    rows       = cache.all()
+    candidates = flt.filter(rows)
 
-    token = token_result.get("data", {})
-    pair = pair_result.get("data", {})
-    risk = risk_result.get("data", {})
+    print(f"Cache      : {len(rows)}")
+    print(f"Candidates : {len(candidates)}")
 
-    decision = strategy.evaluate(
-        token,
-        pair,
-        risk
-    )
+    paper_buy = 0
+    watch     = 0
+    reject    = 0
+    skip      = 0
 
-    print("TOKEN")
-    print(token_result)
-    print()
+    for i, row in enumerate(candidates, start=1):
 
-    print("PAIR")
-    print(pair_result)
-    print()
+        token_address = row["token"].split("_", 1)[1]
 
-    print("RISK")
-    print(risk_result)
-    print()
+        print()
+        print("=" * 60)
+        print(f"Aday #{i}  {token_address}")
+        print("=" * 60)
 
-    print("STRATEGY")
-    print(decision)
-    print()
+        result = pipeline.run(token_address)
 
-    if decision["decision"] == "PAPER_BUY":
-
-        if paper.has_open_position(token_address):
-            print(">>> OPEN POSITION EXISTS")
-            watch += 1
-            continue
-
-        try:
-            price = manager.price.get_price(token_address)
-        except Exception:
-            price = 0.0
-
-        if price <= 0:
-            print(f">>> SKIP (price unavailable): {token_address}")
+        if not result.get("success"):
+            logger.warning("Pipeline failed for token: %s", token_address)
             reject += 1
             continue
 
-        amount_bnb = 0.01
-        token_amount = amount_bnb / price
+        data     = result["data"]
+        strategy = data.get("strategy", {})
+        paper    = data.get("paper", {})
 
-        paper.insert({
+        decision = strategy.get("decision", "REJECT")
+        action   = paper.get("action", "")
 
-            "token": token_address,
-            "symbol": token.get("symbol", "?"),
+        print(f"Decision : {decision}")
+        print(f"Score    : {strategy.get('score', 0)}")
+        print(f"Risk     : {strategy.get('risk', '-')}")
+        print(f"Action   : {action}")
 
-            "entry_price": price,
-            "current_price": price,
-            "highest_price": price,
-            "lowest_price": price,
+        if decision == "PAPER_BUY":
 
-            "tp_price": price * 1.20 if price else 0,
-            "sl_price": price * 0.90 if price else 0,
+            if action == "SKIP":
+                reason = paper.get("reason", "")
+                print(f">>> SKIP ({reason})")
+                skip += 1
 
-            "amount_bnb": amount_bnb,
-            "token_amount": token_amount,
+            else:
+                print(">>> PAPER BUY")
+                paper_buy += 1
 
-            "gas_buy": 0.00018,
-            "gas_sell": 0.00018,
+        elif decision == "WATCH":
+            print(">>> WATCH")
+            watch += 1
 
-            "swap_fee": 0.25,
-            "buy_tax": 0,
-            "sell_tax": 0,
-            "slippage": 0.5,
-            "mev": 0.2,
+        else:
+            print(">>> REJECT")
+            reject += 1
 
-            "status": "OPEN"
+    print()
+    print("=" * 60)
+    print("ÖZET")
+    print("=" * 60)
+    print(f"Cache      : {len(rows)}")
+    print(f"Candidates : {len(candidates)}")
+    print(f"Paper Buy  : {paper_buy}")
+    print(f"Watch      : {watch}")
+    print(f"Reject     : {reject}")
+    print(f"Skip       : {skip}")
+    print("=" * 60)
 
-        })
+    print()
+    print("Pozisyon kontrolü")
+    manager.process()
 
-        paper_buy += 1
-        print(">>> PAPER BUY")
 
-    elif decision["decision"] == "WATCH":
-
-        watch += 1
-        print(">>> WATCH")
-
-    else:
-
-        reject += 1
-        print(">>> REJECT")
-
-print()
-print("=" * 60)
-print("ÖZET")
-print("=" * 60)
-print("Cache      :", len(rows))
-print("Candidates :", len(candidates))
-print("Paper Buy  :", paper_buy)
-print("Watch      :", watch)
-print("Reject     :", reject)
-print("=" * 60)
-
-print()
-print("Pozisyon kontrolü")
-manager.process()
+if __name__ == "__main__":
+    main()

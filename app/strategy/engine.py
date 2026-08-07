@@ -104,8 +104,27 @@ class StrategyEngine:
         else:
             decision = "REJECT"
 
+        # Risk level
+
+        if score >= 90:
+            risk_level = "LOW"
+        elif score >= 70:
+            risk_level = "MEDIUM"
+        else:
+            risk_level = "HIGH"
+
+        # Paper trade flag
+
+        paper_trade = decision == "PAPER_BUY"
+
         return {
-            "score": score,
-            "decision": decision,
-            "reasons": reasons
+            "success": True,
+            "source": "strategy",
+            "data": {
+                "decision": decision,
+                "score": score,
+                "reasons": reasons,
+                "risk": risk_level,
+                "paper_trade": paper_trade,
+            },
         }

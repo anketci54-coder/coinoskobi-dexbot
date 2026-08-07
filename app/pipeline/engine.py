@@ -1,11 +1,23 @@
 import logging
 
 from app.analyzer.token import analyze as token_analyze
-from app.analyzer.pair import analyze as pair_analyze
-from app.risk.bytecode import analyze as risk_analyze
+from app.analyzer.pair  import analyze as pair_analyze
+from app.risk.bytecode  import analyze as risk_analyze
 from app.strategy.engine import StrategyEngine
-from app.paper.database import PaperDatabase
+from app.paper.database  import PaperDatabase
 from app.paper.cache_price import CachePrice
+from app.config.trading import (
+    DEFAULT_AMOUNT_BNB,
+    TP_PRICE_MULTIPLIER,
+    SL_PRICE_MULTIPLIER,
+    DEFAULT_GAS_BUY,
+    DEFAULT_GAS_SELL,
+    DEFAULT_SWAP_FEE,
+    DEFAULT_BUY_TAX,
+    DEFAULT_SELL_TAX,
+    DEFAULT_SLIPPAGE,
+    DEFAULT_MEV_COST,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -14,11 +26,9 @@ _strategy = StrategyEngine()
 
 class PipelineEngine:
 
-    AMOUNT_BNB = 0.01
-
     def __init__(self):
         self.paper_db = PaperDatabase()
-        self.price = CachePrice()
+        self.price    = CachePrice()
 
     def run(self, token_address: str) -> dict:
         """
@@ -45,8 +55,8 @@ class PipelineEngine:
         risk_result  = risk_analyze(token_address)
 
         token = token_result.get("data", {})
-        pair  = pair_result.get("data", {})
-        risk  = risk_result.get("data", {})
+        pair  = pair_result.get("data",  {})
+        risk  = risk_result.get("data",  {})
 
         # --- Strategy ---
 
@@ -80,7 +90,7 @@ class PipelineEngine:
 
                 else:
 
-                    token_amount = self.AMOUNT_BNB / price
+                    token_amount = DEFAULT_AMOUNT_BNB / price
 
                     self.paper_db.insert({
 
@@ -92,20 +102,20 @@ class PipelineEngine:
                         "highest_price": price,
                         "lowest_price":  price,
 
-                        "tp_price":      price * 1.20,
-                        "sl_price":      price * 0.90,
+                        "tp_price":      price * TP_PRICE_MULTIPLIER,
+                        "sl_price":      price * SL_PRICE_MULTIPLIER,
 
-                        "amount_bnb":    self.AMOUNT_BNB,
+                        "amount_bnb":    DEFAULT_AMOUNT_BNB,
                         "token_amount":  token_amount,
 
-                        "gas_buy":    0.00018,
-                        "gas_sell":   0.00018,
+                        "gas_buy":       DEFAULT_GAS_BUY,
+                        "gas_sell":      DEFAULT_GAS_SELL,
 
-                        "swap_fee":   0.25,
-                        "buy_tax":    0,
-                        "sell_tax":   0,
-                        "slippage":   0.5,
-                        "mev":        0.2,
+                        "swap_fee":      DEFAULT_SWAP_FEE,
+                        "buy_tax":       DEFAULT_BUY_TAX,
+                        "sell_tax":      DEFAULT_SELL_TAX,
+                        "slippage":      DEFAULT_SLIPPAGE,
+                        "mev":           DEFAULT_MEV_COST,
 
                         "status": "OPEN"
 
@@ -118,7 +128,7 @@ class PipelineEngine:
                         "token":        token_address,
                         "entry_price":  price,
                         "token_amount": token_amount,
-                        "amount_bnb":   self.AMOUNT_BNB,
+                        "amount_bnb":   DEFAULT_AMOUNT_BNB,
                     }
 
         else:

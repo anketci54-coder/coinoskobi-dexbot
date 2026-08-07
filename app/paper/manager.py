@@ -2,14 +2,12 @@ import logging
 
 from app.paper.database import PaperDatabase
 from app.paper.cache_price import CachePrice
+from app.config.trading import TAKE_PROFIT, STOP_LOSS, TRAILING_STOP_FACTOR
 
 logger = logging.getLogger(__name__)
 
 
 class PaperManager:
-
-    TAKE_PROFIT = 0.20
-    STOP_LOSS = -0.10
 
     def __init__(self):
 
@@ -36,7 +34,7 @@ class PaperManager:
                 continue
 
             highest = max(pos["highest_price"], current)
-            lowest = min(pos["lowest_price"], current)
+            lowest  = min(pos["lowest_price"],  current)
 
             entry = pos["entry_price"]
 
@@ -57,14 +55,14 @@ class PaperManager:
 
             trade_value = pos["amount_bnb"]
 
-            swap_fee_cost = trade_value * ((pos["swap_fee"] or 0) / 100)
-            buy_tax_cost = trade_value * ((pos["buy_tax"] or 0) / 100)
-            sell_tax_cost = trade_value * ((pos["sell_tax"] or 0) / 100)
-            slippage_cost = trade_value * ((pos["slippage"] or 0) / 100)
-            mev_cost = trade_value * ((pos["mev"] or 0) / 100)
+            swap_fee_cost  = trade_value * ((pos["swap_fee"]  or 0) / 100)
+            buy_tax_cost   = trade_value * ((pos["buy_tax"]   or 0) / 100)
+            sell_tax_cost  = trade_value * ((pos["sell_tax"]  or 0) / 100)
+            slippage_cost  = trade_value * ((pos["slippage"]  or 0) / 100)
+            mev_cost       = trade_value * ((pos["mev"]       or 0) / 100)
 
             fees = (
-                (pos["gas_buy"] or 0)
+                (pos["gas_buy"]  or 0)
                 + (pos["gas_sell"] or 0)
                 + swap_fee_cost
                 + buy_tax_cost
@@ -99,53 +97,32 @@ class PaperManager:
             action = "HOLD"
             reason = ""
 
-            trailing_price = highest * 0.90
+            trailing_price = highest * TRAILING_STOP_FACTOR
 
             if current <= trailing_price and highest > entry:
 
                 self.db.close_position(
-
-                    pos["id"],
-                    current,
-                    gross,
-                    net,
-                    roi,
-                    "TRAILING_STOP"
-
+                    pos["id"], current, gross, net, roi, "TRAILING_STOP"
                 )
 
                 action = "CLOSE"
                 reason = "TRAILING_STOP"
                 logger.debug(">>> TRAILING STOP token=%s", token)
 
-            elif roi >= self.TAKE_PROFIT:
+            elif roi >= TAKE_PROFIT:
 
                 self.db.close_position(
-
-                    pos["id"],
-                    current,
-                    gross,
-                    net,
-                    roi,
-                    "TAKE_PROFIT"
-
+                    pos["id"], current, gross, net, roi, "TAKE_PROFIT"
                 )
 
                 action = "CLOSE"
                 reason = "TAKE_PROFIT"
                 logger.debug(">>> TAKE PROFIT token=%s", token)
 
-            elif roi <= self.STOP_LOSS:
+            elif roi <= STOP_LOSS:
 
                 self.db.close_position(
-
-                    pos["id"],
-                    current,
-                    gross,
-                    net,
-                    roi,
-                    "STOP_LOSS"
-
+                    pos["id"], current, gross, net, roi, "STOP_LOSS"
                 )
 
                 action = "CLOSE"
@@ -156,17 +133,17 @@ class PaperManager:
 
             results.append({
                 "success": True,
-                "source": "paper",
+                "source":  "paper",
                 "data": {
-                    "action": action,
-                    "token": token,
-                    "entry_price": entry,
+                    "action":        action,
+                    "token":         token,
+                    "entry_price":   entry,
                     "current_price": current,
-                    "roi": roi,
-                    "status": status,
-                    "opened_at": pos.get("created_at", ""),
-                    "closed_at": pos.get("closed_at", "") or "",
-                    "reason": reason,
+                    "roi":           roi,
+                    "status":        status,
+                    "opened_at":     pos.get("created_at", ""),
+                    "closed_at":     pos.get("closed_at",  "") or "",
+                    "reason":        reason,
                 },
             })
 

@@ -1,5 +1,9 @@
+import logging
+
 from app.paper.database import PaperDatabase
 from app.paper.cache_price import CachePrice
+
+logger = logging.getLogger(__name__)
 
 
 class PaperManager:
@@ -16,7 +20,9 @@ class PaperManager:
 
         positions = self.db.open_positions()
 
-        print(f"Açık Pozisyon : {len(positions)}")
+        logger.debug("Açık Pozisyon : %d", len(positions))
+
+        results = []
 
         for pos in positions:
 
@@ -24,9 +30,9 @@ class PaperManager:
 
             try:
                 current = self.price.get_price(token)
-                print(f"[PRICE] token={token} current={current}")
+                logger.debug("[PRICE] token=%s current=%s", token, current)
             except Exception as e:
-                print(f"[ERROR] token={token} error={e}")
+                logger.warning("[ERROR] token=%s error=%s", token, e)
                 continue
 
             highest = max(pos["highest_price"], current)
@@ -34,10 +40,10 @@ class PaperManager:
 
             entry = pos["entry_price"]
 
-            print(f"[ENTRY] token={token} entry={entry}")
+            logger.debug("[ENTRY] token=%s entry=%s", token, entry)
 
             if entry <= 0:
-                print(f"[SKIP] token={token} entry_price<=0")
+                logger.debug("[SKIP] token=%s entry_price<=0", token)
                 continue
 
             token_amount = pos["token_amount"]
@@ -85,11 +91,13 @@ class PaperManager:
 
             )
 
-            print(
-                f"{token[:10]}... "
-                f"ROI={roi*100:.2f}% "
-                f"Current={current:.10f}"
+            logger.debug(
+                "%s... ROI=%.2f%% Current=%.10f",
+                token[:10], roi * 100, current
             )
+
+            action = "HOLD"
+            reason = ""
 
             trailing_price = highest * 0.90
 
@@ -106,7 +114,9 @@ class PaperManager:
 
                 )
 
-                print(">>> TRAILING STOP")
+                action = "CLOSE"
+                reason = "TRAILING_STOP"
+                logger.debug(">>> TRAILING STOP token=%s", token)
 
             elif roi >= self.TAKE_PROFIT:
 
@@ -121,7 +131,9 @@ class PaperManager:
 
                 )
 
-                print(">>> TAKE PROFIT")
+                action = "CLOSE"
+                reason = "TAKE_PROFIT"
+                logger.debug(">>> TAKE PROFIT token=%s", token)
 
             elif roi <= self.STOP_LOSS:
 
@@ -136,62 +148,32 @@ class PaperManager:
 
                 )
 
-                print(">>> STOP LOSS")
+                action = "CLOSE"
+                reason = "STOP_LOSS"
+                logger.debug(">>> STOP LOSS token=%s", token)
 
-        open_count = self.db.conn.execute(
-            "SELECT COUNT(*) FROM paper_trades WHERE status='OPEN'"
-        ).fetchone()[0]
+            status = "CLOSED" if action == "CLOSE" else "OPEN"
 
-        closed_count = self.db.conn.execute(
-            "SELECT COUNT(*) FROM paper_trades WHERE status='CLOSED'"
-        ).fetchone()[0]
+            results.append({
+                "success": True,
+                "source": "paper",
+                "data": {
+                    "action": action,
+                    "token": token,
+                    "entry_price": entry,
+                    "current_price": current,
+                    "roi": roi,
+                    "status": status,
+                    "opened_at": pos.get("created_at", ""),
+                    "closed_at": pos.get("closed_at", "") or "",
+                    "reason": reason,
+                },
+            })
 
-        tp_count = self.db.conn.execute(
-            "SELECT COUNT(*) FROM paper_trades WHERE close_reason='TAKE_PROFIT'"
-        ).fetchone()[0]
-
-        sl_count = self.db.conn.execute(
-            "SELECT COUNT(*) FROM paper_trades WHERE close_reason='STOP_LOSS'"
-        ).fetchone()[0]
-
-        total_net = self.db.conn.execute(
-            "SELECT COALESCE(SUM(net_pnl),0) FROM paper_trades"
-        ).fetchone()[0]
-
-        avg_roi = self.db.conn.execute(
-            "SELECT COALESCE(AVG(roi),0) FROM paper_trades WHERE status='CLOSED'"
-        ).fetchone()[0]
-
-        print()
-        total_trades = self.db.conn.execute(
-            "SELECT COUNT(*) FROM paper_trades"
-        ).fetchone()[0]
-
-        best = self.db.conn.execute(
-            "SELECT COALESCE(MAX(roi),0) FROM paper_trades WHERE status='CLOSED'"
-        ).fetchone()[0]
-
-        worst = self.db.conn.execute(
-            "SELECT COALESCE(MIN(roi),0) FROM paper_trades WHERE status='CLOSED'"
-        ).fetchone()[0]
-
-        print("=" * 60)
-        print("PAPER SUMMARY")
-        print("=" * 60)
-        print(f"Total Trades   : {total_trades}")
-        print(f"Open Positions : {open_count}")
-        print(f"Closed Trades  : {closed_count}")
-        print(f"Take Profit    : {tp_count}")
-        print(f"Stop Loss      : {sl_count}")
-        print(f"Total Net PnL  : {total_net:.8f} BNB")
-        print(f"Average ROI    : {avg_roi*100:.2f}%")
-        print(f"Best ROI       : {best*100:.2f}%")
-        print(f"Worst ROI      : {worst*100:.2f}%")
-        print("=" * 60)
-        print("Paper Manager tamamlandı.")
+        return results
 
 
 if __name__ == "__main__":
 
+    logging.basicConfig(level=logging.DEBUG)
     PaperManager().process()
-

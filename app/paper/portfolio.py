@@ -1,4 +1,8 @@
+import logging
+
 from app.paper.database import PaperDatabase
+
+logger = logging.getLogger(__name__)
 
 
 class Portfolio:
@@ -77,22 +81,36 @@ class Portfolio:
             """
         ).fetchone()[0]
 
-        print()
-        print("=" * 60)
-        print("PORTFOLIO SUMMARY")
-        print("=" * 60)
-        print(f"Total Trades   : {total}")
-        print(f"Open Positions : {open_count}")
-        print(f"Closed Trades  : {closed_count}")
-        print(f"Take Profit    : {tp}")
-        print(f"Stop Loss      : {sl}")
-        print(f"Trailing Stop  : {trailing}")
-        print(f"Total Net PnL  : {net:.8f} BNB")
-        print(f"Average ROI    : {avg_roi*100:.2f}%")
-        print(f"Best ROI       : {best*100:.2f}%")
-        print(f"Worst ROI      : {worst*100:.2f}%")
-        print("=" * 60)
+        return {
+            "total": total,
+            "open": open_count,
+            "closed": closed_count,
+            "take_profit": tp,
+            "stop_loss": sl,
+            "trailing_stop": trailing,
+            "net_pnl": net,
+            "avg_roi": avg_roi,
+            "best_roi": best,
+            "worst_roi": worst,
+        }
 
 
 if __name__ == "__main__":
-    Portfolio().summary()
+
+    data = Portfolio().summary()
+
+    print()
+    print("=" * 60)
+    print("PORTFOLIO SUMMARY")
+    print("=" * 60)
+    print(f"Total Trades   : {data['total']}")
+    print(f"Open Positions : {data['open']}")
+    print(f"Closed Trades  : {data['closed']}")
+    print(f"Take Profit    : {data['take_profit']}")
+    print(f"Stop Loss      : {data['stop_loss']}")
+    print(f"Trailing Stop  : {data['trailing_stop']}")
+    print(f"Total Net PnL  : {data['net_pnl']:.8f} BNB")
+    print(f"Average ROI    : {data['avg_roi']*100:.2f}%")
+    print(f"Best ROI       : {data['best_roi']*100:.2f}%")
+    print(f"Worst ROI      : {data['worst_roi']*100:.2f}%")
+    print("=" * 60)

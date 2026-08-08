@@ -378,3 +378,52 @@ If a future change conflicts with this Constitution,
 the Constitution takes precedence.
 
 This document defines the engineering identity of Coinoskobi.
+
+# Development Lifecycle (Mandatory)
+
+Every implementation phase in Coinoskobi MUST follow the same engineering lifecycle.
+
+No phase is considered complete unless every step below has been completed successfully.
+
+## Required Workflow
+
+1. Plan
+   - Define the objective.
+   - Define acceptance criteria.
+   - Confirm architecture impact.
+
+2. Code
+   - Implement only the planned scope.
+   - Avoid unrelated refactoring.
+
+3. Compile
+   - All Python modules must compile successfully.
+
+4. Import Validation
+   - All affected modules must import without errors.
+
+5. Smoke Test
+   - Verify the implemented feature with a minimal functional test.
+
+6. Commit
+   - Create a single-purpose commit with a clear message.
+
+7. Push
+   - Push only after successful compile and smoke test.
+
+8. Roadmap Update
+   - Mark the completed phase in ROADMAP.md.
+   - Update PROJECT_STATUS.md if applicable.
+
+9. Final Audit
+   - Verify:
+     - compile
+     - import
+     - smoke test
+     - git clean
+     - roadmap updated
+     - documentation updated
+
+Only after all nine steps are complete may a phase be considered CLOSED.
+
+No step may be skipped.

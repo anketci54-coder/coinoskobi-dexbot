@@ -1,4 +1,5 @@
 from app.config.scanner import (
+    ALLOWED_DEX,
     MIN_LIQUIDITY_USD,
     MIN_VOLUME_24H_USD,
     MIN_BUYS_24H,
@@ -15,13 +16,16 @@ class CacheFilter:
 
         for row in rows:
 
+            if row["dex"] not in ALLOWED_DEX:
+                continue
+
             if row["liquidity"] < MIN_LIQUIDITY_USD:
                 continue
 
-            if row["volume24"] < MIN_VOLUME_24H_USD:
+            if row["volume_24h"] < MIN_VOLUME_24H_USD:
                 continue
 
-            if row["buys24"] < MIN_BUYS_24H:
+            if row["buys_24h"] < MIN_BUYS_24H:
                 continue
 
             if row["fdv"] < MIN_FDV_USD:
@@ -35,10 +39,10 @@ class CacheFilter:
         accepted.sort(
             key=lambda x: (
                 x["liquidity"],
-                x["volume24"],
-                x["buys24"]
+                x["volume_24h"],
+                x["buys_24h"],
             ),
-            reverse=True
+            reverse=True,
         )
 
         return accepted

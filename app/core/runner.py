@@ -2,19 +2,30 @@ import signal
 import time
 
 from app.core.logger import get_logger
+from app.core.scheduler import Scheduler
 
 log = get_logger()
 
 
 class Runner:
 
-    def __init__(
-        self,
-        scan_interval=300,
-        position_interval=60,
-    ):
-        self.scan_interval = scan_interval
-        self.position_interval = position_interval
+    def __init__(self, scan_job=None, position_job=None):
+        self.scheduler = Scheduler()
+
+        if scan_job:
+            self.scheduler.every(
+                interval=300,
+                func=scan_job,
+                name="scanner",
+            )
+
+        if position_job:
+            self.scheduler.every(
+                interval=60,
+                func=position_job,
+                name="paper_manager",
+            )
+
         self.running = True
 
     def stop(self, *_):
@@ -26,27 +37,10 @@ class Runner:
         signal.signal(signal.SIGINT, self.stop)
         signal.signal(signal.SIGTERM, self.stop)
 
-        log.info("Runner started.")
-
-        last_scan = 0
-        last_position = 0
+        log.info("Runner started")
 
         while self.running:
-
-            now = time.time()
-
-            if now - last_scan >= self.scan_interval:
-                log.info("[SCAN] scheduled")
-                last_scan = now
-
-            if now - last_position >= self.position_interval:
-                log.info("[POSITION] scheduled")
-                last_position = now
-
+            self.scheduler.tick()
             time.sleep(1)
 
-        log.info("Runner stopped.")
-
-
-if __name__ == "__main__":
-    Runner(scan_interval=5, position_interval=2).run()
+        log.info("Runner stopped")

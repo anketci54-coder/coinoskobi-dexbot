@@ -1,6 +1,6 @@
 # COINOSKOBI CONSTITUTION
 
-Version: 1.1
+Version: 1.2
 
 Status: ACTIVE
 
@@ -10,41 +10,61 @@ Last Updated: 2026-08-08
 
 # PREAMBLE
 
-This Constitution defines the engineering principles, architecture, governance and development standards of the Coinoskobi project.
+This Constitution defines the engineering principles, architecture, governance, and development standards of the Coinoskobi project.
 
 Every contribution to this repository MUST comply with this Constitution.
 
+This document is the highest engineering authority of the project.
+
 ---
 
-# COINOSKOBI DEVELOPMENT RULE
+# COINOSKOBI DEVELOPMENT WORKFLOW
 
-Every phase follows the same workflow.
+Every task, feature, bug fix, refactor, and phase follows the same workflow.
 
+```
 Plan
-↓
-
-Code
-↓
-
+  ↓
+Implement
+  ↓
 Verify
-↓
+  ↓
+Publish
+```
 
-Commit
-↓
+## Plan
 
-Push
-↓
+- Define the objective.
+- Confirm roadmap alignment.
+- Define acceptance criteria.
 
-Close
+## Implement
 
-Verify includes:
+- Implement only the planned scope.
+- Avoid unrelated refactoring.
+- Do not introduce temporary scripts or patches.
+
+## Verify
+
+Verification includes, when applicable:
 
 - Compile
 - Import Validation
-- Tests
-- Smoke Tests (when applicable)
+- Unit Tests
+- Smoke Tests
 
-A phase is NOT complete until the Close step has successfully finished.
+No implementation may continue unless verification succeeds.
+
+## Publish
+
+Publishing includes:
+
+- Commit
+- Push
+- Roadmap update (if required)
+- Documentation update (if required)
+
+A task is considered complete only after the Publish step.
 
 ---
 
@@ -85,39 +105,25 @@ Every contribution must respect these principles.
 
 The official processing pipeline is:
 
+```
 Scanner
-
-↓
-
+    ↓
 Cache
-
-↓
-
+    ↓
 Filter
-
-↓
-
+    ↓
 Analyzer
-
-↓
-
+    ↓
 Risk Engine
-
-↓
-
+    ↓
 Strategy Engine
-
-↓
-
+    ↓
 Paper Trading
-
-↓
-
+    ↓
 Portfolio
-
-↓
-
+    ↓
 API
+```
 
 No module may bypass this architecture.
 
@@ -130,18 +136,23 @@ Every module must have exactly one responsibility.
 Examples:
 
 Scanner
+
 - scans
 
 Analyzer
+
 - analyzes
 
 Strategy
+
 - decides
 
 Paper
+
 - manages simulated trades
 
 Portfolio
+
 - reports portfolio information
 
 ---
@@ -159,6 +170,8 @@ The repository shall never contain:
 
 Unused code must be removed.
 
+No duplicate implementation shall exist.
+
 ---
 
 # ARTICLE 6 — PATCH POLICY
@@ -171,18 +184,13 @@ Debug-only print() statements must be removed before commit.
 
 ---
 
-# ARTICLE 7 — DEVELOPMENT PROCESS
+# ARTICLE 7 — ROADMAP DISCIPLINE
 
-Every implementation must follow the Coinoskobi Development Rule.
+Development follows the official roadmap.
 
-No phase may skip:
+Features outside the current roadmap phase shall not be implemented.
 
-- Plan
-- Code
-- Verify
-- Commit
-- Push
-- Close
+Roadmap changes must be committed before implementation begins.
 
 ---
 
@@ -201,7 +209,11 @@ Recommended prefixes:
 
 Example:
 
+```
 feat(scanner): improve candidate filtering
+```
+
+Large mixed commits are discouraged.
 
 ---
 
@@ -251,18 +263,18 @@ Future work continues using:
 
 # ARTICLE 13 — PROJECT DOCUMENTATION
 
-The following documents are mandatory:
+The following documents are official project documents:
 
 - README.md
 - CONSTITUTION.md
 - ROADMAP.md
-- PROJECT_STATUS.md
+- TEST_RESULTS.md
 - CHANGELOG.md
 - ARCHITECTURE.md
 - CONTRIBUTING.md
 - roadmap.json
 
-They are part of the project and must remain synchronized.
+Documentation must remain synchronized with the implementation.
 
 ---
 
@@ -280,11 +292,12 @@ Performance improvements must be measurable.
 
 Every change must:
 
-- Compile successfully.
-- Import successfully.
-- Keep the pipeline operational.
-- Avoid unnecessary complexity.
-- Preserve readability.
+- Compile successfully
+- Import successfully
+- Pass verification
+- Preserve readability
+- Avoid unnecessary complexity
+- Keep the processing pipeline operational
 
 ---
 
@@ -333,16 +346,18 @@ Every modification requires:
 
 # ARTICLE 19 — DEFINITION OF DONE
 
-A task is complete only after the Close step.
+A task is complete only when:
 
-Close requires:
+- Plan completed
+- Implementation completed
+- Verification passed
+- Changes published
 
-- Verify passed
-- Documentation updated (when required)
-- Roadmap updated (when required)
-- Project Status updated (when required)
-- Changelog updated (when required)
-- Commit pushed
+If applicable:
+
+- Roadmap updated
+- Documentation updated
+- Test results updated
 
 ---
 
@@ -354,7 +369,11 @@ A phase must not introduce unrelated features.
 
 Tasks belonging to another phase shall be postponed.
 
-Prefer small, reviewable commits over large mixed commits.
+One phase.
+
+One purpose.
+
+One review.
 
 ---
 

@@ -1,34 +1,50 @@
 # COINOSKOBI CONSTITUTION
 
-Version: 1.0
+Version: 1.1
 
 Status: ACTIVE
 
-Last Updated: 2026-08-07
+Last Updated: 2026-08-08
 
 ---
 
 # PREAMBLE
 
-This Constitution defines the engineering principles, architectural rules, development process and governance of the Coinoskobi project.
+This Constitution defines the engineering principles, architecture, governance and development standards of the Coinoskobi project.
 
-Every contribution to the repository MUST comply with this document.
+Every contribution to this repository MUST comply with this Constitution.
 
 ---
 
-Coinoskobi Engineering Principle
+# COINOSKOBI DEVELOPMENT RULE
+
+Every phase follows the same workflow.
 
 Plan
-→ Code
-→ Compile
-→ Import
-→ Smoke Test
-→ Commit
-→ Push
-→ Roadmap
-→ Final Audit
+↓
 
-No phase is complete until every step passes.
+Code
+↓
+
+Verify
+↓
+
+Commit
+↓
+
+Push
+↓
+
+Close
+
+Verify includes:
+
+- Compile
+- Import Validation
+- Tests
+- Smoke Tests (when applicable)
+
+A phase is NOT complete until the Close step has successfully finished.
 
 ---
 
@@ -45,29 +61,29 @@ Its mission is to:
 - Learn from historical outcomes
 - Assist human decision making
 
-Coinoskobi is **NOT** designed to maximize trading frequency.
+Coinoskobi is NOT designed to maximize trading frequency.
 
-Its primary objective is **decision quality**.
+Its primary objective is decision quality.
 
 ---
 
 # ARTICLE 2 — CORE VALUES
 
-Every contribution must respect the following values.
+Every contribution must respect these principles.
 
 - Simplicity
 - Readability
 - Maintainability
 - Modularity
-- Security
 - Reliability
+- Security
 - Transparency
 
 ---
 
 # ARTICLE 3 — ARCHITECTURE
 
-The official pipeline is:
+The official processing pipeline is:
 
 Scanner
 
@@ -103,35 +119,30 @@ Portfolio
 
 API
 
-No module may bypass this pipeline.
+No module may bypass this architecture.
 
 ---
 
 # ARTICLE 4 — SINGLE RESPONSIBILITY
 
-Every module must have one responsibility.
+Every module must have exactly one responsibility.
 
-Examples
+Examples:
 
 Scanner
-
-only scans.
+- scans
 
 Analyzer
-
-only analyzes.
+- analyzes
 
 Strategy
-
-only decides.
+- decides
 
 Paper
-
-only manages simulated trades.
+- manages simulated trades
 
 Portfolio
-
-only reports portfolio information.
+- reports portfolio information
 
 ---
 
@@ -156,63 +167,39 @@ Temporary fixes are prohibited.
 
 Debug code must never be committed.
 
-print() statements used only for debugging shall be removed before merge.
+Debug-only print() statements must be removed before commit.
 
 ---
 
 # ARTICLE 7 — DEVELOPMENT PROCESS
 
-Every feature follows:
+Every implementation must follow the Coinoskobi Development Rule.
 
-Planning
+No phase may skip:
 
-↓
-
-Implementation
-
-↓
-
-Compile
-
-↓
-
-Manual Test
-
-↓
-
-Review
-
-↓
-
-Commit
-
-↓
-
-Push
-
-No feature skips this process.
+- Plan
+- Code
+- Verify
+- Commit
+- Push
+- Close
 
 ---
 
 # ARTICLE 8 — COMMITS
 
-Every commit must have exactly one purpose.
+Each commit must have exactly one purpose.
 
-Recommended prefixes
+Recommended prefixes:
 
-feat:
+- feat:
+- fix:
+- refactor:
+- docs:
+- test:
+- style:
 
-fix:
-
-refactor:
-
-docs:
-
-test:
-
-style:
-
-Example
+Example:
 
 feat(scanner): improve candidate filtering
 
@@ -220,9 +207,9 @@ feat(scanner): improve candidate filtering
 
 # ARTICLE 9 — SECURITY
 
-Private keys shall never be committed.
+Private keys must never be committed.
 
-.env shall never be committed.
+.env files must never be committed.
 
 Secrets must remain outside the repository.
 
@@ -232,7 +219,7 @@ Secrets must remain outside the repository.
 
 Paper Trading is mandatory.
 
-Live Trading cannot begin until Paper Trading proves stability.
+Live Trading cannot begin until Paper Trading demonstrates stable operation.
 
 ---
 
@@ -246,53 +233,36 @@ Enabling Live Trading requires explicit approval.
 
 # ARTICLE 12 — ROADMAP GOVERNANCE
 
-The official roadmap consists of:
-
-Phase 0
-
-↓
+The official roadmap ends at:
 
 Phase 15
 
-Phase 15 is final.
+Phase 16 SHALL NEVER exist.
 
-Phase 16 SHALL NEVER be created.
+Future work continues using:
 
-Future work shall continue using:
-
-Release
-
-Milestone
-
-Sprint
-
-Patch
-
-Hotfix
+- Release
+- Milestone
+- Sprint
+- Patch
+- Hotfix
 
 ---
 
 # ARTICLE 13 — PROJECT DOCUMENTATION
 
-The repository maintains:
+The following documents are mandatory:
 
-README.md
+- README.md
+- CONSTITUTION.md
+- ROADMAP.md
+- PROJECT_STATUS.md
+- CHANGELOG.md
+- ARCHITECTURE.md
+- CONTRIBUTING.md
+- roadmap.json
 
-CONSTITUTION.md
-
-ROADMAP.md
-
-PROJECT_STATUS.md
-
-CHANGELOG.md
-
-ARCHITECTURE.md
-
-CONTRIBUTING.md
-
-roadmap.json
-
-These documents are part of the project.
+They are part of the project and must remain synchronized.
 
 ---
 
@@ -308,15 +278,13 @@ Performance improvements must be measurable.
 
 # ARTICLE 15 — CODE QUALITY
 
-Every commit must:
+Every change must:
 
-Compile successfully.
-
-Import successfully.
-
-Keep the pipeline operational.
-
-Avoid unnecessary complexity.
+- Compile successfully.
+- Import successfully.
+- Keep the pipeline operational.
+- Avoid unnecessary complexity.
+- Preserve readability.
 
 ---
 
@@ -324,21 +292,16 @@ Avoid unnecessary complexity.
 
 Observation never stops.
 
-Even when a trade is rejected,
+Even when execution is rejected, the system continues to:
 
-the system continues to:
+- Observe
+- Collect evidence
+- Score
+- Learn
 
-observe,
+Risk blocks execution.
 
-collect evidence,
-
-score,
-
-learn.
-
-Risk blocks execution,
-
-not observation.
+Risk never blocks observation.
 
 ---
 
@@ -346,15 +309,11 @@ not observation.
 
 Coinoskobi shall never be developed for:
 
-unauthorized access,
-
-malicious activity,
-
-market manipulation,
-
-fraud,
-
-or illegal purposes.
+- unauthorized access
+- malicious activity
+- market manipulation
+- fraud
+- illegal purposes
 
 The platform exists to help users make safer decisions.
 
@@ -366,90 +325,43 @@ This Constitution is version controlled.
 
 Every modification requires:
 
-- version increment
-- changelog entry
-- commit
+- Version increment
+- Changelog entry
+- Commit
 
 ---
 
 # ARTICLE 19 — DEFINITION OF DONE
 
-A task is complete only if:
+A task is complete only after the Close step.
 
-- Code is implemented.
-- Compile succeeds.
-- Manual testing succeeds.
-- Documentation is updated.
-- Roadmap is updated.
-- Project Status is updated.
-- Changelog is updated.
-- Commit is pushed.
+Close requires:
+
+- Verify passed
+- Documentation updated (when required)
+- Roadmap updated (when required)
+- Project Status updated (when required)
+- Changelog updated (when required)
+- Commit pushed
 
 ---
 
-# ARTICLE 20 — FINAL RULE
+# ARTICLE 20 — ONE PHASE, ONE PURPOSE
 
-If a future change conflicts with this Constitution,
-
-the Constitution takes precedence.
-
-This document defines the engineering identity of Coinoskobi.
-
-# Development Lifecycle (Mandatory)
-
-Every implementation phase in Coinoskobi MUST follow the same engineering lifecycle.
-
-No phase is considered complete unless every step below has been completed successfully.
-
-## Required Workflow
-
-1. Plan
-   - Define the objective.
-   - Define acceptance criteria.
-   - Confirm architecture impact.
-
-2. Code
-   - Implement only the planned scope.
-   - Avoid unrelated refactoring.
-
-3. Compile
-   - All Python modules must compile successfully.
-
-4. Import Validation
-   - All affected modules must import without errors.
-
-5. Smoke Test
-   - Verify the implemented feature with a minimal functional test.
-
-6. Commit
-   - Create a single-purpose commit with a clear message.
-
-7. Push
-   - Push only after successful compile and smoke test.
-
-8. Roadmap Update
-   - Mark the completed phase in ROADMAP.md.
-   - Update PROJECT_STATUS.md if applicable.
-
-9. Final Audit
-   - Verify:
-     - compile
-     - import
-     - smoke test
-     - git clean
-     - roadmap updated
-     - documentation updated
-
-Only after all nine steps are complete may a phase be considered CLOSED.
-
-No step may be skipped.
-
-## One Phase - One Purpose Rule
-
-Each phase must have a single clear objective.
+Each phase must have one clear objective.
 
 A phase must not introduce unrelated features.
 
-If a task belongs to another phase, it must be postponed.
+Tasks belonging to another phase shall be postponed.
 
-Small, reviewable commits are preferred over large mixed changes.
+Prefer small, reviewable commits over large mixed commits.
+
+---
+
+# ARTICLE 21 — FINAL RULE
+
+If any future change conflicts with this Constitution,
+
+this Constitution takes precedence.
+
+It defines the engineering identity of Coinoskobi.

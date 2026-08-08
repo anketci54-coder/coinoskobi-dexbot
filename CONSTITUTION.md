@@ -427,3 +427,13 @@ No phase is considered complete unless every step below has been completed succe
 Only after all nine steps are complete may a phase be considered CLOSED.
 
 No step may be skipped.
+
+## One Phase - One Purpose Rule
+
+Each phase must have a single clear objective.
+
+A phase must not introduce unrelated features.
+
+If a task belongs to another phase, it must be postponed.
+
+Small, reviewable commits are preferred over large mixed changes.

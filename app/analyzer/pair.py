@@ -1,10 +1,10 @@
 from web3 import Web3
 
 from app.chains.bsc import w3
-from app.config.factory import PANCAKE_FACTORY
+from app.config.contracts import PANCAKE_FACTORY
 from app.config.abis.factory_full import FACTORY_ABI
 from app.config.abis.pair import PAIR_ABI
-from app.config.tokens import WBNB
+from app.config.contracts import WBNB
 
 factory = w3.eth.contract(
     address=Web3.to_checksum_address(PANCAKE_FACTORY),

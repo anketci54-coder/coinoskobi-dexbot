@@ -1,11 +1,18 @@
 import logging
 
 from app.analyzer.token import analyze as token_analyze
-from app.analyzer.pair  import analyze as pair_analyze
-from app.risk.bytecode  import analyze as risk_analyze
+from app.analyzer.pair import analyze as pair_analyze
+from app.risk.bytecode import analyze as risk_analyze
+
 from app.strategy.engine import StrategyEngine
-from app.paper.database  import PaperDatabase
+
+from app.paper.database import PaperDatabase
 from app.paper.cache_price import CachePrice
+from app.paper.manager import PaperManager
+
+from app.cache.gecko_cache import GeckoCache
+from app.filter.cache_filter import CacheFilter
+
 from app.config.trading import (
     DEFAULT_AMOUNT_BNB,
     TP_PRICE_MULTIPLIER,
@@ -28,53 +35,35 @@ class PipelineEngine:
 
     def __init__(self):
         self.paper_db = PaperDatabase()
-        self.price    = CachePrice()
+        self.price = CachePrice()
+        self.cache = GeckoCache()
+        self.filter = CacheFilter()
+        self.manager = PaperManager()
 
-    def run(self, token_address: str) -> dict:
-        """
-        Execute the full analysis pipeline for a single token address.
+    def run(self, token_address: str):
 
-        Returns the standardized pipeline envelope:
-        {
-            "success": bool,
-            "source": "pipeline",
-            "data": {
-                "token": {},
-                "pair": {},
-                "risk": {},
-                "strategy": {},
-                "paper": {}
-            }
-        }
-        """
+        token = token_analyze(token_address).get("data", {})
+        pair = pair_analyze(token_address).get("data", {})
+        risk = risk_analyze(token_address).get("data", {})
 
-        # --- Analyzer ---
+        strategy = _strategy.evaluate(
+            token,
+            pair,
+            risk,
+        ).get("data", {})
 
-        token_result = token_analyze(token_address)
-        pair_result  = pair_analyze(token_address)
-        risk_result  = risk_analyze(token_address)
+        decision = strategy.get("decision", "REJECT")
 
-        token = token_result.get("data", {})
-        pair  = pair_result.get("data",  {})
-        risk  = risk_result.get("data",  {})
-
-        # --- Strategy ---
-
-        strategy_result = _strategy.evaluate(token, pair, risk)
-        strategy_data   = strategy_result.get("data", {})
-
-        decision = strategy_data.get("decision", "REJECT")
-
-        # --- Paper ---
-
-        paper_data = {}
+        paper = {}
 
         if decision == "PAPER_BUY":
 
             if self.paper_db.has_open_position(token_address):
 
-                logger.debug("[PIPELINE] open position exists: %s", token_address)
-                paper_data = {"action": "SKIP", "reason": "OPEN_POSITION_EXISTS"}
+                paper = {
+                    "action": "SKIP",
+                    "reason": "OPEN_POSITION_EXISTS",
+                }
 
             else:
 
@@ -85,8 +74,10 @@ class PipelineEngine:
 
                 if price <= 0:
 
-                    logger.debug("[PIPELINE] price unavailable: %s", token_address)
-                    paper_data = {"action": "SKIP", "reason": "PRICE_UNAVAILABLE"}
+                    paper = {
+                        "action": "SKIP",
+                        "reason": "PRICE_UNAVAILABLE",
+                    }
 
                 else:
 
@@ -94,55 +85,80 @@ class PipelineEngine:
 
                     self.paper_db.insert({
 
-                        "token":         token_address,
-                        "symbol":        token.get("symbol", "?"),
+                        "token": token_address,
+                        "symbol": token.get("symbol", "?"),
 
-                        "entry_price":   price,
+                        "entry_price": price,
                         "current_price": price,
                         "highest_price": price,
-                        "lowest_price":  price,
+                        "lowest_price": price,
 
-                        "tp_price":      price * TP_PRICE_MULTIPLIER,
-                        "sl_price":      price * SL_PRICE_MULTIPLIER,
+                        "tp_price": price * TP_PRICE_MULTIPLIER,
+                        "sl_price": price * SL_PRICE_MULTIPLIER,
 
-                        "amount_bnb":    DEFAULT_AMOUNT_BNB,
-                        "token_amount":  token_amount,
+                        "amount_bnb": DEFAULT_AMOUNT_BNB,
+                        "token_amount": token_amount,
 
-                        "gas_buy":       DEFAULT_GAS_BUY,
-                        "gas_sell":      DEFAULT_GAS_SELL,
+                        "gas_buy": DEFAULT_GAS_BUY,
+                        "gas_sell": DEFAULT_GAS_SELL,
+                        "swap_fee": DEFAULT_SWAP_FEE,
 
-                        "swap_fee":      DEFAULT_SWAP_FEE,
-                        "buy_tax":       DEFAULT_BUY_TAX,
-                        "sell_tax":      DEFAULT_SELL_TAX,
-                        "slippage":      DEFAULT_SLIPPAGE,
-                        "mev":           DEFAULT_MEV_COST,
+                        "buy_tax": DEFAULT_BUY_TAX,
+                        "sell_tax": DEFAULT_SELL_TAX,
 
-                        "status": "OPEN"
+                        "slippage": DEFAULT_SLIPPAGE,
+                        "mev": DEFAULT_MEV_COST,
 
+                        "status": "OPEN",
                     })
 
-                    logger.debug("[PIPELINE] paper buy inserted: %s", token_address)
-
-                    paper_data = {
-                        "action":       "PAPER_BUY",
-                        "token":        token_address,
-                        "entry_price":  price,
+                    paper = {
+                        "action": "PAPER_BUY",
+                        "token": token_address,
+                        "entry_price": price,
                         "token_amount": token_amount,
-                        "amount_bnb":   DEFAULT_AMOUNT_BNB,
+                        "amount_bnb": DEFAULT_AMOUNT_BNB,
                     }
 
         else:
 
-            paper_data = {"action": decision}
+            paper = {
+                "action": decision,
+            }
 
         return {
             "success": True,
-            "source":  "pipeline",
+            "source": "pipeline",
             "data": {
-                "token":    token,
-                "pair":     pair,
-                "risk":     risk,
-                "strategy": strategy_data,
-                "paper":    paper_data,
+                "token": token,
+                "pair": pair,
+                "risk": risk,
+                "strategy": strategy,
+                "paper": paper,
             },
         }
+
+    def run_cycle(self):
+
+        rows = self.cache.all()
+        candidates = self.filter.filter(rows)
+
+        logger.info(
+            "Cache=%s Candidates=%s",
+            len(rows),
+            len(candidates),
+        )
+
+        for row in candidates:
+
+            token = row["token"]
+
+            if "_" in token:
+                token = token.split("_", 1)[1]
+
+            result = self.run(token)
+
+            if not result.get("success"):
+                logger.warning("Pipeline failed: %s", token)
+
+        self.manager.process()

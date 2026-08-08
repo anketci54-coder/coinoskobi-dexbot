@@ -14,23 +14,25 @@ class Scheduler:
     def every(self, interval: int, func: Callable, name: str = ""):
         self.jobs.append({
             "interval": interval,
-            "next": time.time() + interval,
+            "next": time.time(),
             "func": func,
             "name": name or func.__name__,
         })
 
     def tick(self):
+
         now = time.time()
 
         for job in self.jobs:
 
-            if now >= job["next"]:
+            if now < job["next"]:
+                continue
 
-                log.info("[JOB] %s", job["name"])
+            log.info("[JOB] %s", job["name"])
 
-                try:
-                    job["func"]()
-                except Exception:
-                    log.exception("Scheduler job failed: %s", job["name"])
+            try:
+                job["func"]()
+            except Exception:
+                log.exception(job["name"])
 
-                job["next"] = now + job["interval"]
+            job["next"] = now + job["interval"]

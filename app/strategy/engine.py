@@ -11,10 +11,6 @@ class StrategyEngine:
             score += 5
             reasons.append("ERC20 OK")
 
-        if token.get("symbol") not in ("", "?"):
-            score += 5
-            reasons.append("Symbol OK")
-
         # Pair
 
         if pair.get("exists"):

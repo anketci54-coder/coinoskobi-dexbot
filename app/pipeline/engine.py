@@ -43,7 +43,13 @@ class PipelineEngine:
     def run(self, token_address: str):
 
         token = token_analyze(token_address).get("data", {})
-        pair = pair_analyze(token_address).get("data", {})
+
+        pair = {
+            "exists": True,
+            "quote_ok": True,
+            "pair": token_address,
+        }
+
         risk = risk_analyze(token_address).get("data", {})
 
         strategy = _strategy.evaluate(

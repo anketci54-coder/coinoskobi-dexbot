@@ -16,6 +16,22 @@ Every contribution to the repository MUST comply with this document.
 
 ---
 
+Coinoskobi Engineering Principle
+
+Plan
+→ Code
+→ Compile
+→ Import
+→ Smoke Test
+→ Commit
+→ Push
+→ Roadmap
+→ Final Audit
+
+No phase is complete until every step passes.
+
+---
+
 # ARTICLE 1 — MISSION
 
 Coinoskobi is a modular Decision Support Platform for decentralized exchanges.

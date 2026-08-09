@@ -7,7 +7,9 @@ class StrategyEngine:
 
         # ERC20
 
-        if token.get("name") not in ("", "?"):
+        token_name = token.get("name")
+
+        if token_name not in (None, "", "?"):
             score += 5
             reasons.append("ERC20 OK")
 

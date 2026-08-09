@@ -44,50 +44,58 @@ class StrategyEngine:
 
         # Owner
 
-        if not risk.get("owner"):
+        owner = risk.get("owner")
+
+        if owner is False:
             score += 10
             reasons.append("Owner yok")
 
-        elif risk.get("renounce_owner"):
+        elif owner is True and risk.get("renounce_owner") is True:
             score += 8
             reasons.append("Owner renounce")
 
         # Mint
 
-        if not risk.get("mint"):
+        mint = risk.get("mint")
+
+        if mint is False:
             score += 15
             reasons.append("Mint yok")
-        else:
+        elif mint is True:
             score -= 30
             reasons.append("Mint var")
 
         # Pause
 
-        if not risk.get("pause"):
+        pause = risk.get("pause")
+
+        if pause is False:
             score += 5
             reasons.append("Pause yok")
-        else:
+        elif pause is True:
             score -= 10
             reasons.append("Pause var")
 
         # Blacklist
 
-        if not risk.get("blacklist"):
+        blacklist = risk.get("blacklist")
+
+        if blacklist is False:
             score += 5
             reasons.append("Blacklist yok")
-        else:
+        elif blacklist is True:
             score -= 15
             reasons.append("Blacklist var")
 
         # MaxTx
 
-        if not risk.get("max_tx"):
+        if risk.get("max_tx") is False:
             score += 5
             reasons.append("MaxTx yok")
 
         # MaxWallet
 
-        if not risk.get("max_wallet"):
+        if risk.get("max_wallet") is False:
             score += 5
             reasons.append("MaxWallet yok")
 

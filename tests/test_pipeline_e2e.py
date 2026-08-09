@@ -21,7 +21,18 @@ def test_pipeline_uses_real_pair_result_when_pair_missing(monkeypatch):
     monkeypatch.setattr(
         pipeline_module,
         "risk_analyze",
-        lambda _: {"success": True, "data": {}},
+        lambda _: {
+            "success": True,
+            "data": {
+                "code_size": 0,
+                "owner": False,
+                "mint": False,
+                "pause": False,
+                "blacklist": False,
+                "max_tx": False,
+                "max_wallet": False,
+            },
+        },
     )
 
     monkeypatch.setattr(
@@ -60,7 +71,18 @@ def test_pipeline_uses_real_pair_result_when_pair_exists(monkeypatch):
     monkeypatch.setattr(
         pipeline_module,
         "risk_analyze",
-        lambda _: {"success": True, "data": {}},
+        lambda _: {
+            "success": True,
+            "data": {
+                "code_size": 0,
+                "owner": False,
+                "mint": False,
+                "pause": False,
+                "blacklist": False,
+                "max_tx": False,
+                "max_wallet": False,
+            },
+        },
     )
 
     monkeypatch.setattr(

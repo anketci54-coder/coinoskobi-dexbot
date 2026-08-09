@@ -44,11 +44,7 @@ class PipelineEngine:
 
         token = token_analyze(token_address).get("data", {})
 
-        pair = {
-            "exists": True,
-            "quote_ok": True,
-            "pair": token_address,
-        }
+        pair = pair_analyze(token_address).get("data", {})
 
         risk = risk_analyze(token_address).get("data", {})
 

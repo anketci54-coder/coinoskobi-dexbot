@@ -2,6 +2,7 @@ from web3 import Web3
 
 from app.chains.bsc import w3
 
+
 SIGNATURES = {
     "owner": "8da5cb5b",
     "transferOwnership": "f2fde38b",
@@ -14,15 +15,21 @@ SIGNATURES = {
     "setBlacklist": "6c19e783",
     "excludeFromFees": "0e0e6d84",
     "max_tx": "ec28438a",
-    "max_wallet": "70480275"
+    "max_wallet": "70480275",
 }
 
 
 def analyze(address):
-
-    code = w3.eth.get_code(
-        Web3.to_checksum_address(address)
-    ).hex()
+    try:
+        checksum_address = Web3.to_checksum_address(address)
+        code = w3.eth.get_code(checksum_address).hex()
+    except Exception as exc:
+        return {
+            "success": False,
+            "source": "risk",
+            "error": str(exc),
+            "data": {},
+        }
 
     return {
         "success": True,
@@ -40,13 +47,11 @@ def analyze(address):
             "set_blacklist": SIGNATURES["setBlacklist"] in code,
             "exclude_fee": SIGNATURES["excludeFromFees"] in code,
             "max_tx": SIGNATURES["max_tx"] in code,
-            "max_wallet": SIGNATURES["max_wallet"] in code
-        }
+            "max_wallet": SIGNATURES["max_wallet"] in code,
+        },
     }
 
 
 if __name__ == "__main__":
-
     token = input("Token : ").strip()
-
     print(analyze(token))

@@ -1,4 +1,5 @@
 import logging
+from datetime import datetime, timezone
 
 from app.paper.database import PaperDatabase
 from app.paper.cache_price import CachePrice
@@ -80,13 +81,12 @@ class PaperManager:
             )
 
             self.db.update_position(
-
                 pos["id"],
-
-                current_price=current,
-                highest_price=highest,
-                lowest_price=lowest
-
+                {
+                    "current_price": current,
+                    "highest_price": highest,
+                    "lowest_price": lowest,
+                },
             )
 
             logger.debug(
@@ -102,7 +102,18 @@ class PaperManager:
             if current <= trailing_price and highest > entry:
 
                 self.db.close_position(
-                    pos["id"], current, gross, net, roi, "TRAILING_STOP"
+                    pos["id"],
+                    {
+                        "current_price": current,
+                        "exit_price": current,
+                        "highest_price": highest,
+                        "lowest_price": lowest,
+                        "gross_pnl": gross,
+                        "net_pnl": net,
+                        "roi": roi,
+                        "close_reason": "TRAILING_STOP",
+                        "closed_at": datetime.now(timezone.utc).isoformat(),
+                    },
                 )
 
                 action = "CLOSE"
@@ -112,7 +123,18 @@ class PaperManager:
             elif roi >= TAKE_PROFIT:
 
                 self.db.close_position(
-                    pos["id"], current, gross, net, roi, "TAKE_PROFIT"
+                    pos["id"],
+                    {
+                        "current_price": current,
+                        "exit_price": current,
+                        "highest_price": highest,
+                        "lowest_price": lowest,
+                        "gross_pnl": gross,
+                        "net_pnl": net,
+                        "roi": roi,
+                        "close_reason": "TAKE_PROFIT",
+                        "closed_at": datetime.now(timezone.utc).isoformat(),
+                    },
                 )
 
                 action = "CLOSE"
@@ -122,7 +144,18 @@ class PaperManager:
             elif roi <= STOP_LOSS:
 
                 self.db.close_position(
-                    pos["id"], current, gross, net, roi, "STOP_LOSS"
+                    pos["id"],
+                    {
+                        "current_price": current,
+                        "exit_price": current,
+                        "highest_price": highest,
+                        "lowest_price": lowest,
+                        "gross_pnl": gross,
+                        "net_pnl": net,
+                        "roi": roi,
+                        "close_reason": "STOP_LOSS",
+                        "closed_at": datetime.now(timezone.utc).isoformat(),
+                    },
                 )
 
                 action = "CLOSE"

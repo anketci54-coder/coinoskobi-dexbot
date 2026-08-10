@@ -1,19 +1,18 @@
-from app.config.registry import get_source
+from app.config.registry import get_source_network
 from app.scanner.adapters.registry import normalize
 
 
 def normalize_source_rows(
     source_name,
+    network_name,
     rows,
 ):
-    source = get_source(source_name)
+    binding = get_source_network(
+        source_name,
+        network_name,
+    )
 
-    if not source["enabled"]:
-        raise RuntimeError(
-            f"source disabled: {source_name}"
-        )
-
-    adapter_name = source["adapter"]
+    adapter_name = binding["adapter"]
 
     candidates = []
     rejected = 0
@@ -36,6 +35,8 @@ def normalize_source_rows(
     return {
         "candidates": candidates,
         "rejected": rejected,
-        "source": source["name"],
+        "source": binding["source"],
+        "network": binding["network"],
+        "chain_id": binding["chain_id"],
         "adapter": adapter_name,
     }

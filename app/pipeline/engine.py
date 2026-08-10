@@ -192,6 +192,7 @@ class PipelineEngine:
 
         normalized_result = normalize_source_rows(
             "geckoterminal",
+            "bsc",
             rows,
         )
 

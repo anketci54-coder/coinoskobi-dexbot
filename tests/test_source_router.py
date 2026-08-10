@@ -20,13 +20,16 @@ def row():
     }
 
 
-def test_source_router_uses_registry_adapter():
+def test_source_router_uses_source_network_binding():
     result = normalize_source_rows(
         "geckoterminal",
+        "bsc",
         [row()],
     )
 
     assert result["source"] == "geckoterminal"
+    assert result["network"] == "bsc"
+    assert result["chain_id"] == 56
     assert result["adapter"] == "gecko_bsc"
     assert result["rejected"] == 0
 
@@ -45,6 +48,7 @@ def test_source_router_isolates_bad_row():
 
     result = normalize_source_rows(
         "geckoterminal",
+        "bsc",
         [
             row(),
             bad,
@@ -55,9 +59,19 @@ def test_source_router_isolates_bad_row():
     assert result["rejected"] == 1
 
 
+def test_disabled_network_is_rejected():
+    with pytest.raises(RuntimeError):
+        normalize_source_rows(
+            "geckoterminal",
+            "base",
+            [row()],
+        )
+
+
 def test_unknown_source_fails():
     with pytest.raises(KeyError):
         normalize_source_rows(
             "missing-source",
+            "bsc",
             [row()],
         )

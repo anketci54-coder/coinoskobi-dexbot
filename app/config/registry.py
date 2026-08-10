@@ -55,8 +55,11 @@ DEXES = {
 SOURCES = {
     "geckoterminal": {
         "enabled": True,
-        "networks": {"bsc"},
-        "adapter": "gecko_bsc",
+        "networks": {
+            "bsc": {
+                "adapter": "gecko_bsc",
+            },
+        },
     },
 }
 
@@ -106,6 +109,41 @@ def get_source(name):
     return {
         "name": key,
         **source,
+    }
+
+
+def get_source_network(
+    source_name,
+    network_name,
+):
+    source = get_source(source_name)
+    network = get_network(network_name)
+
+    if not source["enabled"]:
+        raise RuntimeError(
+            f"source disabled: {source_name}"
+        )
+
+    if not network["enabled"]:
+        raise RuntimeError(
+            f"network disabled: {network_name}"
+        )
+
+    binding = source["networks"].get(
+        network["name"]
+    )
+
+    if binding is None:
+        raise KeyError(
+            f"source {source_name} does not support "
+            f"network {network_name}"
+        )
+
+    return {
+        "source": source["name"],
+        "network": network["name"],
+        "chain_id": network["chain_id"],
+        **binding,
     }
 
 

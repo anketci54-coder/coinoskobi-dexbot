@@ -7,6 +7,7 @@ from app.config.registry import (
     get_dex,
     get_network,
     get_source,
+    get_source_network,
 )
 
 
@@ -76,8 +77,16 @@ def test_gecko_source_binding():
     )
 
     assert source["enabled"] is True
-    assert source["adapter"] == "gecko_bsc"
-    assert source["networks"] == {"bsc"}
+    assert "bsc" in source["networks"]
+
+    binding = get_source_network(
+        "geckoterminal",
+        "bsc",
+    )
+
+    assert binding["network"] == "bsc"
+    assert binding["chain_id"] == 56
+    assert binding["adapter"] == "gecko_bsc"
 
 
 def test_unknown_registry_entries_fail():
@@ -89,3 +98,24 @@ def test_unknown_registry_entries_fail():
 
     with pytest.raises(KeyError):
         get_source("unknown")
+
+
+
+def test_disabled_network_cannot_route_source():
+    import pytest
+
+    with pytest.raises(RuntimeError):
+        get_source_network(
+            "geckoterminal",
+            "base",
+        )
+
+
+def test_source_network_binding_is_explicit():
+    import pytest
+
+    with pytest.raises(RuntimeError):
+        get_source_network(
+            "geckoterminal",
+            "ethereum",
+        )

@@ -50,6 +50,9 @@ RECENT_ANALYSIS_COOLDOWN_SECONDS = 20
 # Scanner/runner döngüsüne toleranslı olacak şekilde 15 dk.
 CACHE_MAX_AGE_MINUTES = 15
 
+# Analyzer cache TTL
+TOKEN_ANALYZER_CACHE_TTL_SECONDS = 30
+
 # HTTP timeout
 HTTP_TIMEOUT = 20
 

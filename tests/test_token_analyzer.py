@@ -1,4 +1,24 @@
 import app.analyzer.token as token_module
+import pytest
+
+from app.cache.analyzer_cache import AnalyzerCache
+
+
+@pytest.fixture(autouse=True)
+def isolated_token_cache(tmp_path, monkeypatch):
+    cache = AnalyzerCache(tmp_path / "token-test-cache.db")
+
+    monkeypatch.setattr(
+        token_module,
+        "_cache",
+        cache,
+    )
+
+    yield cache
+
+    cache.close()
+
+
 
 
 class FakeCall:
@@ -138,3 +158,125 @@ def test_token_analyzer_returns_unknown_on_contract_creation_failure(
     assert result["success"] is False
     assert result["data"] == {}
     assert "contract creation failed" in result["error"]
+
+
+def test_token_analyzer_uses_cache_without_rpc(monkeypatch):
+    import json
+
+    result_payload = {
+        "success": True,
+        "source": "token",
+        "data": {
+            "address": "0x0000000000000000000000000000000000000001",
+            "name": "Cached Token",
+            "symbol": "CACHE",
+            "decimals": 18,
+            "total_supply_raw": 1000,
+            "total_supply": 0.000000000000001,
+        },
+    }
+
+    monkeypatch.setattr(
+        token_module._cache,
+        "get",
+        lambda *args, **kwargs: json.dumps(result_payload),
+    )
+
+    def fail_contract(**_):
+        raise AssertionError("RPC/contract should not be called")
+
+    monkeypatch.setattr(
+        token_module.w3.eth,
+        "contract",
+        fail_contract,
+    )
+
+    result = token_module.analyze(
+        "0x0000000000000000000000000000000000000001"
+    )
+
+    assert result == result_payload
+
+
+def test_token_analyzer_writes_success_to_cache(monkeypatch):
+    writes = []
+
+    monkeypatch.setattr(
+        token_module._cache,
+        "get",
+        lambda *args, **kwargs: None,
+    )
+
+    monkeypatch.setattr(
+        token_module._cache,
+        "set",
+        lambda *args, **kwargs: writes.append((args, kwargs)),
+    )
+
+    class FakeCall:
+        def __init__(self, value):
+            self.value = value
+
+        def call(self):
+            return self.value
+
+    class FakeFunctions:
+        def name(self):
+            return FakeCall("Example")
+
+        def symbol(self):
+            return FakeCall("EX")
+
+        def decimals(self):
+            return FakeCall(18)
+
+        def totalSupply(self):
+            return FakeCall(10**18)
+
+    class FakeContract:
+        functions = FakeFunctions()
+
+    monkeypatch.setattr(
+        token_module.w3.eth,
+        "contract",
+        lambda **_: FakeContract(),
+    )
+
+    result = token_module.analyze(
+        "0x0000000000000000000000000000000000000001"
+    )
+
+    assert result["success"] is True
+    assert len(writes) == 1
+
+
+def test_token_analyzer_does_not_cache_boundary_failure(monkeypatch):
+    writes = []
+
+    monkeypatch.setattr(
+        token_module._cache,
+        "get",
+        lambda *args, **kwargs: None,
+    )
+
+    monkeypatch.setattr(
+        token_module._cache,
+        "set",
+        lambda *args, **kwargs: writes.append((args, kwargs)),
+    )
+
+    def fail_contract(**_):
+        raise RuntimeError("contract failed")
+
+    monkeypatch.setattr(
+        token_module.w3.eth,
+        "contract",
+        fail_contract,
+    )
+
+    result = token_module.analyze(
+        "0x0000000000000000000000000000000000000001"
+    )
+
+    assert result["success"] is False
+    assert writes == []

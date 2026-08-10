@@ -126,3 +126,30 @@ def test_batch_classification_counts_lanes():
     assert result["stats"]["active"] == 1
     assert result["stats"]["deferred"] == 1
     assert result["stats"]["dropped"] == 1
+
+
+def test_ingress_accepts_common_candidate_observed_at():
+    from datetime import datetime, timezone
+
+    row = {
+        "chain": "bsc",
+        "chain_id": 56,
+        "pool": "0xpool",
+        "token": "0xtoken",
+        "quote_token": "0xquote",
+        "source": "geckoterminal",
+        "dex": "pancakeswap_v2",
+        "liquidity": 20_000,
+        "volume_24h": 5_000,
+        "buys_24h": 20,
+        "fdv": 100_000,
+        "price_usd": 0.001,
+        "created_at": None,
+        "observed_at": datetime.now(
+            timezone.utc
+        ).isoformat(),
+    }
+
+    result = IngressGate().classify(row)
+
+    assert result["lane"] == "ACTIVE"

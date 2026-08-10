@@ -22,10 +22,19 @@ class FakeManager:
 
 def candidate(index):
     return {
+        "pool": f"0x{index + 1000:040x}",
         "token": f"bsc_0x{index:040x}",
+        "quote_token": (
+            "bsc_0x000000000000000000000000"
+            "00000000000000ff"
+        ),
+        "dex": "pancakeswap_v2",
         "liquidity": 10_000 + index,
         "volume_24h": 5_000 + index,
         "buys_24h": 20 + index,
+        "fdv": 100_000 + index,
+        "price_usd": 0.001,
+        "created_at": None,
     }
 
 

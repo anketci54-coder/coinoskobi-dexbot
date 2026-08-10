@@ -243,8 +243,30 @@ def test_run_cycle_continues_after_single_token_exception():
     engine = PipelineEngine.__new__(PipelineEngine)
 
     engine.cache = FakeCache([
-        {"token": "bsc_0x0000000000000000000000000000000000000001"},
-        {"token": "bsc_0x0000000000000000000000000000000000000002"},
+        {
+            "pool": "0x0000000000000000000000000000000000000101",
+            "token": "bsc_0x0000000000000000000000000000000000000001",
+            "quote_token": "bsc_0x00000000000000000000000000000000000000ff",
+            "dex": "pancakeswap_v2",
+            "liquidity": 20_001,
+            "volume_24h": 5_001,
+            "buys_24h": 21,
+            "fdv": 100_001,
+            "price_usd": 0.001,
+            "created_at": None,
+        },
+        {
+            "pool": "0x0000000000000000000000000000000000000102",
+            "token": "bsc_0x0000000000000000000000000000000000000002",
+            "quote_token": "bsc_0x00000000000000000000000000000000000000ff",
+            "dex": "pancakeswap_v2",
+            "liquidity": 20_002,
+            "volume_24h": 5_002,
+            "buys_24h": 22,
+            "fdv": 100_002,
+            "price_usd": 0.001,
+            "created_at": None,
+        },
     ])
     engine.filter = FakeFilter()
     engine.manager = FakeManager()
@@ -263,10 +285,12 @@ def test_run_cycle_continues_after_single_token_exception():
 
     engine.run_cycle()
 
-    assert called == [
+    assert set(called) == {
         "0x0000000000000000000000000000000000000001",
         "0x0000000000000000000000000000000000000002",
-    ]
+    }
+
+    assert len(called) == 2
     assert engine.manager.called is True
 
 

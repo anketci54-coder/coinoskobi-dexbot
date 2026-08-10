@@ -20,6 +20,10 @@ def candidate(index, liquidity=10_000):
     return {
         "pool": f"pool-{index}",
         "token": f"bsc_0x{index:040x}",
+        "quote_token": (
+            "bsc_0x000000000000000000000000"
+            "00000000000000ff"
+        ),
         "name": f"T{index}",
         "dex": "pancakeswap_v2",
         "liquidity": liquidity,

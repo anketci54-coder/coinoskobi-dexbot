@@ -15,6 +15,7 @@ from app.filter.cache_filter import CacheFilter
 from app.filter.ingress_gate import IngressGate
 from app.pipeline.candidate_queue import CandidateAdmissionQueue
 from app.pipeline.conveyor import ConveyorLabeler
+from app.pipeline.normalizer import CandidateNormalizer
 
 from app.config.scanner import (
     MAX_PENDING_CANDIDATES,
@@ -188,6 +189,16 @@ class PipelineEngine:
     def run_cycle(self):
 
         rows = self.cache.all()
+
+        normalized_result = (
+            CandidateNormalizer.gecko_bsc_many(rows)
+        )
+
+        rows = [
+            candidate.to_dict()
+            for candidate
+            in normalized_result["candidates"]
+        ]
 
         if hasattr(self, "ingress_gate"):
             ingress = self.ingress_gate.classify_many(

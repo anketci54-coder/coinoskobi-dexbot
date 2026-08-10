@@ -134,6 +134,7 @@ class IngressGate:
 
         updated_at = _parse_datetime(
             row.get("updated_at")
+            or row.get("observed_at")
         )
 
         if updated_at is None:

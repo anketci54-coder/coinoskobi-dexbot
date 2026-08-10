@@ -14,6 +14,7 @@ from app.cache.gecko_cache import GeckoCache
 from app.filter.cache_filter import CacheFilter
 from app.filter.ingress_gate import IngressGate
 from app.pipeline.candidate_queue import CandidateAdmissionQueue
+from app.pipeline.conveyor import ConveyorLabeler
 
 from app.config.scanner import (
     MAX_PENDING_CANDIDATES,
@@ -52,6 +53,7 @@ class PipelineEngine:
             max_pending=MAX_PENDING_CANDIDATES,
             cooldown_seconds=RECENT_ANALYSIS_COOLDOWN_SECONDS,
         )
+        self.conveyor = ConveyorLabeler()
 
     def run(self, token_address: str):
 
@@ -227,6 +229,20 @@ class PipelineEngine:
                 cooldown_seconds=RECENT_ANALYSIS_COOLDOWN_SECONDS,
             )
 
+        if hasattr(self, "conveyor"):
+            conveyor_result = self.conveyor.label_many(
+                candidates
+            )
+
+            candidates = conveyor_result["rows"]
+            conveyor_stats = conveyor_result["stats"]
+        else:
+            conveyor_stats = {
+                "warm": 0,
+                "partial": 0,
+                "cold": len(candidates),
+            }
+
         self.candidate_queue.enqueue_many(candidates)
 
         admitted = self.candidate_queue.pop_many(
@@ -238,13 +254,17 @@ class PipelineEngine:
         logger.info(
             (
                 "Cache=%s Active=%s Deferred=%s "
-                "Dropped=%s Admitted=%s Pending=%s "
+                "Dropped=%s Warm=%s Partial=%s Cold=%s "
+                "Admitted=%s Pending=%s "
                 "Duplicates=%s CooldownSkipped=%s"
             ),
             len(rows),
             ingress_stats["active"],
             ingress_stats["deferred"],
             ingress_stats["dropped"],
+            conveyor_stats["warm"],
+            conveyor_stats["partial"],
+            conveyor_stats["cold"],
             len(admitted),
             queue_stats["pending"],
             queue_stats["duplicates_collapsed"],

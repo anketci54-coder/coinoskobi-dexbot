@@ -325,11 +325,11 @@ Current Branch:
 
 Current Milestone:
 
-**Phase 0 Completed**
+**Phase 0 + Phase 1 Completed**
 
 Next Objective:
 
-**Phase 1 — Scanner Stabilization**
+**Phase 2 — Performance**
 
 ---
 

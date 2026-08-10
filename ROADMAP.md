@@ -37,13 +37,13 @@ Hiçbir faz bu 10 adım tamamlanmadan kapanmaz.
 
 # PROJE DURUMU
 
-Current Phase : PHASE 1
+Current Phase : PHASE 2
 
 Progress
 
-- Phase 0 : ⏳
-- Phase 1 : 🚧
-- Phase 2 : ⏳
+- Phase 0 : ✅
+- Phase 1 : ✅
+- Phase 2 : 🚧
 - Phase 3 : ⏳
 - Phase 4 : ⏳
 - Phase 5 : ⏳
@@ -62,13 +62,13 @@ Botun gerçekten çalışır hale gelmesi.
 - [x] gecko_pool_cache → price_usd desteği
 - [x] CachePrice uyumluluğu
 - [x] ALLOWED_DEX filtresi
-- [ ] requirements.txt temizliği
-- [ ] app/scanner/pairs.py sil
-- [ ] duplicate portfolio kaldır
+- [x] requirements.txt temizliği
+- [x] app/scanner/pairs.py sil
+- [x] duplicate portfolio kaldır
 
 Status
 
-🚧 In Progress
+✅ Completed
 
 ---
 
@@ -82,19 +82,19 @@ Temiz ve sürdürülebilir altyapı.
 
 - [x] app/core/logger.py
 - [x] app/core/runner.py
-- [ ] app/paper/database.py
-    - WAL mode
-    - singleton
+- [x] app/paper/database.py
+    - WAL mode ✅
+    - singleton ✅
 - [x] app/config/trading.py
-- [ ] app/config/contracts.py
-- [ ] main.py sadeleştirme
-- [ ] factory.py kaldır
-- [ ] routers.py kaldır
-- [ ] tokens.py kaldır
+- [x] app/config/contracts.py
+- [x] main.py sadeleştirme
+- [x] factory.py kaldır
+- [x] routers.py kaldır
+- [x] tokens.py kaldır
 
 Status
 
-🚧 In Progress
+✅ Completed
 
 ---
 
@@ -224,7 +224,7 @@ Phase 1
 
 - Compile ✅
 - Import ✅
-- 55/55 Tests ✅
+- 36/36 Tests ✅
 - Smoke Test ✅
 - Pipeline PASS ✅
 - Git Clean ✅

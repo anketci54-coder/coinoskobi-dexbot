@@ -5,6 +5,7 @@ from app.analyzer.pair import analyze as pair_analyze
 from app.risk.bytecode import analyze as risk_analyze
 from app.risk.gate import RiskGate
 from app.risk.sellability import analyze as sellability_analyze
+from app.risk.traps import TrapRiskAnalyzer
 
 from app.strategy.engine import StrategyEngine
 
@@ -43,6 +44,7 @@ logger = logging.getLogger(__name__)
 
 _strategy = StrategyEngine()
 _risk_gate = RiskGate()
+_trap_risk = TrapRiskAnalyzer()
 
 
 class PipelineEngine:
@@ -154,6 +156,10 @@ class PipelineEngine:
                         risk
                     )
                 )
+
+        trap_risk = _trap_risk.evaluate(
+            risk
+        )
 
         if risk_gate["hard_block"]:
             strategy["decision"] = "REJECT"
@@ -295,6 +301,7 @@ class PipelineEngine:
                 "pair": pair,
                 "risk": risk,
                 "risk_gate": risk_gate,
+                "trap_risk": trap_risk,
                 "analyzer_status": analyzer_status,
                 "strategy": strategy,
                 "paper": paper,

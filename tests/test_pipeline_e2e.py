@@ -642,3 +642,69 @@ def test_sellability_provider_failure_does_not_convict(
         ]["sellability"]["status"]
         == "SELLABILITY_UNKNOWN"
     )
+
+
+def test_pipeline_exposes_trap_risk_without_new_authority(
+    monkeypatch,
+):
+    engine = PipelineEngine.__new__(
+        PipelineEngine
+    )
+
+    monkeypatch.setattr(
+        pipeline_module,
+        "token_analyze",
+        lambda _: {
+            "success": True,
+            "data": {},
+        },
+    )
+
+    monkeypatch.setattr(
+        pipeline_module,
+        "pair_analyze",
+        lambda _: {
+            "success": True,
+            "data": {
+                "exists": False,
+                "pair": None,
+                "quote_ok": False,
+            },
+        },
+    )
+
+    monkeypatch.setattr(
+        pipeline_module,
+        "risk_analyze",
+        lambda _: {
+            "success": True,
+            "data": {
+                "mint": True,
+                "blacklist": True,
+            },
+        },
+    )
+
+    result = engine.run(
+        "0x0000000000000000000000000000000000000001"
+    )
+
+    trap = result["data"][
+        "trap_risk"
+    ]
+
+    assert trap[
+        "trade_authority"
+    ] is False
+
+    assert trap[
+        "hard_block"
+    ] is False
+
+    assert trap[
+        "signal_count"
+    ] >= 2
+
+    assert result["data"][
+        "strategy"
+    ]["decision"] == "REJECT"

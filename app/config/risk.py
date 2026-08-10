@@ -51,28 +51,45 @@ MEV_LIQUIDITY_CAUTION_USD = 25_000
 MEV_LIQUIDITY_HIGH_RISK_USD = 10_000
 
 # ---------------------------------------------------------------------------
-# MEV / Sandwich exposure thresholds
+# Unified Score v1
 #
-# Pure classification only.
-# No trade authority.
-# No hard block.
+# This is NOT probability.
+# This is NOT trade authority.
+#
+# Legacy StrategyEngine already includes:
+# - ERC20 / pair / quote
+# - bytecode size
+# - owner
+# - mint
+# - pause
+# - blacklist
+# - maxTx / maxWallet safe bonuses
+#
+# Therefore Unified Score v1 MUST NOT punish those same
+# contract-control signals again.
+#
+# v1 only adds dimensions not already represented:
+# - tax / round-trip tax
+# - MEV / sandwich exposure
 # ---------------------------------------------------------------------------
 
-# Trade size / pool liquidity ratio (%)
-MEV_TRADE_LIQUIDITY_CAUTION_PERCENT = 0.50
-MEV_TRADE_LIQUIDITY_HIGH_PERCENT = 1.00
-MEV_TRADE_LIQUIDITY_CRITICAL_PERCENT = 3.00
+UNIFIED_STRATEGY_MAX_RAW_SCORE = 105.0
 
-# Expected price impact (%)
-MEV_PRICE_IMPACT_CAUTION_PERCENT = 1.00
-MEV_PRICE_IMPACT_HIGH_PERCENT = 3.00
-MEV_PRICE_IMPACT_CRITICAL_PERCENT = 8.00
+UNIFIED_TAX_PENALTY_LOW = 1.0
+UNIFIED_TAX_PENALTY_MEDIUM = 3.0
+UNIFIED_TAX_PENALTY_HIGH = 8.0
+UNIFIED_TAX_PENALTY_CRITICAL = 15.0
 
-# Expected slippage (%)
-MEV_SLIPPAGE_CAUTION_PERCENT = 1.00
-MEV_SLIPPAGE_HIGH_PERCENT = 3.00
-MEV_SLIPPAGE_CRITICAL_PERCENT = 8.00
+UNIFIED_MEV_PENALTY_LOW = 1.0
+UNIFIED_MEV_PENALTY_MEDIUM = 3.0
+UNIFIED_MEV_PENALTY_HIGH = 8.0
+UNIFIED_MEV_PENALTY_CRITICAL = 15.0
 
-# Shallow pool liquidity (USD)
-MEV_LIQUIDITY_CAUTION_USD = 25_000
-MEV_LIQUIDITY_HIGH_RISK_USD = 10_000
+# Confidence / evidence coverage.
+#
+# Unknown evidence lowers confidence only.
+# It does NOT create a score penalty.
+UNIFIED_CONFIDENCE_STRATEGY_WEIGHT = 40.0
+UNIFIED_CONFIDENCE_SELLABILITY_WEIGHT = 20.0
+UNIFIED_CONFIDENCE_TAX_WEIGHT = 20.0
+UNIFIED_CONFIDENCE_MEV_WEIGHT = 20.0

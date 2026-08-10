@@ -835,3 +835,144 @@ def test_pipeline_missing_market_context_stays_unknown(
         ]["status"]
         == "UNKNOWN"
     )
+
+
+def test_pipeline_exposes_advisory_unified_score(
+    monkeypatch,
+):
+    engine = PipelineEngine.__new__(
+        PipelineEngine
+    )
+
+    monkeypatch.setattr(
+        pipeline_module,
+        "token_analyze",
+        lambda _: {
+            "success": True,
+            "data": {},
+        },
+    )
+
+    monkeypatch.setattr(
+        pipeline_module,
+        "pair_analyze",
+        lambda _: {
+            "success": True,
+            "data": {
+                "exists": False,
+                "pair": None,
+                "quote_ok": False,
+            },
+        },
+    )
+
+    monkeypatch.setattr(
+        pipeline_module,
+        "risk_analyze",
+        lambda _: {
+            "success": True,
+            "data": {},
+        },
+    )
+
+    result = engine.run(
+        "0x0000000000000000000000000000000000000001"
+    )
+
+    score = result["data"][
+        "unified_score"
+    ]
+
+    assert (
+        score["model"]
+        == "unified_score_v1"
+    )
+
+    assert (
+        score["trade_authority"]
+        is False
+    )
+
+    assert (
+        score["decision_authority"]
+        is False
+    )
+
+
+def test_unified_score_does_not_override_hard_block(
+    monkeypatch,
+):
+    engine = PipelineEngine.__new__(
+        PipelineEngine
+    )
+
+    monkeypatch.setattr(
+        pipeline_module,
+        "token_analyze",
+        lambda _: {
+            "success": True,
+            "data": {
+                "name": "Strong Token",
+            },
+        },
+    )
+
+    monkeypatch.setattr(
+        pipeline_module,
+        "pair_analyze",
+        lambda _: {
+            "success": True,
+            "data": {
+                "exists": True,
+                "pair": (
+                    "0x000000000000000000000000"
+                    "0000000000000002"
+                ),
+                "quote_ok": True,
+            },
+        },
+    )
+
+    monkeypatch.setattr(
+        pipeline_module,
+        "risk_analyze",
+        lambda _: {
+            "success": True,
+            "data": {
+                "code_size": 7000,
+                "owner": False,
+                "mint": False,
+                "pause": False,
+                "blacklist": False,
+                "max_tx": False,
+                "max_wallet": False,
+                "honeypot": True,
+                "sellable": False,
+            },
+        },
+    )
+
+    result = engine.run(
+        "0x0000000000000000000000000000000000000001"
+    )
+
+    assert (
+        result["data"][
+            "risk_gate"
+        ]["hard_block"]
+        is True
+    )
+
+    assert (
+        result["data"][
+            "strategy"
+        ]["decision"]
+        == "REJECT"
+    )
+
+    assert (
+        result["data"][
+            "unified_score"
+        ]["trade_authority"]
+        is False
+    )

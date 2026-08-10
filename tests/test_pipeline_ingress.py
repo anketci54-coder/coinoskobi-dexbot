@@ -57,7 +57,7 @@ def test_pipeline_only_sends_active_candidates_to_queue():
 
     calls = []
 
-    def fake_run(token):
+    def fake_run(token, market_context=None):
         calls.append(token)
 
         return {

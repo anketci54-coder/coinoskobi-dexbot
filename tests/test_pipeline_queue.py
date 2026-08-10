@@ -59,7 +59,7 @@ def test_second_cycle_processes_backlog_not_same_first_batch():
 
     calls = []
 
-    def fake_run(token):
+    def fake_run(token, market_context=None):
         calls.append(token)
 
         return {

@@ -273,7 +273,7 @@ def test_run_cycle_continues_after_single_token_exception():
 
     called = []
 
-    def fake_run(token):
+    def fake_run(token, market_context=None):
         called.append(token)
 
         if token.endswith("1"):
@@ -708,3 +708,130 @@ def test_pipeline_exposes_trap_risk_without_new_authority(
     assert result["data"][
         "strategy"
     ]["decision"] == "REJECT"
+
+
+def test_pipeline_exposes_mev_context_when_provided(
+    monkeypatch,
+):
+    engine = PipelineEngine.__new__(
+        PipelineEngine
+    )
+
+    monkeypatch.setattr(
+        pipeline_module,
+        "token_analyze",
+        lambda _: {
+            "success": True,
+            "data": {},
+        },
+    )
+
+    monkeypatch.setattr(
+        pipeline_module,
+        "pair_analyze",
+        lambda _: {
+            "success": True,
+            "data": {
+                "exists": False,
+                "pair": None,
+                "quote_ok": False,
+            },
+        },
+    )
+
+    monkeypatch.setattr(
+        pipeline_module,
+        "risk_analyze",
+        lambda _: {
+            "success": True,
+            "data": {},
+        },
+    )
+
+    context = {
+        "liquidity_usd": 8_000,
+        "trade_size_usd": None,
+        "price_impact_pct": None,
+        "slippage_pct": None,
+    }
+
+    result = engine.run(
+        "0x0000000000000000000000000000000000000001",
+        market_context=context,
+    )
+
+    assert (
+        result["data"][
+            "market_context"
+        ]
+        == context
+    )
+
+    mev = result["data"][
+        "mev_risk"
+    ]
+
+    assert (
+        mev["status"]
+        == "HIGH_EXPOSURE"
+    )
+
+    assert (
+        mev["hard_block"]
+        is False
+    )
+
+    assert (
+        mev["trade_authority"]
+        is False
+    )
+
+
+def test_pipeline_missing_market_context_stays_unknown(
+    monkeypatch,
+):
+    engine = PipelineEngine.__new__(
+        PipelineEngine
+    )
+
+    monkeypatch.setattr(
+        pipeline_module,
+        "token_analyze",
+        lambda _: {
+            "success": True,
+            "data": {},
+        },
+    )
+
+    monkeypatch.setattr(
+        pipeline_module,
+        "pair_analyze",
+        lambda _: {
+            "success": True,
+            "data": {
+                "exists": False,
+                "pair": None,
+                "quote_ok": False,
+            },
+        },
+    )
+
+    monkeypatch.setattr(
+        pipeline_module,
+        "risk_analyze",
+        lambda _: {
+            "success": True,
+            "data": {},
+        },
+    )
+
+    result = engine.run(
+        "0x0000000000000000000000000000000000000001"
+    )
+
+    assert (
+        result["data"][
+            "mev_risk"
+        ]["status"]
+        == "UNKNOWN"
+    )

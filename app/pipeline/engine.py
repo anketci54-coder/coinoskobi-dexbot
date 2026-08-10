@@ -6,6 +6,7 @@ from app.risk.bytecode import analyze as risk_analyze
 from app.risk.gate import RiskGate
 from app.risk.sellability import analyze as sellability_analyze
 from app.risk.traps import TrapRiskAnalyzer
+from app.risk.mev import MEVExposureAnalyzer
 
 from app.strategy.engine import StrategyEngine
 
@@ -19,6 +20,7 @@ from app.filter.ingress_gate import IngressGate
 from app.pipeline.candidate_queue import CandidateAdmissionQueue
 from app.pipeline.conveyor import ConveyorLabeler
 from app.pipeline.work_scheduler import WorkScheduler
+from app.pipeline.market_context import build_market_context
 from app.scanner.adapters.source_router import normalize_source_rows
 
 from app.config.scanner import (
@@ -45,6 +47,7 @@ logger = logging.getLogger(__name__)
 _strategy = StrategyEngine()
 _risk_gate = RiskGate()
 _trap_risk = TrapRiskAnalyzer()
+_mev_risk = MEVExposureAnalyzer()
 
 
 class PipelineEngine:
@@ -65,7 +68,15 @@ class PipelineEngine:
             max_workers=ANALYZER_WORKERS
         )
 
-    def run(self, token_address: str):
+    def run(
+        self,
+        token_address: str,
+        market_context=None,
+    ):
+
+        market_context = (
+            market_context or {}
+        )
 
         token_result = token_analyze(token_address)
         pair_result = pair_analyze(token_address)
@@ -159,6 +170,10 @@ class PipelineEngine:
 
         trap_risk = _trap_risk.evaluate(
             risk
+        )
+
+        mev_risk = _mev_risk.evaluate(
+            market_context
         )
 
         if risk_gate["hard_block"]:
@@ -302,6 +317,8 @@ class PipelineEngine:
                 "risk": risk,
                 "risk_gate": risk_gate,
                 "trap_risk": trap_risk,
+                "mev_risk": mev_risk,
+                "market_context": market_context,
                 "analyzer_status": analyzer_status,
                 "strategy": strategy,
                 "paper": paper,
@@ -409,8 +426,19 @@ class PipelineEngine:
         def process_row(row):
             token = row["token"]
 
+            market_context = (
+                build_market_context(
+                    row
+                )
+            )
+
             try:
-                result = self.run(token)
+                result = self.run(
+                    token,
+                    market_context=(
+                        market_context
+                    ),
+                )
 
                 if not result.get("success"):
                     logger.warning(

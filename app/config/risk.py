@@ -93,3 +93,24 @@ UNIFIED_CONFIDENCE_STRATEGY_WEIGHT = 40.0
 UNIFIED_CONFIDENCE_SELLABILITY_WEIGHT = 20.0
 UNIFIED_CONFIDENCE_TAX_WEIGHT = 20.0
 UNIFIED_CONFIDENCE_MEV_WEIGHT = 20.0
+
+# ---------------------------------------------------------------------------
+# Unified Decision Contract v1
+#
+# Advisory / paper-candidate contract only.
+#
+# Does NOT have:
+# - live trade authority
+# - wallet authority
+# - execution authority
+#
+# Execution cost and Entry/SL/TP are evaluated later.
+# ---------------------------------------------------------------------------
+
+UNIFIED_DECISION_PAPER_SCORE = 90.0
+UNIFIED_DECISION_WATCH_SCORE = 70.0
+
+# Minimum evidence coverage required before a high score
+# can become a mature PAPER_BUY candidate.
+UNIFIED_DECISION_MIN_CONFIDENCE = 80.0
+

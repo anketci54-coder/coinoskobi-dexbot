@@ -10,6 +10,7 @@ from app.risk.mev import MEVExposureAnalyzer
 
 from app.strategy.engine import StrategyEngine
 from app.strategy.unified_score import UnifiedScoreEngine
+from app.strategy.decision import UnifiedDecisionEngine
 
 from app.paper.database import PaperDatabase
 from app.paper.cache_price import CachePrice
@@ -47,6 +48,7 @@ logger = logging.getLogger(__name__)
 
 _strategy = StrategyEngine()
 _unified_score = UnifiedScoreEngine()
+_unified_decision = UnifiedDecisionEngine()
 _risk_gate = RiskGate()
 _trap_risk = TrapRiskAnalyzer()
 _mev_risk = MEVExposureAnalyzer()
@@ -184,6 +186,12 @@ class PipelineEngine:
                 risk_gate=risk_gate,
                 trap_risk=trap_risk,
                 mev_risk=mev_risk,
+            )
+        )
+
+        unified_decision = (
+            _unified_decision.evaluate(
+                unified_score
             )
         )
 
@@ -330,6 +338,7 @@ class PipelineEngine:
                 "trap_risk": trap_risk,
                 "mev_risk": mev_risk,
                 "unified_score": unified_score,
+                "unified_decision": unified_decision,
                 "market_context": market_context,
                 "analyzer_status": analyzer_status,
                 "strategy": strategy,

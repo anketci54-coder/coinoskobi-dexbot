@@ -22,3 +22,57 @@ SEVERITY_LOW = "LOW"
 SEVERITY_MEDIUM = "MEDIUM"
 SEVERITY_HIGH = "HIGH"
 SEVERITY_CRITICAL = "CRITICAL"
+
+# ---------------------------------------------------------------------------
+# MEV / Sandwich exposure thresholds
+#
+# Pure classification only.
+# No trade authority.
+# No hard block.
+# ---------------------------------------------------------------------------
+
+# Trade size / pool liquidity ratio (%)
+MEV_TRADE_LIQUIDITY_CAUTION_PERCENT = 0.50
+MEV_TRADE_LIQUIDITY_HIGH_PERCENT = 1.00
+MEV_TRADE_LIQUIDITY_CRITICAL_PERCENT = 3.00
+
+# Expected price impact (%)
+MEV_PRICE_IMPACT_CAUTION_PERCENT = 1.00
+MEV_PRICE_IMPACT_HIGH_PERCENT = 3.00
+MEV_PRICE_IMPACT_CRITICAL_PERCENT = 8.00
+
+# Expected slippage (%)
+MEV_SLIPPAGE_CAUTION_PERCENT = 1.00
+MEV_SLIPPAGE_HIGH_PERCENT = 3.00
+MEV_SLIPPAGE_CRITICAL_PERCENT = 8.00
+
+# Shallow pool liquidity (USD)
+MEV_LIQUIDITY_CAUTION_USD = 25_000
+MEV_LIQUIDITY_HIGH_RISK_USD = 10_000
+
+# ---------------------------------------------------------------------------
+# MEV / Sandwich exposure thresholds
+#
+# Pure classification only.
+# No trade authority.
+# No hard block.
+# ---------------------------------------------------------------------------
+
+# Trade size / pool liquidity ratio (%)
+MEV_TRADE_LIQUIDITY_CAUTION_PERCENT = 0.50
+MEV_TRADE_LIQUIDITY_HIGH_PERCENT = 1.00
+MEV_TRADE_LIQUIDITY_CRITICAL_PERCENT = 3.00
+
+# Expected price impact (%)
+MEV_PRICE_IMPACT_CAUTION_PERCENT = 1.00
+MEV_PRICE_IMPACT_HIGH_PERCENT = 3.00
+MEV_PRICE_IMPACT_CRITICAL_PERCENT = 8.00
+
+# Expected slippage (%)
+MEV_SLIPPAGE_CAUTION_PERCENT = 1.00
+MEV_SLIPPAGE_HIGH_PERCENT = 3.00
+MEV_SLIPPAGE_CRITICAL_PERCENT = 8.00
+
+# Shallow pool liquidity (USD)
+MEV_LIQUIDITY_CAUTION_USD = 25_000
+MEV_LIQUIDITY_HIGH_RISK_USD = 10_000

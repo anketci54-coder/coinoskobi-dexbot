@@ -112,13 +112,13 @@ Status
 
 Amaç
 
-Pipeline hızlandırılması.
+Mevcut pipeline'ı ölçülebilir biçimde hızlandırmak.
 
 Ana prensip
 
 Ölçmeden optimizasyon yapılmaz.
-CPU tarafında zaten hızlı olan kod gereksiz yere yeniden yazılmaz.
-Öncelik dış ağ / RPC gecikmesi, tekrar çağrılar ve paralel çalışmadır.
+Çalışan karar mantığı performans uğruna değiştirilmez.
+Öncelik gerçek RPC / HTTP gecikmesi, gereksiz tekrar çağrılar ve kontrollü paralelliktir.
 
 ## Başlangıç Baseline
 
@@ -134,113 +134,191 @@ CPU tarafında zaten hızlı olan kod gereksiz yere yeniden yazılmaz.
 - [x] Strategy micro benchmark ölçüldü
 - [x] Synthetic Pipeline E2E ölçüldü
 - [x] Cycle isolation doğrulandı
-- [ ] Token / Pair / Risk gerçek RPC latency baseline
-- [ ] Sequential analyzer chain latency baseline
 
-## Uygulama Sırası
+## PHASE 2A — RPC + Cache Baseline
 
-### PHASE 2A — RPC Performance Baseline
+Ölçülen gerçek RPC değerleri
 
-- [ ] token analyzer RPC süreleri
-- [ ] pair analyzer RPC süreleri
-- [ ] risk analyzer RPC süreleri
-- [ ] sequential analyzer toplam süre
-- [ ] tekrar RPC çağrılarını tespit et
-- [ ] mevcut cache reuse imkanlarını ölç
-- [ ] performans hedeflerini belirle
+- [x] Token analyzer avg ≈ 343 ms
+- [x] Pair analyzer avg ≈ 83 ms
+- [x] Risk analyzer avg ≈ 28 ms
+- [x] Sequential analyzer chain avg ≈ 461 ms
+
+Doğrulanan mevcut durum
+
+- [x] analyzer çağrıları sequential
+- [x] erc20_cache tablosu mevcut
+- [x] pair_cache tablosu mevcut
+- [x] bytecode_cache tablosu mevcut
+- [x] analyzer cache tabloları runtime'da kullanılmıyor
+- [x] aynı token tekrar analiz edildiğinde RPC tekrar çağrılıyor
+- [x] MAX_RPC_CANDIDATES = 30 koruması mevcut
+- [x] 1000 satır filter yaklaşık 1–3 ms seviyesinde
+- [ ] cache hit / miss politikası belirle
+- [ ] analyzer cache TTL politikası belirle
+- [ ] güvenli cache reuse tasarımını tamamla
+- [ ] performans hedeflerini kilitle
 
 Kural
 
-Phase 2B, gerçek RPC darboğazı ölçülmeden başlamaz.
+Phase 2B başlamadan önce hangi verinin ne kadar süre cache'lenebileceği açıkça belirlenir.
 
-### PHASE 2B — Async Analyzer Contracts
+---
+
+## PHASE 2B — Analyzer Cache Reuse
+
+- [ ] ERC20 metadata cache read
+- [ ] ERC20 metadata cache write
+- [ ] Pair result cache read
+- [ ] Pair result cache write
+- [ ] Bytecode risk cache read
+- [ ] Bytecode risk cache write
+- [ ] cache TTL
+- [ ] stale cache davranışı
+- [ ] RPC failure durumunda güvenli fallback
+- [ ] cache hit / miss metriği
+- [ ] tekrar analiz benchmark
+- [ ] full regression tests
+
+Kural
+
+Cache eski veya eksik veriyi güvenli veri gibi gösteremez.
+UNKNOWN fail-safe davranışı korunur.
+
+---
+
+## PHASE 2C — Async Analyzer Contracts
 
 - [ ] analyzer/token async
 - [ ] analyzer/pair async
 - [ ] risk/bytecode async
-- [ ] mevcut sync sözleşme davranışını koru
+- [ ] mevcut sync davranışını koru
 - [ ] success / error / data sözleşmesini koru
-- [ ] UNKNOWN fail-safe davranışını koru
 - [ ] analyzer timeout politikası
+- [ ] analyzer exception isolation
+- [ ] sync vs async regression tests
 
 Kural
 
-Async dönüşüm trade/risk karar anlamını değiştiremez.
+Async dönüşüm karar veya risk anlamını değiştiremez.
 
-### PHASE 2C — Parallel RPC Orchestration
+---
 
-- [ ] Runner parallel RPC
+## PHASE 2D — Bounded Parallel RPC
+
 - [ ] Token / Pair / Risk bağımsız çağrılarını paralel çalıştır
 - [ ] bounded concurrency
-- [ ] tek analyzer hatası diğerlerini düşürmesin
-- [ ] external RPC rate-limit koruması
+- [ ] tek analyzer hatası diğer analyzer'ları düşürmesin
+- [ ] tek token hatası diğer tokenları durdurmasın
+- [ ] RPC rate-limit koruması
+- [ ] timeout guard
 - [ ] sequential vs parallel benchmark
+- [ ] provider call amplification kontrolü
 
 Kural
 
 Sınırsız concurrency yok.
-Tek token hatası diğer token fırsatlarını durduramaz.
+1000 token = 1000 eşzamanlı RPC değildir.
 
-### PHASE 2D — Scanner HTTP Performance
+---
 
-- [ ] aiohttp
-- [ ] GeckoTerminal async HTTP
-- [ ] HTTP timeout politikası
+## PHASE 2E — Burst / Load Validation
+
+Amaç
+
+Yoğun token girişinde mevcut aday filtresi ve RPC bütçesinin davranışını doğrulamak.
+
+- [ ] 1k candidate synthetic burst
+- [ ] 5k candidate synthetic burst
+- [ ] 10k candidate synthetic burst
+- [ ] filter latency p50 / p95 / p99
+- [ ] candidate count before filter
+- [ ] candidate count after filter
+- [ ] RPC admission count
+- [ ] duplicate candidate davranışı
+- [ ] repeated-cycle davranışı
+- [ ] CPU ölçümü
+- [ ] RAM ölçümü
+- [ ] total cycle latency
+- [ ] RPC call count
+- [ ] rate-limit davranışı
+- [ ] fırsat kaçırma riskini değerlendir
+
+Kural
+
+Load test önce sentetik / kontrollü yapılır.
+Gerçek dış servisleri binlerce çağrı ile zorlamak yasaktır.
+
+---
+
+## PHASE 2F — Scanner HTTP Performance
+
+- [ ] GeckoTerminal HTTP latency baseline
+- [ ] mevcut requests davranışını ölç
+- [ ] aiohttp gerekliliğini kanıtla
+- [ ] async HTTP yalnız ölçüm fayda gösterirse uygula
+- [ ] HTTP timeout
 - [ ] 429 rate-limit davranışı
-- [ ] retry / backoff sınırları
-- [ ] scanner unit testleri tamamen offline kalacak
+- [ ] bounded retry / backoff
+- [ ] scanner unit testleri offline kalacak
 - [ ] live smoke ayrı tutulacak
 
 Kural
 
-Canlı API erişimi unit test suite içine geri alınmaz.
+Canlı API unit test suite içine alınmaz.
 
-### PHASE 2E — Paper / Portfolio Performance
+---
 
-- [ ] PortfolioService
-- [ ] Manager refactor
-- [ ] gereksiz DB sorgularını tespit et
+## PHASE 2G — Paper / Portfolio Performance
+
+- [ ] paper manager DB query audit
 - [ ] paper position processing benchmark
+- [ ] gereksiz sorguları kaldır
+- [ ] PortfolioService gerekliliğini doğrula
+- [ ] Manager refactor yalnız ihtiyaç varsa
 - [ ] WAL / singleton davranışını koru
-- [ ] paper trade sonuç sözleşmesini koru
+- [ ] paper regression tests
 
 Kural
 
-Paper engine doğruluğu hız uğruna değiştirilemez.
+Paper doğruluğu performans uğruna değiştirilemez.
 
-### PHASE 2F — API Performance Refactor
+---
 
-- [ ] API refactor
-- [ ] API yalnız aktif ihtiyaç varsa optimize edilir
-- [ ] gereksiz framework / dependency eklenmez
-- [ ] Phase 4 deployment sorumlulukları Phase 2'ye çekilmez
+## PHASE 2H — API Performance Scope Check
+
+- [ ] mevcut API runtime kullanımını doğrula
+- [ ] API refactor gerçekten gerekli mi belirle
+- [ ] gereksiz dependency ekleme
+- [ ] Phase 4 deployment işlerini Phase 2'ye çekme
 
 Kural
 
-Phase 2 yalnız performans kapsamındadır.
-Auth / deployment / live API işleri Phase 4 kapsamıdır.
+Phase 2 yalnız performans işidir.
+Auth / deployment / production API Phase 4 kapsamındadır.
+
+---
 
 ## Performans Güvenlik Sınırları
 
 - [ ] Live trading yok
 - [ ] Wallet signing yok
 - [ ] Private key kullanımı yok
-- [ ] Trade authority değişikliği yok
 - [ ] Strategy threshold değişikliği yok
 - [ ] Risk skor mantığı değişikliği yok
-- [ ] Fail-safe UNKNOWN davranışı korunacak
-- [ ] MAX_RPC_CANDIDATES korunacak
+- [ ] UNKNOWN fail-safe korunacak
+- [ ] MAX_RPC_CANDIDATES korunacak veya yalnız benchmark kanıtıyla değişecek
 - [ ] External rate-limit dikkate alınacak
-- [ ] Her optimizasyon sonrası full test çalışacak
+- [ ] Her kod değişikliğinden sonra full test çalışacak
 
 ## Phase 2 Definition of Done
 
-- [ ] RPC baseline kayıtlı
-- [ ] Async analyzer testleri PASS
+- [ ] Cache reuse regression PASS
+- [ ] Async analyzer regression PASS
 - [ ] Parallel RPC benchmark PASS
-- [ ] Scanner async benchmark PASS
+- [ ] 1k / 5k / 10k synthetic burst PASS
+- [ ] Scanner performance regression PASS
 - [ ] Paper/Portfolio regression PASS
-- [ ] API performance regression PASS
 - [ ] Compile PASS
 - [ ] Import PASS
 - [ ] Full tests PASS
@@ -248,6 +326,7 @@ Auth / deployment / live API işleri Phase 4 kapsamıdır.
 - [ ] Clean venv PASS
 - [ ] Dead code audit PASS
 - [ ] Git clean
+- [ ] TEST_RESULTS.md güncel
 - [ ] Roadmap güncel
 - [ ] Final performance audit PASS
 

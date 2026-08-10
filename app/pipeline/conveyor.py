@@ -37,7 +37,11 @@ class ConveyorLabeler:
         if not token:
             return None
 
-        return token.lower()
+        chain = str(
+            row.get("chain") or "bsc"
+        ).strip().lower()
+
+        return f"{chain}:{token.lower()}"
 
     def _hit(self, namespace, key, ttl):
         if not key:

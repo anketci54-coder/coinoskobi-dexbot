@@ -62,7 +62,7 @@ def test_conveyor_partial_when_one_cache_hit(tmp_path):
 
     cache.set(
         "token",
-        TOKEN.lower(),
+        f"bsc:{TOKEN.lower()}",
         payload("token"),
     )
 
@@ -88,7 +88,7 @@ def test_conveyor_warm_when_all_cache_hit(tmp_path):
     for namespace in ("token", "pair", "risk"):
         cache.set(
             namespace,
-            TOKEN.lower(),
+            f"bsc:{TOKEN.lower()}",
             payload(namespace),
         )
 
@@ -134,5 +134,49 @@ def test_conveyor_batch_stats(tmp_path):
 
     assert result["stats"]["input"] == 2
     assert result["stats"]["cold"] == 2
+
+    cache.close()
+
+
+def test_conveyor_cache_is_chain_aware(tmp_path):
+    cache = make_cache(tmp_path)
+
+    token = TOKEN.lower()
+
+    cache.set(
+        "token",
+        f"bsc:{token}",
+        payload("token"),
+    )
+
+    cache.set(
+        "pair",
+        f"bsc:{token}",
+        payload("pair"),
+    )
+
+    cache.set(
+        "risk",
+        f"bsc:{token}",
+        payload("risk"),
+    )
+
+    conveyor = ConveyorLabeler(cache)
+
+    bsc_row = {
+        **row(),
+        "chain": "bsc",
+    }
+
+    eth_row = {
+        **row(),
+        "chain": "ethereum",
+    }
+
+    bsc = conveyor.label(bsc_row)
+    eth = conveyor.label(eth_row)
+
+    assert bsc["conveyor"]["cache_state"] == CACHE_WARM
+    assert eth["conveyor"]["cache_state"] == CACHE_COLD
 
     cache.close()

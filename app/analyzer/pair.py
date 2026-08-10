@@ -31,7 +31,7 @@ def analyze(token):
             "data": {},
         }
 
-    cache_key = checksum_token.lower()
+    cache_key = f"bsc:{checksum_token.lower()}"
 
     try:
         cached = _cache.get(

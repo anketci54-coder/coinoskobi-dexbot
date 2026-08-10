@@ -43,13 +43,28 @@ class CandidateAdmissionQueue:
 
         token = str(value).strip().lower()
 
-        # Sadece gercek scanner chain prefix'ini kaldir.
-        # Fonksiyon idempotent olmali:
-        # normalize(normalize(x)) == normalize(x)
         if token.startswith("bsc_"):
             token = token[4:]
 
         return token
+
+    @classmethod
+    def identity_key(cls, row):
+        token = cls.normalize_token(
+            row.get("token")
+        )
+
+        if not token:
+            return None
+
+        chain = str(
+            row.get("chain") or "bsc"
+        ).strip().lower()
+
+        if not chain:
+            chain = "bsc"
+
+        return f"{chain}:{token}"
 
     @staticmethod
     def priority(row):
@@ -168,14 +183,15 @@ class CandidateAdmissionQueue:
 
     def enqueue(self, row):
         token = self.normalize_token(row.get("token"))
+        identity = self.identity_key(row)
 
-        if not token:
+        if not token or not identity:
             return False
 
         now = time.monotonic()
 
         cooldown_until = self._cooldown_until.get(
-            token,
+            identity,
             0,
         )
 
@@ -185,7 +201,7 @@ class CandidateAdmissionQueue:
 
         priority = self.priority(row)
 
-        existing = self._entries.get(token)
+        existing = self._entries.get(identity)
 
         if existing is not None:
             first_seen = existing["first_seen"]
@@ -211,8 +227,12 @@ class CandidateAdmissionQueue:
 
         normalized = dict(row)
         normalized["token"] = token
+        normalized["chain"] = str(
+            row.get("chain") or "bsc"
+        ).strip().lower()
+        normalized["identity"] = identity
 
-        self._entries[token] = {
+        self._entries[identity] = {
             "row": normalized,
             "priority": priority,
             "first_seen": first_seen,
@@ -221,7 +241,7 @@ class CandidateAdmissionQueue:
         }
 
         self._push_heaps(
-            token,
+            identity,
             priority,
             version,
             first_seen,
@@ -274,13 +294,18 @@ class CandidateAdmissionQueue:
 
         return result
 
-    def mark_analyzed(self, token):
+    def mark_analyzed(self, token, chain="bsc"):
         normalized = self.normalize_token(token)
 
         if not normalized:
             return
 
-        self._cooldown_until[normalized] = (
+        identity = (
+            f"{str(chain).strip().lower()}:"
+            f"{normalized}"
+        )
+
+        self._cooldown_until[identity] = (
             time.monotonic()
             + self.cooldown_seconds
         )

@@ -292,7 +292,8 @@ class PipelineEngine:
 
             finally:
                 self.candidate_queue.mark_analyzed(
-                    token
+                    token,
+                    chain=row.get("chain", "bsc"),
                 )
 
         try:

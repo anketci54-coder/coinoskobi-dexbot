@@ -122,3 +122,71 @@ def test_token_normalization_preserves_internal_underscore():
     )
 
     assert result == "custom_token_name"
+
+
+def test_same_address_on_different_chains_is_not_duplicate():
+    queue = CandidateAdmissionQueue()
+
+    base = {
+        "token": "0xabc",
+        "liquidity": 10000,
+        "volume_24h": 5000,
+        "buys_24h": 20,
+    }
+
+    assert queue.enqueue({
+        **base,
+        "chain": "bsc",
+    })
+
+    assert queue.enqueue({
+        **base,
+        "chain": "ethereum",
+    })
+
+    assert queue.pending_count == 2
+
+
+def test_same_chain_same_address_collapses_duplicate():
+    queue = CandidateAdmissionQueue()
+
+    row = {
+        "chain": "bsc",
+        "token": "0xabc",
+        "liquidity": 10000,
+        "volume_24h": 5000,
+        "buys_24h": 20,
+    }
+
+    assert queue.enqueue(row)
+    assert queue.enqueue(row)
+
+    assert queue.pending_count == 1
+    assert queue.duplicate_collapsed == 1
+
+
+def test_chain_aware_cooldown_does_not_block_other_chain():
+    queue = CandidateAdmissionQueue(
+        cooldown_seconds=60
+    )
+
+    queue.mark_analyzed(
+        "0xabc",
+        chain="bsc",
+    )
+
+    assert not queue.enqueue({
+        "chain": "bsc",
+        "token": "0xabc",
+        "liquidity": 10000,
+        "volume_24h": 5000,
+        "buys_24h": 20,
+    })
+
+    assert queue.enqueue({
+        "chain": "ethereum",
+        "token": "0xabc",
+        "liquidity": 10000,
+        "volume_24h": 5000,
+        "buys_24h": 20,
+    })

@@ -60,7 +60,7 @@ def analyze(address):
             "data": {},
         }
 
-    cache_key = checksum_address.lower()
+    cache_key = f"bsc:{checksum_address.lower()}"
 
     try:
         cached = _cache.get(

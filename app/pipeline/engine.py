@@ -3,6 +3,7 @@ import logging
 from app.analyzer.token import analyze as token_analyze
 from app.analyzer.pair import analyze as pair_analyze
 from app.risk.bytecode import analyze as risk_analyze
+from app.risk.gate import RiskGate
 
 from app.strategy.engine import StrategyEngine
 
@@ -40,6 +41,7 @@ from app.config.trading import (
 logger = logging.getLogger(__name__)
 
 _strategy = StrategyEngine()
+_risk_gate = RiskGate()
 
 
 class PipelineEngine:
@@ -97,13 +99,39 @@ class PipelineEngine:
             },
         }
 
+        risk_gate = _risk_gate.evaluate(
+            risk
+        )
+
         strategy = _strategy.evaluate(
             token,
             pair,
             risk,
         ).get("data", {})
 
-        decision = strategy.get("decision", "REJECT")
+        if risk_gate["hard_block"]:
+            strategy["decision"] = "REJECT"
+            strategy["risk"] = "HIGH"
+            strategy["paper_trade"] = False
+
+            reasons = strategy.setdefault(
+                "reasons",
+                [],
+            )
+
+            for reason in (
+                risk_gate[
+                    "hard_block_reasons"
+                ]
+            ):
+                reasons.append(
+                    f"HARD_BLOCK: {reason}"
+                )
+
+        decision = strategy.get(
+            "decision",
+            "REJECT",
+        )
 
         paper = {}
 
@@ -184,6 +212,7 @@ class PipelineEngine:
                 "token": token,
                 "pair": pair,
                 "risk": risk,
+                "risk_gate": risk_gate,
                 "analyzer_status": analyzer_status,
                 "strategy": strategy,
                 "paper": paper,

@@ -304,3 +304,93 @@ def test_run_cycle_survives_manager_exception():
     engine.run_cycle()
 
     assert engine.manager.called is True
+
+
+def test_honeypot_hard_block_overrides_high_strategy_score(
+    monkeypatch,
+):
+    engine = PipelineEngine.__new__(
+        PipelineEngine
+    )
+
+    monkeypatch.setattr(
+        pipeline_module,
+        "token_analyze",
+        lambda _: {
+            "success": True,
+            "data": {
+                "name": "Example Token",
+            },
+        },
+    )
+
+    monkeypatch.setattr(
+        pipeline_module,
+        "pair_analyze",
+        lambda _: {
+            "success": True,
+            "data": {
+                "exists": True,
+                "pair": (
+                    "0x000000000000000000000000"
+                    "0000000000000002"
+                ),
+                "quote_ok": True,
+            },
+        },
+    )
+
+    monkeypatch.setattr(
+        pipeline_module,
+        "risk_analyze",
+        lambda _: {
+            "success": True,
+            "data": {
+                "code_size": 7000,
+                "owner": False,
+                "mint": False,
+                "pause": False,
+                "blacklist": False,
+                "max_tx": False,
+                "max_wallet": False,
+                "honeypot": True,
+                "sellable": False,
+            },
+        },
+    )
+
+    result = engine.run(
+        "0x0000000000000000000000000000000000000001"
+    )
+
+    assert (
+        result["data"]["risk_gate"][
+            "hard_block"
+        ]
+        is True
+    )
+
+    assert (
+        result["data"]["strategy"][
+            "decision"
+        ]
+        == "REJECT"
+    )
+
+    assert (
+        result["data"]["strategy"][
+            "paper_trade"
+        ]
+        is False
+    )
+
+    assert any(
+        reason.startswith(
+            "HARD_BLOCK:"
+        )
+        for reason in (
+            result["data"]["strategy"][
+                "reasons"
+            ]
+        )
+    )

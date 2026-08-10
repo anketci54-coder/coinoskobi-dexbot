@@ -342,3 +342,120 @@ Next roadmap phase:
 **PHASE 3 — Strategy**
 
 ---
+
+# Phase 3 — Risk, Opportunity & Entry Feasibility
+
+Status: ✅ PASS / CLOSED
+
+Closure date: 2026-08-11
+
+## Risk Architecture
+
+- Config-driven strategy thresholds ✅
+- Honeypot / sellability RiskGate ✅
+- Confirmed critical risk hard-block ✅
+- UNKNOWN != RISK ✅
+- Suspicion != HARD_BLOCK ✅
+- Bounded sellability deep-check ✅
+- Trap / tax / transfer-control signals ✅
+- MEV / sandwich exposure classification ✅
+- Market context binding ✅
+
+## Unified Score
+
+- Unified Score v1 ✅
+- Legacy strategy normalized to 0–100 ✅
+- Tax penalty independent ✅
+- MEV penalty independent ✅
+- No duplicate contract-risk penalty ✅
+- UNKNOWN evidence lowers confidence only ✅
+- Hard-block cannot be overridden by high score ✅
+
+## Unified Decision Contract
+
+Decision interpretation:
+
+- HARD_BLOCK → REJECT
+- Score >= 90 + Confidence >= 80 → PAPER_BUY_CANDIDATE
+- Score >= 90 + Confidence < 80 → REQUIRE_MORE_EVIDENCE
+- 70 <= Score < 90 → WATCH
+- Score < 70 → REJECT
+
+Authority:
+
+- decision_authority = false ✅
+- paper_authority = false ✅
+- live_authority = false ✅
+- wallet_authority = false ✅
+- execution_authority = false ✅
+
+## Execution Cost / Entry Feasibility
+
+Cost model:
+
+Known Total Cost % =
+Buy Tax
++ Sell Tax
++ Swap Fee
++ Slippage
++ MEV Cost
++ Gas %
+
+Net Edge % =
+Expected Gross Edge %
+- Known Total Cost %
+
+Rules:
+
+- Missing execution cost remains UNKNOWN ✅
+- Missing gas does not become zero ✅
+- Missing swap fee does not become zero ✅
+- Gas units are not interpreted as USD ✅
+- No default-cost injection into feasibility ✅
+- Pure-local calculation ✅
+
+## Final Phase 3 Audit
+
+- Targeted Phase 3 tests: 83 passed / 0 failed ✅
+- Full repository tests: 198 passed / 0 failed ✅
+- Compile PASS ✅
+- Config duplicate audit PASS ✅
+- Sellability config single copy ✅
+- Honeypot URL single copy ✅
+- MEV config single copy ✅
+- Unified decision config single copy ✅
+- No live / wallet execution surface detected ✅
+
+Known non-blocking warning:
+
+- `websockets.legacy` dependency deprecation warning
+
+## Phase Boundary
+
+Phase 3 answers:
+
+**"Bu adaya girmek mantıklı mı?"**
+
+Deferred to Phase 4:
+
+- Multi-stage TP
+- Runner position
+- Trend-following SL
+- Adaptive trailing
+- DEX swap-flow momentum
+- Volume quality
+- Unique buyers / sellers
+- Liquidity / reserve dynamics
+- Momentum exhaustion
+- Runner exit intelligence
+- Position lifecycle management
+
+## Final Phase 3 Result
+
+**PHASE 3: ✅ CLOSED**
+
+Next:
+
+**PHASE 4 — Position Lifecycle / DEX Exit Intelligence**
+
+---

@@ -1115,3 +1115,142 @@ def test_hard_block_rejects_unified_decision(
         ]["hard_block"]
         is True
     )
+
+
+def test_pipeline_exposes_execution_cost_without_defaults(
+    monkeypatch,
+):
+    engine = PipelineEngine.__new__(
+        PipelineEngine
+    )
+
+    monkeypatch.setattr(
+        pipeline_module,
+        "token_analyze",
+        lambda _: {
+            "success": True,
+            "data": {},
+        },
+    )
+
+    monkeypatch.setattr(
+        pipeline_module,
+        "pair_analyze",
+        lambda _: {
+            "success": True,
+            "data": {
+                "exists": False,
+                "pair": None,
+                "quote_ok": False,
+            },
+        },
+    )
+
+    monkeypatch.setattr(
+        pipeline_module,
+        "risk_analyze",
+        lambda _: {
+            "success": True,
+            "data": {},
+        },
+    )
+
+    result = engine.run(
+        "0x0000000000000000000000000000000000000001"
+    )
+
+    execution = result["data"][
+        "execution_cost"
+    ]
+
+    assert (
+        execution["feasibility"]
+        == "UNKNOWN_COST"
+    )
+
+    assert (
+        execution["cost_complete"]
+        is False
+    )
+
+    assert (
+        execution["execution_authority"]
+        is False
+    )
+
+
+def test_pipeline_execution_uses_known_context_only(
+    monkeypatch,
+):
+    engine = PipelineEngine.__new__(
+        PipelineEngine
+    )
+
+    monkeypatch.setattr(
+        pipeline_module,
+        "token_analyze",
+        lambda _: {
+            "success": True,
+            "data": {},
+        },
+    )
+
+    monkeypatch.setattr(
+        pipeline_module,
+        "pair_analyze",
+        lambda _: {
+            "success": True,
+            "data": {
+                "exists": False,
+                "pair": None,
+                "quote_ok": False,
+            },
+        },
+    )
+
+    monkeypatch.setattr(
+        pipeline_module,
+        "risk_analyze",
+        lambda _: {
+            "success": True,
+            "data": {
+                "buy_tax": 2,
+                "sell_tax": 3,
+            },
+        },
+    )
+
+    context = {
+        "trade_size_usd": 1000,
+        "liquidity_usd": 100_000,
+        "price_impact_pct": None,
+        "slippage_pct": 0.5,
+        "swap_fee_pct": 0.25,
+        "mev_cost_pct": 0.2,
+        "gas_cost_usd": 1.0,
+        "expected_gross_edge_pct": 10,
+    }
+
+    result = engine.run(
+        "0x0000000000000000000000000000000000000001",
+        market_context=context,
+    )
+
+    execution = result["data"][
+        "execution_cost"
+    ]
+
+    assert (
+        execution["cost_complete"]
+        is True
+    )
+
+    assert (
+        execution["feasibility"]
+        == "POSITIVE_NET_EDGE"
+    )
+
+    assert (
+        execution["net_edge_pct"]
+        is not None
+    )

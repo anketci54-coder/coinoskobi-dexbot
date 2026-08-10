@@ -11,6 +11,7 @@ from app.risk.mev import MEVExposureAnalyzer
 from app.strategy.engine import StrategyEngine
 from app.strategy.unified_score import UnifiedScoreEngine
 from app.strategy.decision import UnifiedDecisionEngine
+from app.strategy.execution_cost import ExecutionCostEngine
 
 from app.paper.database import PaperDatabase
 from app.paper.cache_price import CachePrice
@@ -23,6 +24,7 @@ from app.pipeline.candidate_queue import CandidateAdmissionQueue
 from app.pipeline.conveyor import ConveyorLabeler
 from app.pipeline.work_scheduler import WorkScheduler
 from app.pipeline.market_context import build_market_context
+from app.pipeline.execution_context import build_execution_context
 from app.scanner.adapters.source_router import normalize_source_rows
 
 from app.config.scanner import (
@@ -49,6 +51,7 @@ logger = logging.getLogger(__name__)
 _strategy = StrategyEngine()
 _unified_score = UnifiedScoreEngine()
 _unified_decision = UnifiedDecisionEngine()
+_execution_cost = ExecutionCostEngine()
 _risk_gate = RiskGate()
 _trap_risk = TrapRiskAnalyzer()
 _mev_risk = MEVExposureAnalyzer()
@@ -192,6 +195,19 @@ class PipelineEngine:
         unified_decision = (
             _unified_decision.evaluate(
                 unified_score
+            )
+        )
+
+        execution_context = (
+            build_execution_context(
+                market_context=market_context,
+                risk=risk,
+            )
+        )
+
+        execution_cost = (
+            _execution_cost.evaluate(
+                execution_context
             )
         )
 
@@ -339,6 +355,8 @@ class PipelineEngine:
                 "mev_risk": mev_risk,
                 "unified_score": unified_score,
                 "unified_decision": unified_decision,
+                "execution_context": execution_context,
+                "execution_cost": execution_cost,
                 "market_context": market_context,
                 "analyzer_status": analyzer_status,
                 "strategy": strategy,

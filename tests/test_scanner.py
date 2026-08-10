@@ -3,6 +3,7 @@ from app.scanner.gecko_scanner import GeckoScanner
 
 
 class FakeResponse:
+    status_code = 200
     def raise_for_status(self):
         return None
 

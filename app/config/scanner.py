@@ -58,6 +58,11 @@ RISK_ANALYZER_CACHE_TTL_SECONDS = 30
 # HTTP timeout
 HTTP_TIMEOUT = 20
 
+# Gecko/public HTTP retry policy.
+# Normal scanner cadence is 300s, so this is only a rare 429 guard.
+HTTP_429_MAX_RETRIES = 2
+HTTP_429_BACKOFF_SECONDS = 2
+
 # İstekler arası bekleme (sn)
 REQUEST_DELAY = 0.15
 

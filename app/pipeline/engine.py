@@ -12,6 +12,13 @@ from app.paper.manager import PaperManager
 
 from app.cache.gecko_cache import GeckoCache
 from app.filter.cache_filter import CacheFilter
+from app.pipeline.candidate_queue import CandidateAdmissionQueue
+
+from app.config.scanner import (
+    MAX_PENDING_CANDIDATES,
+    MAX_RPC_CANDIDATES,
+    RECENT_ANALYSIS_COOLDOWN_SECONDS,
+)
 
 from app.config.trading import (
     DEFAULT_AMOUNT_BNB,
@@ -39,6 +46,10 @@ class PipelineEngine:
         self.cache = GeckoCache()
         self.filter = CacheFilter()
         self.manager = PaperManager()
+        self.candidate_queue = CandidateAdmissionQueue(
+            max_pending=MAX_PENDING_CANDIDATES,
+            cooldown_seconds=RECENT_ANALYSIS_COOLDOWN_SECONDS,
+        )
 
     def run(self, token_address: str):
 
@@ -173,31 +184,68 @@ class PipelineEngine:
     def run_cycle(self):
 
         rows = self.cache.all()
-        candidates = self.filter.filter(rows)
 
-        logger.info(
-            "Cache=%s Candidates=%s",
-            len(rows),
-            len(candidates),
+        if hasattr(self.filter, "filter_all"):
+            candidates = self.filter.filter_all(rows)
+        else:
+            candidates = self.filter.filter(rows)
+
+        if not hasattr(self, "candidate_queue"):
+            self.candidate_queue = CandidateAdmissionQueue(
+                max_pending=MAX_PENDING_CANDIDATES,
+                cooldown_seconds=RECENT_ANALYSIS_COOLDOWN_SECONDS,
+            )
+
+        self.candidate_queue.enqueue_many(candidates)
+
+        admitted = self.candidate_queue.pop_many(
+            MAX_RPC_CANDIDATES
         )
 
-        for row in candidates:
+        queue_stats = self.candidate_queue.stats()
+
+        logger.info(
+            (
+                "Cache=%s Candidates=%s "
+                "Admitted=%s Pending=%s "
+                "Duplicates=%s CooldownSkipped=%s"
+            ),
+            len(rows),
+            len(candidates),
+            len(admitted),
+            queue_stats["pending"],
+            queue_stats["duplicates_collapsed"],
+            queue_stats["cooldown_skipped"],
+        )
+
+        for row in admitted:
 
             token = row["token"]
 
-            if "_" in token:
-                token = token.split("_", 1)[1]
-
             try:
                 result = self.run(token)
-            except Exception:
-                logger.exception("Pipeline exception: %s", token)
-                continue
 
-            if not result.get("success"):
-                logger.warning("Pipeline failed: %s", token)
+                if not result.get("success"):
+                    logger.warning(
+                        "Pipeline failed: %s",
+                        token,
+                    )
+
+            except Exception:
+                logger.exception(
+                    "Pipeline exception: %s",
+                    token,
+                )
+
+            finally:
+                self.candidate_queue.mark_analyzed(
+                    token
+                )
 
         try:
             self.manager.process()
         except Exception:
-            logger.exception("Paper manager exception")
+            logger.exception(
+                "Paper manager exception"
+            )
+

@@ -49,7 +49,7 @@ def _parse_datetime(value):
 
 class CacheFilter:
 
-    def filter(self, rows):
+    def _accepted(self, rows):
 
         accepted = []
         now = datetime.now(timezone.utc)
@@ -144,4 +144,10 @@ class CacheFilter:
             reverse=True,
         )
 
-        return accepted[:MAX_RPC_CANDIDATES]
+        return accepted
+
+    def filter_all(self, rows):
+        return self._accepted(rows)
+
+    def filter(self, rows):
+        return self._accepted(rows)[:MAX_RPC_CANDIDATES]

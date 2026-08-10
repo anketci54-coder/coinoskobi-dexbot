@@ -37,13 +37,14 @@ Hiçbir faz bu 10 adım tamamlanmadan kapanmaz.
 
 # PROJE DURUMU
 
-Current Phase : PHASE 2
+Current Phase : NONE
+Next Phase : PHASE 2
 
 Progress
 
 - Phase 0 : ✅
 - Phase 1 : ✅
-- Phase 2 : 🚧
+- Phase 2 : ⏳
 - Phase 3 : ⏳
 - Phase 4 : ⏳
 - Phase 5 : ⏳

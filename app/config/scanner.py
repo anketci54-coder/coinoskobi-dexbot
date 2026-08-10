@@ -36,15 +36,15 @@ ALLOWED_DEX = [
     "four-meme"
 ]
 
-# RPC doğrulamasına gönderilecek maksimum aday
-MAX_RPC_CANDIDATES = 30
-
 # Admission queue kapasitesi.
 # Deep-analysis sınırı değildir; bekleyen aday havuzudur.
 MAX_PENDING_CANDIDATES = 100000
 
 # Aynı token analiz edildikten sonra hemen tekrar RPC'ye girmesin.
 RECENT_ANALYSIS_COOLDOWN_SECONDS = 20
+
+# Pahali analyzer isleri icin bounded worker havuzu.
+ANALYZER_WORKERS = 8
 
 # Cache satırı maksimum yaşı (dakika)
 # Scanner/runner döngüsüne toleranslı olacak şekilde 15 dk.

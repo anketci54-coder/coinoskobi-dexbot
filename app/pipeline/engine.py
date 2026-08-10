@@ -15,11 +15,12 @@ from app.filter.cache_filter import CacheFilter
 from app.filter.ingress_gate import IngressGate
 from app.pipeline.candidate_queue import CandidateAdmissionQueue
 from app.pipeline.conveyor import ConveyorLabeler
+from app.pipeline.work_scheduler import WorkScheduler
 from app.scanner.adapters.source_router import normalize_source_rows
 
 from app.config.scanner import (
+    ANALYZER_WORKERS,
     MAX_PENDING_CANDIDATES,
-    MAX_RPC_CANDIDATES,
     RECENT_ANALYSIS_COOLDOWN_SECONDS,
 )
 
@@ -55,6 +56,9 @@ class PipelineEngine:
             cooldown_seconds=RECENT_ANALYSIS_COOLDOWN_SECONDS,
         )
         self.conveyor = ConveyorLabeler()
+        self.work_scheduler = WorkScheduler(
+            max_workers=ANALYZER_WORKERS
+        )
 
     def run(self, token_address: str):
 
@@ -258,9 +262,10 @@ class PipelineEngine:
 
         self.candidate_queue.enqueue_many(candidates)
 
-        admitted = self.candidate_queue.pop_many(
-            MAX_RPC_CANDIDATES
-        )
+        if not hasattr(self, "work_scheduler"):
+            self.work_scheduler = WorkScheduler(
+                max_workers=ANALYZER_WORKERS
+            )
 
         queue_stats = self.candidate_queue.stats()
 
@@ -268,7 +273,7 @@ class PipelineEngine:
             (
                 "Cache=%s Active=%s Deferred=%s "
                 "Dropped=%s Warm=%s Partial=%s Cold=%s "
-                "Admitted=%s Pending=%s "
+                "PendingBefore=%s "
                 "Duplicates=%s CooldownSkipped=%s"
             ),
             len(rows),
@@ -278,14 +283,12 @@ class PipelineEngine:
             conveyor_stats["warm"],
             conveyor_stats["partial"],
             conveyor_stats["cold"],
-            len(admitted),
             queue_stats["pending"],
             queue_stats["duplicates_collapsed"],
             queue_stats["cooldown_skipped"],
         )
 
-        for row in admitted:
-
+        def process_row(row):
             token = row["token"]
 
             try:
@@ -302,12 +305,18 @@ class PipelineEngine:
                     "Pipeline exception: %s",
                     token,
                 )
+                raise
 
             finally:
                 self.candidate_queue.mark_analyzed(
                     token,
                     chain=row.get("chain", "bsc"),
                 )
+
+        scheduler_result = self.work_scheduler.process_queue(
+            self.candidate_queue,
+            process_row,
+        )
 
         try:
             self.manager.process()

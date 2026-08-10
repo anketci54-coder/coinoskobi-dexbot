@@ -14,7 +14,9 @@ def row(index, liquidity=None):
     }
 
 
-def test_queue_preserves_backlog_after_first_batch():
+
+
+def test_queue_preserves_all_unique_candidates_until_consumed():
     queue = CandidateAdmissionQueue(
         max_pending=10_000,
         cooldown_seconds=20,
@@ -25,10 +27,21 @@ def test_queue_preserves_backlog_after_first_batch():
         for i in range(1_000)
     )
 
-    first = queue.pop_many(30)
+    assert queue.pending_count == 1_000
 
-    assert len(first) == 30
-    assert queue.pending_count == 970
+    seen = []
+
+    while True:
+        item = queue.pop()
+
+        if item is None:
+            break
+
+        seen.append(item["token"])
+
+    assert len(seen) == 1_000
+    assert len(set(seen)) == 1_000
+    assert queue.pending_count == 0
 
 
 def test_queue_collapses_duplicate_token():

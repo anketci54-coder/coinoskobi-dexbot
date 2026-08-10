@@ -96,13 +96,9 @@ def test_cache_filter_rejects_old_pool():
     assert CacheFilter().filter([old]) == []
 
 
-def test_cache_filter_caps_rpc_candidates(monkeypatch):
-    monkeypatch.setattr(
-        filter_module,
-        "MAX_RPC_CANDIDATES",
-        3,
-    )
 
+
+def test_cache_filter_returns_all_valid_candidates():
     rows = []
 
     for index in range(10):
@@ -115,7 +111,7 @@ def test_cache_filter_caps_rpc_candidates(monkeypatch):
 
     result = CacheFilter().filter(rows)
 
-    assert len(result) == 3
+    assert len(result) == 10
     assert result[0]["liquidity"] > result[-1]["liquidity"]
 
 

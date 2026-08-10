@@ -4,7 +4,6 @@ from app.config.scanner import (
     ALLOWED_DEX,
     CACHE_MAX_AGE_MINUTES,
     MAX_POOL_AGE_HOURS,
-    MAX_RPC_CANDIDATES,
     MAX_FDV_USD,
     MIN_BUYS_24H,
     MIN_FDV_USD,
@@ -150,4 +149,4 @@ class CacheFilter:
         return self._accepted(rows)
 
     def filter(self, rows):
-        return self._accepted(rows)[:MAX_RPC_CANDIDATES]
+        return self._accepted(rows)

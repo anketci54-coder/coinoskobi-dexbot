@@ -281,19 +281,6 @@ class CandidateAdmissionQueue:
 
             return entry["row"]
 
-    def pop_many(self, limit):
-        result = []
-
-        while len(result) < limit:
-            row = self.pop()
-
-            if row is None:
-                break
-
-            result.append(row)
-
-        return result
-
     def mark_analyzed(self, token, chain="bsc"):
         normalized = self.normalize_token(token)
 

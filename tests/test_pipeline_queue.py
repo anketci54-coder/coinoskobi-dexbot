@@ -72,15 +72,11 @@ def test_second_cycle_processes_backlog_not_same_first_batch():
 
     first_cycle = list(calls)
 
-    assert len(first_cycle) == 30
+    assert len(first_cycle) == 40
+    assert len(set(first_cycle)) == 40
 
     engine.run_cycle()
 
-    second_cycle = calls[30:]
+    second_cycle = calls[40:]
 
-    assert len(second_cycle) == 10
-
-    assert not (
-        set(first_cycle)
-        & set(second_cycle)
-    )
+    assert second_cycle == []

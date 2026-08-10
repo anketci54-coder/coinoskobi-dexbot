@@ -35,6 +35,36 @@ Hiçbir faz bu 10 adım tamamlanmadan kapanmaz.
 
 ---
 
+# MİMARİ ANAYASA
+
+Bu kurallar fazlardan bağımsızdır ve çekirdek mimariyi korur.
+
+- Sistem basit, ölçülebilir ve modüler tutulur.
+- Ölçülmemiş performans problemi için karmaşık çözüm eklenmez.
+- Network veya DEX için ayrı pipeline kopyalanmaz.
+- Bütün kaynaklar ortak bir Candidate sözleşmesine normalize edilir.
+- Network ve DEX farklılıkları adapter / registry katmanında kalır.
+- Candidate kimliği chain-aware olmak zorundadır.
+- Aynı adres farklı ağlarda aynı varlık kabul edilmez.
+- Token sayısına göre sabit admission/batch kotası çekirdek mimari prensibi değildir.
+- Kapasite worker concurrency, provider kapasitesi, CPU/RAM ve backpressure ile yönetilir.
+- Discovery / ingress hattı pahalı RPC veya AI beklemez.
+- Ucuz işler ray üzerinde yapılır; pahalı işler worker'lara bırakılır.
+- Cache hit olan veri gereksiz yere yeniden RPC'den alınmaz.
+- PARTIAL adayda yalnız eksik analiz tamamlanır.
+- COLD aday pahalı hatta gider; WARM aday pahalı işi tekrar etmez.
+- Duplicate olaylar mümkün olduğunca erken collapse edilir.
+- Bir ağdaki yoğunluk gelecekte diğer ağları tamamen aç bırakamaz.
+- Yeni network eklemek pipeline rewrite değil adapter/config işi olmalıdır.
+- Yeni DEX eklemek strategy veya analyzer kopyalamayı gerektirmemelidir.
+- Gereksiz Kafka, Celery, Redis, mikroservis veya dağıtık sistem bağımlılığı eklenmez.
+- Mevcut tek-process yapı kapasiteyi karşılıyorsa korunur.
+- Optimizasyon karar/risk anlamını değiştiremez.
+- UNKNOWN fail-safe davranışı korunur.
+- Her kod değişikliğinden sonra regression test çalışır.
+
+---
+
 # PROJE DURUMU
 
 Current Phase : PHASE 2
@@ -108,24 +138,39 @@ Status
 
 ---
 
-# PHASE 2 — Performance
+# PHASE 2 — Performance & Scalable Pipeline Core
 
 Amaç
 
-Mevcut pipeline'ı ölçülebilir biçimde hızlandırmak.
+Coinoskobi'nin token akışını hızlı, sade ve ölçeklenebilir hale getirmek.
+
+Başlangıçta yalnız BSC + PancakeSwap / GeckoTerminal aktif olacaktır.
+
+Çekirdek altyapı ise gelecekte yaklaşık 15 network ve network başına
+5-6 DEX eklenebilecek şekilde ortak pipeline mantığıyla tasarlanacaktır.
 
 Ana prensip
 
-Ölçmeden optimizasyon yapılmaz.
-Çalışan karar mantığı performans uğruna değiştirilmez.
-Öncelik gerçek RPC / HTTP gecikmesi, gereksiz tekrar çağrılar ve kontrollü paralelliktir.
+Amerika yeniden keşfedilmez.
 
-## Başlangıç Baseline
+Standart producer → normalize → filter → queue → worker yaklaşımı kullanılır.
+
+Network ve DEX kaynak katmanıdır.
+Pipeline ortak kalır.
+
+Sistem token sayısına göre yapay batch sınırıyla değil,
+gerçek işlem kapasitesiyle çalışır.
+
+---
+
+## PHASE 2A — Performance Baseline
+
+Tamamlanan ölçümler
 
 - [x] Compile PASS
 - [x] Import smoke PASS
-- [x] 36/36 test PASS
-- [x] Clean venv 36/36 test PASS
+- [x] Full regression baseline PASS
+- [x] Clean venv baseline PASS
 - [x] DB integrity / quick check PASS
 - [x] Scanner unit testi dış ağdan ayrıldı
 - [x] GeckoTerminal live smoke PASS
@@ -134,200 +179,367 @@ Ana prensip
 - [x] Strategy micro benchmark ölçüldü
 - [x] Synthetic Pipeline E2E ölçüldü
 - [x] Cycle isolation doğrulandı
+- [x] 1k candidate burst ölçüldü
+- [x] 15k candidate burst ölçüldü
+- [x] 100k candidate burst ölçüldü
+- [x] gerçek Token RPC latency ölçüldü
+- [x] gerçek Pair RPC latency ölçüldü
+- [x] gerçek Risk RPC latency ölçüldü
+- [x] combined cold analyzer latency ölçüldü
 
-## PHASE 2A — RPC + Cache Baseline
+Doğrulanan darboğaz
 
-Ölçülen gerçek RPC değerleri
+CPU tarafındaki ingress/filter hızlıdır.
 
-- [x] Token analyzer avg ≈ 343 ms
-- [x] Pair analyzer avg ≈ 83 ms
-- [x] Risk analyzer avg ≈ 28 ms
-- [x] Sequential analyzer chain avg ≈ 461 ms
-
-Doğrulanan mevcut durum
-
-- [x] analyzer çağrıları sequential
-- [x] erc20_cache tablosu mevcut
-- [x] pair_cache tablosu mevcut
-- [x] bytecode_cache tablosu mevcut
-- [x] analyzer cache tabloları runtime'da kullanılmıyor
-- [x] aynı token tekrar analiz edildiğinde RPC tekrar çağrılıyor
-- [x] MAX_RPC_CANDIDATES = 30 koruması mevcut
-- [x] 1000 satır filter yaklaşık 1–3 ms seviyesinde
-- [ ] cache hit / miss politikası belirle
-- [ ] analyzer cache TTL politikası belirle
-- [ ] güvenli cache reuse tasarımını tamamla
-- [ ] performans hedeflerini kilitle
-
-Kural
-
-Phase 2B başlamadan önce hangi verinin ne kadar süre cache'lenebileceği açıkça belirlenir.
+Ana maliyet cold RPC / external IO tarafındadır.
 
 ---
 
-## PHASE 2B — Analyzer Cache Reuse
-
-- [ ] ERC20 metadata cache read
-- [ ] ERC20 metadata cache write
-- [ ] Pair result cache read
-- [ ] Pair result cache write
-- [ ] Bytecode risk cache read
-- [ ] Bytecode risk cache write
-- [ ] cache TTL
-- [ ] stale cache davranışı
-- [ ] RPC failure durumunda güvenli fallback
-- [ ] cache hit / miss metriği
-- [ ] tekrar analiz benchmark
-- [ ] full regression tests
-
-Kural
-
-Cache eski veya eksik veriyi güvenli veri gibi gösteremez.
-UNKNOWN fail-safe davranışı korunur.
-
----
-
-## PHASE 2C — Async Analyzer Contracts
-
-- [ ] analyzer/token async
-- [ ] analyzer/pair async
-- [ ] risk/bytecode async
-- [ ] mevcut sync davranışını koru
-- [ ] success / error / data sözleşmesini koru
-- [ ] analyzer timeout politikası
-- [ ] analyzer exception isolation
-- [ ] sync vs async regression tests
-
-Kural
-
-Async dönüşüm karar veya risk anlamını değiştiremez.
-
----
-
-## PHASE 2D — Bounded Parallel RPC
-
-- [ ] Token / Pair / Risk bağımsız çağrılarını paralel çalıştır
-- [ ] bounded concurrency
-- [ ] tek analyzer hatası diğer analyzer'ları düşürmesin
-- [ ] tek token hatası diğer tokenları durdurmasın
-- [ ] RPC rate-limit koruması
-- [ ] timeout guard
-- [ ] sequential vs parallel benchmark
-- [ ] provider call amplification kontrolü
-
-Kural
-
-Sınırsız concurrency yok.
-1000 token = 1000 eşzamanlı RPC değildir.
-
----
-
-## PHASE 2E — Burst / Load Validation
+## PHASE 2B — Ingress Gate + Admission Queue
 
 Amaç
 
-Yoğun token girişinde mevcut aday filtresi ve RPC bütçesinin davranışını doğrulamak.
+Ham adayların pahalı analiz hattına kontrolsüz girmesini önlemek.
 
-- [ ] 1k candidate synthetic burst
-- [ ] 5k candidate synthetic burst
-- [ ] 10k candidate synthetic burst
-- [ ] filter latency p50 / p95 / p99
-- [ ] candidate count before filter
-- [ ] candidate count after filter
-- [ ] RPC admission count
-- [ ] duplicate candidate davranışı
-- [ ] repeated-cycle davranışı
-- [ ] CPU ölçümü
-- [ ] RAM ölçümü
-- [ ] total cycle latency
-- [ ] RPC call count
-- [ ] rate-limit davranışı
-- [ ] fırsat kaçırma riskini değerlendir
+- [x] lightweight Ingress Gate
+- [x] DROP lane
+- [x] DEFER lane
+- [x] ACTIVE lane
+- [x] bounded pending queue
+- [x] duplicate collapse
+- [x] cooldown
+- [x] priority ordering
+- [x] yüksek değerli sentinel preservation testi
+- [x] 1k burst queue testi
+- [x] 15k burst queue testi
+- [x] 100k burst queue testi
 
 Kural
 
-Load test önce sentetik / kontrollü yapılır.
-Gerçek dış servisleri binlerce çağrı ile zorlamak yasaktır.
+DROP = bu cycle pahalı işlem bütçesi harcanmaz.
+
+DEFER = aday unutulmaz; sonraki cycle tekrar değerlendirilebilir.
+
+ACTIVE = ray üzerinde ilerlemeye hak kazanır.
 
 ---
 
-## PHASE 2F — Scanner HTTP Performance
+## PHASE 2C — Analyzer Cache Reuse
 
-- [ ] GeckoTerminal HTTP latency baseline
-- [ ] mevcut requests davranışını ölç
-- [ ] aiohttp gerekliliğini kanıtla
-- [ ] async HTTP yalnız ölçüm fayda gösterirse uygula
+Amaç
+
+Aynı veriyi tekrar tekrar RPC'den istememek.
+
+- [x] ortak AnalyzerCache
+- [x] SQLite WAL
+- [x] cache hit / miss
+- [x] stale detection
+- [x] Token Analyzer cache reuse
+- [x] Pair Analyzer cache reuse
+- [x] Risk Analyzer cache reuse
+- [x] RPC failure sonucu güvenilir cache olarak yazılmıyor
+- [x] test cache isolation
+- [x] gerçek Token cold / warm benchmark
+- [x] gerçek Pair cold / warm benchmark
+- [x] gerçek Risk cold / warm benchmark
+- [x] combined cold / warm benchmark
+- [x] combined warm path sub-millisecond doğrulandı
+
+Ölçülen combined baseline
+
+- Cold analyzer chain ≈ 537 ms
+- Warm analyzer chain ≈ 0.17 ms
+
+Kural
+
+Cache hızlandırma katmanıdır.
+Risk veya strategy authority değildir.
+
+---
+
+## PHASE 2D — Conveyor / Ray Üstü Etiketleme
+
+Amaç
+
+Tokenı baştan sona tek blokta işlemek yerine,
+ray üzerinde ucuz state etiketleriyle yönlendirmek.
+
+- [x] ConveyorLabeler
+- [x] WARM etiketi
+- [x] PARTIAL etiketi
+- [x] COLD etiketi
+- [x] token cache state
+- [x] pair cache state
+- [x] risk cache state
+- [x] missing analyzer listesi
+- [x] gerçek Gecko live conveyor testi
+- [x] cold → warm state transition doğrulaması
+- [x] real-shape duplicate replay testi
+
+Hedef akış
+
+RAW
+→ Ingress Gate
+→ ACTIVE
+→ Conveyor
+→ WARM / PARTIAL / COLD
+→ Worker
+→ Strategy
+
+Kural
+
+Ray üstündeki etiketleme ucuz olmalıdır.
+
+Etiketleme RPC, AI veya strategy çalıştırmaz.
+
+---
+
+## PHASE 2E — Common Candidate Model
+
+Amaç
+
+Pipeline'ın BSC veya belirli bir DEX veri formatına bağımlılığını kaldırmak.
+
+Ortak Candidate minimum alanları
+
+- [ ] chain
+- [ ] chain_id
+- [ ] dex
+- [ ] pool
+- [ ] token
+- [ ] quote_token
+- [ ] source
+- [ ] liquidity
+- [ ] volume_24h
+- [ ] buys_24h
+- [ ] fdv
+- [ ] price_usd
+- [ ] created_at
+- [ ] observed_at
+
+Identity kuralları
+
+- [ ] token identity = chain + token
+- [ ] pool identity = chain + dex + pool
+- [ ] duplicate collapse chain-aware olacak
+- [ ] analyzer cache key chain-aware olacak
+- [ ] aynı address farklı chain'de duplicate sayılmayacak
+
+Kural
+
+İkinci network eklenmeden önce identity chain-aware hale getirilir.
+
+---
+
+## PHASE 2F — Network / DEX Adapter Registry
+
+Amaç
+
+Yeni network veya DEX eklemeyi çekirdek pipeline değişikliği olmaktan çıkarmak.
+
+Başlangıç aktif scope
+
+- [ ] BSC adapter
+- [ ] PancakeSwap source mapping
+- [ ] GeckoTerminal BSC source adapter
+
+Registry modeli
+
+- [ ] network registry
+- [ ] DEX registry
+- [ ] enabled / disabled flag
+- [ ] chain_id
+- [ ] source adapter
+- [ ] supported DEX mapping
+- [ ] provider/RPC config binding
+
+Kural
+
+Network-specific kod ortak pipeline içine gömülmez.
+
+DEX-specific veri adapter içinde normalize edilir.
+
+---
+
+## Gelecekte Yeni Network Nasıl Eklenir
+
+Yeni network eklemek için standart sıra:
+
+1. Network registry'ye network ekle.
+2. chain_id tanımla.
+3. RPC/provider config tanımla.
+4. Source adapter oluştur veya mevcut generic adapterı kullan.
+5. DEX mappinglerini registry'ye ekle.
+6. Kaynak verisini ortak Candidate modeline normalize et.
+7. Chain-aware identity testlerini çalıştır.
+8. Ingress Gate regression çalıştır.
+9. Conveyor regression çalıştır.
+10. Analyzer/cache regression çalıştır.
+11. Multi-network fairness/load test çalıştır.
+12. Network disabled durumda davranışı doğrula.
+13. Network yalnız testler PASS ise enabled yapılır.
+
+Yeni network için yeni PipelineEngine kopyalanmaz.
+
+Yeni network için strategy kopyalanmaz.
+
+Yeni network için analyzer kopyalanmaz;
+yalnız chain davranışı gerçekten farklıysa adapter/implementation ayrılır.
+
+---
+
+## Gelecekte Yeni DEX Nasıl Eklenir
+
+Yeni DEX eklemek için standart sıra:
+
+1. DEX registry'ye DEX ID ekle.
+2. Desteklediği networkleri tanımla.
+3. Pool/token alanlarını ortak Candidate formatına map et.
+4. DEX-specific source parsing adapter içinde kalır.
+5. Ortak Ingress Gate kullanılır.
+6. Ortak Conveyor kullanılır.
+7. Ortak queue/scheduler kullanılır.
+8. Ortak strategy kullanılır.
+9. DEX-specific istisna ancak teknik zorunluluk varsa eklenir.
+10. Regression + live smoke sonrası enabled yapılır.
+
+Kural
+
+Her DEX için ayrı bot veya ayrı pipeline oluşturulmaz.
+
+---
+
+## PHASE 2G — Work Scheduler
+
+Amaç
+
+Ray üzerindeki işleri sistem kapasitesine göre sürekli işlemek.
+
+- [ ] sabit token batch mantığını çekirdek akıştan kaldır
+- [ ] worker boşaldığında sıradaki uygun işi al
+- [ ] WARM hızlı hat
+- [ ] PARTIAL yalnız eksik analyzer
+- [ ] COLD pahalı worker hattı
+- [ ] bounded analyzer concurrency
+- [ ] provider timeout
+- [ ] provider rate-limit koruması
+- [ ] exception isolation
+- [ ] backlog metriği
+- [ ] queue age metriği
+- [ ] worker utilization metriği
+
+Kural
+
+Sınır token sayısında değildir.
+
+Sınır gerçek eşzamanlı pahalı iş kapasitesindedir.
+
+---
+
+## PHASE 2H — Multi-Network Fairness
+
+Amaç
+
+Bir network yoğunlaştığında diğer networklerin starvation yaşamamasını sağlamak.
+
+İlk sürüm basit tutulur.
+
+- [ ] chain-aware scheduling
+- [ ] basit round-robin veya eşdeğer fairness
+- [ ] tek chain bütün worker havuzunu sürekli işgal edemez
+- [ ] unused capacity boş bırakılmaz
+- [ ] aktif tek network varken tüm uygun kapasiteyi kullanabilir
+- [ ] ikinci mock network ile regression test
+
+Kural
+
+15 ayrı pipeline veya gereksiz karmaşık scheduler yapılmaz.
+
+---
+
+## PHASE 2I — Scanner / HTTP Performance
+
+- [ ] GeckoTerminal HTTP latency baseline güncelle
+- [ ] requests yeterli mi ölç
+- [ ] async HTTP gerçekten fayda sağlıyor mu kanıtla
+- [ ] gerekirse aiohttp
 - [ ] HTTP timeout
-- [ ] 429 rate-limit davranışı
+- [ ] 429 handling
 - [ ] bounded retry / backoff
-- [ ] scanner unit testleri offline kalacak
-- [ ] live smoke ayrı tutulacak
+- [ ] unit testler offline kalacak
+- [ ] live smoke ayrı kalacak
 
 Kural
 
-Canlı API unit test suite içine alınmaz.
+Ölçüm fayda göstermiyorsa HTTP katmanı yeniden yazılmaz.
 
 ---
 
-## PHASE 2G — Paper / Portfolio Performance
+## PHASE 2J — Paper / Portfolio Performance
 
 - [ ] paper manager DB query audit
-- [ ] paper position processing benchmark
-- [ ] gereksiz sorguları kaldır
-- [ ] PortfolioService gerekliliğini doğrula
-- [ ] Manager refactor yalnız ihtiyaç varsa
+- [ ] position processing benchmark
+- [ ] gereksiz query varsa kaldır
+- [ ] PortfolioService gerçekten gerekliyse oluştur
+- [ ] Manager refactor yalnız kanıtlanmış ihtiyaç varsa
 - [ ] WAL / singleton davranışını koru
-- [ ] paper regression tests
-
-Kural
-
-Paper doğruluğu performans uğruna değiştirilemez.
+- [ ] paper regression PASS
 
 ---
 
-## PHASE 2H — API Performance Scope Check
+## PHASE 2K — Final Scale Validation
 
-- [ ] mevcut API runtime kullanımını doğrula
-- [ ] API refactor gerçekten gerekli mi belirle
-- [ ] gereksiz dependency ekleme
-- [ ] Phase 4 deployment işlerini Phase 2'ye çekme
+Test matrisleri
 
-Kural
+- [ ] 1k unique candidate
+- [ ] 15k unique candidate
+- [ ] 100k unique candidate
+- [ ] mixed WARM / PARTIAL / COLD
+- [ ] duplicate storm
+- [ ] cold-cache startup
+- [ ] warm-cache steady state
+- [ ] provider slowdown
+- [ ] provider error
+- [ ] second-network mock
+- [ ] multi-network fairness
+- [ ] cache hit rate
+- [ ] queue age
+- [ ] backlog
+- [ ] worker utilization
+- [ ] CPU
+- [ ] RAM
+- [ ] p50 / p95 / p99 latency
+- [ ] valuable-candidate preservation
 
-Phase 2 yalnız performans işidir.
-Auth / deployment / production API Phase 4 kapsamındadır.
+Gerçek dış providerlara load test sırasında binlerce gereksiz RPC gönderilmez.
 
 ---
-
-## Performans Güvenlik Sınırları
-
-- [ ] Live trading yok
-- [ ] Wallet signing yok
-- [ ] Private key kullanımı yok
-- [ ] Strategy threshold değişikliği yok
-- [ ] Risk skor mantığı değişikliği yok
-- [ ] UNKNOWN fail-safe korunacak
-- [ ] MAX_RPC_CANDIDATES korunacak veya yalnız benchmark kanıtıyla değişecek
-- [ ] External rate-limit dikkate alınacak
-- [ ] Her kod değişikliğinden sonra full test çalışacak
 
 ## Phase 2 Definition of Done
 
-- [ ] Cache reuse regression PASS
-- [ ] Async analyzer regression PASS
-- [ ] Parallel RPC benchmark PASS
-- [ ] 1k / 5k / 10k synthetic burst PASS
-- [ ] Scanner performance regression PASS
-- [ ] Paper/Portfolio regression PASS
+- [ ] Common Candidate Model PASS
+- [ ] chain-aware identity PASS
+- [ ] source adapter registry PASS
+- [ ] network registry PASS
+- [ ] DEX registry PASS
+- [ ] conveyor routing PASS
+- [ ] worker scheduler PASS
+- [ ] multi-network fairness PASS
+- [ ] analyzer cache regression PASS
+- [ ] scanner regression PASS
+- [ ] paper regression PASS
+- [ ] 1k / 15k / 100k scale validation PASS
+- [ ] second-network mock PASS
 - [ ] Compile PASS
 - [ ] Import PASS
 - [ ] Full tests PASS
-- [ ] Smoke tests PASS
+- [ ] Smoke PASS
 - [ ] Clean venv PASS
+- [ ] DB integrity PASS
 - [ ] Dead code audit PASS
-- [ ] Git clean
 - [ ] TEST_RESULTS.md güncel
 - [ ] Roadmap güncel
+- [ ] Git clean
 - [ ] Final performance audit PASS
 
 Status

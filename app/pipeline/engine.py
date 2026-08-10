@@ -12,6 +12,7 @@ from app.paper.manager import PaperManager
 
 from app.cache.gecko_cache import GeckoCache
 from app.filter.cache_filter import CacheFilter
+from app.filter.ingress_gate import IngressGate
 from app.pipeline.candidate_queue import CandidateAdmissionQueue
 
 from app.config.scanner import (
@@ -45,6 +46,7 @@ class PipelineEngine:
         self.price = CachePrice()
         self.cache = GeckoCache()
         self.filter = CacheFilter()
+        self.ingress_gate = IngressGate()
         self.manager = PaperManager()
         self.candidate_queue = CandidateAdmissionQueue(
             max_pending=MAX_PENDING_CANDIDATES,
@@ -185,10 +187,39 @@ class PipelineEngine:
 
         rows = self.cache.all()
 
-        if hasattr(self.filter, "filter_all"):
+        if hasattr(self, "ingress_gate"):
+            ingress = self.ingress_gate.classify_many(
+                rows
+            )
+
+            candidates = ingress["active"]
+            ingress_stats = ingress["stats"]
+
+        elif hasattr(self.filter, "filter_all"):
             candidates = self.filter.filter_all(rows)
+
+            ingress_stats = {
+                "input": len(rows),
+                "active": len(candidates),
+                "deferred": 0,
+                "dropped": (
+                    len(rows)
+                    - len(candidates)
+                ),
+            }
+
         else:
             candidates = self.filter.filter(rows)
+
+            ingress_stats = {
+                "input": len(rows),
+                "active": len(candidates),
+                "deferred": 0,
+                "dropped": (
+                    len(rows)
+                    - len(candidates)
+                ),
+            }
 
         if not hasattr(self, "candidate_queue"):
             self.candidate_queue = CandidateAdmissionQueue(
@@ -206,12 +237,14 @@ class PipelineEngine:
 
         logger.info(
             (
-                "Cache=%s Candidates=%s "
-                "Admitted=%s Pending=%s "
+                "Cache=%s Active=%s Deferred=%s "
+                "Dropped=%s Admitted=%s Pending=%s "
                 "Duplicates=%s CooldownSkipped=%s"
             ),
             len(rows),
-            len(candidates),
+            ingress_stats["active"],
+            ingress_stats["deferred"],
+            ingress_stats["dropped"],
             len(admitted),
             queue_stats["pending"],
             queue_stats["duplicates_collapsed"],

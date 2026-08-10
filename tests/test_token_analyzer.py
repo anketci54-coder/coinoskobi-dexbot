@@ -109,3 +109,32 @@ def test_token_analyzer_does_not_normalize_supply_without_decimals(
     assert data["decimals"] is None
     assert data["total_supply_raw"] is not None
     assert data["total_supply"] is None
+
+
+def test_token_analyzer_returns_unknown_on_invalid_address():
+    result = token_module.analyze("not-an-address")
+
+    assert result["success"] is False
+    assert result["data"] == {}
+    assert result["error"]
+
+
+def test_token_analyzer_returns_unknown_on_contract_creation_failure(
+    monkeypatch,
+):
+    def fail_contract(**_):
+        raise RuntimeError("contract creation failed")
+
+    monkeypatch.setattr(
+        token_module.w3.eth,
+        "contract",
+        fail_contract,
+    )
+
+    result = token_module.analyze(
+        "0x0000000000000000000000000000000000000001"
+    )
+
+    assert result["success"] is False
+    assert result["data"] == {}
+    assert "contract creation failed" in result["error"]

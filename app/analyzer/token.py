@@ -44,12 +44,20 @@ def _safe_call(contract, function_name):
 
 
 def analyze(address):
-    checksum_address = Web3.to_checksum_address(address)
+    try:
+        checksum_address = Web3.to_checksum_address(address)
 
-    contract = w3.eth.contract(
-        address=checksum_address,
-        abi=ERC20_METADATA_ABI,
-    )
+        contract = w3.eth.contract(
+            address=checksum_address,
+            abi=ERC20_METADATA_ABI,
+        )
+    except Exception as exc:
+        return {
+            "success": False,
+            "source": "token",
+            "error": str(exc),
+            "data": {},
+        }
 
     name = _safe_call(contract, "name")
     symbol = _safe_call(contract, "symbol")

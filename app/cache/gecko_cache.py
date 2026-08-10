@@ -94,11 +94,12 @@ class GeckoCache:
         name,
         dex,
         liquidity,
-        volume24,
-        buys24,
+        volume24 AS volume_24h,
+        buys24 AS buys_24h,
         fdv,
         price_usd,
-        created_at
+        created_at,
+        updated_at
 
         FROM gecko_pool_cache
 

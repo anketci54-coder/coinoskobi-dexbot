@@ -39,6 +39,10 @@ ALLOWED_DEX = [
 # RPC doğrulamasına gönderilecek maksimum aday
 MAX_RPC_CANDIDATES = 30
 
+# Cache satırı maksimum yaşı (dakika)
+# Scanner/runner döngüsüne toleranslı olacak şekilde 15 dk.
+CACHE_MAX_AGE_MINUTES = 15
+
 # HTTP timeout
 HTTP_TIMEOUT = 20
 

@@ -1,7 +1,13 @@
+import json
+
 from web3 import Web3
 
 from app.chains.bsc import w3
+from app.cache.analyzer_cache import AnalyzerCache
+from app.config.scanner import RISK_ANALYZER_CACHE_TTL_SECONDS
 
+
+_cache = AnalyzerCache()
 
 SIGNATURES = {
     "owner": "8da5cb5b",
@@ -22,6 +28,32 @@ SIGNATURES = {
 def analyze(address):
     try:
         checksum_address = Web3.to_checksum_address(address)
+    except Exception as exc:
+        return {
+            "success": False,
+            "source": "risk",
+            "error": str(exc),
+            "data": {},
+        }
+
+    cache_key = checksum_address.lower()
+
+    try:
+        cached = _cache.get(
+            "risk",
+            cache_key,
+            ttl_seconds=RISK_ANALYZER_CACHE_TTL_SECONDS,
+        )
+    except Exception:
+        cached = None
+
+    if cached is not None:
+        try:
+            return json.loads(cached)
+        except Exception:
+            pass
+
+    try:
         code = w3.eth.get_code(checksum_address).hex()
     except Exception as exc:
         return {
@@ -31,7 +63,7 @@ def analyze(address):
             "data": {},
         }
 
-    return {
+    result = {
         "success": True,
         "source": "risk",
         "data": {
@@ -50,6 +82,17 @@ def analyze(address):
             "max_wallet": SIGNATURES["max_wallet"] in code,
         },
     }
+
+    try:
+        _cache.set(
+            "risk",
+            cache_key,
+            json.dumps(result),
+        )
+    except Exception:
+        pass
+
+    return result
 
 
 if __name__ == "__main__":

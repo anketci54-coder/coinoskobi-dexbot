@@ -394,3 +394,251 @@ def test_honeypot_hard_block_overrides_high_strategy_score(
             ]
         )
     )
+
+
+def test_sellability_check_skipped_for_reject(
+    monkeypatch,
+):
+    engine = PipelineEngine.__new__(
+        PipelineEngine
+    )
+
+    called = []
+
+    monkeypatch.setattr(
+        pipeline_module,
+        "token_analyze",
+        lambda _: {
+            "success": True,
+            "data": {},
+        },
+    )
+
+    monkeypatch.setattr(
+        pipeline_module,
+        "pair_analyze",
+        lambda _: {
+            "success": True,
+            "data": {
+                "exists": False,
+                "pair": None,
+                "quote_ok": False,
+            },
+        },
+    )
+
+    monkeypatch.setattr(
+        pipeline_module,
+        "risk_analyze",
+        lambda _: {
+            "success": True,
+            "data": {},
+        },
+    )
+
+    monkeypatch.setattr(
+        pipeline_module,
+        "sellability_analyze",
+        lambda *args, **kwargs: (
+            called.append(True)
+        ),
+    )
+
+    result = engine.run(
+        "0x0000000000000000000000000000000000000001"
+    )
+
+    assert called == []
+
+    assert (
+        result["data"][
+            "analyzer_status"
+        ]["sellability"]["status"]
+        == "SELLABILITY_SKIPPED"
+    )
+
+
+def test_confirmed_deep_honeypot_blocks_entry(
+    monkeypatch,
+):
+    engine = PipelineEngine.__new__(
+        PipelineEngine
+    )
+
+    monkeypatch.setattr(
+        pipeline_module,
+        "token_analyze",
+        lambda _: {
+            "success": True,
+            "data": {
+                "name": "Example",
+            },
+        },
+    )
+
+    monkeypatch.setattr(
+        pipeline_module,
+        "pair_analyze",
+        lambda _: {
+            "success": True,
+            "data": {
+                "exists": True,
+                "pair": (
+                    "0x000000000000000000000000"
+                    "0000000000000002"
+                ),
+                "quote_ok": True,
+            },
+        },
+    )
+
+    monkeypatch.setattr(
+        pipeline_module,
+        "risk_analyze",
+        lambda _: {
+            "success": True,
+            "data": {
+                "code_size": 7000,
+                "owner": False,
+                "mint": False,
+                "pause": False,
+                "blacklist": False,
+                "max_tx": False,
+                "max_wallet": False,
+            },
+        },
+    )
+
+    monkeypatch.setattr(
+        pipeline_module,
+        "sellability_analyze",
+        lambda *args, **kwargs: {
+            "success": True,
+            "source": "sellability",
+            "error": None,
+            "data": {
+                "honeypot": True,
+                "sellable": False,
+                "sellability_checked": True,
+            },
+        },
+    )
+
+    result = engine.run(
+        "0x0000000000000000000000000000000000000001"
+    )
+
+    assert (
+        result["data"][
+            "risk_gate"
+        ]["hard_block"]
+        is True
+    )
+
+    assert (
+        result["data"][
+            "strategy"
+        ]["decision"]
+        == "REJECT"
+    )
+
+    assert (
+        result["data"][
+            "strategy"
+        ]["paper_trade"]
+        is False
+    )
+
+
+def test_sellability_provider_failure_does_not_convict(
+    monkeypatch,
+):
+    engine = PipelineEngine.__new__(
+        PipelineEngine
+    )
+
+    monkeypatch.setattr(
+        pipeline_module,
+        "token_analyze",
+        lambda _: {
+            "success": True,
+            "data": {
+                "name": "Example",
+            },
+        },
+    )
+
+    monkeypatch.setattr(
+        pipeline_module,
+        "pair_analyze",
+        lambda _: {
+            "success": True,
+            "data": {
+                "exists": True,
+                "pair": (
+                    "0x000000000000000000000000"
+                    "0000000000000002"
+                ),
+                "quote_ok": True,
+            },
+        },
+    )
+
+    monkeypatch.setattr(
+        pipeline_module,
+        "risk_analyze",
+        lambda _: {
+            "success": True,
+            "data": {
+                "code_size": 7000,
+                "owner": False,
+                "mint": False,
+                "pause": False,
+                "blacklist": False,
+                "max_tx": False,
+                "max_wallet": False,
+            },
+        },
+    )
+
+    monkeypatch.setattr(
+        pipeline_module,
+        "sellability_analyze",
+        lambda *args, **kwargs: {
+            "success": False,
+            "source": "sellability",
+            "error": "timeout",
+            "data": {
+                "honeypot": None,
+                "sellable": None,
+            },
+        },
+    )
+
+    # Avoid touching paper database.
+    class FakePaperDB:
+        def has_open_position(
+            self,
+            token,
+        ):
+            return True
+
+    engine.paper_db = FakePaperDB()
+
+    result = engine.run(
+        "0x0000000000000000000000000000000000000001"
+    )
+
+    assert (
+        result["data"][
+            "risk_gate"
+        ]["hard_block"]
+        is False
+    )
+
+    assert (
+        result["data"][
+            "analyzer_status"
+        ]["sellability"]["status"]
+        == "SELLABILITY_UNKNOWN"
+    )

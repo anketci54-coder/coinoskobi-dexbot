@@ -4,6 +4,7 @@ from app.analyzer.token import analyze as token_analyze
 from app.analyzer.pair import analyze as pair_analyze
 from app.risk.bytecode import analyze as risk_analyze
 from app.risk.gate import RiskGate
+from app.risk.sellability import analyze as sellability_analyze
 
 from app.strategy.engine import StrategyEngine
 
@@ -99,6 +100,7 @@ class PipelineEngine:
             },
         }
 
+        # Cheap/local risk gate first.
         risk_gate = _risk_gate.evaluate(
             risk
         )
@@ -108,6 +110,50 @@ class PipelineEngine:
             pair,
             risk,
         ).get("data", {})
+
+        sellability_result = {
+            "success": False,
+            "source": "sellability",
+            "error": None,
+            "data": {},
+        }
+
+        # Deep external sellability check is NOT
+        # run for every discovered candidate.
+        #
+        # Only a candidate already good enough
+        # for PAPER_BUY pays this cost.
+        if (
+            not risk_gate["hard_block"]
+            and strategy.get("decision")
+            == "PAPER_BUY"
+            and pair.get("exists") is True
+            and pair.get("quote_ok") is True
+        ):
+            sellability_result = (
+                sellability_analyze(
+                    token_address,
+                    pair=pair.get("pair"),
+                )
+            )
+
+            if sellability_result.get(
+                "success"
+            ):
+                risk.update(
+                    sellability_result.get(
+                        "data",
+                        {},
+                    )
+                )
+
+                # Re-evaluate only after receiving
+                # real deep-risk evidence.
+                risk_gate = (
+                    _risk_gate.evaluate(
+                        risk
+                    )
+                )
 
         if risk_gate["hard_block"]:
             strategy["decision"] = "REJECT"
@@ -132,6 +178,42 @@ class PipelineEngine:
             "decision",
             "REJECT",
         )
+
+        if sellability_result.get(
+            "success"
+        ):
+            sellability_status = (
+                "SELLABILITY_OK"
+            )
+
+        elif (
+            strategy.get("decision")
+            == "PAPER_BUY"
+            and not risk_gate[
+                "hard_block"
+            ]
+        ):
+            sellability_status = (
+                "SELLABILITY_UNKNOWN"
+            )
+
+        else:
+            sellability_status = (
+                "SELLABILITY_SKIPPED"
+            )
+
+        analyzer_status[
+            "sellability"
+        ] = {
+            "status": (
+                sellability_status
+            ),
+            "error": (
+                sellability_result.get(
+                    "error"
+                )
+            ),
+        }
 
         paper = {}
 

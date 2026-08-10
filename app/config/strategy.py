@@ -46,3 +46,22 @@ SCORE_MAX_WALLET_NONE = 5
 # Decision thresholds
 PAPER_BUY_SCORE = 90
 WATCH_SCORE = 70
+
+# ---------------------------------------------------------------------------
+# Deep sellability / honeypot check
+#
+# Opportunity-cost rule:
+# - only candidates already reaching PAPER_BUY are checked
+# - provider failure means UNKNOWN, never automatic BLOCK
+# - cache prevents repeated external checks
+# ---------------------------------------------------------------------------
+
+SELLABILITY_CHECK_ENABLED = True
+SELLABILITY_HTTP_TIMEOUT_SECONDS = 4
+SELLABILITY_CACHE_TTL_SECONDS = 60
+
+HONEYPOT_API_URL = (
+    "https://api.honeypot.is/v2/IsHoneypot"
+)
+
+BSC_CHAIN_ID = 56

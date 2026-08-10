@@ -42,11 +42,40 @@ class PipelineEngine:
 
     def run(self, token_address: str):
 
-        token = token_analyze(token_address).get("data", {})
+        token_result = token_analyze(token_address)
+        pair_result = pair_analyze(token_address)
+        risk_result = risk_analyze(token_address)
 
-        pair = pair_analyze(token_address).get("data", {})
+        token = token_result.get("data", {})
+        pair = pair_result.get("data", {})
+        risk = risk_result.get("data", {})
 
-        risk = risk_analyze(token_address).get("data", {})
+        analyzer_status = {
+            "token": {
+                "status": (
+                    "TOKEN_OK"
+                    if token_result.get("success")
+                    else "TOKEN_UNKNOWN"
+                ),
+                "error": token_result.get("error"),
+            },
+            "pair": {
+                "status": (
+                    "PAIR_OK"
+                    if pair_result.get("success")
+                    else "PAIR_UNKNOWN"
+                ),
+                "error": pair_result.get("error"),
+            },
+            "risk": {
+                "status": (
+                    "RISK_OK"
+                    if risk_result.get("success")
+                    else "RISK_UNKNOWN"
+                ),
+                "error": risk_result.get("error"),
+            },
+        }
 
         strategy = _strategy.evaluate(
             token,
@@ -135,6 +164,7 @@ class PipelineEngine:
                 "token": token,
                 "pair": pair,
                 "risk": risk,
+                "analyzer_status": analyzer_status,
                 "strategy": strategy,
                 "paper": paper,
             },

@@ -188,9 +188,16 @@ class PipelineEngine:
             if "_" in token:
                 token = token.split("_", 1)[1]
 
-            result = self.run(token)
+            try:
+                result = self.run(token)
+            except Exception:
+                logger.exception("Pipeline exception: %s", token)
+                continue
 
             if not result.get("success"):
                 logger.warning("Pipeline failed: %s", token)
 
-        self.manager.process()
+        try:
+            self.manager.process()
+        except Exception:
+            logger.exception("Paper manager exception")

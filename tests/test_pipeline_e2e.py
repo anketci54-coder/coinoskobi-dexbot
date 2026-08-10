@@ -213,3 +213,70 @@ def test_pipeline_exposes_all_analyzers_ok(monkeypatch):
     assert status["token"]["status"] == "TOKEN_OK"
     assert status["pair"]["status"] == "PAIR_OK"
     assert status["risk"]["status"] == "RISK_OK"
+
+
+class FakeCache:
+    def __init__(self, rows):
+        self.rows = rows
+
+    def all(self):
+        return self.rows
+
+
+class FakeFilter:
+    def filter(self, rows):
+        return rows
+
+
+class FakeManager:
+    def __init__(self, should_fail=False):
+        self.called = False
+        self.should_fail = should_fail
+
+    def process(self):
+        self.called = True
+        if self.should_fail:
+            raise RuntimeError("manager failed")
+
+
+def test_run_cycle_continues_after_single_token_exception():
+    engine = PipelineEngine.__new__(PipelineEngine)
+
+    engine.cache = FakeCache([
+        {"token": "bsc_0x0000000000000000000000000000000000000001"},
+        {"token": "bsc_0x0000000000000000000000000000000000000002"},
+    ])
+    engine.filter = FakeFilter()
+    engine.manager = FakeManager()
+
+    called = []
+
+    def fake_run(token):
+        called.append(token)
+
+        if token.endswith("1"):
+            raise RuntimeError("token failed")
+
+        return {"success": True}
+
+    engine.run = fake_run
+
+    engine.run_cycle()
+
+    assert called == [
+        "0x0000000000000000000000000000000000000001",
+        "0x0000000000000000000000000000000000000002",
+    ]
+    assert engine.manager.called is True
+
+
+def test_run_cycle_survives_manager_exception():
+    engine = PipelineEngine.__new__(PipelineEngine)
+
+    engine.cache = FakeCache([])
+    engine.filter = FakeFilter()
+    engine.manager = FakeManager(should_fail=True)
+
+    engine.run_cycle()
+
+    assert engine.manager.called is True

@@ -1,3 +1,28 @@
+from app.config.strategy import (
+    CONTRACT_SIZE_LARGE,
+    CONTRACT_SIZE_OK,
+    CONTRACT_SIZE_SMALL,
+    PAPER_BUY_SCORE,
+    PENALTY_BLACKLIST_ENABLED,
+    PENALTY_MINT_ENABLED,
+    PENALTY_PAUSE_ENABLED,
+    SCORE_BLACKLIST_NONE,
+    SCORE_CONTRACT_LARGE,
+    SCORE_CONTRACT_OK,
+    SCORE_CONTRACT_SMALL,
+    SCORE_ERC20_OK,
+    SCORE_MAX_TX_NONE,
+    SCORE_MAX_WALLET_NONE,
+    SCORE_MINT_NONE,
+    SCORE_OWNER_NONE,
+    SCORE_OWNER_RENOUNCED,
+    SCORE_PAIR_EXISTS,
+    SCORE_PAUSE_NONE,
+    SCORE_QUOTE_OK,
+    WATCH_SCORE,
+)
+
+
 class StrategyEngine:
 
     def evaluate(self, token, pair, risk):
@@ -9,34 +34,41 @@ class StrategyEngine:
 
         token_name = token.get("name")
 
-        if token_name not in (None, "", "?"):
-            score += 5
+        if token_name not in (
+            None,
+            "",
+            "?",
+        ):
+            score += SCORE_ERC20_OK
             reasons.append("ERC20 OK")
 
         # Pair
 
         if pair.get("exists"):
-            score += 20
+            score += SCORE_PAIR_EXISTS
             reasons.append("Pair bulundu")
 
         if pair.get("quote_ok"):
-            score += 15
+            score += SCORE_QUOTE_OK
             reasons.append("Quote alınabiliyor")
 
         # Bytecode
 
-        code_size = risk.get("code_size", 0)
+        code_size = risk.get(
+            "code_size",
+            0,
+        )
 
-        if code_size >= 6000:
-            score += 20
+        if code_size >= CONTRACT_SIZE_LARGE:
+            score += SCORE_CONTRACT_LARGE
             reasons.append("Büyük kontrat")
 
-        elif code_size >= 3000:
-            score += 15
+        elif code_size >= CONTRACT_SIZE_OK:
+            score += SCORE_CONTRACT_OK
             reasons.append("Kontrat yeterli")
 
-        elif code_size >= 1500:
-            score += 10
+        elif code_size >= CONTRACT_SIZE_SMALL:
+            score += SCORE_CONTRACT_SMALL
             reasons.append("Kontrat küçük")
 
         else:
@@ -47,11 +79,16 @@ class StrategyEngine:
         owner = risk.get("owner")
 
         if owner is False:
-            score += 10
+            score += SCORE_OWNER_NONE
             reasons.append("Owner yok")
 
-        elif owner is True and risk.get("renounce_owner") is True:
-            score += 8
+        elif (
+            owner is True
+            and risk.get(
+                "renounce_owner"
+            ) is True
+        ):
+            score += SCORE_OWNER_RENOUNCED
             reasons.append("Owner renounce")
 
         # Mint
@@ -59,10 +96,11 @@ class StrategyEngine:
         mint = risk.get("mint")
 
         if mint is False:
-            score += 15
+            score += SCORE_MINT_NONE
             reasons.append("Mint yok")
+
         elif mint is True:
-            score -= 30
+            score -= PENALTY_MINT_ENABLED
             reasons.append("Mint var")
 
         # Pause
@@ -70,41 +108,45 @@ class StrategyEngine:
         pause = risk.get("pause")
 
         if pause is False:
-            score += 5
+            score += SCORE_PAUSE_NONE
             reasons.append("Pause yok")
+
         elif pause is True:
-            score -= 10
+            score -= PENALTY_PAUSE_ENABLED
             reasons.append("Pause var")
 
         # Blacklist
 
-        blacklist = risk.get("blacklist")
+        blacklist = risk.get(
+            "blacklist"
+        )
 
         if blacklist is False:
-            score += 5
+            score += SCORE_BLACKLIST_NONE
             reasons.append("Blacklist yok")
+
         elif blacklist is True:
-            score -= 15
+            score -= PENALTY_BLACKLIST_ENABLED
             reasons.append("Blacklist var")
 
         # MaxTx
 
         if risk.get("max_tx") is False:
-            score += 5
+            score += SCORE_MAX_TX_NONE
             reasons.append("MaxTx yok")
 
         # MaxWallet
 
         if risk.get("max_wallet") is False:
-            score += 5
+            score += SCORE_MAX_WALLET_NONE
             reasons.append("MaxWallet yok")
 
-        # Karar
+        # Decision
 
-        if score >= 90:
+        if score >= PAPER_BUY_SCORE:
             decision = "PAPER_BUY"
 
-        elif score >= 70:
+        elif score >= WATCH_SCORE:
             decision = "WATCH"
 
         else:
@@ -112,16 +154,18 @@ class StrategyEngine:
 
         # Risk level
 
-        if score >= 90:
+        if score >= PAPER_BUY_SCORE:
             risk_level = "LOW"
-        elif score >= 70:
+
+        elif score >= WATCH_SCORE:
             risk_level = "MEDIUM"
+
         else:
             risk_level = "HIGH"
 
-        # Paper trade flag
-
-        paper_trade = decision == "PAPER_BUY"
+        paper_trade = (
+            decision == "PAPER_BUY"
+        )
 
         return {
             "success": True,

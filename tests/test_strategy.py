@@ -92,3 +92,57 @@ def test_explicit_dangerous_risk_flags_apply_penalties():
     assert "Mint var" in result["reasons"]
     assert "Pause var" in result["reasons"]
     assert "Blacklist var" in result["reasons"]
+
+
+def test_strategy_thresholds_are_config_driven(
+    monkeypatch,
+):
+    import app.strategy.engine as module
+
+    engine = module.StrategyEngine()
+
+    monkeypatch.setattr(
+        module,
+        "PAPER_BUY_SCORE",
+        1000,
+    )
+
+    monkeypatch.setattr(
+        module,
+        "WATCH_SCORE",
+        999,
+    )
+
+    result = engine.evaluate(
+        {
+            "name": "Example",
+        },
+        {
+            "exists": True,
+            "quote_ok": True,
+        },
+        {
+            "code_size": 7000,
+            "owner": False,
+            "mint": False,
+            "pause": False,
+            "blacklist": False,
+            "max_tx": False,
+            "max_wallet": False,
+        },
+    )
+
+    assert (
+        result["data"]["decision"]
+        == "REJECT"
+    )
+
+
+def test_strategy_default_threshold_contract():
+    from app.config.strategy import (
+        PAPER_BUY_SCORE,
+        WATCH_SCORE,
+    )
+
+    assert PAPER_BUY_SCORE == 90
+    assert WATCH_SCORE == 70

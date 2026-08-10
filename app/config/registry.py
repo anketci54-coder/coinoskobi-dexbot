@@ -18,6 +18,7 @@ NETWORKS = {
         "enabled": False,
         "rpc_key": "base",
     },
+
 }
 
 
@@ -49,6 +50,7 @@ DEXES = {
         "enabled": False,
         "chains": {"ethereum", "base"},
     },
+
 }
 
 

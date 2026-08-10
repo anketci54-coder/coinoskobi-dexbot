@@ -143,3 +143,202 @@ Known non-blocking warning:
 This warning does not affect current test success or application correctness.
 
 ---
+
+# Phase 2 — Performance & Scalable Pipeline Core
+
+Status: ✅ PASS / CLOSED
+
+Closure date: 2026-08-10
+
+## Architecture Validation
+
+- Ingress Gate DROP / DEFER / ACTIVE ✅
+- Candidate Admission Queue ✅
+- Duplicate collapse ✅
+- Analyzer cache reuse ✅
+- SQLite WAL analyzer cache ✅
+- Conveyor WARM / PARTIAL / COLD ✅
+- Common Candidate Model ✅
+- Chain-aware token identity ✅
+- Chain-aware pool identity ✅
+- Chain-aware queue identity ✅
+- Chain-aware analyzer cache identity ✅
+- Network registry ✅
+- DEX registry ✅
+- Source adapter registry ✅
+- GeckoTerminal BSC normalization ✅
+- Second-network mock isolation ✅
+- Continuous bounded scheduler ✅
+- Legacy fixed candidate admission removed ✅
+- Cost-aware scheduling ✅
+- Multi-network round-robin fairness ✅
+- Bounded HTTP 429 backoff ✅
+- Paper / portfolio performance audit ✅
+
+## Analyzer Performance
+
+Measured baseline:
+
+- Combined cold analyzer chain ≈ 537 ms
+- Combined warm analyzer chain ≈ 0.17 ms
+
+Conclusion:
+
+- CPU-side ingress/filter was not the main bottleneck.
+- Cold RPC / external I/O was the dominant cost.
+- Cache reuse materially reduces repeated RPC cost.
+
+## HTTP / Scanner Validation
+
+GeckoTerminal observations:
+
+- Successful public HTTP calls generally measured in tens of milliseconds.
+- Public rate limiting returned HTTP 429 during aggressive benchmark polling.
+- Normal runtime scanner cadence remains 300 seconds.
+- `requests` remains sufficient for current runtime.
+- aiohttp/async HTTP rewrite was not justified by measured need.
+- Bounded 429 retry/backoff implemented.
+- Scanner unit tests remain offline.
+- Live smoke remains separate.
+
+Final live smoke:
+
+- RAW_ROWS = 20
+- NORMALIZED = 20
+- REJECTED = 0
+- LIVE_SMOKE_MS ≈ 87.3 ms
+
+## Final Scale Validation
+
+### 1,000 candidates
+
+- Processed: 1,000
+- Failed: 0
+- Pending: 0
+- WARM: 700
+- PARTIAL: 200
+- COLD: 100
+- BSC: 980
+- Second mock network: 20
+- Throughput ≈ 6,532 candidate/sec
+- Peak Python allocation ≈ 1.41 MB
+
+### 15,000 candidates
+
+- Processed: 15,000
+- Failed: 0
+- Pending: 0
+- WARM: 10,500
+- PARTIAL: 3,000
+- COLD: 1,500
+- BSC: 14,700
+- Second mock network: 300
+- Throughput ≈ 6,338 candidate/sec
+- Peak Python allocation ≈ 21.0 MB
+
+### 100,000 candidates
+
+- Processed: 100,000
+- Failed: 0
+- Pending: 0
+- WARM: 70,000
+- PARTIAL: 20,000
+- COLD: 10,000
+- BSC: 98,000
+- Second mock network: 2,000
+- Enqueue ≈ 2.436 sec
+- Scheduler ≈ 13.092 sec
+- Total ≈ 15.528 sec
+- Throughput ≈ 6,440 candidate/sec
+- Peak Python allocation ≈ 142.6 MB
+
+## Duplicate / Identity Validation
+
+Duplicate storm:
+
+- Input events: 10,000
+- Unique pending: 100
+- Duplicates collapsed: 9,900
+
+Chain-aware identity:
+
+- Same token address on BSC and mock network remains two independent candidates ✅
+
+Legacy architecture audit:
+
+- `MAX_RPC_CANDIDATES` absent ✅
+- legacy `pop_many()` admission path absent ✅
+
+## Multi-Network Fairness
+
+Validation:
+
+- 1,000 BSC + 10 second-network candidates processed ✅
+- Second network entered scheduling immediately ✅
+- No starvation ✅
+- Single active network can consume available worker capacity ✅
+- Unused capacity is not reserved unnecessarily ✅
+- WARM/PARTIAL/COLD cost priority preserved ✅
+
+## Paper / Portfolio Audit
+
+- Targeted paper tests: 3/3 PASS
+- PaperManager process ≈ 0.82 ms
+- No material paper-performance bottleneck found
+- No large manager refactor justified
+- Existing SQLite singleton/WAL behavior preserved
+
+Observed non-blocking condition:
+
+- Existing open position may log `Cache fiyatı bulunamadı` when no current cache price exists.
+- This is a data-availability condition, not a Phase 2 performance failure.
+
+## Database Health
+
+`data/cache/cache.db`
+
+- journal_mode = WAL ✅
+- integrity_check = ok ✅
+- quick_check = ok ✅
+
+`data/paper_trades.db`
+
+- journal_mode = WAL ✅
+- integrity_check = ok ✅
+- quick_check = ok ✅
+
+## Final Regression
+
+- Targeted Phase 2 regression: 68 passed / 0 failed ✅
+- Full repository regression: 128 passed / 0 failed ✅
+- Compile PASS ✅
+- Import Smoke PASS ✅
+
+Known non-blocking warning:
+
+- `websockets.legacy` deprecation warning from dependency stack.
+
+## Repository Cleanup Audit
+
+- Untracked Phase 0–2 benchmark scripts: none ✅
+- Tracked obsolete Phase 0–2 benchmark scripts: none ✅
+- Backup / old / copy files: none ✅
+- Extra script directories: none ✅
+- All 25 test files are actively collected by pytest ✅
+- Pipeline E2E tests remain active regression contracts ✅
+- Smoke DB test remains active regression contract ✅
+- Generated Python / pytest caches cleaned ✅
+
+## Final Phase 2 Result
+
+**PHASE 2: ✅ CLOSED**
+
+Final verified baseline:
+
+**128 passed / 0 failed**
+
+Next roadmap phase:
+
+**PHASE 3 — Strategy**
+
+---

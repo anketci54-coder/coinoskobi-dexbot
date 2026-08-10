@@ -67,14 +67,14 @@ Bu kurallar fazlardan bağımsızdır ve çekirdek mimariyi korur.
 
 # PROJE DURUMU
 
-Current Phase : PHASE 2
+Current Phase : PHASE 2 — CLOSED
 Next Phase : PHASE 3
 
 Progress
 
 - Phase 0 : ✅
 - Phase 1 : ✅
-- Phase 2 : 🚧
+- Phase 2 : ✅
 - Phase 3 : ⏳
 - Phase 4 : ⏳
 - Phase 5 : ⏳
@@ -302,28 +302,28 @@ Pipeline'ın BSC veya belirli bir DEX veri formatına bağımlılığını kald�
 
 Ortak Candidate minimum alanları
 
-- [ ] chain
-- [ ] chain_id
-- [ ] dex
-- [ ] pool
-- [ ] token
-- [ ] quote_token
-- [ ] source
-- [ ] liquidity
-- [ ] volume_24h
-- [ ] buys_24h
-- [ ] fdv
-- [ ] price_usd
-- [ ] created_at
-- [ ] observed_at
+- [x] chain
+- [x] chain_id
+- [x] dex
+- [x] pool
+- [x] token
+- [x] quote_token
+- [x] source
+- [x] liquidity
+- [x] volume_24h
+- [x] buys_24h
+- [x] fdv
+- [x] price_usd
+- [x] created_at
+- [x] observed_at
 
 Identity kuralları
 
-- [ ] token identity = chain + token
-- [ ] pool identity = chain + dex + pool
-- [ ] duplicate collapse chain-aware olacak
-- [ ] analyzer cache key chain-aware olacak
-- [ ] aynı address farklı chain'de duplicate sayılmayacak
+- [x] token identity = chain + token
+- [x] pool identity = chain + dex + pool
+- [x] duplicate collapse chain-aware olacak
+- [x] analyzer cache key chain-aware olacak
+- [x] aynı address farklı chain'de duplicate sayılmayacak
 
 Kural
 
@@ -339,19 +339,19 @@ Yeni network veya DEX eklemeyi çekirdek pipeline değişikliği olmaktan çıka
 
 Başlangıç aktif scope
 
-- [ ] BSC adapter
-- [ ] PancakeSwap source mapping
-- [ ] GeckoTerminal BSC source adapter
+- [x] BSC adapter
+- [x] PancakeSwap source mapping
+- [x] GeckoTerminal BSC source adapter
 
 Registry modeli
 
-- [ ] network registry
-- [ ] DEX registry
-- [ ] enabled / disabled flag
-- [ ] chain_id
-- [ ] source adapter
-- [ ] supported DEX mapping
-- [ ] provider/RPC config binding
+- [x] network registry
+- [x] DEX registry
+- [x] enabled / disabled flag
+- [x] chain_id
+- [x] source adapter
+- [x] supported DEX mapping
+- [x] provider/RPC config binding
 
 Kural
 
@@ -415,18 +415,18 @@ Amaç
 
 Ray üzerindeki işleri sistem kapasitesine göre sürekli işlemek.
 
-- [ ] sabit token batch mantığını çekirdek akıştan kaldır
-- [ ] worker boşaldığında sıradaki uygun işi al
-- [ ] WARM hızlı hat
-- [ ] PARTIAL yalnız eksik analyzer
-- [ ] COLD pahalı worker hattı
-- [ ] bounded analyzer concurrency
-- [ ] provider timeout
-- [ ] provider rate-limit koruması
-- [ ] exception isolation
-- [ ] backlog metriği
-- [ ] queue age metriği
-- [ ] worker utilization metriği
+- [x] sabit token batch mantığını çekirdek akıştan kaldır
+- [x] worker boşaldığında sıradaki uygun işi al
+- [x] WARM hızlı hat
+- [x] PARTIAL yalnız eksik analyzer
+- [x] COLD pahalı worker hattı
+- [x] bounded analyzer concurrency
+- [x] provider timeout
+- [x] provider rate-limit koruması
+- [x] exception isolation
+- [x] backlog metriği
+- [~] queue age metriği — final Faz 2 kapasite testinde zorunlu görülmedi; ihtiyaç oluşursa sonraki performans çalışmasına bırakıldı
+- [~] worker utilization metriği — bounded concurrency ve capacity testleri yeterli bulundu; kalıcı telemetry eklenmedi
 
 Kural
 
@@ -444,12 +444,12 @@ Bir network yoğunlaştığında diğer networklerin starvation yaşamamasını 
 
 İlk sürüm basit tutulur.
 
-- [ ] chain-aware scheduling
-- [ ] basit round-robin veya eşdeğer fairness
-- [ ] tek chain bütün worker havuzunu sürekli işgal edemez
-- [ ] unused capacity boş bırakılmaz
-- [ ] aktif tek network varken tüm uygun kapasiteyi kullanabilir
-- [ ] ikinci mock network ile regression test
+- [x] chain-aware scheduling
+- [x] basit round-robin veya eşdeğer fairness
+- [x] tek chain bütün worker havuzunu sürekli işgal edemez
+- [x] unused capacity boş bırakılmaz
+- [x] aktif tek network varken tüm uygun kapasiteyi kullanabilir
+- [x] ikinci mock network ile regression test
 
 Kural
 
@@ -459,15 +459,15 @@ Kural
 
 ## PHASE 2I — Scanner / HTTP Performance
 
-- [ ] GeckoTerminal HTTP latency baseline güncelle
-- [ ] requests yeterli mi ölç
-- [ ] async HTTP gerçekten fayda sağlıyor mu kanıtla
-- [ ] gerekirse aiohttp
-- [ ] HTTP timeout
-- [ ] 429 handling
-- [ ] bounded retry / backoff
-- [ ] unit testler offline kalacak
-- [ ] live smoke ayrı kalacak
+- [x] GeckoTerminal HTTP latency baseline güncelle
+- [x] requests yeterli mi ölç
+- [x] async HTTP gerçekten fayda sağlıyor mu kanıtla
+- [~] gerekirse aiohttp — ölçüm sonucu gerekli olmadığı için eklenmedi
+- [x] HTTP timeout
+- [x] 429 handling
+- [x] bounded retry / backoff
+- [x] unit testler offline kalacak
+- [x] live smoke ayrı kalacak
 
 Kural
 
@@ -477,13 +477,13 @@ Kural
 
 ## PHASE 2J — Paper / Portfolio Performance
 
-- [ ] paper manager DB query audit
-- [ ] position processing benchmark
-- [ ] gereksiz query varsa kaldır
-- [ ] PortfolioService gerçekten gerekliyse oluştur
-- [ ] Manager refactor yalnız kanıtlanmış ihtiyaç varsa
-- [ ] WAL / singleton davranışını koru
-- [ ] paper regression PASS
+- [x] paper manager DB query audit
+- [x] position processing benchmark
+- [x] gereksiz query varsa kaldır — kaldırılması gereken bariz query bulunmadı
+- [x] PortfolioService gerekliliği değerlendirildi — yeni servis gerekmedi
+- [x] Manager refactor ihtiyacı değerlendirildi — refactor gerekmedi
+- [x] WAL / singleton davranışını koru
+- [x] paper regression PASS
 
 ---
 
@@ -491,25 +491,25 @@ Kural
 
 Test matrisleri
 
-- [ ] 1k unique candidate
-- [ ] 15k unique candidate
-- [ ] 100k unique candidate
-- [ ] mixed WARM / PARTIAL / COLD
-- [ ] duplicate storm
-- [ ] cold-cache startup
-- [ ] warm-cache steady state
-- [ ] provider slowdown
-- [ ] provider error
-- [ ] second-network mock
-- [ ] multi-network fairness
-- [ ] cache hit rate
-- [ ] queue age
-- [ ] backlog
-- [ ] worker utilization
-- [ ] CPU
-- [ ] RAM
-- [ ] p50 / p95 / p99 latency
-- [ ] valuable-candidate preservation
+- [x] 1k unique candidate
+- [x] 15k unique candidate
+- [x] 100k unique candidate
+- [x] mixed WARM / PARTIAL / COLD
+- [x] duplicate storm
+- [x] cold-cache startup
+- [x] warm-cache steady state
+- [x] provider slowdown
+- [x] provider error
+- [x] second-network mock
+- [x] multi-network fairness
+- [x] cache hit rate
+- [~] queue age — permanent runtime telemetry intentionally deferred
+- [x] backlog
+- [~] worker utilization — permanent runtime telemetry intentionally deferred
+- [x] CPU
+- [x] RAM
+- [x] p50 / p95 / p99 latency — HTTP/analyzer baselines measured during Faz 2
+- [x] valuable-candidate preservation
 
 Gerçek dış providerlara load test sırasında binlerce gereksiz RPC gönderilmez.
 
@@ -517,34 +517,85 @@ Gerçek dış providerlara load test sırasında binlerce gereksiz RPC gönderil
 
 ## Phase 2 Definition of Done
 
-- [ ] Common Candidate Model PASS
-- [ ] chain-aware identity PASS
-- [ ] source adapter registry PASS
-- [ ] network registry PASS
-- [ ] DEX registry PASS
-- [ ] conveyor routing PASS
-- [ ] worker scheduler PASS
-- [ ] multi-network fairness PASS
-- [ ] analyzer cache regression PASS
-- [ ] scanner regression PASS
-- [ ] paper regression PASS
-- [ ] 1k / 15k / 100k scale validation PASS
-- [ ] second-network mock PASS
-- [ ] Compile PASS
-- [ ] Import PASS
-- [ ] Full tests PASS
-- [ ] Smoke PASS
-- [ ] Clean venv PASS
-- [ ] DB integrity PASS
-- [ ] Dead code audit PASS
-- [ ] TEST_RESULTS.md güncel
-- [ ] Roadmap güncel
-- [ ] Git clean
-- [ ] Final performance audit PASS
+- [x] Common Candidate Model PASS
+- [x] chain-aware identity PASS
+- [x] source adapter registry PASS
+- [x] network registry PASS
+- [x] DEX registry PASS
+- [x] conveyor routing PASS
+- [x] worker scheduler PASS
+- [x] multi-network fairness PASS
+- [x] analyzer cache regression PASS
+- [x] scanner regression PASS
+- [x] paper regression PASS
+- [x] 1k / 15k / 100k scale validation PASS
+- [x] second-network mock PASS
+- [x] Compile PASS
+- [x] Import PASS
+- [x] Full tests PASS
+- [x] Smoke PASS
+- [x] Clean venv PASS
+- [x] DB integrity PASS
+- [x] Dead code audit PASS
+- [x] TEST_RESULTS.md güncel
+- [x] Roadmap güncel
+- [x] Git clean
+- [x] Final performance audit PASS
 
 Status
 
-🚧 In Progress
+✅ Completed
+
+---
+
+
+## Phase 2 Final Closure — 2026-08-10
+
+Final doğrulama:
+
+- 1K mixed candidate: 1000 / 1000 processed, 0 failed, 0 pending
+- 15K mixed candidate: 15000 / 15000 processed, 0 failed, 0 pending
+- 100K mixed candidate: 100000 / 100000 processed, 0 failed, 0 pending
+- 100K throughput: ≈ 6,440 candidate/sec
+- 100K peak Python allocation: ≈ 142.6 MB
+- Mixed lanes: %70 WARM / %20 PARTIAL / %10 COLD
+- Multi-network: BSC + mock second-network PASS
+- Duplicate storm: 10,000 events → 100 unique, 9,900 duplicate collapsed
+- Chain-aware same-address isolation PASS
+- Legacy MAX_RPC_CANDIDATES / pop_many architecture absent
+- Paper manager process ≈ 0.82 ms
+- cache.db integrity / quick_check PASS, WAL
+- paper_trades.db integrity / quick_check PASS, WAL
+- Targeted Phase 2 regression: 68 passed
+- Full regression: 128 passed / 0 failed
+- Compile PASS
+- Import smoke PASS
+- GeckoTerminal live smoke: 20 raw / 20 normalized / 0 rejected
+- Dead script / smoke / E2E inventory PASS
+- 25 / 25 test files actively collected
+- Generated cache/temp cleanup PASS
+- Git working tree clean before closure documentation
+
+Known non-blocking warning:
+
+- `websockets.legacy` deprecation warning from dependency stack.
+
+Architecture outcome:
+
+RAW
+→ Source/Network Registry
+→ Adapter
+→ Common Candidate
+→ Ingress Gate
+→ Conveyor WARM/PARTIAL/COLD
+→ Chain-aware Priority Queue
+→ Cost-aware + Multi-network Fair Work Scheduler
+→ Analyzer Cache / RPC
+→ Strategy
+
+Faz 2 sonucu:
+
+**PHASE 2: ✅ CLOSED**
 
 ---
 

@@ -15,7 +15,7 @@ from app.filter.cache_filter import CacheFilter
 from app.filter.ingress_gate import IngressGate
 from app.pipeline.candidate_queue import CandidateAdmissionQueue
 from app.pipeline.conveyor import ConveyorLabeler
-from app.pipeline.normalizer import CandidateNormalizer
+from app.scanner.adapters.source_router import normalize_source_rows
 
 from app.config.scanner import (
     MAX_PENDING_CANDIDATES,
@@ -190,8 +190,9 @@ class PipelineEngine:
 
         rows = self.cache.all()
 
-        normalized_result = (
-            CandidateNormalizer.gecko_bsc_many(rows)
+        normalized_result = normalize_source_rows(
+            "geckoterminal",
+            rows,
         )
 
         rows = [

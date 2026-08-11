@@ -619,7 +619,12 @@ Status
 
 ---
 
-# PHASE 4 — API
+# LEGACY PHASE 4 — API (SUPERSEDED)
+
+> Historical roadmap section only.
+> Phase numbering was superseded by the canonical Phase 4-6 architecture
+> defined later in this document. Do not use this section as the active roadmap.
+
 
 Amaç
 
@@ -640,7 +645,7 @@ Status
 
 ---
 
-# PHASE 5 — Metrics
+# LEGACY PHASE 5 — Metrics (SUPERSEDED)
 
 Amaç
 
@@ -659,7 +664,7 @@ Status
 
 ---
 
-# PHASE 6 — Live Preparation
+# LEGACY PHASE 6 — Live Preparation (SUPERSEDED)
 
 Amaç
 
@@ -892,5 +897,377 @@ Final result:
 Next:
 
 **PHASE 4 — Position Lifecycle / DEX Exit Intelligence**
+
+---
+
+---
+
+# Phase 4 — Position Lifecycle
+
+Status: PLANNED
+
+Primary question:
+
+**"Pozisyona girdikten sonra mekanik olarak nasıl yöneteceğiz?"**
+
+Scope:
+
+## 4A — Position Lifecycle Baseline Audit
+- Existing paper position schema
+- Entry / current / highest / lowest price
+- Existing TP / SL behavior
+- Existing close path
+- Position persistence
+- Phase 0-3 integration boundary
+
+## 4B — Multi-TP Contract
+- Config-driven TP allocation
+- Partial position reduction
+- TP1 / TP2
+- Remaining runner allocation
+- No DEX trend intelligence yet
+
+## 4C — Position State Machine
+Target lifecycle:
+
+OPEN
+→ TP1_HIT
+→ TP2_HIT
+→ RUNNER_ACTIVE
+→ CLOSED
+
+Additional terminal/protective states:
+- STOPPED
+- HARD_RISK_EXIT
+- INVALID_POSITION
+
+State transitions must be deterministic and testable.
+
+## 4D — Protective / Monotonic Trailing SL
+- Initial protective SL
+- SL may tighten upward
+- SL must never loosen downward for long positions
+- Explicit transition/evidence
+- No indicator-based intelligence yet
+
+Core invariant:
+
+**new_stop >= previous_stop**
+
+## 4E — Runner Mechanics
+- Runner has no mandatory fixed final TP
+- Runner keeps remaining position open
+- Runner accepts future exit/trailing intelligence
+- Runner mechanics remain separate from intelligence source
+- No live execution authority
+
+## 4F — Phase 4 Validation / Closure
+- Paper lifecycle simulation
+- Partial-close regression
+- State-transition tests
+- Gap / price-jump scenarios
+- E2E Phase 0-4
+- Speed test
+- Full regression
+- Authority audit
+- Final freeze
+
+Phase boundary:
+
+**Phase 4 builds the position-management machine.**
+
+It does NOT decide whether DEX momentum is healthy.
+
+---
+
+# Phase 5 — DEX Market Intelligence
+
+Status: PLANNED
+
+Primary question:
+
+**"DEX piyasasında şu anda gerçekte ne oluyor?"**
+
+Design principle:
+
+DEX-native evidence first.
+
+Do not copy a CEX indicator stack blindly.
+
+## 5A — DEX Data / Signal Baseline
+- Available swap/pool data inventory
+- Data freshness
+- Source lineage
+- Cache strategy
+- Missing-data semantics
+- Cost / provider boundaries
+
+## 5B — Swap Flow / Momentum
+- Buy vs sell swap flow
+- Buy/sell notional imbalance
+- Swap frequency
+- Flow acceleration/deceleration
+- Short-window vs longer-window momentum
+- Large-swap distortion protection
+
+## 5C — Volume Quality / Participation
+- Real volume quality
+- Unique buyers
+- Unique sellers
+- Buyer/seller participation ratio
+- Repeat-wallet concentration
+- Burst activity
+- Suspicious/self-repeating flow indicators
+
+Raw volume alone must NOT imply healthy momentum.
+
+## 5D — Wallet Concentration / Flow Quality
+- Concentration of active flow
+- Top-wallet contribution
+- New-wallet participation
+- Repeated-wallet dominance
+- Distribution quality
+
+No automatic identity/whale conclusion from address activity alone.
+
+## 5E — Liquidity / Reserve Dynamics
+- Liquidity trend
+- Reserve changes
+- Liquidity additions/removals
+- Price movement relative to reserve movement
+- Liquidity deterioration
+- Sudden pool-depth changes
+
+## 5F — Price Impact / Market Depth Context
+- Trade-size / liquidity ratio
+- Expected price impact
+- Slippage context
+- Market depth deterioration
+- Existing Phase 3 MEV context reuse
+- No duplicate penalty model
+
+## 5G — DEX Market Signal Bundle
+Produce a bounded deterministic readmodel such as:
+
+- flow_momentum
+- flow_acceleration
+- volume_quality
+- participation_quality
+- wallet_concentration
+- liquidity_health
+- reserve_trend
+- price_impact_health
+- freshness
+- coverage
+
+Signal bundle has:
+
+- trade_authority = false
+- decision_authority = false
+- execution_authority = false
+
+## 5H — Phase 5 Validation / Closure
+- Synthetic DEX scenarios
+- Missing/stale-data scenarios
+- Manipulated-volume scenarios
+- Liquidity-shock scenarios
+- E2E Phase 0-5
+- Performance / cache tests
+- Full regression
+- Authority audit
+- Final freeze
+
+Phase boundary:
+
+**Phase 5 observes and describes the DEX market.**
+
+It does NOT directly close the runner.
+
+---
+
+# Phase 6 — DEX Exit Intelligence
+
+Status: PLANNED
+
+Primary question:
+
+**"Trend hâlâ taşıyor mu; runner devam mı etmeli, korunmalı mı, çıkışa mı hazırlanmalı?"**
+
+Input:
+
+Phase 4 position lifecycle
++
+Phase 5 DEX market signal bundle
++
+existing Phase 3 risk / cost evidence
+
+## 6A — Exit Intelligence Baseline
+- Define exit-state inputs
+- Position-state binding
+- Freshness requirements
+- UNKNOWN behavior
+- Hard-risk separation
+
+## 6B — DEX Trend Health
+Combine DEX-native evidence into deterministic states:
+
+- STRONG
+- HEALTHY
+- WEAKENING
+- BREAK
+- UNKNOWN
+
+Inputs may include:
+- swap-flow momentum
+- flow acceleration
+- participation quality
+- volume quality
+- liquidity/reserve health
+- price-impact deterioration
+
+No single indicator owns the exit decision.
+
+## 6C — Momentum Exhaustion
+Detect cases where:
+
+price continues upward
+BUT
+supporting DEX flow weakens.
+
+Examples:
+- price higher / buy flow weaker
+- price higher / volume quality weaker
+- price higher / unique participation falling
+- price higher / sell pressure accelerating
+- price higher / liquidity deteriorating
+
+This is the core of the previously discussed
+"price reaches 175 but momentum dies" problem.
+
+## 6D — Divergence / Exit Pressure
+- Flow-price divergence
+- Participation-price divergence
+- Liquidity-price divergence
+- Sell-pressure acceleration
+- Exhaustion persistence
+- Noise/debounce protection
+
+## 6E — Runner Health Model
+Runner state interpretation:
+
+- RUNNER_HEALTHY
+- RUNNER_PROTECT
+- RUNNER_TIGHTEN
+- RUNNER_EXIT_CANDIDATE
+- RUNNER_EMERGENCY_EXIT_CONTEXT
+- UNKNOWN
+
+Intelligence remains separate from wallet/live execution.
+
+## 6F — Adaptive Trailing-SL Intelligence
+Phase 6 recommends how Phase 4 trailing mechanics should behave.
+
+Concept:
+
+Strong trend
+→ allow breathing room
+
+Healthy trend
+→ normal trailing
+
+Weakening trend
+→ tighten protection
+
+Confirmed break
+→ exit candidate
+
+For long positions:
+
+**recommended_stop must never reduce an already protected stop.**
+
+## 6G — Risk / Exit Override Context
+Reuse existing evidence:
+- honeypot/sellability
+- tax changes
+- MEV exposure
+- liquidity collapse
+- execution feasibility
+
+Hard safety remains superior to trend score.
+
+High momentum can never override confirmed critical risk.
+
+## 6H — Runner Exit Contract
+Final advisory output contains:
+- trend_health
+- exhaustion_state
+- runner_health
+- trailing_recommendation
+- exit_pressure
+- evidence
+- confidence
+- freshness
+- reasons
+
+Authority remains explicit:
+- live_authority = false
+- wallet_authority = false
+- execution_authority = false
+
+## 6I — Paper / Shadow Stress Validation
+Scenarios include:
+- clean sustained pump
+- pump then exhaustion
+- fake-volume pump
+- whale-driven spike
+- liquidity withdrawal during rise
+- sharp reversal
+- slow trend decay
+- noisy sideways market
+- price makes new high while DEX momentum weakens
+
+Measure:
+- profit retained
+- premature exits
+- late exits
+- maximum giveback
+- runner capture
+- false exit signals
+
+## 6J — Phase 6 Final Audit / Freeze
+- Phase 0-6 E2E
+- Stress regression
+- Performance
+- UNKNOWN/freshness audit
+- Risk authority audit
+- No live/wallet authority
+- Full regression
+- Final freeze
+
+Phase boundary:
+
+**Phase 6 turns DEX evidence into exit intelligence.**
+
+It does not grant autonomous live execution authority.
+
+---
+
+# Locked Phase 4-6 Data Flow
+
+Phase 3:
+ENTRY RISK / OPPORTUNITY / FEASIBILITY
+        ↓
+Phase 4:
+POSITION LIFECYCLE / TP / SL / RUNNER MECHANICS
+        ↓
+Phase 5:
+DEX MARKET OBSERVATION / FLOW / LIQUIDITY / PARTICIPATION
+        ↓
+Phase 6:
+TREND HEALTH / EXHAUSTION / ADAPTIVE RUNNER EXIT INTELLIGENCE
+
+Core separation:
+
+**Mechanics != Market Evidence != Exit Intelligence**
 
 ---

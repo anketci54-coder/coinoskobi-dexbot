@@ -459,3 +459,43 @@ Next:
 **PHASE 4 — Position Lifecycle / DEX Exit Intelligence**
 
 ---
+
+# Phase 4 — Position Lifecycle Mechanical Core
+
+Status: ✅ PASS / CLOSED
+
+Closure date: 2026-08-11
+
+Validation:
+
+- Phase 4 targeted: 41/41 PASS
+- Phase 0-4 connection regression: 183/183 PASS
+- Full repository regression: 239/239 PASS
+- Compile PASS
+- DB integrity / quick_check PASS
+- Lifecycle speed ≈ 51,329 ops/sec
+
+Mechanical contract:
+
+- TP1 closes 20%
+- TP2 closes 25%
+- TP3 closes 25%
+- Runner retains 30%
+- State progression is deterministic
+- Duplicate TP blocked
+- TP skipping blocked
+- Remaining + realized fraction conserved
+- Trailing stop is monotonic
+- Runner has no mandatory fixed final TP
+
+Runtime boundary:
+
+- Phase 4 runtime binding: NONE
+- Existing PaperManager behavior unchanged
+- No live/wallet/execution authority added
+
+Next:
+
+**PHASE 5 — DEX Market Intelligence**
+
+---

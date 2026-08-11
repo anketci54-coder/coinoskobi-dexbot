@@ -67,8 +67,8 @@ Bu kurallar fazlardan bağımsızdır ve çekirdek mimariyi korur.
 
 # PROJE DURUMU
 
-Current Phase : PHASE 3 — CLOSED
-Next Phase : PHASE 4
+Current Phase : PHASE 4 — CLOSED
+Next Phase : PHASE 5
 
 Progress
 
@@ -76,7 +76,7 @@ Progress
 - Phase 1 : ✅
 - Phase 2 : ✅
 - Phase 3 : ✅
-- Phase 4 : ⏳
+- Phase 4 : ✅
 - Phase 5 : ⏳
 - Phase 6 : ⏳
 - Phase 7 : ⏳
@@ -1269,5 +1269,65 @@ TREND HEALTH / EXHAUSTION / ADAPTIVE RUNNER EXIT INTELLIGENCE
 Core separation:
 
 **Mechanics != Market Evidence != Exit Intelligence**
+
+---
+
+---
+
+## Phase 4 Final Closure — 2026-08-11
+
+Scope:
+
+**Position Lifecycle Mechanical Core**
+
+Completed:
+
+- Multi-TP mechanical contract
+- TP1 / TP2 / TP3 staged progression
+- Allocation: 20% / 25% / 25% / 30% runner
+- Deterministic position state machine
+- Duplicate TP protection
+- No TP skipping
+- Fraction conservation
+- Runner activation after TP3
+- Protective monotonic trailing stop
+- Stop never loosens downward
+- Highest price never moves backward
+- Gap-up / gap-down handling
+- Runner has no mandatory fixed final TP
+- Runner protective exit-candidate contract
+
+Final validation:
+
+- Phase 4 targeted: 41 passed / 0 failed
+- Phase 0-4 connection regression: 183 passed / 0 failed
+- Full regression: 239 passed / 0 failed
+- Compile PASS
+- DB integrity PASS
+- Phase 4 speed: ~51,329 lifecycle ops/sec
+- Worktree clean
+
+Authority:
+
+- decision_authority = false
+- paper_authority = false
+- live_authority = false
+- wallet_authority = false
+- execution_authority = false
+
+Important boundary:
+
+Phase 4 mechanical core is validated but not yet bound into
+PaperManager/runtime execution.
+
+Phase 4 answers:
+
+**"Pozisyonu mekanik olarak nasıl yöneteceğiz?"**
+
+Next:
+
+**PHASE 5 — DEX Market Intelligence**
+
+Phase 5 begins real DEX data observation and processing.
 
 ---

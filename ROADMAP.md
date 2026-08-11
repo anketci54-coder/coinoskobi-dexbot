@@ -23,9 +23,9 @@ ROADMAP içinde tutulmaz.
 
 # PROJE DURUMU
 
-Current Phase: **PHASE 5 — IN VALIDATION**
+Current Phase: **PHASE 5 — CLOSED**
 
-Next Phase: **PHASE 6 — WAITING**
+Next Phase: **PHASE 6 — READY**
 
 Progress:
 
@@ -34,8 +34,8 @@ Progress:
 - Phase 2: ✅ CLOSED
 - Phase 3: ✅ CLOSED
 - Phase 4: ✅ CLOSED
-- Phase 5: 🟡 IN VALIDATION
-- Phase 6: ⏳ WAITING
+- Phase 5: ✅ CLOSED
+- Phase 6: 🟢 READY
 - Phase 7: ⏳ WAITING
 - Phase 8: ⏳ WAITING
 - Phase 9: ⏳ WAITING
@@ -535,37 +535,51 @@ Başarılı:
 
 Native BSC Swap/Sync validation:
 
-- mevcut Binance public RPC `eth_getLogs` çağrılarında `-32005 limit exceeded`
-- SubQuery probe bağlantı kuramadı
-- NodeReal chain_id=56 doğrulandı
-- NodeReal tek-block `eth_getLogs` çağrısında yine `-32005 limit exceeded`
+İlk HTTP provider denemelerinde:
 
-Bu nedenle:
+- Binance public RPC `eth_getLogs`: `-32005 limit exceeded`
+- SubQuery connection: unavailable
+- NodeReal chain_id=56: PASS
+- NodeReal single-block `eth_getLogs`: `-32005 limit exceeded`
 
-**Native Swap/Sync evidence henüz VALIDATED değildir.**
+Bu sonuç provider capability sınırı olarak sınıflandırıldı ve native event
+yokluğu olarak yorumlanmadı.
 
-Bu sonuç eventlerin olmadığı anlamına gelmez.
+Ardından WebSocket subscription üzerinden gerçek PancakeSwap V2
+WBNB/USDT native event akışı doğrulandı:
 
-## Bilinen Eksik
+- BSC chain id: 56
+- WebSocket subscription: PASS
+- real Swap events: 6
+- real Sync events: 6
+- unknown subscribed events: 0
+- unsubscribe: PASS
+- DB unchanged: PASS
 
-Gerçek native BSC Swap/Sync event evidence provider/subscription üzerinden doğrulanacak.
+**Native BSC Swap/Sync evidence VALIDATED.**
 
-HTTP `eth_getLogs` desteklemeyen provider tekrar tekrar zorlanmayacak.
+## Bilinen Sınırlar
 
-Gerekirse log-capable provider veya WebSocket subscription kullanılacak.
+- HTTP `eth_getLogs` capability provider'a bağlıdır.
+- Frequent native event observation için WebSocket subscription tercih edilir.
+- Phase 5 observation authority taşır; live/wallet/execution authority taşımaz.
 
 ## Faz Sonu Sistem Durumu
 
-Coinoskobi aggregate gerçek DEX verisini ve short-horizon market intelligence
-çekirdeğini işleyebiliyor.
+Coinoskobi aggregate ve native gerçek DEX verisini short-horizon market
+intelligence çekirdeği içinde işleyebilecek doğrulanmış mekaniklere sahiptir.
 
-Completeness core implement edilmiştir.
+Completeness core tamamlanmıştır.
 
-Native streaming evidence doğrulaması açık kalmıştır.
+Native BSC Swap/Sync WebSocket evidence doğrulanmıştır.
+
+Phase 5 şu soruyu cevaplayan gözlem çekirdeğini tamamlamıştır:
+
+**"DEX piyasasında çok kısa horizonlarda gerçekte ne oluyor?"**
 
 ## Status
 
-🟡 IN VALIDATION
+✅ CLOSED
 
 ---
 
@@ -753,7 +767,7 @@ Phase 6 şu soruyu cevaplayacak:
 
 ## Status
 
-⏳ WAITING
+🟢 READY
 
 ---
 

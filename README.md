@@ -19,8 +19,8 @@ Temel ilke:
 - Phase 2: CLOSED
 - Phase 3: CLOSED
 - Phase 4: CLOSED
-- Phase 5: IN VALIDATION
-- Phase 6: WAITING
+- Phase 5: CLOSED
+- Phase 6: READY
 
 Phase 5'in ana DEX Market Intelligence çekirdeği tamamlanmıştır.
 
@@ -38,10 +38,21 @@ Completeness targeted tests:
 - 35 passed
 - 0 failed
 
-Gerçek native BSC `Swap/Sync` doğrulaması henüz tamamlanmamıştır.
+Gerçek native BSC `Swap/Sync` doğrulaması tamamlanmıştır.
 
-Denenen public RPC sağlayıcıları tek blokluk `eth_getLogs`
-çağrılarında `-32005 limit exceeded` döndürmüştür.
+WebSocket üzerinden PancakeSwap V2 WBNB/USDT pair için bounded gerçek
+native event subscription doğrulandı:
+
+- BSC chain id: 56
+- real Swap events: 6
+- real Sync events: 6
+- unknown subscribed events: 0
+- clean unsubscribe: PASS
+- DB unchanged: PASS
+
+HTTP `eth_getLogs` provider sınırı native event yokluğu olarak
+yorumlanmamıştır. Gerçek native event doğrulaması WebSocket subscription
+üzerinden tamamlanmıştır.
 
 Bu durum:
 

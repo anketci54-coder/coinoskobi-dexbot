@@ -23,9 +23,9 @@ ROADMAP içinde tutulmaz.
 
 # PROJE DURUMU
 
-Current Phase: **PHASE 5 — CLOSED**
+Current Phase: **PHASE 6 — CLOSED**
 
-Next Phase: **PHASE 6 — READY**
+Next Phase: **PHASE 7 — PLANNING**
 
 Progress:
 
@@ -35,8 +35,8 @@ Progress:
 - Phase 3: ✅ CLOSED
 - Phase 4: ✅ CLOSED
 - Phase 5: ✅ CLOSED
-- Phase 6: 🟢 READY
-- Phase 7: ⏳ WAITING
+- Phase 6: ✅ CLOSED
+- Phase 7: 🟡 PLANNING
 - Phase 8: ⏳ WAITING
 - Phase 9: ⏳ WAITING
 - Phase 10: ⏳ WAITING
@@ -765,21 +765,81 @@ Phase 6 şu soruyu cevaplayacak:
 
 **"Runner hâlâ taşınmalı mı, koruma sıkılaştırılmalı mı, yoksa çıkış adayı mı?"**
 
+## Kapanış Doğrulaması
+
+Phase 6 final validation:
+
+- Smoke: 2 PASS
+- End-to-end: 20 PASS
+- Phase 6 targeted: 65 PASS
+- Phase 0-6 connection regression: 110 PASS
+- Full regression: 339 PASS
+- Compile: PASS
+- Phase 6 local pipeline speed: ~416K ops/sec
+- DB integrity / quick check: PASS
+- Generated project junk cleanup: PASS
+- decision authority: false
+- paper authority: false
+- live authority: false
+- wallet authority: false
+- execution authority: false
+
+Phase 6 sonunda oluşturulan zincir:
+
+Phase 5 DEX Signal Bundle
+-> Exit Intelligence
+-> Trend Health
+-> Momentum Exhaustion
+-> Divergence / Exit Pressure
+-> Persistence / Debounce
+-> Runner Health
+-> Adaptive Trailing Recommendation
+-> Risk / Exit Context
+-> Runner Exit Advisory Contract
+
+Kalıcı kararlar:
+
+- tek kötü tick doğrudan BREAK üretmez
+- weakening / break persistence ile doğrulanır
+- hard safety trend değerlendirmesinden üstündür
+- runner health execution emri değildir
+- adaptive trailing mevcut korunan stop seviyesini düşüremez
+- exit intelligence advisory-only kalır
+- UNKNOWN / stale veri güvenli şekilde taşınır
+
 ## Status
 
-🟢 READY
+✅ CLOSED
 
 ---
 
-# PHASE 7 — Reserved
+# PHASE 7 — Planning
 
 ## Amaç
 
 Kapsam zamanı geldiğinde Phase 6 kapanışı sırasında planlanacak.
 
+## Planlama Durumu
+
+Phase 7'nin gerçek kapsamı henüz belirlenmemiştir.
+
+Phase 6 kapanışından sonra sistemin mevcut durumu,
+darboğazları ve öncelikleri değerlendirilerek planlanacaktır.
+
+Phase 7 başlamadan önce:
+
+- amacı
+- planlanan kapsamı
+- değerlendirilecek kararları
+- beklenen faz sonu durumunu
+
+ROADMAP içinde kendi yerine yazılacaktır.
+
+İleri Phase 8-15 içerikleri şimdiden tahmin edilmez.
+
 ## Status
 
-⏳ WAITING
+🟡 PLANNING
 
 ---
 

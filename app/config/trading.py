@@ -44,3 +44,18 @@ DEFAULT_SLIPPAGE: float = 0.5
 
 # MEV cost as a percentage of trade value
 DEFAULT_MEV_COST: float = 0.2
+
+# --- Phase 4 position lifecycle policy ---
+# Fractions of the original token position.
+# These are mechanical defaults and may be calibrated later.
+
+TP1_ROI: float = 0.20
+TP1_CLOSE_FRACTION: float = 0.20
+
+TP2_ROI: float = 0.50
+TP2_CLOSE_FRACTION: float = 0.25
+
+TP3_ROI: float = 1.00
+TP3_CLOSE_FRACTION: float = 0.25
+
+RUNNER_FRACTION: float = 0.30

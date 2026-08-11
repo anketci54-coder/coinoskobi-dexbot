@@ -1,346 +1,564 @@
-# Coinoskobi DEX Bot
+# Coinoskobi DexBot
 
-Modüler Python tabanlı DEX alım-satım platformu.
+**Professional Modular DEX Decision Support Platform**
 
-İlk hedefler:
+Coinoskobi, DEX piyasalarında fırsat keşfi, risk analizi, kısa-horizon piyasa
+gözlemi, karar desteği ve güvenli işlem yaşam döngüsü geliştirmek için
+oluşturulan modüler bir platformdur.
 
-- BNB Chain
-- PancakeSwap
-- Güvenli cüzdan yönetimi
-- Paper Trading
-- Risk Motoru
-- Modüler mimari
+Temel ilke:
 
-Canlı işlem özelliği yalnızca gerekli testler tamamlandıktan sonra etkinleştirilecektir.
-# 🚀 Coinoskobi DexBot
-
-> **Professional Modular DEX Decision Support & Paper Trading Platform**
+**Karar kalitesi, güvenlik ve doğrulanmış veri; işlem sıklığından önce gelir.**
 
 ---
 
-![Python](https://img.shields.io/badge/Python-3.13-blue)
-![SQLite](https://img.shields.io/badge/Database-SQLite-green)
-![Status](https://img.shields.io/badge/Status-Active-success)
-![Roadmap](https://img.shields.io/badge/Roadmap-Phase%200%20%E2%86%92%20Phase%2015-orange)
-![PaperTrading](https://img.shields.io/badge/Trading-Paper%20Only-yellow)
+## Current Project State
+
+- Phase 0: CLOSED
+- Phase 1: CLOSED
+- Phase 2: CLOSED
+- Phase 3: CLOSED
+- Phase 4: CLOSED
+- Phase 5: IN VALIDATION
+- Phase 6: WAITING
+
+Phase 5'in ana DEX Market Intelligence çekirdeği tamamlanmıştır.
+
+Completeness repair kapsamında eklenen ve test edilen alanlar:
+
+- Flow Acceleration
+- Wallet Flow
+- Reserve Dynamics
+- Price Impact
+- Unified DEX Signal Bundle
+- Phase 5 stress validation
+
+Completeness targeted tests:
+
+- 35 passed
+- 0 failed
+
+Gerçek native BSC `Swap/Sync` doğrulaması henüz tamamlanmamıştır.
+
+Denenen public RPC sağlayıcıları tek blokluk `eth_getLogs`
+çağrılarında `-32005 limit exceeded` döndürmüştür.
+
+Bu durum:
+
+- eventlerin olmadığı anlamına gelmez
+- provider capability / policy sınırı olarak değerlendirilir
+- native event evidence tamamlanmadan Phase 5 yeniden CLOSED sayılmaz
+
+Phase 6, Phase 5 kapanış doğrulamasından sonra başlar.
 
 ---
 
-# Overview
+## Vision
 
-Coinoskobi is a professional modular Decision Support Platform for decentralized exchanges (DEX).
+Coinoskobi'nin hedefi yalnızca token bulmak değildir.
 
-The system is designed to discover trading opportunities, evaluate market quality, analyze risks and validate trading strategies through paper trading before any live execution.
+Sistem:
 
-The project prioritizes **decision quality over trading frequency**.
-
----
-
-# Vision
-
-Coinoskobi aims to become a complete trading intelligence platform capable of:
-
-- Discovering new opportunities
-- Evaluating liquidity quality
-- Analyzing smart contracts
-- Measuring trading risks
-- Simulating trades
-- Learning from historical outcomes
-- Supporting human decision making
-
-Live trading is intentionally the final milestone of the project.
+- yeni fırsatları mümkün olduğunca erken gözlemlemeli
+- gerçek talep ile yapay hareketi ayırmaya çalışmalı
+- likidite ve satış riskini sürekli izlemeli
+- kısa zaman aralıklarında piyasa davranışını ölçmeli
+- işlem açıldıktan sonra da ürünü izlemeye devam etmeli
+- risk koşulları bozulursa pozisyon yönetimine gerekli sinyali vermeli
+- gerçek para kullanılmadan önce tüm davranışları paper/sandbox ortamında
+  doğrulamalıdır
 
 ---
 
-# Core Principles
+## Core Principles
 
-- Simplicity
-- Readability
-- Maintainability
-- Modularity
-- Security
-- Paper-first development
-- Evidence-based decision making
-
----
-
-# Current Architecture
-
-```text
-Scanner
-    │
-    ▼
-Gecko Cache
-    │
-    ▼
-Candidate Filter
-    │
-    ▼
-Token Analyzer
-    │
-    ▼
-Pair Analyzer
-    │
-    ▼
-Risk Engine
-    │
-    ▼
-Strategy Engine
-    │
-    ▼
-Paper Trading
-    │
-    ▼
-Portfolio
-    │
-    ▼
-API
-```
+- BSC-first architecture
+- modular design
+- deterministic safety rules
+- bounded external work
+- short-horizon observation
+- cache/local-first processing
+- no silent authority escalation
+- paper-first execution development
+- risk gates before execution
+- explicit unknown states
+- clean repository
+- measurable validation
 
 ---
 
-# Current Modules
+## Current Architecture
 
-## Scanner
+Coinoskobi'nin mevcut ana veri akışı:
 
-- GeckoTerminal Scanner
-- Candidate Discovery
-- Cache Refresh
+1. **Market / DEX Sources**
+2. **Scanner / Source Adapters**
+3. **Normalization / Ingress**
+4. **Candidate Admission Queue**
+5. **Bounded Work Scheduler**
+6. **Analysis Pipeline**
+7. **DEX Market Intelligence**
+8. **Risk Engine / Safety Gates**
+9. **Deterministic Strategy / Decision Support**
+10. **Execution Context**
+11. **Position Lifecycle**
+12. **Paper / Future Execution Boundary**
 
----
+Analysis Pipeline içinde:
 
-## Cache
-
-- SQLite Cache
-- Market Snapshot Storage
-
----
-
-## Filter
-
-- Liquidity Filter
-- Volume Filter
-- DEX Filter
-
----
-
-## Analyzer
-
-- ERC20 Analysis
-- Pair Analysis
 - Contract Analysis
+- Token Analysis
+- Pair Analysis
+
+DEX Market Intelligence içinde:
+
+- Market Clock
+- Swap Flow
+- Market Quality
+- Flow Acceleration
+- Wallet Flow
+- Reserve Dynamics
+- Price Impact
+- Signal Bundle
+
+External data acquisition, analysis, decision authority and execution
+authority are separate responsibilities.
 
 ---
 
-## Risk Engine
+## Current Modules
 
-- Contract Risk
-- Trading Risk
+### Scanner
 
----
+Responsibilities:
 
-## Strategy
+- external pool discovery
+- source-specific reads
+- bounded HTTP behavior
+- retry / timeout control
 
-Current decisions:
-
-- BUY
-- WATCH
-- REJECT
-
-Future versions will include:
-
-- Decision Score
-- Confidence Score
-- Multi-factor Evaluation
+Current source support includes GeckoTerminal.
 
 ---
 
-## Paper Trading
+### Source / Candidate Pipeline
 
-Current capabilities:
+Responsibilities:
 
-- Position Tracking
-- ROI Calculation
-- Take Profit
-- Stop Loss
-- Trailing Stop
-- Portfolio Statistics
-
----
-
-# Repository Structure
-
-```text
-app/
-
-├── analyzer/
-├── api/
-├── cache/
-├── chains/
-├── config/
-├── dex/
-├── filter/
-├── paper/
-├── risk/
-├── scanner/
-└── strategy/
-
-data/
-
-main.py
-```
+- source normalization
+- chain-aware candidate identity
+- ingress filtering
+- duplicate collapse
+- bounded admission
+- prioritization
+- queue management
+- cooldown protection
+- scheduler fairness
 
 ---
 
-# Documentation
+### Cache
 
-The project is governed by the following documents:
+Responsibilities:
 
-- CONSTITUTION.md
-- ROADMAP.md
-- PROJECT_STATUS.md
-- CHANGELOG.md
-- ARCHITECTURE.md
-- CONTRIBUTING.md
-- roadmap.json
+- repeated expensive work reduction
+- analyzer result caching
+- market data reuse
+- bounded external work
 
----
-
-# Development Workflow
-
-Every feature follows the same lifecycle.
-
-```text
-Roadmap
-
-↓
-
-Planning
-
-↓
-
-Implementation
-
-↓
-
-Testing
-
-↓
-
-Review
-
-↓
-
-Commit
-
-↓
-
-Push
-
-↓
-
-Next Phase
-```
+SQLite is currently used for local cache/state storage.
 
 ---
 
-# Roadmap
+### Analyzer
 
-The official roadmap consists of:
+Current analysis areas include:
 
-- Phase 0
-- Phase 1
-- Phase 2
-- Phase 3
-- Phase 4
-- Phase 5
-- Phase 6
-- Phase 7
-- Phase 8
-- Phase 9
-- Phase 10
-- Phase 11
-- Phase 12
-- Phase 13
-- Phase 14
-- Phase 15
-
-## Important
-
-**Phase 15 is the final roadmap phase.**
-
-No Phase 16 will ever be created.
-
-Future work continues through:
-
-- Releases
-- Milestones
-- Sprints
-- Hotfixes
-- Patches
+- token analysis
+- pair analysis
+- bytecode / contract capability analysis
+- source evidence processing
 
 ---
 
-# Development Rules
+### Risk Engine
 
-- One responsibility per module
-- No dead code
-- No temporary patches
-- No duplicated logic
-- Small commits
-- Compile before commit
-- Clean repository
-- Stable main branch
+Risk is a hard safety layer.
 
----
+Current areas include:
 
-# Security
+- honeypot / sellability protection
+- mint capability risk
+- pause / blacklist style contract capability risk
+- liquidity context
+- trade-size / liquidity exposure
+- MEV-related exposure context
+- execution-cost inputs
+- deterministic gate decisions
 
-- Private keys are never committed.
-- `.env` is ignored.
-- Live trading is disabled by default.
-- Paper Trading is mandatory before Live Trading.
+A favorable score must not bypass a hard safety gate.
 
 ---
 
-# Technologies
+### Strategy / Decision Support
+
+Decision logic is deterministic.
+
+The strategy layer may produce outcomes such as:
+
+- candidate rejection
+- observation
+- paper candidate context
+- future execution context
+
+Decision support does not automatically grant execution authority.
+
+AI, if added later, remains advisory unless a future explicit architecture
+decision changes that boundary.
+
+---
+
+## DEX Market Intelligence
+
+Phase 5 establishes the short-horizon DEX observation foundation.
+
+Implemented event contracts include:
+
+- PairCreated
+- Swap
+- Sync
+- Mint
+- Burn
+
+Implemented analysis areas include:
+
+- normalized DEX events
+- market clocks
+- swap-flow mechanics
+- buy/sell imbalance
+- market participation
+- liquidity quality
+- reserve deterioration
+- concentrated-volume detection
+- flow acceleration
+- wallet-flow concentration
+- price-impact context
+- unified DEX signal bundle
+
+Real aggregate DEX compatibility has been validated with bounded
+GeckoTerminal reads.
+
+Native BSC Swap/Sync streaming is not yet claimed as validated.
+
+---
+
+## Market Clocks
+
+Coinoskobi does not rely only on traditional 5m / 15m / 1h candles.
+
+The system supports short-horizon observation clocks.
+
+### Wall Clock
+
+- 250 ms
+- 500 ms
+- 1 s
+- 2 s
+- 5 s
+- 10 s
+- 30 s
+
+### Block Clock
+
+- 1 block
+- 2 blocks
+- 4 blocks
+- 8 blocks
+- 16 blocks
+- 32 blocks
+
+### Swap Clock
+
+- 5 swaps
+- 10 swaps
+- 25 swaps
+- 50 swaps
+- 100 swaps
+
+These clocks are observation windows.
+
+They are not execution permissions.
+
+---
+
+## Position Lifecycle
+
+Phase 4 established the mechanical position-management core.
+
+Implemented:
+
+- position lifecycle contract
+- deterministic state machine
+- TP1
+- TP2
+- TP3
+- runner allocation
+- duplicate TP protection
+- no TP skipping
+- fraction conservation
+- monotonic protective trailing stop
+- highest-price tracking
+- runner exit-candidate mechanics
+
+Current allocation:
+
+- TP1: 20%
+- TP2: 25%
+- TP3: 25%
+- Runner: 30%
+
+The position lifecycle core does not by itself grant paper or live
+execution authority.
+
+---
+
+## Vur-Kac Direction
+
+Coinoskobi includes a planned controlled short-opportunity mode.
+
+The Vur-Kac concept is not blind auto-trading.
+
+Expected behavior:
+
+- short-horizon opportunity detection
+- strict entry conditions
+- single take-profit target
+- mandatory protective stop
+- liquidity / sellability / slippage checks
+- continuous post-entry observation
+- fast exit when market quality deteriorates
+- no bypass of hard risk gates
+
+Exact production rules must be validated in their own future phase before
+execution authority is enabled.
+
+---
+
+## Authority and Safety Boundaries
+
+Observation authority and execution authority are different.
+
+Current default boundaries:
+
+- decision support does not equal trade permission
+- scoring does not override hard safety
+- market intelligence does not sign transactions
+- no wallet signing authority
+- no implicit live execution authority
+- provider failures remain failures / unknown
+- missing evidence must not silently become safe evidence
+- sellability remains a required safety concern
+- liquidity remains a required safety concern
+
+Private keys, seed phrases and wallet secrets must never be committed to
+the repository.
+
+---
+
+## Development Workflow
+
+Normal development order:
+
+1. Roadmap phase plan
+2. Implementation
+3. Targeted tests
+4. Smoke tests
+5. End-to-end tests
+6. Connection regression
+7. Full regression
+8. Compile / integrity checks
+9. Phase validation
+10. Phase closure
+11. Next phase plan
+12. Commit / push
+
+A phase must not be marked `CLOSED` before its required validation is
+complete.
+
+---
+
+## Roadmap Governance
+
+`ROADMAP.md` is Coinoskobi's chronological living development plan.
+
+Mandatory rules:
+
+1. Phases remain in chronological order:
+
+   `Phase 0 -> Phase 1 -> Phase 2 -> ...`
+
+2. Every roadmap item belongs inside its own phase.
+
+3. Before a phase begins, its section contains:
+   - purpose
+   - planned scope
+   - decisions still requiring evaluation
+   - expected result
+
+4. When a phase finishes, the entire roadmap is not rewritten.
+
+5. Only the closing phase is updated with:
+   - actual completed scope
+   - permanent decisions actually taken
+   - concise validation result
+   - known gaps
+   - deferred work
+   - final phase status
+
+6. During the same closure cycle, the next phase gets its initial plan in
+   its own chronological position.
+
+7. Previously closed phases are not changed during normal later-phase
+   updates.
+
+8. Future phases are not changed without a concrete reason.
+
+9. Planned decisions and accepted decisions are different.
+
+10. A phase is not marked `CLOSED` before required validation completes.
+
+11. Valid status examples:
+    - WAITING
+    - ACTIVE
+    - IN VALIDATION
+    - CLOSED
+
+12. ROADMAP does not store complete terminal logs, temporary probes,
+    debug transcripts or disposable audit scripts.
+
+13. Legacy / superseded phase numbering must not return to the active
+    chronological roadmap.
+
+14. Core rule:
+
+    **Everything goes to its proper place; nothing unrelated changes.**
+
+---
+
+## Roadmap Boundary
+
+The numbered roadmap currently runs from Phase 0 through Phase 15.
+
+A Phase 16 is not automatically created.
+
+After the numbered roadmap is completed, normal project development may
+continue through:
+
+- releases
+- milestones
+- sprints
+- patches
+- hotfixes
+
+---
+
+## Documentation
+
+Primary project documents:
+
+- `README.md`
+- `ROADMAP.md`
+- `CONSTITUTION.md`
+- `PROJECT_STATUS.md`
+- `CHANGELOG.md`
+- `ARCHITECTURE.md`
+- `CONTRIBUTING.md`
+- `TEST_RESULTS.md`
+
+`README.md` explains the project and its permanent development rules.
+
+`ROADMAP.md` contains the chronological phase plan, decisions, closures
+and next planned work.
+
+---
+
+## Repository Structure
+
+Main project areas:
+
+- `app/analyzer/`
+- `app/api/`
+- `app/cache/`
+- `app/chains/`
+- `app/config/`
+- `app/dex/`
+- `app/filter/`
+- `app/paper/`
+- `app/pipeline/`
+- `app/risk/`
+- `app/scanner/`
+- `app/strategy/`
+- `data/`
+- `tests/`
+
+Main entry point:
+
+- `main.py`
+
+---
+
+## Development Rules
+
+- one responsibility per module
+- no unnecessary duplication
+- no dead code
+- no disposable scripts left behind
+- bounded external work
+- deterministic safety boundaries
+- targeted tests for new behavior
+- smoke / E2E testing before closure
+- full regression before closure
+- compile before commit
+- DB integrity checks where relevant
+- clean repository before phase seal
+- small understandable changes
+- stable main branch
+- no unrelated modifications during phase closure
+
+---
+
+## Security
+
+Never commit:
+
+- private keys
+- seed phrases
+- wallet secrets
+- exchange API secrets
+- provider secrets
+
+Future wallet or exchange integrations require an explicit separate
+implementation and validation phase.
+
+---
+
+## Technologies
+
+Current core stack includes:
 
 - Python 3
 - SQLite
 - Web3.py
 - FastAPI
-- GeckoTerminal API
+- GeckoTerminal
+- BNB Chain
+- PancakeSwap
+- pytest
 
 ---
 
-# Current Status
+## License
 
-**Project Status**
-
-🟢 Active Development
-
-Current Branch:
-
-`main`
-
-Current Milestone:
-
-**Phase 0 + Phase 1 Completed**
-
-Next Objective:
-
-**Phase 2 — Performance**
-
----
-
-# License
-
-Private Repository
+Private Repository.
 
 All Rights Reserved.
-
----
-
-# Coinoskobi
-
-**Professional Modular DEX Decision Support Platform**

@@ -67,8 +67,8 @@ Bu kurallar fazlardan bağımsızdır ve çekirdek mimariyi korur.
 
 # PROJE DURUMU
 
-Current Phase : PHASE 4 — CLOSED
-Next Phase : PHASE 5
+Current Phase : PHASE 5 — CLOSED
+Next Phase : PHASE 6
 
 Progress
 
@@ -77,7 +77,7 @@ Progress
 - Phase 2 : ✅
 - Phase 3 : ✅
 - Phase 4 : ✅
-- Phase 5 : ⏳
+- Phase 5 : ✅
 - Phase 6 : ⏳
 - Phase 7 : ⏳
 - Phase 8 : ⏳
@@ -1331,3 +1331,82 @@ Next:
 Phase 5 begins real DEX data observation and processing.
 
 ---
+
+
+---
+
+## Phase 5 Final Closure — 2026-08-11
+
+Scope:
+
+**DEX Market Intelligence / Short-Horizon Observation Core**
+
+Completed:
+
+- Real GeckoTerminal BSC baseline inspection
+- Real bounded external DEX read
+- PancakeSwap V2 event ABI contracts:
+  - PairCreated
+  - Swap
+  - Sync
+  - Mint
+  - Burn
+- Normalized DEX event contract
+- Short-horizon market clock:
+  - wall-clock windows: 250ms / 500ms / 1s / 2s / 5s / 10s / 30s
+  - block windows: 1 / 2 / 4 / 8 / 16 / 32 blocks
+  - swap windows: 5 / 10 / 25 / 50 / 100 swaps
+- Swap-flow mechanical analyzer
+- Buy/sell count imbalance
+- Buy/sell volume imbalance
+- Volume quality context
+- Unique buyer/seller participation context
+- Transaction participation ratio
+- Liquidity / reserve deterioration context
+- Suspicious concentrated-volume signal
+- Pure-local authority boundaries
+
+Real-data validation:
+
+- GeckoTerminal real read: 20 rows
+- External read bounded
+- Phase 5 targeted: 14 passed / 0 failed
+- Phase 0-5 connection regression: 95 passed / 0 failed
+- Full regression: 253 passed / 0 failed
+- Compile PASS
+- Cache DB unchanged
+- Paper DB unchanged
+- DB integrity PASS
+- Worktree clean
+
+Authority:
+
+- decision_authority = false
+- paper_authority = false
+- live_authority = false
+- wallet_authority = false
+- execution_authority = false
+
+Important evidence boundary:
+
+The Phase 5E real-data validation used real GeckoTerminal aggregate
+market data to validate data compatibility and market-quality logic.
+
+The generated SWAP observations used during that bounded validation were
+synthetic observation records derived from aggregate rows.
+
+Therefore:
+
+- real external DEX data compatibility is validated
+- short-horizon market-clock mechanics are validated
+- swap-flow calculations are validated
+- real native BSC Swap/Sync streaming is NOT yet claimed as validated
+- no continuous WebSocket subscription was enabled
+- no paper/live execution behavior was enabled
+
+Phase 6 may consume this Phase 5 observation core only after native
+short-horizon event evidence is explicitly validated.
+
+Final Phase 5 state:
+
+**CLOSED / VERIFIED / NO TRADE AUTHORITY**

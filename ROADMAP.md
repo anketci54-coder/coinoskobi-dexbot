@@ -23,9 +23,9 @@ ROADMAP içinde tutulmaz.
 
 # PROJE DURUMU
 
-Current Phase: **PHASE 8 — CLOSED**
+Current Phase: **PHASE 9 — CLOSED**
 
-Next Phase: **PHASE 9 — RESERVED**
+Next Phase: **PHASE 10 — RESERVED**
 
 Progress:
 
@@ -38,7 +38,7 @@ Progress:
 - Phase 6: ✅ CLOSED
 - Phase 7: ✅ CLOSED
 - Phase 8: ✅ CLOSED
-- Phase 9: ⏳ WAITING
+- Phase 9: ✅ CLOSED
 - Phase 10: ⏳ WAITING
 - Phase 11: ⏳ WAITING
 - Phase 12: ⏳ WAITING
@@ -1256,15 +1256,243 @@ Kalıcı kararlar:
 
 ---
 
-# PHASE 9 — Reserved
+# PHASE 9 — Wallet / Entity / Smart-Money Intelligence
 
 ## Amaç
 
-Kapsam zamanı geldiğinde bir önceki fazın kapanışı sırasında planlanacak.
+Phase 8 ile güvenilir hale gelen native DEX event akışını kullanarak
+wallet, entity, whale ve smart-money davranışlarını deterministik kanıt
+olarak modele eklemek.
+
+Temel soru:
+
+**"Bu piyasa hareketine hangi wallet/entity davranışları eşlik ediyor ve
+gözlenen akış geniş katılımlı mı, tekil/baskın aktör kaynaklı mı?"**
+
+Phase 9 observation / reputation / context katmanıdır.
+
+Wallet signing, live trade veya execution authority taşımaz.
+
+## Planlanan Kapsam
+
+### 9A — Wallet Evidence Baseline
+
+- chain-aware wallet address normalization
+- wallet activity evidence
+- inbound / outbound flow
+- buy / sell participation
+- freshness
+- UNKNOWN behavior
+- identity guessing yasak
+
+### 9B — Wallet Behavior Features
+
+- repeated token interaction
+- accumulation evidence
+- distribution evidence
+- burst activity
+- dormant -> active transition
+- participation frequency
+- behavior evidence != identity proof
+
+### 9C — Entity Linking
+
+- wallet -> entity evidence
+- chain-aware entity identity
+- evidence confidence
+- ambiguous links remain UNKNOWN
+- same address cross-chain otomatik merge edilmez
+- same symbol entity merge sebebi değildir
+
+### 9D — Known Wallet / Smart-Money Registry
+
+- known-wallet source contract
+- source reliability
+- source freshness
+- label provenance
+- known != trusted
+- label != trade permission
+- onchain behavior source labelini doğrulayabilir veya çürütebilir
+
+### 9E — Whale Flow Intelligence
+
+- large-wallet concentration
+- whale inflow / outflow
+- single-whale vs multi-wallet movement
+- large transfer context
+- CEX bridge evidence
+- dust / noise filtering
+- whale evidence != automatic bullish/bearish signal
+
+### 9F — Wallet Risk / Reputation
+
+- repeat-offender evidence
+- suspicious coordination
+- wallet concentration risk
+- wallet/entity reputation
+- evidence count / freshness
+- hard evidence ile soft evidence ayrımı
+- soft reputation gerektiğinde decay edebilir
+- hard evidence keyfi olarak decay etmez
+
+### 9G — Token Risk / Market Intelligence Bridge
+
+Planlanan zincir:
+
+Native Event Stream
+-> Wallet / Entity Intelligence
+-> Phase 5 Market Intelligence
+-> Phase 7 Flow Confirmation / Market Regime
+-> Risk / Exit Context
+
+Kurallar:
+
+- wallet/entity evidence context üretir
+- tek başına entry izni vermez
+- hard safety gate override edemez
+- sellability/liquidity/execution safety üstündür
+- whale label trade authority değildir
+
+### 9H — Readmodel / Hot-Path Contract
+
+- precomputed wallet/entity buckets
+- bounded cache
+- bounded readmodel
+- hot path'te raw-event join yok
+- hot path'te graph traversal yok
+- hot path'te per-wallet ağır aggregation yok
+- stale / missing cache -> UNKNOWN veya safe downgrade
+- wallet intelligence hot path'i yavaşlatamaz
+
+### 9I — Stress / False-Attribution Matrix
+
+Zorunlu senaryolar:
+
+- same address / different chain
+- same symbol / different token
+- dust attack
+- single whale dominance
+- coordinated small wallets
+- fake known-wallet label
+- stale known-wallet label
+- CEX bridge ambiguity
+- conflicting wallet evidence
+- inactive -> sudden activity
+- high-value transfer without trade context
+- missing entity evidence
+
+### 9J — Final Validation / Closure
+
+Phase 9 kapanmadan önce:
+
+- targeted tests
+- Phase 0-9 connection regression
+- smoke
+- end-to-end
+- wallet/entity stress matrix
+- false-attribution tests
+- speed / hot-path benchmark
+- bounded-cache test
+- compile
+- DB integrity / quick check
+- generated-junk cleanup
+- authority audit
+- README / ROADMAP closure
+- single Phase 9 commit / push
+
+Alt fazlarda ayrı commit/push yapılmaz.
+
+## Phase 9 Temel Kuralları
+
+- Onchain behavior evidence first.
+- Known-wallet etiketi tek başına güven kanıtı değildir.
+- Wallet label trade signal değildir.
+- Same address cross-chain otomatik entity merge edilmez.
+- Same symbol entity identity oluşturmaz.
+- Tek whale hareketi geniş piyasa katılımı sayılmaz.
+- Dust/noise gerçek wallet intent olarak yorumlanmaz.
+- Ambiguous evidence UNKNOWN kalır.
+- Hot path'te graph traversal yapılmaz.
+- Hot path'te raw-event join yapılmaz.
+- Stale wallet/entity evidence FRESH kabul edilmez.
+- Hard safety wallet intelligence tarafından override edilemez.
+- Phase 9 wallet/signing/live/execution authority taşımaz.
+
+## Korunan Gelecek Backlog — UNUTULMAYACAK
+
+Phase 9'a yalnız wallet / entity / whale / smart-money intelligence alınmıştır.
+
+Kalan başlıklar sonraki faz planlamalarında korunacaktır:
+
+- adversary / scam-actor / MEV intelligence
+- news / social / X / Telegram / Discord intelligence
+- listing / delisting / ICO / IDO / launchpad / airdrop radar
+- AI contract analyst
+- AI explanation / assistant layer
+- local / background AI
+- learning / calibration / outcome memory
+- false-positive / false-negative memory
+- missed-opportunity / avoided-loss memory
+- shadow simulation
+- paper lifecycle / paper engine
+- provider budget / paid-call / cost guard
+- command center / panel intelligence
+- live alerts / AI communication panel
+- execution readiness
+- wallet / signing / live-trade boundaries
+
+Phase 10-15 dağılımı şimdiden belirlenmez.
+
+## Beklenen Faz Sonu Durumu
+
+Phase 9 sonunda Coinoskobi şu soruyu deterministik kanıtlarla
+cevaplayabilmelidir:
+
+**"Bu token çevresindeki wallet/entity davranışı ne söylüyor ve görülen
+hareket geniş katılımlı gerçek akış mı, yoksa tekil/baskın/şüpheli aktör
+davranışı mı?"**
+
+## Kapanış Doğrulaması
+
+Phase 9 final validation:
+
+- smoke: PASS
+- end-to-end: PASS
+- Phase 9 targeted: PASS
+- Phase 0-9 connection regression: PASS
+- full regression: PASS
+- compile: PASS
+- wallet hot-path benchmark: PASS
+- bounded readmodel/cache stress: PASS
+- false-attribution matrix: PASS
+- DB integrity / quick check: PASS
+- DB unchanged: PASS
+- generated-junk cleanup: PASS
+- authority / hot-path contract audit: PASS
+
+Kalıcı kararlar:
+
+- wallet identity chain-aware kalır
+- same address cross-chain otomatik merge edilmez
+- entity linking evidence/confidence tabanlıdır
+- ambiguous entity evidence UNKNOWN kalır
+- known-wallet etiketi trust veya trade permission değildir
+- onchain behavior source labelini destekleyebilir veya çürütebilir
+- tek whale hareketi geniş katılım sayılmaz
+- dust/noise wallet intent olarak yorumlanmaz
+- CEX bridge yalnız bağlamsal evidence taşır
+- hard reputation evidence keyfi decay etmez
+- soft reputation gerektiğinde decay edebilir
+- hot path yalnız precomputed bounded readmodel okur
+- hot path raw-event join yapmaz
+- hot path graph traversal yapmaz
+- stale/missing wallet evidence safe downgrade üretir
+- hard safety wallet intelligence tarafından override edilemez
+- Phase 9 decision/paper/live/wallet/signing/execution authority taşımaz
 
 ## Status
 
-⏳ WAITING
+✅ CLOSED
 
 ---
 

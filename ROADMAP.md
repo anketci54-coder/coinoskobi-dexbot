@@ -23,9 +23,9 @@ ROADMAP içinde tutulmaz.
 
 # PROJE DURUMU
 
-Current Phase: **PHASE 9 — CLOSED**
+Current Phase: **PHASE 10 — CLOSED**
 
-Next Phase: **PHASE 10 — RESERVED**
+Next Phase: **PHASE 11 — RESERVED**
 
 Progress:
 
@@ -39,7 +39,7 @@ Progress:
 - Phase 7: ✅ CLOSED
 - Phase 8: ✅ CLOSED
 - Phase 9: ✅ CLOSED
-- Phase 10: ⏳ WAITING
+- Phase 10: ✅ CLOSED
 - Phase 11: ⏳ WAITING
 - Phase 12: ⏳ WAITING
 - Phase 13: ⏳ WAITING
@@ -1496,17 +1496,342 @@ Kalıcı kararlar:
 
 ---
 
-# PHASE 10 — Reserved
+# PHASE 10 — Adversary / Scam-Actor / MEV Intelligence
 
 ## Amaç
 
-Kapsam zamanı geldiğinde bir önceki fazın kapanışı sırasında planlanacak.
+Phase 8 native event ingestion ve Phase 9 wallet/entity/smart-money
+intelligence üzerine adversarial actor intelligence katmanı eklemek.
+
+Temel soru:
+
+**"Gözlenen wallet/flow davranışının arkasında normal piyasa katılımı mı
+var, yoksa sandwich, MEV, scam/rug, fake liquidity, wash trading,
+sybil veya koordineli kötü aktör davranışı mı?"**
+
+Phase 10 observation / risk / reputation / context katmanıdır.
+
+Trade, paper, live-trade, wallet, signing veya execution authority taşımaz.
+
+## Planlanan Kapsam
+
+### 10A — Adversary Evidence Baseline
+
+- chain-aware adversary evidence identity
+- actor / wallet / entity evidence contract
+- evidence type
+- evidence count
+- confidence
+- freshness
+- provenance
+- UNKNOWN behavior
+- suspicion != proof
+- label != identity proof
+- label != trade permission
+
+### 10B — MEV / Sandwich Evidence
+
+- frontrun / victim / backrun sequence evidence
+- same-block proximity
+- transaction ordering evidence
+- price-impact relationship
+- gas / priority context
+- repeated sandwich pattern
+- sandwich candidate classification
+- normal arbitrage != automatic sandwich
+- single similar transaction != MEV proof
+
+### 10C — Scam / Rug Actor Patterns
+
+- repeat rug association
+- liquidity removal behavior
+- suspicious deployer association
+- suspicious funder relationship
+- honeypot/scam association
+- repeat token-launch behavior
+- evidence confidence
+- evidence freshness
+- deterministic evidence before reputation escalation
+
+### 10D — Fake Liquidity / Wash / Sybil Intelligence
+
+- wash-trading evidence
+- coordinated-wallet evidence
+- fake participation evidence
+- sybil-like clustering evidence
+- circular-flow evidence
+- repeated counterparty patterns
+- apparent multi-actor vs independent multi-actor distinction
+- wallet count alone != participation quality
+
+### 10E — Sniper / Pump-Dump Actor Intelligence
+
+- launch-sniper behavior
+- coordinated early-buy evidence
+- concentrated accumulation
+- concentrated distribution
+- synchronized dump evidence
+- repeat pump/dump association
+- sniper behavior != automatic malicious intent
+- pump/dump label requires supporting evidence
+
+### 10F — Adversary Risk / Reputation
+
+- repeat-offender history
+- hard evidence vs soft evidence
+- evidence count
+- confidence
+- freshness
+- reputation bucket
+- hard evidence preservation
+- soft suspicion decay
+- conflicting evidence handling
+- stale reputation safe downgrade
+- UNKNOWN remains valid state
+
+### 10G — Wallet / Entity / Market Risk Bridge
+
+Planlanan zincir:
+
+Native Event Stream
+-> Phase 9 Wallet / Entity / Smart-Money Intelligence
+-> Phase 10 Adversary Intelligence
+-> Phase 5 Market Intelligence
+-> Phase 7 Flow Confirmation / Market Regime
+-> Risk / Exit Context
+
+Kurallar:
+
+- adversary evidence risk/context üretir
+- adversary evidence gerektiğinde candidate'i downgrade/block edebilir
+- adversary evidence entry permission vermez
+- adversary label bullish/bearish signal değildir
+- hard safety gate override edilemez
+- sellability/liquidity/execution safety üstündür
+- wallet/entity evidence ile adversary evidence birbirinden ayrılır
+- conflicting evidence UNKNOWN veya safe downgrade üretebilir
+
+### 10H — Adversary Readmodel / Hot-Path Contract
+
+Hot path yalnız precomputed adversary state okur.
+
+Planlanan alanlar:
+
+- adversary_risk_bucket
+- actor_evidence_count
+- hard_evidence_present
+- soft_evidence_score
+- confidence
+- freshness
+- repeat_offender_state
+- mev_risk
+- scam_risk
+- coordination_risk
+
+Hot path'te:
+
+- deep transaction trace YOK
+- graph expansion YOK
+- raw-event join YOK
+- per-wallet ağır aggregation YOK
+- AI inference YOK
+- external fetch YOK
+- provider call YOK
+
+Kurallar:
+
+- bounded cache
+- bounded readmodel
+- stale -> UNKNOWN / safe downgrade
+- missing -> UNKNOWN
+- adversary intelligence hot path'i yavaşlatamaz
+
+### 10I — Adversarial Stress / False-Positive Matrix
+
+Zorunlu senaryolar:
+
+- normal arbitrage vs sandwich
+- benign MEV-like ordering
+- single whale vs attacker
+- CEX wallet vs scam actor
+- same funder vs same actor
+- benign launch sniper
+- coordinated malicious sniper group
+- dust poisoning
+- wash trading
+- circular flow
+- sybil-like wallet cluster
+- fake multi-actor participation
+- real independent multi-actor participation
+- stale scam label
+- fake adversary label
+- conflicting evidence
+- one-off suspicious transaction
+- repeat offender
+- removed/reorg event
+- incomplete evidence
+- missing evidence
+- false attribution
+
+Amaç:
+
+**Kötü aktörü kaçırmamak kadar normal aktörü yanlışlıkla kötü aktör
+olarak sınıflandırmamak.**
+
+### 10J — Final Validation / Closure
+
+Phase 10 kapanmadan önce:
+
+- targeted tests
+- Phase 0-10 connection regression
+- smoke
+- end-to-end
+- adversary stress matrix
+- MEV / sandwich false-positive tests
+- scam/rug attribution tests
+- wash/sybil false-attribution tests
+- hot-path speed benchmark
+- bounded-cache/readmodel stress
+- compile
+- DB integrity / quick check
+- DB unchanged verification where applicable
+- generated-junk cleanup
+- authority audit
+- hot-path contract audit
+- README / ROADMAP closure
+- TEST_RESULTS update
+- single Phase 10 commit / push
+
+Alt fazlarda ayrı commit/push yapılmaz.
+
+## Phase 10 Temel Kuralları
+
+- Suspicion proof değildir.
+- Adversary label trade signal değildir.
+- Tek olay repeat-offender reputation oluşturmaz.
+- Tek benzer işlem sandwich/MEV kanıtı değildir.
+- Normal arbitrage otomatik sandwich değildir.
+- Whale olmak attacker olmak değildir.
+- CEX wallet olmak scam actor olmak değildir.
+- Same funder otomatik same actor değildir.
+- Sniper behavior otomatik malicious behavior değildir.
+- Wallet count tek başına gerçek multi-actor participation değildir.
+- Hard evidence ile soft suspicion ayrı tutulur.
+- Hard evidence keyfi decay etmez.
+- Soft suspicion gerektiğinde decay edebilir.
+- Stale adversary evidence FRESH kabul edilmez.
+- Ambiguous/conflicting evidence UNKNOWN kalabilir.
+- Hot path deep trace yapmaz.
+- Hot path graph expansion yapmaz.
+- Hot path raw-event join yapmaz.
+- Hot path AI çağırmaz.
+- Hot path external provider çağırmaz.
+- Hard safety adversary intelligence tarafından override edilemez.
+- Phase 10 decision/paper/live/wallet/signing/execution authority taşımaz.
+
+## Korunan Gelecek Backlog — UNUTULMAYACAK
+
+Phase 10'a yalnız adversary / scam-actor / MEV intelligence alınmıştır.
+
+Kalan başlıklar sonraki faz planlamalarında korunacaktır:
+
+- news / social / X / Telegram / Discord intelligence
+- listing / delisting / ICO / IDO / launchpad / airdrop radar
+- AI contract analyst
+- AI explanation / assistant layer
+- local / background AI
+- learning / calibration / outcome memory
+- false-positive / false-negative memory
+- missed-opportunity / avoided-loss memory
+- shadow simulation
+- paper lifecycle / paper engine
+- provider budget / paid-call / cost guard
+- command center / panel intelligence
+- live alerts / AI communication panel
+- execution readiness
+- wallet / signing / live-trade boundaries
+
+Phase 11-15 dağılımı şimdiden belirlenmez.
+
+## Beklenen Faz Sonu Durumu
+
+Phase 10 sonunda Coinoskobi şu soruyu deterministik ve bounded evidence
+ile cevaplayabilmelidir:
+
+**"Bu hareket normal piyasa katılımından mı geliyor, yoksa MEV,
+sandwich, scam/rug, wash/sybil veya koordineli adversarial actor
+davranışına dair yeterli kanıt var mı?"**
+
+Ve cevap:
+
+- evidence tabanlı,
+- false-positive kontrollü,
+- freshness-aware,
+- bounded,
+- hot-path safe,
+- authority-free
+
+olmalıdır.
+
+## Kapanış Doğrulaması
+
+Phase 10 final validation:
+
+- test collection: PASS
+- smoke: PASS
+- end-to-end: PASS
+- Phase 10 targeted: PASS
+- Phase 0-10 connection regression: PASS
+- full regression: PASS
+- compile: PASS
+- Phase 5-10 speed matrix: PASS
+- adversary hot-path benchmark: PASS
+- scheduler load: PASS
+- bounded event/wallet/adversary structures: PASS
+- adversarial false-positive matrix: PASS
+- DB integrity / quick check: PASS
+- DB unchanged: PASS
+- generated-junk cleanup: PASS
+- authority / hot-path contract audit: PASS
+
+Kalıcı kararlar:
+
+- suspicion proof değildir
+- adversary label trade signal değildir
+- tek olay repeat-offender reputation oluşturmaz
+- tek benzer işlem sandwich/MEV kanıtı değildir
+- normal arbitrage otomatik sandwich değildir
+- whale olmak attacker olmak değildir
+- CEX wallet olmak scam actor olmak değildir
+- same funder otomatik same actor değildir
+- sniper behavior otomatik malicious behavior değildir
+- wallet count tek başına gerçek independent participation değildir
+- apparent multi-actor ve independent multi-actor ayrılır
+- hard evidence ile soft suspicion ayrı tutulur
+- hard evidence keyfi decay etmez
+- soft suspicion gerektiğinde decay edebilir
+- stale evidence FRESH kabul edilmez
+- ambiguous/conflicting evidence safe downgrade veya UNKNOWN üretebilir
+- hard adversary evidence candidate'i block edebilir
+- elevated/high adversary evidence candidate'i downgrade edebilir
+- adversary intelligence candidate'i upgrade edemez
+- hard safety adversary intelligence tarafından override edilemez
+- hot path yalnız precomputed bounded adversary readmodel okur
+- hot path deep transaction trace yapmaz
+- hot path graph expansion yapmaz
+- hot path raw-event join yapmaz
+- hot path heavy actor aggregation yapmaz
+- hot path AI inference yapmaz
+- hot path external fetch/provider call yapmaz
+- Phase 10 decision/paper/live/wallet/signing/execution authority taşımaz
 
 ## Status
 
-⏳ WAITING
+✅ CLOSED
 
 ---
+
+# PHASE 11 — Reserved
 
 # PHASE 11 — Reserved
 

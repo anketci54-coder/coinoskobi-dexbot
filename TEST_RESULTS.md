@@ -533,3 +533,21 @@ Next:
 - Generated-junk cleanup: PASS
 - Phase 7: CLOSED
 - Phase 8: PLANNING
+
+
+## Phase 8 Final Validation — 2026-08-11
+
+- Real bounded BSC WSS Swap/Sync: PASS
+- Smoke: PASS
+- End-to-end: PASS
+- Phase 8 targeted: PASS
+- Phase 0-8 connection: PASS
+- Full regression: PASS
+- Compile: PASS
+- Throughput: PASS
+- Bounded-memory stress: PASS
+- DB integrity / quick check: PASS
+- Cleanup: PASS
+- Authority audit: PASS
+- Phase 8: CLOSED
+- Phase 9: RESERVED

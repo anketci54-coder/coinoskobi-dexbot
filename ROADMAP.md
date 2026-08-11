@@ -23,7 +23,7 @@ ROADMAP içinde tutulmaz.
 
 # PROJE DURUMU
 
-Current Phase: **PHASE 8 — PLANNING**
+Current Phase: **PHASE 8 — CLOSED**
 
 Next Phase: **PHASE 9 — RESERVED**
 
@@ -37,7 +37,7 @@ Progress:
 - Phase 5: ✅ CLOSED
 - Phase 6: ✅ CLOSED
 - Phase 7: ✅ CLOSED
-- Phase 8: 🟡 PLANNING
+- Phase 8: ✅ CLOSED
 - Phase 9: ⏳ WAITING
 - Phase 10: ⏳ WAITING
 - Phase 11: ⏳ WAITING
@@ -1218,9 +1218,41 @@ Kalan başlıklar korunur:
 
 Phase 9-15 dağılımı şimdiden belirlenmez.
 
+## Kapanış Doğrulaması
+
+Phase 8 final validation:
+
+- real bounded BSC WSS Swap/Sync: PASS
+- smoke: PASS
+- end-to-end: PASS
+- Phase 8 targeted: PASS
+- Phase 0-8 connection regression: PASS
+- full regression: PASS
+- compile: PASS
+- event throughput: PASS
+- bounded-memory stress: PASS
+- DB integrity / quick check: PASS
+- generated-junk cleanup: PASS
+- authority audit: PASS
+
+Kalıcı kararlar:
+
+- native event ingestion bounded kalır
+- unbounded eth_getLogs kullanılmaz
+- duplicate eventler transactionHash + logIndex ile bastırılır
+- removed logs reorg evidence olarak ayrı taşınır
+- out-of-order eventler kabul edilmez
+- reconnect / failover bounded kalır
+- stale subscription Phase 5/7 input olarak kullanılamaz
+- full buffer downstream input'i bloklar
+- provider failure event yokluğu anlamına gelmez
+- paid provider varsayılan değildir
+- secrets loglanmaz
+- Phase 8 decision/paper/live/wallet/signing/execution authority taşımaz
+
 ## Status
 
-🟡 PLANNING
+✅ CLOSED
 
 ---
 

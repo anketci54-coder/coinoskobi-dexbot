@@ -23,9 +23,9 @@ ROADMAP içinde tutulmaz.
 
 # PROJE DURUMU
 
-Current Phase: **PHASE 7 — CLOSED**
+Current Phase: **PHASE 8 — PLANNING**
 
-Next Phase: **PHASE 8 — RESERVED**
+Next Phase: **PHASE 9 — RESERVED**
 
 Progress:
 
@@ -37,7 +37,7 @@ Progress:
 - Phase 5: ✅ CLOSED
 - Phase 6: ✅ CLOSED
 - Phase 7: ✅ CLOSED
-- Phase 8: ⏳ WAITING
+- Phase 8: 🟡 PLANNING
 - Phase 9: ⏳ WAITING
 - Phase 10: ⏳ WAITING
 - Phase 11: ⏳ WAITING
@@ -1053,15 +1053,174 @@ Kalıcı kararlar:
 
 ---
 
-# PHASE 8 — Reserved
+# PHASE 8 — Native Event Ingestion & Provider Resilience
 
 ## Amaç
 
-Kapsam zamanı geldiğinde bir önceki fazın kapanışı sırasında planlanacak.
+Phase 5'te doğrulanan gerçek BSC native Swap/Sync WebSocket kanıtını
+sürekli, bounded ve güvenilir event-ingestion katmanına dönüştürmek.
+
+Temel soru:
+
+**"Native DEX event akışını kopma, tekrar, provider arızası ve stale veri
+durumlarında güvenli ve sürekli biçimde nasıl taşıyacağız?"**
+
+Phase 8 yalnız veri-alım / observation altyapısıdır.
+
+Trade, paper, live-trade, wallet veya signing authority taşımaz.
+
+## Planlanan Kapsam
+
+### 8A — Native Event Ingestion Baseline
+
+- mevcut HTTP / WSS capability inventory
+- event subscription contract
+- Swap / Sync topic binding
+- bounded read policy
+- freshness contract
+- no-unbounded-getLogs rule
+
+### 8B — WebSocket Subscription Adapter
+
+- BSC native WSS connection
+- eth_subscribe logs
+- bounded pair/topic subscription
+- clean unsubscribe
+- normalized event output
+
+### 8C — Connection Health / Reconnect
+
+- disconnect detection
+- heartbeat / liveness
+- bounded reconnect
+- backoff
+- reconnect storm protection
+- stale-state behavior
+
+### 8D — Event Integrity
+
+- duplicate suppression
+- transactionHash + logIndex identity
+- removed-log handling
+- reorg awareness
+- out-of-order protection
+- malformed-event rejection
+
+### 8E — Bounded Buffer / Backpressure
+
+- bounded in-memory queue
+- overflow policy
+- freshness-first consumption
+- no unbounded memory growth
+- hot-path protection
+
+### 8F — Provider Resilience / Failover
+
+- primary / fallback provider abstraction
+- provider capability state
+- failure classification
+- bounded failover
+- no paid provider by default
+- secrets never logged
+
+### 8G — Subscription Health Readmodel
+
+- connected / degraded / stale / disconnected
+- last event time
+- reconnect count
+- duplicate count
+- dropped / rejected count
+- provider class
+- freshness
+
+### 8H — Phase 5 / 7 Binding
+
+Native Swap/Sync stream
+-> Phase 5 DEX Market Intelligence
+-> Phase 7 Flow Confirmation / Market Regime
+-> Phase 6 Exit Intelligence
+
+Phase 8 yalnız event taşır ve normalize eder.
+
+### 8I — Failure / Stress Matrix
+
+- provider disconnect
+- reconnect
+- duplicated logs
+- removed / reorg log
+- malformed log
+- stale stream
+- burst load
+- queue overflow
+- provider failover
+- unavailable fallback
+- subscription timeout
+- clean shutdown
+
+### 8J — Final Validation / Closure
+
+- targeted tests
+- real bounded WSS validation
+- Phase 0-8 connection regression
+- smoke
+- end-to-end
+- failure stress
+- throughput
+- memory / boundedness
+- compile
+- DB integrity
+- cleanup
+- authority audit
+- README / ROADMAP closure
+- single Phase 8 commit / push
+
+Alt fazlarda ayrı push yapılmaz.
+
+## Phase 8 Temel Kuralları
+
+- WebSocket ingestion decision authority değildir.
+- Network failure event yokluğu değildir.
+- Retry / reconnect bounded olmalıdır.
+- Queue / buffer bounded olmalıdır.
+- Duplicate / reorg handling zorunludur.
+- Stale event FRESH gibi kullanılamaz.
+- Unbounded eth_getLogs yasaktır.
+- Paid provider varsayılan değildir.
+- Secrets loglanmaz.
+- Phase 8 live/wallet/signing authority açmaz.
+
+## Korunan Gelecek Backlog — UNUTULMAYACAK
+
+Phase 7'de korunan ileri backlog devam eder.
+
+Phase 8'e yalnız native event ingestion ve provider resilience alınmıştır.
+
+Kalan başlıklar korunur:
+
+- wallet / entity / whale intelligence
+- smart-money / known-wallet intelligence
+- adversary / scam-actor / MEV intelligence
+- news / social / X / Telegram / Discord intelligence
+- listing / delisting / ICO / IDO / launchpad / airdrop radar
+- AI contract analyst
+- AI explanation / assistant layer
+- local / background AI
+- learning / calibration / outcome memory
+- false-positive / false-negative memory
+- missed-opportunity / avoided-loss memory
+- shadow simulation
+- paper lifecycle / paper engine
+- provider budget / paid-call / cost guard
+- command center / panel intelligence
+- live alerts / AI communication panel
+- execution readiness
+- wallet / signing / live-trade boundaries
+
+Phase 9-15 dağılımı şimdiden belirlenmez.
 
 ## Status
 
-⏳ WAITING
+🟡 PLANNING
 
 ---
 

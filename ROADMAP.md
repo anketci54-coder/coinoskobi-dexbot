@@ -23,9 +23,9 @@ ROADMAP içinde tutulmaz.
 
 # PROJE DURUMU
 
-Current Phase: **PHASE 6 — CLOSED**
+Current Phase: **PHASE 7 — PLANNING**
 
-Next Phase: **PHASE 7 — PLANNING**
+Next Phase: **PHASE 8 — RESERVED**
 
 Progress:
 
@@ -746,18 +746,22 @@ Senaryolar:
 - repository cleanup
 - final closure
 
-## Planlanan Kararlar
+## Kapanış Kararları
 
-Bunlar henüz alınmış karar değildir:
+Phase 6 sonunda aşağıdaki davranışlar doğrulanmış ve kilitlenmiştir:
 
-- exact trend-health thresholds
-- exhaustion persistence window
-- debounce süreleri
-- adaptive trailing tightening seviyeleri
-- runner exit-pressure threshold
-- native event subscription/provider seçimi
+- trend health deterministik olarak STRONG / HEALTHY / WEAKENING / BREAK / UNKNOWN üretir
+- weakening ve break tek kötü tick ile kesinleştirilmez; persistence/debounce uygulanır
+- momentum exhaustion fiyat ile flow/participation/liquidity ayrışmasını gözlemler
+- exit pressure advisory context üretir; doğrudan çıkış emri vermez
+- runner health HEALTHY / PROTECT / TIGHTEN / EXIT_CANDIDATE / EMERGENCY_EXIT_CONTEXT bağlamı üretir
+- adaptive trailing mevcut korunmuş stop seviyesini aşağı çekemez
+- hard sellability/liquidity/MEV/execution riskleri trend değerlendirmesinden ayrıdır ve üst güvenlik bağlamıdır
+- stale veya eksik veri UNKNOWN olarak güvenli biçimde taşınır
+- Phase 6 decision/paper/live/wallet/execution authority taşımaz
 
-Bu maddeler gerçek veri ve test sonucuna göre Phase 6 içinde kararlaştırılacaktır.
+Phase 6 içinde kesin sayısal piyasa eşikleri gereksiz yere global sabit olarak kilitlenmemiştir;
+gelecekte gerçek veri ve outcome evidence ile kalibrasyon yapılabilir.
 
 ## Beklenen Faz Sonu Durumu
 
@@ -813,29 +817,208 @@ Kalıcı kararlar:
 
 ---
 
-# PHASE 7 — Planning
+# PHASE 7 — Flow Confirmation & Market Regime Intelligence
 
 ## Amaç
 
-Kapsam zamanı geldiğinde Phase 6 kapanışı sırasında planlanacak.
+Phase 5 DEX Market Intelligence ile Phase 6 DEX Exit Intelligence arasına
+deterministik flow-confirmation ve market-regime katmanı eklemek.
 
-## Planlama Durumu
+Temel soru:
 
-Phase 7'nin gerçek kapsamı henüz belirlenmemiştir.
+**"Gördüğümüz fiyat hareketi gerçek ve sürdürülebilir çoklu piyasa akışı
+tarafından teyit ediliyor mu, yoksa tekil/noisy/çelişkili bir hareket mi?"**
 
-Phase 6 kapanışından sonra sistemin mevcut durumu,
-darboğazları ve öncelikleri değerlendirilerek planlanacaktır.
+Phase 7 observation/advisory katmanıdır.
 
-Phase 7 başlamadan önce:
+Trade, paper, live, wallet, signing veya execution authority taşımaz.
 
-- amacı
-- planlanan kapsamı
-- değerlendirilecek kararları
-- beklenen faz sonu durumunu
+## Planlanan Kapsam
 
-ROADMAP içinde kendi yerine yazılacaktır.
+### 7A — Flow Spread Baseline
 
-İleri Phase 8-15 içerikleri şimdiden tahmin edilmez.
+- buy flow
+- sell flow
+- net flow
+- flow spread
+- spread velocity
+- spread acceleration
+- freshness / coverage / UNKNOWN contract
+
+### 7B — Flow Confirmation
+
+Planlanan deterministik durumlar:
+
+- CONFIRMED
+- PARTIAL_CONFIRMATION
+- UNCONFIRMED
+- CONFLICT
+- UNKNOWN
+
+Fiyat hareketi tek başına confirmation sayılmaz.
+
+### 7C — Divergence / Convergence
+
+- price ↔ flow divergence
+- buy/sell flow divergence
+- strengthening spread
+- weakening spread
+- convergence
+- Phase 6 momentum-exhaustion bağlantısı
+
+### 7D — Multi-Actor Flow Quality
+
+- tek büyük swap trend değildir
+- unique-wallet participation
+- repeated multi-order flow
+- wallet concentration
+- SINGLE_ACTOR_SPIKE ayrımı
+- whale-driven hareket ile geniş katılım ayrımı
+
+### 7E — Flow Persistence / Noise Control
+
+- tek tick trend oluşturmaz
+- confirmation persistence
+- divergence persistence
+- debounce
+- noise suppression
+- rapid flip protection
+
+### 7F — Market Regime
+
+Planlanan deterministik rejimler:
+
+- TRENDING_BULL
+- TRENDING_BEAR
+- CHOP
+- CONFLICT
+- TRANSITION
+- UNKNOWN
+
+### 7G — Direction / Flow Agreement
+
+Birlikte değerlendirilecek kanıtlar:
+
+- primary direction / opportunity context
+- real DEX flow
+- flow acceleration
+- participation
+- wallet flow
+- liquidity / reserve
+- price impact
+
+Amaç tek bir metriğin karar vermesi değil,
+bağımsız kanıtların aynı piyasa hikâyesini destekleyip desteklemediğini ölçmektir.
+
+### 7H — Phase 5 / Phase 6 Binding
+
+Planlanan zincir:
+
+Phase 5 DEX Signal Bundle
+-> Phase 7 Flow Confirmation
+-> Market Regime
+-> Phase 6 Exit Intelligence
+
+Aynı gözlem verisi:
+
+- giriş kalitesini değerlendirebilir
+- pozisyon sırasında trend sağlığını besleyebilir
+- exhaustion / exit-pressure bağlamını güçlendirebilir
+
+Ancak Phase 7 doğrudan işlem emri üretmez.
+
+### 7I — Stress / False-Signal Matrix
+
+Zorunlu senaryolar:
+
+- single whale / single actor spike
+- fake pump benzeri tekil hareket
+- high volume / low participation
+- price up / flow down
+- price up / liquidity deteriorating
+- buy ve sell flow aynı yönde / choppy
+- stale / incomplete evidence
+- rapid regime flip
+- conflicting wallet / participation evidence
+
+### 7J — Final Validation / Closure
+
+Phase 7 kapanmadan önce:
+
+- targeted tests
+- Phase 0-7 connection regression
+- smoke
+- end-to-end
+- stress
+- speed
+- compile
+- DB integrity / quick check
+- generated-junk cleanup
+- authority audit
+- README / ROADMAP closure
+- tek Phase 7 commit / push
+
+Alt adımlarda ayrı push yapılmaz.
+
+## Phase 7 Temel Kuralları
+
+- DEX-native evidence first.
+- Tek büyük swap gerçek trend kanıtı değildir.
+- Raw volume tek başına confirmation değildir.
+- Multi-actor participation daha güçlü kanıttır.
+- Divergence ve convergence ayrı sinyallerdir.
+- Tek tick ile trend/rejim değişmez.
+- Stale veya eksik evidence UNKNOWN üretir.
+- Hard safety gate'leri flow confirmation tarafından override edilemez.
+- Phase 7 decision/paper/live/wallet/signing/execution authority taşımaz.
+- Phase 5 ve Phase 6 davranışları gereksiz yere değiştirilmez.
+
+## Korunan Gelecek Backlog — UNUTULMAYACAK
+
+Aşağıdaki konular Phase 7 kapsamına dahil değildir.
+
+Bunlar daha önce fazları gereksiz uzatmamak için ileri fazlara bırakılmış
+önemli sistem katmanlarıdır ve roadmap ilerlerken kaybedilmeyecektir.
+
+Phase 7 kapanışında ve sonraki her faz planlamasında bu liste yeniden
+değerlendirilecektir.
+
+- production-grade WebSocket / native event ingestion
+- provider failover / reconnect / subscription health
+- wallet / entity / whale intelligence
+- smart-money / known-wallet intelligence
+- adversary / scam-actor / MEV intelligence
+- news / social / X / Telegram / Discord intelligence
+- listing / delisting / ICO / IDO / launchpad / airdrop radar
+- AI contract analyst
+- AI explanation / assistant layer
+- local / background AI
+- learning / calibration / outcome memory
+- false-positive / false-negative memory
+- missed-opportunity / avoided-loss memory
+- shadow simulation
+- paper lifecycle / paper engine
+- provider budget / paid-call / cost guard
+- command center / panel intelligence
+- live alerts / AI communication panel
+- execution readiness
+- wallet / signing / live-trade boundaries
+
+Backlog kuralları:
+
+1. Bu liste Phase 7 yapılacaklar listesi değildir.
+2. Maddeler unutulduğu için roadmap dışına düşürülemez.
+3. Phase 8-15 dağılımı şimdiden tahmin edilmez.
+4. Her faz kapanışında mevcut darboğazlara göre liste tekrar değerlendirilir.
+5. Bir madde yeni faza alınırsa kendi resmi faz kapsamına taşınır.
+6. Backlog kaydı hiçbir execution/live/wallet/signing yetkisi oluşturmaz.
+
+## Beklenen Faz Sonu Durumu
+
+Phase 7 şu soruyu deterministik kanıtlarla cevaplayabilmelidir:
+
+**"Bu hareket gerçek çoklu akış tarafından teyit ediliyor mu ve piyasa hangi
+rejimde?"**
 
 ## Status
 

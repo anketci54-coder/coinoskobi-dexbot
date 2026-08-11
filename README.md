@@ -21,7 +21,8 @@ Temel ilke:
 - Phase 4: CLOSED
 - Phase 5: CLOSED
 - Phase 6: CLOSED
-- Phase 7: PLANNING
+- Phase 7: CLOSED
+- Phase 8: RESERVED
 
 Phase 5'in ana DEX Market Intelligence çekirdeği tamamlanmıştır.
 

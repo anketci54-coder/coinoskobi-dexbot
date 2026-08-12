@@ -26,6 +26,9 @@ from app.pipeline.work_scheduler import WorkScheduler
 from app.pipeline.market_context import build_market_context
 from app.pipeline.execution_context import build_execution_context
 from app.pipeline.intelligence_composition import RuntimeIntelligenceComposition
+from app.learning.runtime_outcome_feed import RuntimeLearningOutcomeFeed
+from app.dex.runtime_market_flow import RuntimeMarketFlowStore
+from app.dex.runtime_actor_intelligence import RuntimeActorIntelligence
 from app.scanner.adapters.source_router import normalize_source_rows
 
 from app.config.scanner import (
@@ -66,7 +69,18 @@ class PipelineEngine:
         self.cache = GeckoCache()
         self.filter = CacheFilter()
         self.ingress_gate = IngressGate()
-        self.manager = PaperManager()
+        self.learning_outcome_feed = (
+            RuntimeLearningOutcomeFeed(
+                chain="bsc"
+            )
+        )
+
+        self.manager = PaperManager(
+            learning_feed=(
+                self.learning_outcome_feed
+            )
+        )
+
         self.candidate_queue = CandidateAdmissionQueue(
             max_pending=MAX_PENDING_CANDIDATES,
             cooldown_seconds=RECENT_ANALYSIS_COOLDOWN_SECONDS,
@@ -78,6 +92,87 @@ class PipelineEngine:
         self.intelligence = (
             RuntimeIntelligenceComposition()
         )
+
+        self.native_market_flow = (
+            RuntimeMarketFlowStore()
+        )
+
+        self.native_actor_intelligence = (
+            RuntimeActorIntelligence(
+                chain="bsc",
+                wallet_writer=(
+                    self.intelligence.update_wallet
+                ),
+                adversary_writer=(
+                    self.intelligence.update_adversary
+                ),
+            )
+        )
+
+    def configure_native_market_flow(
+        self,
+        pair,
+        token,
+        quote_token,
+    ):
+        return self.native_market_flow.register_pair(
+            pair,
+            token,
+            quote_token,
+        )
+
+    async def on_native_event(
+        self,
+        event,
+    ):
+        market_result = (
+            self.native_market_flow.observe_event(
+                event
+            )
+        )
+
+        actor_runtime = getattr(
+            self,
+            "native_actor_intelligence",
+            None,
+        )
+
+        if actor_runtime is not None:
+            await actor_runtime.observe_event(
+                event,
+                direction=(
+                    market_result.get(
+                        "direction",
+                        "UNKNOWN",
+                    )
+                ),
+            )
+
+        return True
+
+    async def on_native_retraction(
+        self,
+        event,
+    ):
+        self.native_market_flow.observe_retraction(
+            event
+        )
+
+        actor_runtime = getattr(
+            self,
+            "native_actor_intelligence",
+            None,
+        )
+
+        if actor_runtime is not None:
+            await actor_runtime.observe_retraction(
+                event
+            )
+
+        return True
+
+    def process_positions(self):
+        return self.manager.process()
 
     def run(
         self,
@@ -512,9 +607,49 @@ class PipelineEngine:
 
             market_context = (
                 build_market_context(
-                    row
+                    row,
+                    runtime_feed=getattr(
+                        self,
+                        "native_market_flow",
+                        None,
+                    ),
                 )
             )
+
+            actor_runtime = getattr(
+                self,
+                "native_actor_intelligence",
+                None,
+            )
+
+            if actor_runtime is not None:
+                actor_snapshot = (
+                    actor_runtime.snapshot(
+                        row.get("pool")
+                    )
+                )
+
+                if (
+                    actor_snapshot.get(
+                        "state"
+                    )
+                    == "READY"
+                ):
+                    market_context[
+                        "wallet_id"
+                    ] = actor_snapshot[
+                        "wallet_id"
+                    ]
+
+                    market_context[
+                        "adversary_key"
+                    ] = actor_snapshot[
+                        "adversary_key"
+                    ]
+
+                    market_context[
+                        "runtime_actor"
+                    ] = actor_snapshot
 
             try:
                 result = self.run(

@@ -2256,3 +2256,909 @@ modeliyle devam edebilir.
 ## Status
 
 ⏳ WAITING
+---
+
+---
+
+# OCR — Operational Closure Repair
+
+> **OCR = Operational Closure Repair**
+>
+> Optical Character Recognition değildir.
+
+## OCR'nin Rolü
+
+OCR yeni bir Phase değildir.
+
+Amaç:
+
+- Phase 0–11 boyunca yapılmış repair/audit çalışmalarını tek yerde toplamak
+- gerçek runtime entegrasyon açıklarını kapatmak
+- geçici R-numaralı repair zincirini sona erdirmek
+- Phase 12 öncesi operational closure yapmak
+
+Kurallar:
+
+- Phase 12 açılmaz
+- Phase 12 numarası tüketilmez
+- yeni R1/R2/R3... isimleri üretilmez
+- bundan sonraki tüm repair işleri OCR altında tutulur
+- disposable scriptler roadmap'e yazılmaz
+- yalnız kalıcı değişiklik + neden + sonuç kaydedilir
+- OCR tamamen kapanana kadar ara commit/push yapılmaz
+- finalde tek OCR validation + tek commit + tek push yapılır
+
+Current Phase:
+
+**PHASE 11 — CLOSED**
+
+Next Phase:
+
+**PHASE 12 — RESERVED**
+
+OCR Status:
+
+**✅ CLOSED**
+
+---
+
+## Neden OCR Açıldı?
+
+Phase 11 kapanışı sonrası bağımsız Codex mimari denetimi yapıldı.
+
+Denetim baseline:
+
+- Engineering Quality: **68/100**
+- Production Readiness: **45/100**
+- Phase 12 Gate: **B**
+- P0 Critical: **0**
+
+Ana sonuç:
+
+Sistem library/code/test seviyesinde güçlüydü fakat bazı Phase 5–11
+bileşenleri gerçek application runtime'ında eksiksiz beslenmiyor veya
+lifecycle tarafından sahiplenilmiyordu.
+
+OCR'nin amacı puan şişirmek değildir.
+
+Amaç:
+
+**bir sonraki adversarial audit aynı operational açıkları tekrar
+bulamayacak kadar gerçek bağlantıları tamamlamaktır.**
+
+---
+
+# Phase 0–11 Kısa Tarihçe
+
+| Faz | Ne yapıldı? | Neden? | Sonuç |
+|---|---|---|---|
+| Phase 0 | Temel bug/cache/scanner temizliği | Botu çalışır ve test edilebilir yapmak | Temel sistem stabil hale geldi |
+| Phase 1 | Runner/logger/config/paper DB/WAL | Temiz core altyapı | Sade çekirdek oluştu |
+| Phase 2 | Bounded queue/cache/conveyor/scheduler | Ölçeklenebilir pipeline | Chain-aware bounded pipeline oluştu |
+| Phase 3 | Risk/sellability/MEV/cost/advisory scoring | Güvenli giriş fizibilitesi | Hard safety score'dan ayrıldı |
+| Phase 4 | Multi-TP/runner/trailing lifecycle | Pozisyon mekanikleri | Deterministik lifecycle oluştu |
+| Phase 5 | DEX market intelligence/native evidence | Kısa horizon piyasayı görmek | DEX-native gözlem çekirdeği oluştu |
+| Phase 6 | Exit intelligence/runner health | Çıkış bağlamı üretmek | Trend/exit intelligence oluştu |
+| Phase 7 | Flow confirmation/regime | Tek sinyale bağımlılığı azaltmak | Flow/regime context oluştu |
+| Phase 8 | Native event ingestion | DEX eventlerini normalize etmek | Bounded event contract oluştu |
+| Phase 9 | Wallet/entity/smart-money | Cüzdan ve entity davranışı | Wallet/entity intelligence oluştu |
+| Phase 10 | Adversary/MEV/scam | Manipülasyon/kötü aktör ayrımı | Adversary intelligence oluştu |
+| Phase 11 | Outcome/calibration/memory | Hata ve başarıyı ölçmek | Proposal-only safe learning oluştu |
+
+---
+
+# OCR Geçmiş Repair Kayıtları
+
+Aşağıdaki R isimleri tarihsel kayıttır.
+
+**Bundan sonra yeni R numarası açılmaz.**
+
+## Historical R1 — Versioned Paper Schema
+
+### Neydi?
+
+Paper DB clean-start/schema contract yeterince açık değildi.
+
+### Neden yapıldı?
+
+Yeni veya boş DB'nin güvenli ve deterministik kurulması gerekiyordu.
+
+### Sonuç
+
+✅ TAMAMLANDI
+
+- versioned paper schema
+- clean-start temp DB PASS
+- idempotent schema creation
+- integrity/quick check PASS
+- production DB unchanged
+
+---
+
+## Historical R2 — SQLite Concurrency / Atomic Insert
+
+### Neydi?
+
+Shared SQLite connection üzerinde eşzamanlı paper insert yarış riski vardı.
+
+### Neden yapıldı?
+
+Aynı process içinde duplicate OPEN ve transaction yarışlarını engellemek.
+
+### Sonuç
+
+✅ TAMAMLANDI
+
+- RLock
+- serialized DB access
+- BEGIN IMMEDIATE
+- atomic check + insert
+- rollback
+- WAL/busy timeout
+- thread concurrency stress PASS
+- production DB unchanged
+
+### OCR'de kalan konu
+
+DB-level uniqueness hâlâ ayrıca tamamlanacak.
+
+---
+
+## Historical R3 — O(1) Readmodels / Streamed Scheduler
+
+### Neydi?
+
+Wallet/adversary readmodel eviction ve scheduler memory davranışı
+uzun runtime için iyileştirilmeliydi.
+
+### Neden yapıldı?
+
+Hot path üzerinde O(n) büyümeyi ve gereksiz memory amplification'ı azaltmak.
+
+### Sonuç
+
+✅ TAMAMLANDI
+
+- deque tabanlı O(1) eviction
+- wallet readmodel bounded
+- adversary readmodel bounded
+- streamed scheduler
+- pressure benchmark PASS
+- 50K scheduler load PASS
+
+---
+
+## Historical R4 — Operational Bounded WSS Runtime
+
+### Neydi?
+
+WSS contracts vardı fakat operational connect/subscribe/recv/reconnect
+runtime eksikti.
+
+### Neden yapıldı?
+
+Native event ingestion için gerçek bounded runtime davranışı gerekiyordu.
+
+### Sonuç
+
+✅ IMPLEMENTED / TESTED
+
+- modern websockets asyncio API
+- connect / subscribe / receive
+- bounded event buffer
+- bounded duplicate memory
+- timeout
+- reconnect/backoff
+- maximum reconnects
+- unsubscribe
+- cancellation/shutdown
+- malformed/disconnect tests
+- reconnect stress PASS
+
+### OCR'de kalan konu
+
+Application lifecycle wiring + reorg/delivery correctness tamamlanacak.
+
+---
+
+## Historical R5 — Runtime Intelligence Composition
+
+### Neydi?
+
+Phase 5–10 intelligence modülleri gerçek PipelineEngine ile yeterince
+bağlı değildi.
+
+### Neden yapıldı?
+
+Market/wallet/adversary context'in ortak runtime composition üzerinden
+pipeline'a taşınması gerekiyordu.
+
+### Sonuç
+
+✅ STRUCTURAL INTEGRATION TAMAMLANDI
+
+- RuntimeIntelligenceComposition
+- PipelineEngine binding
+- lazy initialization
+- backward compatibility
+- market_context mutation bug düzeltildi
+- runtime intelligence targeted tests PASS
+
+### OCR'de kalan konu
+
+Ordinary run_cycle gerçek market/flow/wallet/adversary evidence ile
+beslenecek.
+
+---
+
+## Historical R6 — Integration / Failure / Long-Run Seal
+
+### Neydi?
+
+R1–R5 değişikliklerinin tek tek test geçmesi yeterli değildi.
+
+### Neden yapıldı?
+
+Long-run, scheduler, readmodel, DB concurrency ve integration birlikte
+doğrulanmalıydı.
+
+### Sonuç
+
+✅ TAMAMLANDI
+
+- integration tests
+- failure-path validation
+- 1M readmodel long-run
+- scheduler 100K PASS
+- repeated paper concurrency PASS
+- DB integrity/quick PASS
+- authority audit PASS
+- compile PASS
+
+---
+
+## Historical R7 — Dependency / Legacy / Reproducibility
+
+### Neydi?
+
+requirements unpinned idi ve websockets legacy warning kaynağı belirsizdi.
+
+### Neden yapıldı?
+
+Kurulumun tekrar üretilebilir olması ve warning'in proje mi dependency mi
+olduğunun ayrılması gerekiyordu.
+
+### Sonuç
+
+✅ TAMAMLANDI
+
+Pinned direct dependencies:
+
+- web3==7.16.0
+- python-dotenv==1.2.2
+- requests==2.34.2
+- loguru==0.7.3
+- pytest==9.1.1
+
+Doğrulamalar:
+
+- clean temp venv install PASS
+- clean import smoke PASS
+- project-owned legacy websocket import ZERO
+- project WSS modern asyncio API
+- websockets.legacy warning = Web3 dependency-owned
+
+### Bilinen sınır
+
+Transitive dependency graph henüz hash-lock değildir.
+
+---
+
+## Historical R8 — Phase 0–10 Closure Repair Final Audit
+
+### Neydi?
+
+Önceki repair'lerin gerçekten birlikte çalıştığını doğrulamak gerekiyordu.
+
+### Neden yapıldı?
+
+Phase 11'e dönmeden önce Phase 0–10 repair zincirini mühürlemek.
+
+### Sonuç
+
+✅ TAMAMLANDI
+
+- full regression PASS
+- persistence repair PASS
+- runtime composition PASS
+- WSS contract PASS
+- hot-path/scheduler PASS
+- dependency reproducibility PASS
+- DB health/unchanged PASS
+- authority zero PASS
+
+Codex finding classification:
+
+FIXED:
+- clean-start paper schema
+- SQLite thread concurrency
+- O(1) readmodels
+- scheduler memory behavior
+- bounded WSS implementation
+- runtime composition structure
+- direct dependency pinning
+
+---
+
+## Historical R9A — Candidate Queue Strict Boundedness
+
+### Neydi?
+
+Candidate `_entries` bounded idi fakat stale heap entries ve cooldown map
+yardımcı state'i uzun runtime'da büyüyebiliyordu.
+
+### Neden yapıldı?
+
+Continuous observation sırasında hidden auxiliary memory growth
+oluşmasını engellemek.
+
+### Sonuç
+
+✅ TAMAMLANDI
+
+- heap compaction
+- expired cooldown pruning
+- explicit auxiliary limits
+- 1M duplicate heap stress PASS
+- cooldown churn stress PASS
+- existing priority ordering preserved
+- existing cooldown behavior preserved
+- full regression PASS
+
+Bu işten itibaren R numaralandırması sona ermiştir.
+
+---
+
+# OCR Aktif İş Listesi
+
+## 1. Candidate Queue Strict Boundedness
+
+Status: ✅ TAMAMLANDI
+
+Sonuç:
+
+- active queue bounded
+- best/worst heaps bounded
+- cooldown state pruned/bounded
+- 1M duplicate stress PASS
+
+---
+
+## 2. DB-Level Single OPEN Guarantee + Migration
+
+Status: ✅ TAMAMLANDI
+
+### Neydi?
+
+Process-local RLock ve BEGIN IMMEDIATE güvenliydi ancak farklı
+process'lerin aynı token için eşzamanlı OPEN kayıt üretmesini
+database seviyesinde engelleyen invariant yoktu.
+
+### Neden yapıldı?
+
+Thread-safe olmak multi-process safe olmak değildir.
+Tek OPEN position garantisinin uygulama koduna değil SQLite'ın
+kendisine ait olması gerekir.
+
+### Sonuç
+
+- paper schema v2
+- case-insensitive partial unique OPEN index
+- DB-level single OPEN invariant
+- clean v1 → v2 migration PASS
+- idempotent migration PASS
+- legacy duplicate preflight guard PASS
+- duplicate legacy data otomatik değiştirilmez
+- newer-schema rejection korunuyor
+- closed history yeni OPEN'i engellemiyor
+- multiprocess contention PASS
+- gerçek DB preflight PASS
+- SQLite-consistent pre-migration backup PASS
+- gerçek DB schema v2 migration PASS
+- integrity / quick check PASS
+- process race sonrası IntegrityError güvenli duplicate sonucu üretir
+
+Unique invariant:
+
+`lower(token)` başına `status='OPEN'` için en fazla 1 row.
+
+Bu garanti artık yalnız process lock ile değil database seviyesinde
+uygulanmaktadır.
+
+---
+
+## 3. WSS Delivery / Subscription / Reorg Correctness
+
+Status: ✅ TAMAMLANDI
+
+### Neydi?
+
+WSS runtime bounded ve reconnect-safe idi fakat correctness tarafında
+üç ana açık vardı:
+
+- event callback başarısız olmadan önce local seen/accepted state
+  güncelleniyordu
+- notification subscription ID aktif subscription ile doğrulanmıyordu
+- removed/reorg event daha önce seen olmuşsa duplicate olarak
+  yutulabiliyordu
+
+İlk düzeltmede retraction normal `on_event` callback kanalına
+gönderildi ve mevcut callback contract regression üretti.
+
+### Neden yapıldı?
+
+Native event runtime şu garantileri taşımalıdır:
+
+- downstream callback failure event kaybı üretmemeli
+- stale/foreign subscription event'i kabul edilmemeli
+- reorg canonical state correction üretmeli
+- mevcut normal-event callback contract bozulmamalı
+- correction ve canonical-event yolları birbirinden ayrılmalı
+
+### Sonuç
+
+✅ Delivery correctness tamamlandı.
+
+- callback-before-ack semantics
+- callback failure sonrası event seen/accepted sayılmaz
+- reconnect replay mümkün
+- explicit callback `False` negative acknowledgement
+- active subscription ID validation
+- stale/foreign subscription rejection
+- removed/reorg duplicate kontrolünden önce sınıflandırılır
+- successful removal `RETRACTION` üretir
+- successful retraction seen identity'yi kaldırır
+- retraction sonrası ordering watermark güvenli reset edilir
+- canonical replay yeniden kabul edilir
+- failed retraction state'i yanlışlıkla temizlemez
+- normal event callback: `on_event`
+- reorg correction callback: `on_retraction`
+- historical `on_event` contract korunmuştur
+- bounded seen/buffer korunmuştur
+- authority zero korunmuştur
+- exact failed regression recheck PASS
+- WSS targeted: 39 PASS
+- full regression: 813 PASS
+- compile PASS
+- diff check PASS
+
+Delivery modeli:
+
+`CALLBACK_BEFORE_ACK_AT_LEAST_ONCE`
+
+Bu model exactly-once iddiası taşımaz.
+
+Downstream consumers event identity ile idempotent davranmalıdır.
+
+Normal callback contract:
+
+`on_event` → canonical accepted events only
+
+Correction callback contract:
+
+`on_retraction` → reorg/retraction events only
+
+---
+
+## 4. Application-Owned WSS Lifecycle
+
+Status: ✅ TAMAMLANDI
+
+### Neydi?
+
+NativeWSSRuntime implement ve test edilmişti fakat gerçek
+application composition root tarafından sahiplenilmiyordu.
+
+`main.py → Runner` yalnız scheduler loop çalıştırıyor;
+WSS startup/shutdown lifecycle dışarıda kalıyordu.
+
+### Neden yapıldı?
+
+Operational component olabilmesi için WSS runtime:
+
+- application tarafından oluşturulmalı
+- startup sırasında başlatılmalı
+- SIGINT/SIGTERM shutdown sırasında durdurulmalı
+- scheduler/runtime exception durumunda cleanup görmeli
+- health/status görünür olmalı
+- config yoksa sahte/default provider ile başlamamalı
+
+### Sonuç
+
+- `NativeWSSService` application-owned lifecycle wrapper
+- dedicated bounded background thread
+- dedicated asyncio event loop
+- idempotent start
+- bounded stop/join
+- runtime request_stop propagation
+- failure/status visibility
+- generic Runner service ownership
+- Runner startup service binding
+- Runner finally-based shutdown
+- scheduler failure sonrası service cleanup
+- main.py composition root artık configured WSS service'i Runner'a bağlar
+- explicit `WSS_URL`
+- explicit `WSS_PAIR`
+- fake/default WSS endpoint YOK
+- WSS yalnız gerçek config varsa aktif
+- normal application composition test edildi
+- repeated start/stop stress PASS
+- WSS authority zero korunuyor
+- full regression PASS
+
+Önemli sınır:
+
+Bu madde WSS lifecycle ownership'i tamamlar.
+
+WSS eventlerinin gerçek market/flow/wallet/adversary intelligence
+producer zincirine bağlanması bir sonraki OCR işidir.
+
+---
+
+## 5. Real Market / Flow Runtime Feed
+
+Status: ✅ TAMAMLANDI
+
+### Neydi?
+
+Ordinary `run_cycle()` yalnız liquidity/trade-size/impact/slippage
+context üretiyor; RuntimeIntelligenceComposition gerçek
+market/flow evidence beklemesine rağmen Phase 5–7 çoğunlukla
+manual/synthetic input ile test ediliyordu.
+
+WSS normalizer ayrıca raw log `address/data/topics` bilgisini
+korumadığı için gerçek Swap direction çözümlenemiyordu.
+
+### Neden yapıldı?
+
+Implemented/tested intelligence ile operational intelligence aynı şey
+değildir.
+
+Phase 5–7 ordinary runtime tarafından gerçek source evidence ile
+beslenmelidir.
+
+### Sonuç
+
+- WSS normalized event raw address/data/topics provenance taşır
+- deterministic V2 Swap decoder
+- explicit pair/token/quote registration
+- target token yönü yalnız kayıtlı metadata ile çözülür
+- metadata yoksa direction tahmin edilmez
+- scanner gerçek USD volume/liquidity/price evidence sağlar
+- native WSS gerçek directional Swap count sağlar
+- real buyers/sellers actor evidence
+- real tx count
+- real flow coverage
+- bounded per-pair native observation store
+- reorg RETRACTION observation'ı store'dan kaldırır
+- ordinary run_cycle runtime feed snapshot kullanır
+- `market_intelligence` real scanner/runtime evidence ile dolar
+- `flow_intelligence` yalnız gerçek directional evidence varsa dolar
+- fake sell-flow YOK
+- raw token amount → USD dönüşümü YOK
+- missing evidence → UNKNOWN
+- application composition root WSS callbacks'i PipelineEngine'e bağlar
+- WSS target token explicit config ile tanımlanır
+- WSS token yoksa direction tahmin edilmez
+- 250K bounded native flow stress PASS
+- targeted tests PASS
+- full regression PASS
+- authority zero korunur
+
+Operational data path:
+
+`WSS → normalize → callback-before-ack → PipelineEngine
+→ RuntimeMarketFlowStore → build_market_context
+→ RuntimeIntelligenceComposition`
+
+Scanner market data path:
+
+`scanner/cache → Candidate → build_market_context
+→ market_intelligence`
+
+Bu madde Phase 5–7 real runtime producer/consumer bağlantısını kapatır.
+
+---
+
+## 6. Real Wallet / Entity / Adversary Producers
+
+Status: ✅ TAMAMLANDI
+
+### Neydi?
+
+Phase 9–10 wallet/entity/adversary classifier ve readmodel'ları
+implement ve test edilmişti fakat ordinary runtime tarafından gerçek
+actor identity ile beslenen producer zinciri eksikti.
+
+Swap log `sender` alanını doğrudan kullanıcı wallet'ı kabul etmek
+semantik olarak güvenli değildir; router/caller olabilir.
+
+### Neden yapıldı?
+
+Operational wallet intelligence gerçek chain evidence kullanmalıdır.
+
+Wallet identity tahmin edilmemeli ve adversary risk, bulunmayan
+scam/MEV/pump-dump kanıtı ile şişirilmemelidir.
+
+### Sonuç
+
+- bounded tx-hash → tx.from resolver
+- gerçek wallet identity kaynağı yalnız transaction.from
+- Swap sender/recipient wallet identity olarak kullanılmaz
+- successful tx lookup bounded cache'e alınır
+- repeated tx lookup provider'a tekrar gitmez
+- provider failure → UNKNOWN
+- provider failure güvenli wallet üretmez
+- resolver cache bounded
+- native event → real tx.from
+- tx.from → wallet evidence
+- wallet behavior
+- conservative self-only entity context
+- cross-wallet auto merge YOK
+- institutional/entity identity claim YOK
+- minimum-sample concentration guard
+- wallet reputation
+- runtime participation/wash-sybil context
+- scam evidence uydurma YOK
+- MEV evidence uydurma YOK
+- pump-dump evidence uydurma YOK
+- hard evidence uydurma YOK
+- adversary evidence/reputation
+- WalletReadModel gerçek runtime producer tarafından güncellenir
+- AdversaryReadModel gerçek runtime producer tarafından güncellenir
+- latest real actor ordinary run_cycle context'e bağlanır
+- reorg RETRACTION actor evidence'i geri alır
+- son evidence retracted ise wallet context safe-not-ready olur
+- adversary context UNKNOWN'a döner
+- actor event store bounded
+- resolver bounded
+- 100K actor stress PASS
+- targeted tests PASS
+- full regression PASS
+- authority zero korunur
+
+Operational actor path:
+
+`WSS Swap
+→ tx hash
+→ bounded transaction resolver
+→ real tx.from
+→ wallet evidence / behavior
+→ self-only entity context
+→ conservative reputation
+→ adversary context
+→ WalletReadModel + AdversaryReadModel
+→ RuntimeIntelligenceComposition`
+
+Kimlik sınırı:
+
+`TRANSACTION_FROM_ONLY`
+
+Bu OCR maddesi cross-wallet/entity clustering yapmaz.
+Bu yalnız gerçek wallet observation ve conservative runtime context'tir.
+
+---
+
+## 7. Paper Outcome → Phase 11 Learning Feed
+
+Status: ✅ TAMAMLANDI
+
+### Yapılacak
+
+- completed paper lifecycle outcome event
+- immutable outcome identity
+- outcome evidence
+- classification
+- attribution
+- bounded outcome memory
+- calibration statistics
+- proposal
+- calibration readmodel
+
+Korunan sınır:
+
+- proposal != apply
+- automatic weight apply YOK
+- automatic threshold apply YOK
+- config write YOK
+- source-code rewrite YOK
+- hard-safety weakening YOK
+- execution authority YOK
+
+### Başarı kriteri
+
+Phase 11 sentetik test dışında gerçek paper outcome ile çalışmalı.
+
+---
+
+## 8. True Composition-Root E2E
+
+Status: ⬜ BEKLİYOR
+
+Gerçek zincir:
+
+Application lifecycle
+→ WSS/native event
+→ market/flow aggregation
+→ wallet/entity/adversary
+→ PipelineEngine
+→ risk/strategy
+→ paper lifecycle
+→ outcome
+→ learning
+
+### Başarı kriteri
+
+FakeWS + ayrı synthetic dictionaries ile yan yana test değil;
+aynı gerçek composition root içinden veri akışı kanıtlanmalı.
+
+---
+
+## 9. Persistence / Migration Hardening
+
+Status: ⬜ BEKLİYOR
+
+### Yapılacak
+
+- ordered schema migrations
+- constraints
+- NOT NULL/CHECK değerlendirmesi
+- old DB upgrade
+- newer DB rejection korunması
+- explicit PaperDatabase lifecycle/close
+- backup/recovery policy
+
+---
+
+## 10. Failure / Recovery Hardening
+
+Status: ⬜ BEKLİYOR
+
+Test edilecek:
+
+- provider timeout
+- provider disconnect
+- malformed RPC
+- WSS disconnect
+- reconnect exhaustion
+- callback failure
+- reorg
+- DB lock
+- duplicate multi-process insert
+- corrupt/old DB
+- queue overload
+- worker failure
+- restart
+- SIGTERM/SIGINT
+
+---
+
+## 11. Operability / Observability
+
+Status: ⬜ BEKLİYOR
+
+Değerlendirilecek:
+
+- startup validation
+- health state
+- provider health
+- runtime counters
+- structured logging
+- DB recovery
+- deployment placeholders
+- Dockerfile/docker-compose gerçek ihtiyaç
+- restart policy
+
+Bu alan gereksiz mikroservis veya ağır monitoring stack eklemek için
+kullanılmaz.
+
+---
+
+## 12. OCR Final Quality Seal
+
+Status: ⬜ BEKLİYOR
+
+Kapanış testleri:
+
+- full regression
+- smoke
+- true E2E
+- clean-start DB
+- migration tests
+- multi-process DB contention
+- WSS reconnect/reorg/callback tests
+- scheduler 100K+
+- candidate queue 1M+
+- readmodel 1M+
+- long-run memory/soak
+- speed matrix
+- DB integrity/quick
+- authority audit
+- generated-junk cleanup
+- documentation truth audit
+
+Ardından:
+
+1. tek OCR commit
+2. tek OCR push
+3. bağımsız adversarial audit
+4. yeniden puanlama
+5. Phase 12 gate değerlendirmesi
+
+---
+
+# OCR Kapanış Kriterleri
+
+OCR ancak aşağıdakilerin tamamı sağlanırsa CLOSED olur:
+
+- [x] Candidate queue tüm yardımcı state ile bounded
+- [x] DB-level single OPEN guarantee
+- [x] Tested schema migration path
+- [x] WSS delivery acknowledgement güvenli
+- [x] Reorg/retraction state correction
+- [x] Application-owned WSS lifecycle
+- [x] Real market/flow runtime feed
+- [x] Real wallet/entity/adversary producer
+- [x] Real paper outcome → learning feed
+- [x] True composition-root E2E
+- [x] Multi-process DB contention PASS
+- [x] Restart/recovery tests PASS
+- [x] Long-running bounded-memory soak PASS
+- [x] Full regression PASS
+- [x] Authority boundary unchanged
+- [x] Documentation truth audit PASS
+- [x] Phase 12 remains RESERVED
+- [x] Independent re-audit complete
+
+---
+
+# OCR Terminoloji Kuralı
+
+Bundan sonra:
+
+Eski:
+
+- R1
+- R2
+- R3
+- R4
+- R5
+- R6
+- R7
+- R7A
+- R8
+- R9A
+
+yalnız tarihsel referans olarak kullanılır.
+
+Yeni işlerde:
+
+**OCR — <iş adı>**
+
+kullanılır.
+
+Örnek:
+
+`OCR — DB Single OPEN Guarantee`
+
+`OCR — WSS Reorg Correctness`
+
+`OCR — Real Runtime Intelligence Feed`
+
+Yeni R numarası açılmaz.
+
+---
+
+## Status
+
+🟡 OPEN

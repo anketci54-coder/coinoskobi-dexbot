@@ -38,6 +38,7 @@ class NativeWSSRuntime:
         connect_factory=None,
         sleep_func=None,
         on_event=None,
+        on_retraction=None,
     ):
         if not url:
             raise ValueError("url required")
@@ -89,6 +90,7 @@ class NativeWSSRuntime:
         )
 
         self.on_event = on_event
+        self.on_retraction = on_retraction
 
         self.buffer = EventBuffer(
             max_buffer
@@ -114,9 +116,12 @@ class NativeWSSRuntime:
         self.accepted_count = 0
         self.duplicate_count = 0
         self.removed_count = 0
+        self.retraction_count = 0
         self.rejected_count = 0
         self.out_of_order_count = 0
         self.message_count = 0
+        self.subscription_mismatch_count = 0
+        self.delivery_failure_count = 0
 
         self.last_error = None
 
@@ -130,7 +135,10 @@ class NativeWSSRuntime:
         accepted_target = (
             None
             if max_events is None
-            else max(0, int(max_events))
+            else max(
+                0,
+                int(max_events),
+            )
         )
 
         if accepted_target == 0:
@@ -154,8 +162,6 @@ class NativeWSSRuntime:
                 if self._stop:
                     break
 
-                # Normal connection end without target
-                # completion is treated as reconnectable.
                 raise ConnectionError(
                     "WSS connection ended"
                 )
@@ -276,7 +282,7 @@ class NativeWSSRuntime:
 
         if response.get("error"):
             raise RuntimeError(
-                f"subscription error: "
+                "subscription error: "
                 f"{response['error']}"
             )
 
@@ -336,6 +342,18 @@ class NativeWSSRuntime:
             self.rejected_count += 1
             return
 
+        # A notification from another or stale
+        # subscription must never enter this runtime.
+        if (
+            normalized.get(
+                "subscription_id"
+            )
+            != self.subscription_id
+        ):
+            self.subscription_mismatch_count += 1
+            self.rejected_count += 1
+            return
+
         integrity = validate_event_integrity(
             normalized,
             seen=self._seen,
@@ -343,14 +361,21 @@ class NativeWSSRuntime:
             last_log_index=self.last_log_index,
         )
 
-        state = integrity.get("state")
+        state = integrity.get(
+            "state"
+        )
 
         if state == "DUPLICATE":
             self.duplicate_count += 1
             return
 
         if state == "REMOVED":
-            self.removed_count += 1
+            await self._deliver_retraction(
+                normalized,
+                integrity[
+                    "event_identity"
+                ],
+            )
             return
 
         if state == "OUT_OF_ORDER":
@@ -365,6 +390,25 @@ class NativeWSSRuntime:
             "event_identity"
         ]
 
+        delivered = dict(
+            normalized
+        )
+
+        delivered[
+            "delivery_kind"
+        ] = "EVENT"
+
+        # IMPORTANT:
+        # callback/downstream delivery occurs BEFORE
+        # local acknowledgement (_remember / buffer /
+        # accepted_count).
+        #
+        # If callback fails, the event remains unseen
+        # and can be replayed after reconnect.
+        await self._deliver(
+            delivered
+        )
+
         self._remember(
             identity
         )
@@ -378,22 +422,100 @@ class NativeWSSRuntime:
         )
 
         self.buffer.push(
-            normalized
+            delivered
         )
 
         self.accepted_count += 1
 
-        if self.on_event is not None:
-            result = self.on_event(
-                normalized
+    async def _deliver_retraction(
+        self,
+        normalized,
+        identity,
+    ):
+        retraction = dict(
+            normalized
+        )
+
+        retraction[
+            "delivery_kind"
+        ] = "RETRACTION"
+
+        retraction[
+            "retracts_event_identity"
+        ] = identity
+
+        # Retraction has a separate callback contract.
+        # This preserves the historical on_event contract:
+        # on_event receives canonical accepted events only.
+        #
+        # If a retraction consumer exists it is delivered
+        # before local acknowledgement/state correction.
+        if self.on_retraction is not None:
+            await self._deliver_callback(
+                self.on_retraction,
+                retraction,
+            )
+
+        self._forget(
+            identity
+        )
+
+        # Reorg invalidates our monotonic ordering
+        # watermark. Reset conservatively so canonical
+        # replacement logs may be accepted.
+        self.last_block = None
+        self.last_log_index = None
+
+        self.buffer.push(
+            retraction
+        )
+
+        self.removed_count += 1
+        self.retraction_count += 1
+
+    async def _deliver(
+        self,
+        event_row,
+    ):
+        if self.on_event is None:
+            return True
+
+        return await self._deliver_callback(
+            self.on_event,
+            event_row,
+        )
+
+    async def _deliver_callback(
+        self,
+        callback,
+        event_row,
+    ):
+        try:
+            result = callback(
+                event_row
             )
 
             if asyncio.iscoroutine(
                 result
             ):
-                await result
+                result = await result
 
-    def _remember(self, identity):
+            # Explicit False is negative acknowledgement.
+            if result is False:
+                raise RuntimeError(
+                    "event callback rejected"
+                )
+
+            return True
+
+        except Exception:
+            self.delivery_failure_count += 1
+            raise
+
+    def _remember(
+        self,
+        identity,
+    ):
         if identity in self._seen:
             return
 
@@ -417,6 +539,27 @@ class NativeWSSRuntime:
             identity
         )
 
+    def _forget(
+        self,
+        identity,
+    ):
+        if identity not in self._seen:
+            return
+
+        self._seen.discard(
+            identity
+        )
+
+        # Reorg is rare and max_seen is bounded.
+        # O(n) removal here is acceptable because
+        # this is not the normal hot path.
+        try:
+            self._seen_order.remove(
+                identity
+            )
+        except ValueError:
+            pass
+
     def status(self):
         return {
             "state": (
@@ -437,11 +580,20 @@ class NativeWSSRuntime:
             "removed_count": (
                 self.removed_count
             ),
+            "retraction_count": (
+                self.retraction_count
+            ),
             "rejected_count": (
                 self.rejected_count
             ),
             "out_of_order_count": (
                 self.out_of_order_count
+            ),
+            "subscription_mismatch_count": (
+                self.subscription_mismatch_count
+            ),
+            "delivery_failure_count": (
+                self.delivery_failure_count
             ),
             "message_count": (
                 self.message_count
@@ -461,6 +613,12 @@ class NativeWSSRuntime:
             "last_error": (
                 self.last_error
             ),
+            "delivery_semantics": (
+                "CALLBACK_BEFORE_ACK_AT_LEAST_ONCE"
+            ),
+            "retraction_supported": True,
+            "separate_retraction_callback": True,
+            "subscription_validation": True,
             "bounded_buffer": True,
             "bounded_seen": True,
             "decision_authority": False,

@@ -23,11 +23,14 @@ def validate_event_integrity(
     if not identity:
         return _out("REJECTED", "MISSING_IDENTITY", identity)
 
-    if identity in seen:
-        return _out("DUPLICATE", "ALREADY_SEEN", identity)
-
+    # Reorg/removal must be classified before duplicate.
+    # A previously accepted event can later be explicitly
+    # removed by the provider and must generate retraction.
     if e.get("removed") is True:
         return _out("REMOVED", "REORG_REMOVED_LOG", identity)
+
+    if identity in seen:
+        return _out("DUPLICATE", "ALREADY_SEEN", identity)
 
     block = _hexint(e.get("block_number"))
     idx = _hexint(e.get("log_index"))

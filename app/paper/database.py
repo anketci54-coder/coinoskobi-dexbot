@@ -60,7 +60,7 @@ class PaperDatabase:
                 """
                 SELECT 1
                 FROM paper_trades
-                WHERE token=?
+                WHERE lower(token)=lower(?)
                   AND status='OPEN'
                 LIMIT 1
                 """,
@@ -110,6 +110,28 @@ class PaperDatabase:
                 self.conn.commit()
 
                 return True
+
+            except sqlite3.IntegrityError:
+                self.conn.rollback()
+
+                # Database-level unique OPEN
+                # invariant may win a race against
+                # another process after our SELECT.
+                row = self.conn.execute(
+                    """
+                    SELECT 1
+                    FROM paper_trades
+                    WHERE lower(token)=lower(?)
+                      AND status='OPEN'
+                    LIMIT 1
+                    """,
+                    (token,),
+                ).fetchone()
+
+                if row is not None:
+                    return False
+
+                raise
 
             except Exception:
                 self.conn.rollback()

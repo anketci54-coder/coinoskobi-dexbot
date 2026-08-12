@@ -10,10 +10,14 @@ logger = logging.getLogger(__name__)
 
 class PaperManager:
 
-    def __init__(self):
+    def __init__(
+        self,
+        learning_feed=None,
+    ):
 
         self.db = PaperDatabase()
         self.price = CachePrice()
+        self.learning_feed = learning_feed
 
     def process(self):
 
@@ -164,6 +168,47 @@ class PaperManager:
 
             status = "CLOSED" if action == "CLOSE" else "OPEN"
 
+            learning_result = None
+            result_closed_at = (
+                pos.get("closed_at", "")
+                or ""
+            )
+
+            learning_feed = getattr(
+                self,
+                "learning_feed",
+                None,
+            )
+
+            if (
+                action == "CLOSE"
+                and learning_feed is not None
+            ):
+                result_closed_at = (
+                    datetime.now(
+                        timezone.utc
+                    ).isoformat()
+                )
+
+                learning_result = (
+                    learning_feed.observe_paper_close(
+                        position_id=pos["id"],
+                        token=token,
+                        observed_at=pos.get(
+                            "created_at",
+                            "",
+                        ),
+                        evaluated_at=(
+                            result_closed_at
+                        ),
+                        entry_price=entry,
+                        exit_price=current,
+                        realized_return=roi,
+                        close_reason=reason,
+                        opening_context=None,
+                    )
+                )
+
             results.append({
                 "success": True,
                 "source":  "paper",
@@ -175,8 +220,9 @@ class PaperManager:
                     "roi":           roi,
                     "status":        status,
                     "opened_at":     pos.get("created_at", ""),
-                    "closed_at":     pos.get("closed_at",  "") or "",
+                    "closed_at":     result_closed_at,
                     "reason":        reason,
+                    "learning":      learning_result,
                 },
             })
 

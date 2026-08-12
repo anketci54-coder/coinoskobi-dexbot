@@ -1,4 +1,4 @@
-PAPER_SCHEMA_VERSION = 1
+PAPER_SCHEMA_VERSION = 2
 
 PAPER_TRADES_SCHEMA = """
 CREATE TABLE IF NOT EXISTS paper_trades (
@@ -46,6 +46,103 @@ INDEXES = (
     """,
 )
 
+UNIQUE_OPEN_INDEX = """
+CREATE UNIQUE INDEX IF NOT EXISTS
+idx_paper_trades_one_open_per_token
+ON paper_trades(lower(token))
+WHERE status='OPEN'
+  AND token IS NOT NULL
+"""
+
+REQUIRED_COLUMNS = {
+    "id",
+    "created_at",
+    "closed_at",
+    "token",
+    "symbol",
+    "entry_price",
+    "current_price",
+    "exit_price",
+    "highest_price",
+    "lowest_price",
+    "tp_price",
+    "sl_price",
+    "amount_bnb",
+    "gross_pnl",
+    "net_pnl",
+    "roi",
+    "gas_buy",
+    "gas_sell",
+    "swap_fee",
+    "buy_tax",
+    "sell_tax",
+    "slippage",
+    "mev",
+    "close_reason",
+    "status",
+    "token_amount",
+    "pool",
+    "dex",
+}
+
+
+def _duplicate_open_groups(conn):
+    return conn.execute(
+        """
+        SELECT lower(token), COUNT(*)
+        FROM paper_trades
+        WHERE status='OPEN'
+          AND token IS NOT NULL
+        GROUP BY lower(token)
+        HAVING COUNT(*) > 1
+        ORDER BY COUNT(*) DESC
+        """
+    ).fetchall()
+
+
+def _verify_columns(conn):
+    columns = {
+        row[1]
+        for row in conn.execute(
+            "PRAGMA table_info(paper_trades)"
+        ).fetchall()
+    }
+
+    missing = sorted(
+        REQUIRED_COLUMNS - columns
+    )
+
+    if missing:
+        raise RuntimeError(
+            "paper schema missing columns: "
+            f"{missing}"
+        )
+
+    return columns
+
+
+def _migrate_to_v2(conn):
+    duplicates = _duplicate_open_groups(
+        conn
+    )
+
+    if duplicates:
+        count = sum(
+            int(row[1])
+            for row in duplicates
+        )
+
+        raise RuntimeError(
+            "paper schema migration blocked: "
+            "duplicate OPEN positions exist "
+            f"groups={len(duplicates)} "
+            f"rows={count}"
+        )
+
+    conn.execute(
+        UNIQUE_OPEN_INDEX
+    )
+
 
 def ensure_paper_schema(conn):
     current = conn.execute(
@@ -57,65 +154,69 @@ def ensure_paper_schema(conn):
             "paper schema newer than application"
         )
 
-    conn.execute(PAPER_TRADES_SCHEMA)
+    savepoint = "paper_schema_upgrade"
 
-    for sql in INDEXES:
-        conn.execute(sql)
+    conn.execute(
+        f"SAVEPOINT {savepoint}"
+    )
 
-    columns = {
-        row[1]
-        for row in conn.execute(
-            "PRAGMA table_info(paper_trades)"
-        ).fetchall()
-    }
-
-    required = {
-        "id",
-        "created_at",
-        "closed_at",
-        "token",
-        "symbol",
-        "entry_price",
-        "current_price",
-        "exit_price",
-        "highest_price",
-        "lowest_price",
-        "tp_price",
-        "sl_price",
-        "amount_bnb",
-        "gross_pnl",
-        "net_pnl",
-        "roi",
-        "gas_buy",
-        "gas_sell",
-        "swap_fee",
-        "buy_tax",
-        "sell_tax",
-        "slippage",
-        "mev",
-        "close_reason",
-        "status",
-        "token_amount",
-        "pool",
-        "dex",
-    }
-
-    missing = sorted(required - columns)
-
-    if missing:
-        raise RuntimeError(
-            f"paper schema missing columns: {missing}"
-        )
-
-    if current < PAPER_SCHEMA_VERSION:
+    try:
         conn.execute(
-            f"PRAGMA user_version={PAPER_SCHEMA_VERSION}"
+            PAPER_TRADES_SCHEMA
         )
 
-    conn.commit()
+        for sql in INDEXES:
+            conn.execute(sql)
+
+        columns = _verify_columns(
+            conn
+        )
+
+        if current < 2:
+            _migrate_to_v2(
+                conn
+            )
+        else:
+            # Even an existing v2 DB must have
+            # the invariant physically present.
+            conn.execute(
+                UNIQUE_OPEN_INDEX
+            )
+
+        conn.execute(
+            f"PRAGMA user_version="
+            f"{PAPER_SCHEMA_VERSION}"
+        )
+
+        conn.execute(
+            f"RELEASE SAVEPOINT "
+            f"{savepoint}"
+        )
+
+        conn.commit()
+
+    except Exception:
+        conn.execute(
+            f"ROLLBACK TO SAVEPOINT "
+            f"{savepoint}"
+        )
+
+        conn.execute(
+            f"RELEASE SAVEPOINT "
+            f"{savepoint}"
+        )
+
+        conn.rollback()
+        raise
 
     return {
         "state": "READY",
-        "schema_version": PAPER_SCHEMA_VERSION,
+        "schema_version": (
+            PAPER_SCHEMA_VERSION
+        ),
         "columns": sorted(columns),
+        "single_open_db_enforced": True,
+        "unique_open_index": (
+            "idx_paper_trades_one_open_per_token"
+        ),
     }

@@ -79,6 +79,14 @@ def normalize_wss_event(message):
         "log_index": idx,
         "block_number": log.get("blockNumber"),
         "removed": bool(log.get("removed", False)),
+        "address": (
+            str(log.get("address") or "")
+            .strip()
+            .lower()
+            or None
+        ),
+        "data": log.get("data"),
+        "topics": list(topics),
         "decision_authority": False,
         "execution_authority": False,
     }

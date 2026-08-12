@@ -95,7 +95,7 @@ class PaperDatabase:
                     """
                     SELECT 1
                     FROM paper_trades
-                    WHERE token=?
+                    WHERE lower(token)=lower(?)
                       AND status='OPEN'
                     LIMIT 1
                     """,
@@ -170,6 +170,34 @@ class PaperDatabase:
                 for r in cur.fetchall()
             ]
 
+    def closed_positions(
+        self,
+        after_id=0,
+    ):
+        """Return durable closed outcomes for Phase 11 replay.
+
+        The paper database is the durable source of truth.  The
+        runtime learning feed may be rebuilt after process restart by
+        replaying CLOSED positions in monotonically increasing id
+        order.  ``after_id`` keeps normal cycles incremental.
+        """
+        with self._db_lock:
+            cur = self.conn.execute(
+                """
+                SELECT *
+                FROM paper_trades
+                WHERE status='CLOSED'
+                  AND id > ?
+                ORDER BY id
+                """,
+                (int(after_id or 0),),
+            )
+
+            return [
+                dict(r)
+                for r in cur.fetchall()
+            ]
+
     def update_position(
         self,
         trade_id,
@@ -205,13 +233,37 @@ class PaperDatabase:
         trade_id,
         values=None,
     ):
+        """Atomically transition one OPEN paper position to CLOSED.
+
+        The OPEN predicate makes close idempotent across repeated
+        workers/processes.  ``False`` means another actor already
+        closed the row; no second close/outcome should be emitted.
+        """
         values = dict(
             values or {}
         )
-
         values["status"] = "CLOSED"
 
-        self.update_position(
-            trade_id,
-            values,
-        )
+        with self._db_lock:
+            sql = ",".join(
+                f"{k}=?"
+                for k in values
+            )
+
+            params = list(
+                values.values()
+            )
+            params.append(trade_id)
+
+            cur = self.conn.execute(
+                f"""
+                UPDATE paper_trades
+                   SET {sql}
+                 WHERE id=?
+                   AND status='OPEN'
+                """,
+                params,
+            )
+
+            self.conn.commit()
+            return cur.rowcount == 1

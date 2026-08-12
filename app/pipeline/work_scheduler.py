@@ -92,9 +92,7 @@ class WorkScheduler:
         chain_queues,
     ):
         if not chain_queues:
-            return []
-
-        result = []
+            return
 
         active = deque(
             chain_queues.keys()
@@ -108,36 +106,24 @@ class WorkScheduler:
             if not items:
                 continue
 
-            result.append(
-                items.popleft()
-            )
+            yield items.popleft()
 
             if items:
                 active.append(chain)
-
-        return result
 
     def _ordered_rows(
         self,
         lanes,
     ):
-        ordered = []
-
         for lane in LANE_ORDER:
-            rows = self._round_robin_rows(
+            for row in self._round_robin_rows(
                 lanes[lane]
-            )
-
-            for row in rows:
-                ordered.append(
-                    (
-                        lane,
-                        self.chain(row),
-                        row,
-                    )
+            ):
+                yield (
+                    lane,
+                    self.chain(row),
+                    row,
                 )
-
-        return ordered
 
     def process_queue(
         self,
@@ -168,8 +154,10 @@ class WorkScheduler:
         chain_processed = {}
         chain_failed = {}
 
-        ordered_rows = self._ordered_rows(
-            lanes
+        ordered_rows = iter(
+            self._ordered_rows(
+                lanes
+            )
         )
 
         with ThreadPoolExecutor(
@@ -177,25 +165,25 @@ class WorkScheduler:
         ) as executor:
 
             futures = {}
-            next_index = 0
+            exhausted = False
 
             while (
-                next_index < len(ordered_rows)
+                not exhausted
                 or futures
             ):
 
                 while (
-                    next_index < len(ordered_rows)
+                    not exhausted
                     and len(futures)
                     < self.max_workers
                 ):
-                    lane, chain, row = (
-                        ordered_rows[
-                            next_index
-                        ]
-                    )
-
-                    next_index += 1
+                    try:
+                        lane, chain, row = next(
+                            ordered_rows
+                        )
+                    except StopIteration:
+                        exhausted = True
+                        break
 
                     future = executor.submit(
                         worker,

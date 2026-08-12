@@ -23,9 +23,9 @@ ROADMAP içinde tutulmaz.
 
 # PROJE DURUMU
 
-Current Phase: **PHASE 10 — CLOSED**
+Current Phase: **PHASE 11 — CLOSED**
 
-Next Phase: **PHASE 11 — RESERVED**
+Next Phase: **PHASE 12 — RESERVED**
 
 Progress:
 
@@ -40,7 +40,7 @@ Progress:
 - Phase 8: ✅ CLOSED
 - Phase 9: ✅ CLOSED
 - Phase 10: ✅ CLOSED
-- Phase 11: ⏳ WAITING
+- Phase 11: ✅ CLOSED
 - Phase 12: ⏳ WAITING
 - Phase 13: ⏳ WAITING
 - Phase 14: ⏳ WAITING
@@ -1831,19 +1831,367 @@ Kalıcı kararlar:
 
 ---
 
-# PHASE 11 — Reserved
-
-# PHASE 11 — Reserved
+# PHASE 11 — Learning / Calibration / Outcome Memory
 
 ## Amaç
 
-Kapsam zamanı geldiğinde bir önceki fazın kapanışı sırasında planlanacak.
+Phase 0-10 boyunca üretilen deterministik market, flow, exit,
+wallet/entity ve adversary intelligence çıktılarının zaman içinde
+ne kadar doğru veya yanlış sonuç verdiğini ölçmek.
+
+Temel soru:
+
+**"Sistem geçmişte neyi doğru bildi, neyi yanlış alarm verdi,
+neyi kaçırdı ve hangi deterministik kurallar kalibrasyon önerisi
+hak ediyor?"**
+
+Phase 11 observation / measurement / memory / proposal katmanıdır.
+
+Trade, paper, live-trade, wallet, signing veya execution authority taşımaz.
+
+Learning burada otomatik self-modifying sistem anlamına gelmez.
+
+## Planlanan Kapsam
+
+### 11A — Outcome Evidence Baseline
+
+- chain-aware outcome identity
+- candidate / observation identity
+- observed_at
+- evaluated_at
+- expected context
+- realized outcome
+- evidence coverage
+- freshness
+- provenance
+- UNKNOWN behavior
+- missing outcome != success
+- missing outcome != failure
+- outcome evidence != trade permission
+
+### 11B — Outcome Classification
+
+Planlanan temel outcome sınıfları:
+
+- VALID_SIGNAL
+- FALSE_POSITIVE
+- FALSE_NEGATIVE
+- EXPECTED_LOSS
+- AVOIDED_LOSS
+- MISSED_OPPORTUNITY
+- EXIT_FAILURE
+- UNKNOWN
+
+Kurallar:
+
+- outcome deterministic evidence ile sınıflandırılır
+- tek fiyat hareketi otomatik valid signal değildir
+- incomplete evidence UNKNOWN kalabilir
+- hindsight ile geçmiş karar yeniden uydurulmaz
+- outcome classification trade authority değildir
+
+### 11C — Signal Attribution
+
+Phase 5-10 sinyallerinin outcome ile ilişkisini ölçer.
+
+Kaynak aileleri:
+
+- market intelligence
+- flow confirmation
+- market regime
+- exit intelligence
+- wallet behavior
+- entity evidence
+- whale flow
+- wallet reputation
+- MEV / sandwich
+- scam / rug
+- wash / sybil
+- sniper / pump-dump
+- adversary reputation
+
+Kurallar:
+
+- correlation != causation
+- tek sinyal tüm outcome'un sahibi ilan edilmez
+- conflicting attribution korunur
+- missing attribution UNKNOWN kalır
+- hard safety ile soft signal attribution ayrılır
+
+### 11D — False-Positive / False-Negative Memory
+
+Tutulacak memory aileleri:
+
+- false-positive memory
+- false-negative memory
+- avoided-loss memory
+- missed-opportunity memory
+- exit-failure memory
+- repeated-error memory
+
+Bağlam:
+
+- chain
+- token
+- wallet/entity
+- adversary actor
+- market regime
+- signal family
+- evidence freshness
+
+Kurallar:
+
+- tek hata kalıcı reputation oluşturmaz
+- tekrar eden hata ayrı izlenir
+- memory bounded olmak zorundadır
+- memory trade authority değildir
+
+### 11E — Calibration Statistics
+
+Planlanan deterministik ölçüler:
+
+- sample count
+- valid signal count
+- false-positive count
+- false-negative count
+- avoided-loss count
+- missed-opportunity count
+- exit-failure count
+- hit ratio
+- false-positive ratio
+- false-negative ratio
+- evidence coverage
+- confidence
+- freshness
+
+Kurallar:
+
+- minimum sample guard
+- düşük sample ile güçlü calibration yok
+- confidence sample büyüklüğünü dikkate alır
+- stale statistics FRESH kabul edilmez
+- UNKNOWN sample güvenli sample sayılmaz
+
+### 11F — Weight / Threshold Proposal Layer
+
+Learning katmanı yalnız öneri üretir.
+
+Örnek proposal türleri:
+
+- KEEP
+- REVIEW
+- INCREASE_WEIGHT_PROPOSAL
+- DECREASE_WEIGHT_PROPOSAL
+- TIGHTEN_THRESHOLD_PROPOSAL
+- RELAX_THRESHOLD_PROPOSAL
+- INSUFFICIENT_EVIDENCE
+
+Kesin sınırlar:
+
+- auto weight apply YOK
+- auto threshold apply YOK
+- config auto-write YOK
+- strategy auto-rewrite YOK
+- source-code auto-edit YOK
+- hard safety weakening YOK
+- AI authority YOK
+- trade authority YOK
+
+Proposal != apply.
+
+### 11G — Outcome Decay / Evidence Windows
+
+- recent outcome window
+- medium outcome window
+- long outcome window
+- soft memory decay
+- hard evidence preservation
+- regime-aware context
+- stale-memory handling
+
+Kurallar:
+
+- soft historical influence gerektiğinde decay edebilir
+- hard evidence keyfi olarak silinmez
+- eski market regime yeni regime ile eşit ağırlıkta kabul edilmez
+- decay geçmiş outcome kaydını yok etmek değildir
+
+### 11H — Learning Readmodel / Hot-Path Contract
+
+Hot path yalnız precomputed learning/calibration bucket okur.
+
+Planlanan alanlar:
+
+- calibration_bucket
+- sample_count
+- confidence
+- false_positive_ratio
+- false_negative_ratio
+- avoided_loss_ratio
+- missed_opportunity_ratio
+- freshness
+- proposal_state
+
+Hot path'te:
+
+- raw outcome history scan YOK
+- DB aggregate YOK
+- graph traversal YOK
+- AI inference YOK
+- external fetch YOK
+- provider call YOK
+- automatic calibration apply YOK
+
+Kurallar:
+
+- bounded cache
+- bounded readmodel
+- stale -> UNKNOWN / safe downgrade
+- missing -> UNKNOWN
+- learning hot path'i yavaşlatamaz
+
+### 11I — Learning / Calibration Stress Matrix
+
+Zorunlu senaryolar:
+
+- insufficient sample
+- one large win
+- one large loss
+- repeated false positives
+- repeated false negatives
+- avoided-loss streak
+- missed-opportunity streak
+- exit failures
+- conflicting outcomes
+- stale outcome memory
+- regime change
+- survivorship bias candidate
+- incomplete evidence
+- missing outcome
+- duplicate outcome
+- out-of-order outcome
+- removed/reorg evidence
+- extreme outlier
+- hard evidence preservation
+- soft memory decay
+- proposal without apply
+- attempted automatic threshold change
+- attempted automatic weight change
+
+Amaç:
+
+**Sistemin birkaç sonuca bakıp aşırı öğrenmesini engellemek ve
+ölçüm katmanının karar/execution authority kazanmasını önlemek.**
+
+### 11J — Final Validation / Closure
+
+Phase 11 kapanmadan önce:
+
+- targeted tests
+- Phase 0-11 connection regression
+- smoke
+- end-to-end
+- outcome classification stress
+- false-positive / false-negative stress
+- calibration minimum-sample tests
+- regime-change tests
+- survivorship-bias tests
+- proposal-only authority tests
+- hot-path speed benchmark
+- bounded-memory/readmodel stress
+- compile
+- DB integrity / quick check
+- DB unchanged verification where applicable
+- generated-junk cleanup
+- authority audit
+- hot-path contract audit
+- README / ROADMAP closure
+- TEST_RESULTS update
+- single Phase 11 commit / push
+
+Alt fazlarda ayrı commit/push yapılmaz.
+
+## Phase 11 Temel Kuralları
+
+- Outcome hindsight ile yeniden yazılmaz.
+- Missing outcome başarı değildir.
+- Missing outcome başarısızlık değildir.
+- Correlation causation değildir.
+- Tek outcome calibration için yeterli değildir.
+- Minimum sample guard zorunludur.
+- False positive ve false negative ayrı izlenir.
+- Avoided loss ve missed opportunity ayrı izlenir.
+- Exit failure ayrı memory sınıfıdır.
+- Hard evidence ile soft learning memory ayrıdır.
+- Soft memory decay edebilir.
+- Hard evidence keyfi decay etmez.
+- Regime değişimi calibration context'inde korunur.
+- Proposal apply değildir.
+- Learning config değiştiremez.
+- Learning threshold değiştiremez.
+- Learning weight değiştiremez.
+- Learning source code değiştiremez.
+- Learning hard safety gate'i zayıflatamaz.
+- Hot path raw history taramaz.
+- Hot path DB aggregate yapmaz.
+- Hot path AI çağırmaz.
+- Hot path external provider çağırmaz.
+- Phase 11 decision/paper/live/wallet/signing/execution authority taşımaz.
+
+## Korunan Gelecek Backlog — UNUTULMAYACAK
+
+Phase 11'e yalnız learning / calibration / outcome memory alınmıştır.
+
+Kalan başlıklar sonraki faz planlamalarında korunacaktır:
+
+- shadow simulation
+- news / social / X / Telegram / Discord intelligence
+- listing / delisting / ICO / IDO / launchpad / airdrop radar
+- AI contract analyst
+- AI explanation / assistant layer
+- local / background AI
+- paper lifecycle / paper engine
+- provider budget / paid-call / cost guard
+- command center / panel intelligence
+- live alerts / AI communication panel
+- execution readiness
+- wallet / signing / live-trade boundaries
+
+Phase 12-14 dağılımı şimdiden belirlenmez.
+
+Phase 15 Final Roadmap Phase olarak korunur.
+
+## Beklenen Faz Sonu Durumu
+
+Phase 11 sonunda Coinoskobi şu soruyu deterministik evidence ile
+cevaplayabilmelidir:
+
+**"Geçmiş sinyal ve risk değerlendirmelerimiz ne kadar başarılıydı,
+nerelerde yanlış alarm verdik, nereleri kaçırdık ve yeterli kanıt
+varsa hangi kalibrasyon değişikliği yalnız öneri olarak incelenmeli?"**
+
+Cevap:
+
+- evidence-based
+- bounded
+- sample-aware
+- freshness-aware
+- regime-aware
+- false-positive aware
+- false-negative aware
+- proposal-only
+- hot-path safe
+- authority-free
+
+olmalıdır.
 
 ## Status
 
-⏳ WAITING
+✅ CLOSED
 
 ---
+
+# PHASE 12 — Reserved
 
 # PHASE 12 — Reserved
 

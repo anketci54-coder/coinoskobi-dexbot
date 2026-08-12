@@ -1,8 +1,11 @@
+from collections import deque
+
+
 class WalletReadModel:
     def __init__(self, max_entries=1024):
         self.max_entries = max(1, int(max_entries))
         self._data = {}
-        self._order = []
+        self._order = deque()
 
     @property
     def size(self):
@@ -12,8 +15,11 @@ class WalletReadModel:
         if not wallet_id:
             return {"state": "INVALID"}
 
-        if wallet_id not in self._data and self.size >= self.max_entries:
-            oldest = self._order.pop(0)
+        if (
+            wallet_id not in self._data
+            and self.size >= self.max_entries
+        ):
+            oldest = self._order.popleft()
             self._data.pop(oldest, None)
 
         if wallet_id not in self._data:
@@ -25,6 +31,7 @@ class WalletReadModel:
             "state": "STORED",
             "size": self.size,
             "bounded": True,
+            "eviction_complexity": "O(1)",
             "execution_authority": False,
         }
 
@@ -47,6 +54,7 @@ def hot_path_contract():
         "heavy_wallet_aggregation": False,
         "precomputed_readmodel_only": True,
         "bounded_cache": True,
+        "o1_eviction": True,
         "decision_authority": False,
         "execution_authority": False,
     }

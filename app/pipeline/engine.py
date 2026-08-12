@@ -25,6 +25,7 @@ from app.pipeline.conveyor import ConveyorLabeler
 from app.pipeline.work_scheduler import WorkScheduler
 from app.pipeline.market_context import build_market_context
 from app.pipeline.execution_context import build_execution_context
+from app.pipeline.intelligence_composition import RuntimeIntelligenceComposition
 from app.scanner.adapters.source_router import normalize_source_rows
 
 from app.config.scanner import (
@@ -74,6 +75,9 @@ class PipelineEngine:
         self.work_scheduler = WorkScheduler(
             max_workers=ANALYZER_WORKERS
         )
+        self.intelligence = (
+            RuntimeIntelligenceComposition()
+        )
 
     def run(
         self,
@@ -81,8 +85,38 @@ class PipelineEngine:
         market_context=None,
     ):
 
-        market_context = (
+        market_context = dict(
             market_context or {}
+        )
+
+        intelligence = getattr(
+            self,
+            "intelligence",
+            None,
+        )
+
+        if intelligence is None:
+            intelligence = (
+                RuntimeIntelligenceComposition()
+            )
+            self.intelligence = intelligence
+
+        intelligence_context = (
+            intelligence.build(
+                token_address,
+                market_input=market_context.get(
+                    "market_intelligence"
+                ),
+                flow_input=market_context.get(
+                    "flow_intelligence"
+                ),
+                wallet_id=market_context.get(
+                    "wallet_id"
+                ),
+                adversary_key=market_context.get(
+                    "adversary_key"
+                ),
+            )
         )
 
         token_result = token_analyze(token_address)
@@ -300,42 +334,50 @@ class PipelineEngine:
 
                     token_amount = DEFAULT_AMOUNT_BNB / price
 
-                    self.paper_db.insert({
+                    inserted = (
+                        self.paper_db.insert_if_no_open_position({
+                            "token": token_address,
+                            "symbol": token.get("symbol", "?"),
 
-                        "token": token_address,
-                        "symbol": token.get("symbol", "?"),
+                            "entry_price": price,
+                            "current_price": price,
+                            "highest_price": price,
+                            "lowest_price": price,
 
-                        "entry_price": price,
-                        "current_price": price,
-                        "highest_price": price,
-                        "lowest_price": price,
+                            "tp_price": price * TP_PRICE_MULTIPLIER,
+                            "sl_price": price * SL_PRICE_MULTIPLIER,
 
-                        "tp_price": price * TP_PRICE_MULTIPLIER,
-                        "sl_price": price * SL_PRICE_MULTIPLIER,
+                            "amount_bnb": DEFAULT_AMOUNT_BNB,
+                            "token_amount": token_amount,
 
-                        "amount_bnb": DEFAULT_AMOUNT_BNB,
-                        "token_amount": token_amount,
+                            "gas_buy": DEFAULT_GAS_BUY,
+                            "gas_sell": DEFAULT_GAS_SELL,
+                            "swap_fee": DEFAULT_SWAP_FEE,
 
-                        "gas_buy": DEFAULT_GAS_BUY,
-                        "gas_sell": DEFAULT_GAS_SELL,
-                        "swap_fee": DEFAULT_SWAP_FEE,
+                            "buy_tax": DEFAULT_BUY_TAX,
+                            "sell_tax": DEFAULT_SELL_TAX,
 
-                        "buy_tax": DEFAULT_BUY_TAX,
-                        "sell_tax": DEFAULT_SELL_TAX,
+                            "slippage": DEFAULT_SLIPPAGE,
+                            "mev": DEFAULT_MEV_COST,
 
-                        "slippage": DEFAULT_SLIPPAGE,
-                        "mev": DEFAULT_MEV_COST,
+                            "status": "OPEN",
+                        })
+                    )
 
-                        "status": "OPEN",
-                    })
+                    if not inserted:
+                        paper = {
+                            "action": "SKIP",
+                            "reason": "OPEN_POSITION_EXISTS",
+                        }
 
-                    paper = {
-                        "action": "PAPER_BUY",
-                        "token": token_address,
-                        "entry_price": price,
-                        "token_amount": token_amount,
-                        "amount_bnb": DEFAULT_AMOUNT_BNB,
-                    }
+                    else:
+                        paper = {
+                            "action": "PAPER_BUY",
+                            "token": token_address,
+                            "entry_price": price,
+                            "token_amount": token_amount,
+                            "amount_bnb": DEFAULT_AMOUNT_BNB,
+                        }
 
         else:
 
@@ -358,6 +400,9 @@ class PipelineEngine:
                 "execution_context": execution_context,
                 "execution_cost": execution_cost,
                 "market_context": market_context,
+                "runtime_intelligence": (
+                    intelligence_context
+                ),
                 "analyzer_status": analyzer_status,
                 "strategy": strategy,
                 "paper": paper,

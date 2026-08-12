@@ -1,8 +1,11 @@
+from collections import deque
+
+
 class AdversaryReadModel:
     def __init__(self, max_entries=1024):
         self.max_entries = max(1, int(max_entries))
         self._data = {}
-        self._order = []
+        self._order = deque()
 
     @property
     def size(self):
@@ -15,8 +18,11 @@ class AdversaryReadModel:
                 "stored": False,
             }
 
-        if actor_key not in self._data and self.size >= self.max_entries:
-            oldest = self._order.pop(0)
+        if (
+            actor_key not in self._data
+            and self.size >= self.max_entries
+        ):
+            oldest = self._order.popleft()
             self._data.pop(oldest, None)
 
         if actor_key not in self._data:
@@ -29,6 +35,7 @@ class AdversaryReadModel:
             "stored": True,
             "size": self.size,
             "bounded": True,
+            "eviction_complexity": "O(1)",
             "decision_authority": False,
             "execution_authority": False,
         }
@@ -49,6 +56,7 @@ def hot_path_contract():
     return {
         "precomputed_readmodel_only": True,
         "bounded_cache": True,
+        "o1_eviction": True,
         "deep_transaction_trace": False,
         "graph_expansion": False,
         "raw_event_join": False,

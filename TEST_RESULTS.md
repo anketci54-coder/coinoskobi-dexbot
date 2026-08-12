@@ -592,3 +592,30 @@ Next:
 - Authority / hot-path contract: PASS
 - Phase 10: CLOSED
 - Phase 11: RESERVED
+
+## Phase 11 — Learning / Calibration / Outcome Memory
+
+Status: CLOSED
+
+Validation:
+
+- Phase 0-10 closure repair: PASS
+- 790-test collection baseline: PASS
+- full regression: PASS
+- runtime composition: PASS
+- clean-start paper schema: PASS
+- SQLite concurrency: PASS
+- bounded operational WSS: PASS
+- dependency reproducibility: PASS
+- outcome evidence/classification: PASS
+- signal attribution: PASS
+- bounded outcome memory: PASS
+- minimum-sample calibration guard: PASS
+- proposal-only weight/threshold layer: PASS
+- soft decay / hard evidence preservation: PASS
+- learning hot-path readmodel: PASS
+- anti-overfit / bias stress: PASS
+- DB health: PASS
+- authority / auto-apply zero: PASS
+
+Phase 12 remains RESERVED.

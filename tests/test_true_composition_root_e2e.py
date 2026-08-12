@@ -239,3 +239,178 @@ def test_true_composition_root_e2e(monkeypatch):
         .status()["execution_authority"]
         is False
     )
+
+
+def test_true_runner_lifecycle_e2e(monkeypatch):
+    module = importlib.import_module("main")
+
+    monkeypatch.setattr(module, "WSS_URL", "wss://provider")
+    monkeypatch.setattr(module, "WSS_PAIR", PAIR)
+    monkeypatch.setattr(module, "WSS_TOKEN", TOKEN)
+
+    lifecycle = []
+
+    class RunnerService(FakeService):
+        def start(self):
+            lifecycle.append("SERVICE_START")
+            return True
+
+        def stop(self):
+            lifecycle.append("SERVICE_STOP")
+            return True
+
+    class RunnerPipeline:
+        def __init__(self):
+            self.scan_count = 0
+            self.position_count = 0
+
+        def configure_native_market_flow(
+            self,
+            pair,
+            token,
+            wrapped_native,
+        ):
+            lifecycle.append("MARKET_FLOW_CONFIGURED")
+            return {"state": "REGISTERED"}
+
+        async def on_native_event(self, event):
+            return {"state": "ACCEPTED"}
+
+        async def on_native_retraction(self, event):
+            return {"state": "RETRACTED"}
+
+        def run_cycle(self):
+            self.scan_count += 1
+            lifecycle.append("SCAN")
+
+        def process_positions(self):
+            self.position_count += 1
+            lifecycle.append("PAPER_MANAGER")
+
+    pipeline = RunnerPipeline()
+
+    app = module.build_application(
+        pipeline=pipeline,
+        wss_service_factory=RunnerService,
+    )
+
+    runner = app["runner"]
+
+    # Scheduler jobs are due immediately on first tick.
+    # Stop after that first complete runner iteration.
+    def stop_after_first_tick(_):
+        runner.stop()
+
+    runner.sleep_func = stop_after_first_tick
+
+    runner.run()
+
+    assert app["wss_configured"] is True
+    assert app["market_flow_bound"] is True
+    assert app["paper_lifecycle_bound"] is True
+
+    assert pipeline.scan_count == 1
+    assert pipeline.position_count == 1
+
+    assert lifecycle.count("SERVICE_START") == 1
+    assert lifecycle.count("SERVICE_STOP") == 1
+
+    assert lifecycle.index("SERVICE_START") < lifecycle.index("SCAN")
+    assert lifecycle.index("SERVICE_START") < lifecycle.index("PAPER_MANAGER")
+    assert lifecycle.index("SERVICE_STOP") > lifecycle.index("SCAN")
+    assert lifecycle.index("SERVICE_STOP") > lifecycle.index("PAPER_MANAGER")
+
+    assert runner.running is False
+    assert runner.services_started is False
+    assert runner.last_service_error is None
+
+    assert app["decision_authority"] is False
+    assert app["live_authority"] is False
+    assert app["execution_authority"] is False
+
+
+def test_runner_owned_composition_root_lifecycle(monkeypatch):
+    module = importlib.import_module("main")
+
+    monkeypatch.setattr(
+        module,
+        "WSS_URL",
+        "wss://provider",
+    )
+    monkeypatch.setattr(
+        module,
+        "WSS_PAIR",
+        PAIR,
+    )
+    monkeypatch.setattr(
+        module,
+        "WSS_TOKEN",
+        TOKEN,
+    )
+
+    class LifecycleService(FakeService):
+        def __init__(self, url, pair):
+            super().__init__(url, pair)
+            self.started = 0
+            self.stopped = 0
+
+        def start(self):
+            self.started += 1
+            return True
+
+        def stop(self):
+            self.stopped += 1
+            return True
+
+    app = module.build_application(
+        wss_service_factory=LifecycleService,
+    )
+
+    runner = app["runner"]
+    pipeline = app["pipeline"]
+    service = app["services"][0]
+
+    # Real composition-root ownership:
+    # Runner owns the same service and same pipeline jobs.
+    assert runner.services == [service]
+
+    scheduled_names = {
+        task["name"]
+        for task in runner.scheduler.jobs
+    }
+
+    assert "scanner" in scheduled_names
+    assert "paper_manager" in scheduled_names
+
+    # Runner service lifecycle, not manual direct service ownership.
+    runner._start_services()
+
+    assert runner.services_started is True
+    assert service.started == 1
+
+    # Callback wiring belongs to the production pipeline instance.
+    assert service.on_event.__self__ is pipeline
+    assert (
+        service.on_event.__func__
+        is pipeline.on_native_event.__func__
+    )
+
+    assert service.on_retraction.__self__ is pipeline
+
+    # Paper lifecycle also belongs to this exact pipeline instance.
+    paper_task = next(
+        task
+        for task in runner.scheduler.jobs
+        if task["name"] == "paper_manager"
+    )
+
+    assert paper_task["func"].__self__ is pipeline
+
+    runner._stop_services()
+
+    assert runner.services_started is False
+    assert service.stopped == 1
+
+    assert app["decision_authority"] is False
+    assert app["live_authority"] is False
+    assert app["execution_authority"] is False

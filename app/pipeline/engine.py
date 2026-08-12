@@ -25,6 +25,7 @@ from app.pipeline.conveyor import ConveyorLabeler
 from app.pipeline.work_scheduler import WorkScheduler
 from app.pipeline.market_context import build_market_context
 from app.pipeline.execution_context import build_execution_context
+from app.pipeline.paper_admission import paper_admission_decision
 from app.pipeline.intelligence_composition import RuntimeIntelligenceComposition
 from app.learning.runtime_outcome_feed import RuntimeLearningOutcomeFeed
 from app.dex.runtime_market_flow import RuntimeMarketFlowStore
@@ -359,9 +360,10 @@ class PipelineEngine:
                     f"HARD_BLOCK: {reason}"
                 )
 
-        decision = strategy.get(
-            "decision",
-            "REJECT",
+        decision = paper_admission_decision(
+            strategy,
+            unified_decision,
+            risk_gate,
         )
 
         if sellability_result.get(
@@ -492,6 +494,7 @@ class PipelineEngine:
                 "mev_risk": mev_risk,
                 "unified_score": unified_score,
                 "unified_decision": unified_decision,
+                "paper_admission_decision": decision,
                 "execution_context": execution_context,
                 "execution_cost": execution_cost,
                 "market_context": market_context,

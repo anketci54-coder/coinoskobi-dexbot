@@ -3118,7 +3118,7 @@ OCR ancak aşağıdakilerin tamamı sağlanırsa CLOSED olur:
 - [x] Authority boundary unchanged
 - [x] Documentation truth audit PASS
 - [x] Phase 12 remains RESERVED
-- [x] Independent re-audit complete
+- [ ] Independent re-audit complete
 
 ---
 
@@ -3162,3 +3162,38 @@ Yeni R numarası açılmaz.
 ## Status
 
 🟡 OPEN
+
+## OCR Final Technical Pre-Audit — 2026-08-12
+
+Status: ✅ PASS WITH MINOR HARDENING COMPLETED
+
+Bağımsız adversarial denetim sonrası kalan iki teknik P2 bulgu da
+kapatıldı:
+
+- WSS stop timeout sonrası second-stage transport close + task cancel
+- gerçek Runner lifecycle E2E kanıtı
+
+Placeholder/container hijyeni:
+
+- boş Dockerfile kaldırıldı
+- boş docker-compose.yml kaldırıldı
+- generated Python/pytest cache repository kapanışından önce temizlenir
+- structural __init__.py ve .gitkeep dosyaları korunur
+
+Final teknik doğrulama:
+
+- full regression: 870 PASS
+- closure / soak / E2E: 26 PASS
+- DB integrity_check: ok
+- DB quick_check: ok
+- authority audit: PASS
+- diff check: PASS
+- WSS shutdown targeted: 27 PASS
+- Runner composition-root E2E: PASS
+- dependency-owned websockets.legacy warning: NON-BLOCKING
+
+Phase sınırı:
+
+- Phase 11: CLOSED
+- Phase 12: RESERVED
+- Phase 12 henüz implementation olarak açılmamıştır.

@@ -68,6 +68,7 @@ class NativeWSSService:
         self.start_count = 0
         self.stop_count = 0
         self.failure_count = 0
+        self.forced_stop_count = 0
 
         self.last_error = None
 
@@ -154,9 +155,9 @@ class NativeWSSService:
                     lambda: None
                 )
 
+        # Stage 1: graceful shutdown.
         if (
-            thread is not None
-            and thread.is_alive()
+            thread.is_alive()
             and thread
             is not threading.current_thread()
         ):
@@ -164,8 +165,66 @@ class NativeWSSService:
                 timeout=self.join_timeout
             )
 
+        forced = False
+
+        # Stage 2: transport close + task cancellation.
+        if (
+            thread.is_alive()
+            and loop is not None
+            and loop.is_running()
+        ):
+            forced = True
+
+            if runtime is not None:
+                force_close = getattr(
+                    runtime,
+                    "force_close",
+                    None,
+                )
+
+                if force_close is not None:
+                    try:
+                        future = (
+                            asyncio.run_coroutine_threadsafe(
+                                force_close(),
+                                loop,
+                            )
+                        )
+
+                        future.result(
+                            timeout=self.join_timeout
+                        )
+                    except Exception:
+                        pass
+
+            def cancel_pending():
+                current = asyncio.current_task()
+
+                for task in asyncio.all_tasks():
+                    if task is not current:
+                        task.cancel()
+
+            try:
+                loop.call_soon_threadsafe(
+                    cancel_pending
+                )
+            except RuntimeError:
+                pass
+
+            if (
+                thread.is_alive()
+                and thread
+                is not threading.current_thread()
+            ):
+                thread.join(
+                    timeout=self.join_timeout
+                )
+
         with self._lock:
             self.stop_count += 1
+
+            if forced:
+                self.forced_stop_count += 1
 
             alive = bool(
                 self._thread
@@ -207,6 +266,17 @@ class NativeWSSService:
             loop.run_until_complete(
                 runtime.run()
             )
+
+        except asyncio.CancelledError:
+            # Expected during second-stage forced shutdown.
+            # Cancellation is a lifecycle action, not a
+            # runtime failure.
+            with self._lock:
+                if not self._stopping:
+                    self.failure_count += 1
+                    self.last_error = (
+                        "CancelledError: unexpected runtime cancellation"
+                    )
 
         except Exception as exc:
             with self._lock:
@@ -283,6 +353,10 @@ class NativeWSSService:
                 "failure_count": (
                     self.failure_count
                 ),
+                "forced_stop_count": (
+                    self.forced_stop_count
+                ),
+                "two_stage_shutdown": True,
                 "last_error": (
                     self.last_error
                 ),

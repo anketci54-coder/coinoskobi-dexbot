@@ -615,3 +615,17 @@ def test_authority_zero():
     assert r[
         "execution_authority"
     ] is False
+
+
+def test_force_close_without_active_transport_is_safe():
+    runtime = NativeWSSRuntime(
+        "wss://example",
+        "0xpair",
+    )
+
+    result = asyncio.run(
+        runtime.force_close()
+    )
+
+    assert result is False
+    assert runtime._stop is True

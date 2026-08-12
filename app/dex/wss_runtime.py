@@ -105,6 +105,7 @@ class NativeWSSRuntime:
         self._seen = set()
 
         self._stop = False
+        self._ws = None
 
         self.last_block = None
         self.last_log_index = None
@@ -127,6 +128,43 @@ class NativeWSSRuntime:
 
     def request_stop(self):
         self._stop = True
+
+    async def force_close(self):
+        """
+        Second-stage shutdown.
+
+        Used only when graceful request_stop() cannot
+        terminate the transport within the service timeout.
+        """
+        self.request_stop()
+
+        ws = self._ws
+
+        if ws is None:
+            return False
+
+        close = getattr(
+            ws,
+            "close",
+            None,
+        )
+
+        if close is None:
+            return False
+
+        try:
+            result = close()
+
+            if asyncio.iscoroutine(result):
+                await asyncio.wait_for(
+                    result,
+                    timeout=self.close_timeout,
+                )
+
+            return True
+
+        except Exception:
+            return False
 
     async def run(
         self,
@@ -211,6 +249,7 @@ class NativeWSSRuntime:
         )
 
         async with connect_cm as ws:
+            self._ws = ws
             self.connected = True
             self.last_error = None
 
@@ -253,6 +292,7 @@ class NativeWSSRuntime:
 
                 self.connected = False
                 self.subscription_id = None
+                self._ws = None
 
     async def _subscribe(self, ws):
         contract = subscribe_request(

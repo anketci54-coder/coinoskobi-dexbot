@@ -591,7 +591,7 @@ Next:
 - Generated-junk cleanup: PASS
 - Authority / hot-path contract: PASS
 - Phase 10: CLOSED
-- Phase 11: RESERVED
+- Phase 11: CLOSED
 
 ## Phase 11 — Learning / Calibration / Outcome Memory
 
@@ -619,3 +619,82 @@ Validation:
 - authority / auto-apply zero: PASS
 
 Phase 12 remains RESERVED.
+
+---
+
+# OCR Final Verified Results — 2026-08-12
+
+Bu bölüm güncel kapanış baseline'ıdır.
+
+Historical test sayıları (ör. 790 / 813 / 845 / 856 / 866)
+önceki ara doğrulamalardır; güncel final baseline değildir.
+
+## Final Regression
+
+- Collected/executed final suite: 870 tests
+- PASS: 870
+- FAIL: 0
+- ERROR: 0
+- Warning: 1
+- Warning classification:
+  dependency-owned `websockets.legacy` deprecation warning via Web3
+- Runtime: approximately 67 seconds
+
+## Closure / Soak / E2E
+
+- Selected closure suite: 26 PASS
+- True composition-root E2E: PASS
+- Runner lifecycle E2E: PASS
+- Restart/recovery: PASS
+- Bounded soak: PASS
+- WSS lifecycle/reorg: PASS
+- Multiprocess paper DB contention: PASS
+
+## WSS Final Hardening
+
+- Two-stage shutdown implemented:
+  graceful stop → transport close → task cancellation
+- Forced cancellation no longer leaks `CancelledError` as thread failure
+- Targeted WSS suite: 27 PASS
+
+## Database
+
+- `data/cache/cache.db`
+  - integrity_check: ok
+  - quick_check: ok
+
+- `data/paper_trades.db`
+  - integrity_check: ok
+  - quick_check: ok
+  - schema version: v2
+  - DB-level single OPEN invariant preserved
+
+## Authority
+
+Final authority audit:
+
+- decision authority: zero
+- live authority: zero
+- wallet authority: zero
+- execution authority: zero
+- Phase 11 calibration remains proposal-only
+- no auto weight/threshold/config apply
+
+## Repository Hygiene
+
+- generated cache/junk cleaned
+- empty Dockerfile removed
+- empty docker-compose.yml removed
+- structural package `__init__.py` files preserved
+- `.gitkeep` files preserved
+- no patch/reject/backup residue found
+
+## Final OCR State
+
+OCR technical closure criteria are satisfied.
+
+Independent adversarial re-audit:
+- P0/BLOCKER: 0
+- P1/HIGH: 0
+
+Phase 12 remains RESERVED until explicit planning discussion.

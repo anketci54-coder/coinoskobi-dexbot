@@ -286,3 +286,114 @@ def test_runner_stops_services_on_scheduler_failure():
         "start",
         "stop",
     ]
+
+
+class ForceClosableRuntime:
+    def __init__(
+        self,
+        url,
+        pair,
+        **kwargs,
+    ):
+        self.stop_requested = False
+        self.force_close_called = False
+        self.release = asyncio.Event()
+
+    async def run(self):
+        # Intentionally ignore request_stop.
+        await self.release.wait()
+
+    def request_stop(self):
+        self.stop_requested = True
+
+    async def force_close(self):
+        self.force_close_called = True
+        self.release.set()
+        return True
+
+    def status(self):
+        return {
+            "state": "RUNNING",
+        }
+
+
+def test_service_forces_transport_close_after_grace_timeout():
+    service = NativeWSSService(
+        "wss://example",
+        "0xpair",
+        runtime_factory=ForceClosableRuntime,
+        join_timeout=0.05,
+    )
+
+    assert service.start() is True
+
+    assert wait_for(
+        lambda: service.status()[
+            "runtime_present"
+        ]
+    )
+
+    runtime = service._runtime
+
+    assert service.stop() is True
+
+    assert runtime.stop_requested is True
+    assert runtime.force_close_called is True
+
+    status = service.status()
+
+    assert status["thread_alive"] is False
+    assert status["forced_stop_count"] == 1
+    assert status["two_stage_shutdown"] is True
+
+
+class CancellationOnlyRuntime:
+    def __init__(
+        self,
+        url,
+        pair,
+        **kwargs,
+    ):
+        self.stop_requested = False
+
+    async def run(self):
+        # Never cooperates with request_stop and exposes
+        # no force_close method. Service task cancellation
+        # must still terminate it.
+        await asyncio.Event().wait()
+
+    def request_stop(self):
+        self.stop_requested = True
+
+    def status(self):
+        return {
+            "state": "RUNNING",
+        }
+
+
+def test_service_cancels_stuck_runtime_task():
+    service = NativeWSSService(
+        "wss://example",
+        "0xpair",
+        runtime_factory=CancellationOnlyRuntime,
+        join_timeout=0.05,
+    )
+
+    assert service.start() is True
+
+    assert wait_for(
+        lambda: service.status()[
+            "runtime_present"
+        ]
+    )
+
+    runtime = service._runtime
+
+    assert service.stop() is True
+
+    assert runtime.stop_requested is True
+
+    status = service.status()
+
+    assert status["thread_alive"] is False
+    assert status["forced_stop_count"] == 1

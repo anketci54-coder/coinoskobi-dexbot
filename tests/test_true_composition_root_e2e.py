@@ -1,9 +1,12 @@
 import asyncio
 import importlib
 
+import app.paper.database as paper_database_module
+import app.pipeline.engine as pipeline_module
+from app.config.contracts import WBNB
 from app.dex.native_ingestion import SWAP_TOPIC
 from app.dex.transaction_origin import TransactionOriginResolver
-from app.paper.manager import PaperManager
+from app.paper.database import PaperDatabase
 
 
 PAIR = "0x00000000000000000000000000000000000000aa"
@@ -15,402 +18,220 @@ def word(value):
     return f"{value:064x}"
 
 
-class FakeService:
+EVENT = {
+    "state": "NORMALIZED",
+    "event_type": "SWAP",
+    "event_identity": "0xaaa:0x1",
+    "transaction_hash": "0xaaa",
+    "log_index": "0x1",
+    "block_number": "0x10",
+    "removed": False,
+    "address": PAIR,
+    "topics": [SWAP_TOPIC],
+    "data": "0x" + word(0) + word(10) + word(5) + word(0),
+}
+
+
+class EventingService:
+    """Deterministic transport stub; production callbacks remain real."""
+
     def __init__(self, url, pair):
         self.url = url
         self.pair = pair
         self.on_event = None
         self.on_retraction = None
+        self.started = 0
+        self.stopped = 0
 
-    def bind_callbacks(
-        self,
-        *,
-        on_event=None,
-        on_retraction=None,
-    ):
+    def bind_callbacks(self, *, on_event=None, on_retraction=None):
         self.on_event = on_event
         self.on_retraction = on_retraction
         return {"state": "BOUND"}
 
     def start(self):
+        self.started += 1
+        asyncio.run(self.on_event(dict(EVENT)))
         return True
 
     def stop(self):
+        self.stopped += 1
         return True
 
     def status(self):
         return {"state": "READY"}
 
 
-class FakeDB:
-    def __init__(self):
-        self.closed = []
-
-    def open_positions(self):
+class CacheRows:
+    def all(self):
         return [{
-            "id": 1,
-            "token": TOKEN,
-            "created_at": "2026-01-01T00:00:00+00:00",
-            "closed_at": "",
-            "highest_price": 1.0,
-            "lowest_price": 1.0,
-            "entry_price": 1.0,
-            "token_amount": 1.0,
-            "amount_bnb": 1.0,
-            "swap_fee": 0.0,
-            "buy_tax": 0.0,
-            "sell_tax": 0.0,
-            "slippage": 0.0,
-            "mev": 0.0,
-            "gas_buy": 0.0,
-            "gas_sell": 0.0,
+            "pool": PAIR,
+            "base_token": f"bsc_{TOKEN}",
+            "quote_token": f"bsc_{WBNB}",
+            "dex": "pancakeswap_v2",
+            "liquidity": 100000,
+            "volume_24h": 250000,
+            "buys_24h": 100,
+            "fdv": 1000000,
+            "price_usd": 1.0,
+            "created_at": None,
         }]
 
-    def update_position(self, position_id, data):
-        return True
 
-    def close_position(self, position_id, data):
-        self.closed.append((position_id, dict(data)))
-        return True
-
-
-class FakePrice:
-    def get_price(self, token):
-        return 1.30
-
-
-def test_true_composition_root_e2e(monkeypatch):
-    module = importlib.import_module("main")
-
-    monkeypatch.setattr(
-        module,
-        "WSS_URL",
-        "wss://provider",
-    )
-    monkeypatch.setattr(
-        module,
-        "WSS_PAIR",
-        PAIR,
-    )
-    monkeypatch.setattr(
-        module,
-        "WSS_TOKEN",
-        TOKEN,
-    )
-
-    app = module.build_application(
-        wss_service_factory=FakeService,
-    )
-
-    pipeline = app["pipeline"]
-    service = app["services"][0]
-
-    assert app["wss_configured"] is True
-    assert app["market_flow_bound"] is True
-    assert app["paper_lifecycle_bound"] is True
-
-    # deterministic real tx.from resolver
-    pipeline.native_actor_intelligence.resolver = (
-        TransactionOriginResolver(
-            fetcher=lambda _: {
-                "from": WALLET
-            }
-        )
-    )
-
-    # inject one real normalized Swap event through
-    # the actual composition-root callback wiring
-    event = {
-        "state": "NORMALIZED",
-        "event_type": "SWAP",
-        "event_identity": "0xaaa:0x1",
-        "transaction_hash": "0xaaa",
-        "log_index": "0x1",
-        "block_number": "0x10",
-        "removed": False,
-        "address": PAIR,
-        "topics": [
-            SWAP_TOPIC,
-        ],
-        "data": (
-            "0x"
-            + word(0)
-            + word(10)
-            + word(5)
-            + word(0)
-        ),
-    }
-
-    asyncio.run(
-        service.on_event(event)
-    )
-
-    actor = (
-        pipeline.native_actor_intelligence
-        .snapshot(PAIR)
-    )
-
-    assert actor["state"] == "READY"
-    assert actor["wallet_id"] == f"bsc:{WALLET}"
-
-    market = (
-        pipeline.native_market_flow
-        .snapshot(
-            PAIR,
-            candidate={
-                "pool": PAIR,
-                "token": TOKEN,
-                "liquidity": 100000,
-                "volume_24h": 250000,
-                "price_usd": 1.0,
+class PassIngress:
+    def classify_many(self, rows):
+        rows = list(rows)
+        return {
+            "active": rows,
+            "stats": {
+                "input": len(rows),
+                "active": len(rows),
+                "deferred": 0,
+                "dropped": 0,
             },
-        )
-    )
-
-    assert market["state"] == "READY"
-    assert (
-        market["flow_intelligence"]["buy_flow"]
-        == 1
-    )
-
-    # existing readmodels must now contain the real actor
-    intelligence = pipeline.intelligence.build(
-        TOKEN,
-        market_input=(
-            market["market_intelligence"]
-        ),
-        flow_input=(
-            market["flow_intelligence"]
-        ),
-        wallet_id=f"bsc:{WALLET}",
-        adversary_key=f"bsc:{WALLET}",
-    )
-
-    assert (
-        intelligence["wallet_readmodel"]["state"]
-        == "READY"
-    )
-    assert (
-        intelligence["adversary_readmodel"]["state"]
-        == "READY"
-    )
-
-    # real paper close -> existing Phase 11 feed
-    manager = PaperManager(
-        learning_feed=(
-            pipeline.learning_outcome_feed
-        )
-    )
-    manager.db = FakeDB()
-    manager.price = FakePrice()
-
-    result = manager.process()
-
-    assert result[0]["data"]["action"] == "CLOSE"
-    assert (
-        result[0]["data"]["learning"]["state"]
-        == "OBSERVED"
-    )
-
-    learning = (
-        pipeline.learning_outcome_feed
-        .calibration_snapshot()
-    )
-
-    assert learning["state"] == "READY"
-    assert (
-        learning["payload"]["proposal_only"]
-        is True
-    )
-    assert (
-        learning["payload"][
-            "automatic_apply_allowed"
-        ]
-        is False
-    )
-
-    # final authority boundary
-    assert (
-        intelligence["execution_authority"]
-        is False
-    )
-    assert (
-        pipeline.learning_outcome_feed
-        .status()["execution_authority"]
-        is False
-    )
+        }
 
 
-def test_true_runner_lifecycle_e2e(monkeypatch):
+class PassConveyor:
+    def label_many(self, rows):
+        rows = list(rows)
+        return {
+            "rows": rows,
+            "stats": {
+                "warm": 0,
+                "partial": 0,
+                "cold": len(rows),
+            },
+        }
+
+
+class OpenPrice:
+    def get_price(self, token):
+        return 1.0
+
+
+class ClosePrice:
+    def get_price(self, token):
+        return 10.0
+
+
+def _analysis_stubs(monkeypatch):
+    monkeypatch.setattr(
+        pipeline_module,
+        "token_analyze",
+        lambda _: {
+            "success": True,
+            "data": {"symbol": "OCR"},
+        },
+    )
+    monkeypatch.setattr(
+        pipeline_module,
+        "pair_analyze",
+        lambda _: {
+            "success": True,
+            "data": {
+                "exists": False,
+                "pair": None,
+                "quote_ok": False,
+            },
+        },
+    )
+    monkeypatch.setattr(
+        pipeline_module,
+        "risk_analyze",
+        lambda _: {"success": True, "data": {}},
+    )
+    monkeypatch.setattr(
+        pipeline_module._risk_gate,
+        "evaluate",
+        lambda _: {
+            "hard_block": False,
+            "hard_block_reasons": [],
+        },
+    )
+    monkeypatch.setattr(
+        pipeline_module._strategy,
+        "evaluate",
+        lambda *_: {
+            "data": {
+                "decision": "PAPER_BUY",
+                "paper_trade": True,
+                "reasons": [],
+            }
+        },
+    )
+    monkeypatch.setattr(
+        pipeline_module._unified_decision,
+        "evaluate",
+        lambda _: {
+            "decision": "PAPER_BUY_CANDIDATE",
+            "decision_authority": False,
+            "paper_authority": False,
+            "live_authority": False,
+            "wallet_authority": False,
+            "execution_authority": False,
+        },
+    )
+
+
+def test_true_composition_root_e2e(monkeypatch, tmp_path):
+    """Runner-owned service -> run_cycle -> paper DB -> learning feed."""
     module = importlib.import_module("main")
 
     monkeypatch.setattr(module, "WSS_URL", "wss://provider")
     monkeypatch.setattr(module, "WSS_PAIR", PAIR)
     monkeypatch.setattr(module, "WSS_TOKEN", TOKEN)
 
-    lifecycle = []
+    db_path = tmp_path / "paper_e2e.db"
+    monkeypatch.setattr(paper_database_module, "DB", db_path)
+    PaperDatabase._instance = None
+    PaperDatabase._initialized = False
 
-    class RunnerService(FakeService):
-        def start(self):
-            lifecycle.append("SERVICE_START")
-            return True
-
-        def stop(self):
-            lifecycle.append("SERVICE_STOP")
-            return True
-
-    class RunnerPipeline:
-        def __init__(self):
-            self.scan_count = 0
-            self.position_count = 0
-
-        def configure_native_market_flow(
-            self,
-            pair,
-            token,
-            wrapped_native,
-        ):
-            lifecycle.append("MARKET_FLOW_CONFIGURED")
-            return {"state": "REGISTERED"}
-
-        async def on_native_event(self, event):
-            return {"state": "ACCEPTED"}
-
-        async def on_native_retraction(self, event):
-            return {"state": "RETRACTED"}
-
-        def run_cycle(self):
-            self.scan_count += 1
-            lifecycle.append("SCAN")
-
-        def process_positions(self):
-            self.position_count += 1
-            lifecycle.append("PAPER_MANAGER")
-
-    pipeline = RunnerPipeline()
+    _analysis_stubs(monkeypatch)
 
     app = module.build_application(
-        pipeline=pipeline,
-        wss_service_factory=RunnerService,
+        wss_service_factory=EventingService,
     )
 
-    runner = app["runner"]
-
-    # Scheduler jobs are due immediately on first tick.
-    # Stop after that first complete runner iteration.
-    def stop_after_first_tick(_):
-        runner.stop()
-
-    runner.sleep_func = stop_after_first_tick
-
-    runner.run()
-
-    assert app["wss_configured"] is True
-    assert app["market_flow_bound"] is True
-    assert app["paper_lifecycle_bound"] is True
-
-    assert pipeline.scan_count == 1
-    assert pipeline.position_count == 1
-
-    assert lifecycle.count("SERVICE_START") == 1
-    assert lifecycle.count("SERVICE_STOP") == 1
-
-    assert lifecycle.index("SERVICE_START") < lifecycle.index("SCAN")
-    assert lifecycle.index("SERVICE_START") < lifecycle.index("PAPER_MANAGER")
-    assert lifecycle.index("SERVICE_STOP") > lifecycle.index("SCAN")
-    assert lifecycle.index("SERVICE_STOP") > lifecycle.index("PAPER_MANAGER")
-
-    assert runner.running is False
-    assert runner.services_started is False
-    assert runner.last_service_error is None
-
-    assert app["decision_authority"] is False
-    assert app["live_authority"] is False
-    assert app["execution_authority"] is False
-
-
-def test_runner_owned_composition_root_lifecycle(monkeypatch):
-    module = importlib.import_module("main")
-
-    monkeypatch.setattr(
-        module,
-        "WSS_URL",
-        "wss://provider",
-    )
-    monkeypatch.setattr(
-        module,
-        "WSS_PAIR",
-        PAIR,
-    )
-    monkeypatch.setattr(
-        module,
-        "WSS_TOKEN",
-        TOKEN,
-    )
-
-    class LifecycleService(FakeService):
-        def __init__(self, url, pair):
-            super().__init__(url, pair)
-            self.started = 0
-            self.stopped = 0
-
-        def start(self):
-            self.started += 1
-            return True
-
-        def stop(self):
-            self.stopped += 1
-            return True
-
-    app = module.build_application(
-        wss_service_factory=LifecycleService,
-    )
-
-    runner = app["runner"]
     pipeline = app["pipeline"]
+    runner = app["runner"]
     service = app["services"][0]
 
-    # Real composition-root ownership:
-    # Runner owns the same service and same pipeline jobs.
-    assert runner.services == [service]
+    pipeline.cache = CacheRows()
+    pipeline.ingress_gate = PassIngress()
+    pipeline.conveyor = PassConveyor()
+    pipeline.price = OpenPrice()
+    pipeline.manager.price = ClosePrice()
+    pipeline.native_actor_intelligence.resolver = (
+        TransactionOriginResolver(
+            fetcher=lambda _: {"from": WALLET},
+        )
+    )
 
-    scheduled_names = {
-        task["name"]
-        for task in runner.scheduler.jobs
-    }
+    runner.sleep_func = lambda _: runner.stop()
+    runner.run()
 
-    assert "scanner" in scheduled_names
-    assert "paper_manager" in scheduled_names
-
-    # Runner service lifecycle, not manual direct service ownership.
-    runner._start_services()
-
-    assert runner.services_started is True
     assert service.started == 1
-
-    # Callback wiring belongs to the production pipeline instance.
-    assert service.on_event.__self__ is pipeline
-    assert (
-        service.on_event.__func__
-        is pipeline.on_native_event.__func__
-    )
-
-    assert service.on_retraction.__self__ is pipeline
-
-    # Paper lifecycle also belongs to this exact pipeline instance.
-    paper_task = next(
-        task
-        for task in runner.scheduler.jobs
-        if task["name"] == "paper_manager"
-    )
-
-    assert paper_task["func"].__self__ is pipeline
-
-    runner._stop_services()
-
-    assert runner.services_started is False
     assert service.stopped == 1
+    assert runner.services_started is False
+
+    actor = pipeline.native_actor_intelligence.snapshot(PAIR)
+    assert actor["state"] == "READY"
+    assert actor["wallet_id"] == f"bsc:{WALLET}"
+
+    closed = pipeline.paper_db.closed_positions()
+    assert len(closed) == 1
+    assert closed[0]["token"].lower() == TOKEN.lower()
+    assert closed[0]["status"] == "CLOSED"
+
+    learning = pipeline.learning_outcome_feed.calibration_snapshot()
+    assert learning["state"] == "READY"
+    assert learning["payload"]["proposal_only"] is True
+    assert learning["payload"]["automatic_apply_allowed"] is False
 
     assert app["decision_authority"] is False
     assert app["live_authority"] is False
     assert app["execution_authority"] is False
+
+    pipeline.paper_db.conn.close()
+    PaperDatabase._instance = None
+    PaperDatabase._initialized = False

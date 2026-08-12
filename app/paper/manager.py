@@ -124,7 +124,10 @@ class PaperManager:
                         "closed_at": result_closed_at,
                     },
                 )
-                if not closed:
+                # Backward-compatible DB contract: only an explicit False means
+                # the idempotent close lost a race. Legacy/fake DB adapters may
+                # return None after a successful close.
+                if closed is False:
                     action, reason = "SKIP", "ALREADY_CLOSED"
                 else:
                     try:

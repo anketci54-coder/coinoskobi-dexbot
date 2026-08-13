@@ -2191,13 +2191,70 @@ olmalıdır.
 
 ---
 
-# PHASE 12 — Reserved
-
-# PHASE 12 — Reserved
+# PHASE 12 — Operational Paper-Trade Readiness
 
 ## Amaç
 
-Kapsam zamanı geldiğinde bir önceki fazın kapanışı sırasında planlanacak.
+Mevcut sistemi gerçek runtime kaynaklarıyla uçtan uca çalıştırıp güvenilir
+PAPER TRADE operasyonuna geçirmek.
+
+Detaylı ve bağlayıcı kapsam:
+
+`PHASE12_15_PLAN.md`
+
+## Aktif iş sırası
+
+1. 12A — Paper Readiness Preflight
+2. 12B — Real Runtime Paper Smoke
+3. 12C — Paper Operation Start
+
+## Mevcut durum
+
+- 12A readiness preflight: tamamlandı
+- gerçek BSC WSS ve chain id 56: doğrulandı
+- gerçek PancakeSwap V2 Swap/Sync akışı: doğrulandı
+- market-flow ve actor-intelligence binding: doğrulandı
+- gerçek scanner candidate: doğrulandı
+- paper OPEN → CLOSE → outcome → learning E2E: bekliyor
+- sürekli paper operasyonu: bekliyor
+- live execution / wallet signing: kapalı
+
+## Phase 12 altında sonra bakılacaklar
+
+### Honeypot.is provider davranışı
+
+Honeypot.is sellability, honeypot ve vergi kanıtı için değerlidir; entegrasyon
+korunacaktır. Çok yeni tokenlarda görülen provider `404` / indeksleme gecikmesi
+ayrı bir güvenli durum olarak ele alınacaktır.
+
+İlk gerçek paper lifecycle E2E tamamlandıktan sonra, yalnız gerçek operasyon
+verisi gerektirirse şu maddeler Phase 12 altında incelenecektir:
+
+- pair parametreli ve pair parametresiz sorgu davranışı
+- yeni-token indeksleme gecikmesi
+- bounded retry/cache politikası
+- UNKNOWN sonucunun paper admission etkisi
+- gerekirse Alchemy/NodeReal tabanlı on-chain evidence veya alternatif
+  sellability provider değerlendirmesi
+
+Bu takip maddesi mevcut Phase 12B akışını tek bir token için zorlamaz, missing
+evidence'i güvenli kanıt saymaz ve hot path'e provider beklemesi eklemez.
+
+## Status
+
+🟡 ACTIVE
+
+---
+
+# PHASE 13 — Paper Outcome Learning & Calibration
+
+## Amaç
+
+Phase 12'de oluşan gerçek paper sonuçlarıyla karar kalitesini, false-positive,
+false-negative, missed-opportunity, avoided-loss ve Opportunity Kill Rate
+dengesini ölçmek.
+
+Detaylı kapsam `PHASE12_15_PLAN.md` içindedir.
 
 ## Status
 
@@ -2205,11 +2262,14 @@ Kapsam zamanı geldiğinde bir önceki fazın kapanışı sırasında planlanaca
 
 ---
 
-# PHASE 13 — Reserved
+# PHASE 14 — Command Center & AI Analyst
 
 ## Amaç
 
-Kapsam zamanı geldiğinde bir önceki fazın kapanışı sırasında planlanacak.
+Gerçek paper/runtime truth üzerine sade Command Center, fırsat görünürlüğü,
+AI analyst ve bounded haber/sosyal/launch radarını kurmak.
+
+Detaylı kapsam `PHASE12_15_PLAN.md` içindedir.
 
 ## Status
 
@@ -2217,46 +2277,21 @@ Kapsam zamanı geldiğinde bir önceki fazın kapanışı sırasında planlanaca
 
 ---
 
-# PHASE 14 — Reserved
+# PHASE 15 — Final Operational Validation & Controlled Micro-Live
 
 ## Amaç
 
-Kapsam zamanı geldiğinde bir önceki fazın kapanışı sırasında planlanacak.
+Paper varsayımları ile gerçek execution koşulları arasındaki farkı ölçmek ve
+yalnız ayrı açık kullanıcı onayıyla kontrollü mikro-live değerlendirmesi yapmak.
+
+Phase 15 numaralandırılmış roadmap'in final fazıdır. Phase 16, Era, V2 veya V3
+otomatik açılmaz.
+
+Detaylı kapsam `PHASE12_15_PLAN.md` içindedir.
 
 ## Status
 
 ⏳ WAITING
-
----
-
-# PHASE 15 — Final Roadmap Phase
-
-## Amaç
-
-Numaralandırılmış roadmap'in final fazıdır.
-
-Kapsamı Phase 14 kapanışında resmi olarak planlanacaktır.
-
-## Alınan Karar
-
-Phase 15 mevcut numbered roadmap'in son fazıdır.
-
-Phase 16 otomatik olarak oluşturulmaz.
-
-Numaralı roadmap sonrasında geliştirme:
-
-- release
-- milestone
-- sprint
-- patch
-- hotfix
-
-modeliyle devam edebilir.
-
-## Status
-
-⏳ WAITING
----
 
 ---
 

@@ -35,6 +35,7 @@ REQUIRED_COLUMNS = {
     "token_amount",
     "pool",
     "dex",
+    "opening_context_json",
 }
 
 

@@ -1,3 +1,4 @@
+import json
 import logging
 from datetime import datetime, timezone
 
@@ -16,6 +17,30 @@ class PaperManager:
         self.learning_feed = learning_feed
         self._learning_replay_after_id = 0
 
+    @staticmethod
+    def _opening_context(pos):
+        raw = (pos or {}).get(
+            "opening_context_json"
+        )
+
+        if not raw:
+            return None
+
+        try:
+            value = json.loads(raw)
+        except (
+            TypeError,
+            ValueError,
+            json.JSONDecodeError,
+        ):
+            return None
+
+        return (
+            value
+            if isinstance(value, dict)
+            else None
+        )
+
     def _observe_learning_outcome(self, pos, current, roi, reason, closed_at):
         feed = getattr(self, "learning_feed", None)
         if feed is None:
@@ -29,7 +54,9 @@ class PaperManager:
             exit_price=current,
             realized_return=roi,
             close_reason=reason,
-            opening_context=None,
+            opening_context=(
+                self._opening_context(pos)
+            ),
         )
 
     def replay_closed_outcomes(self):

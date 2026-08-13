@@ -222,6 +222,10 @@ def test_true_composition_root_e2e(monkeypatch, tmp_path):
     assert len(closed) == 1
     assert closed[0]["token"].lower() == TOKEN.lower()
     assert closed[0]["status"] == "CLOSED"
+    assert closed[0]["opening_context_json"]
+    assert "\"captured_at_entry\":true" in (
+        closed[0]["opening_context_json"]
+    )
 
     learning = pipeline.learning_outcome_feed.calibration_snapshot()
     assert learning["state"] == "READY"

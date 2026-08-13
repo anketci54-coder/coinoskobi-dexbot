@@ -698,3 +698,21 @@ Independent adversarial re-audit:
 - P1/HIGH: 0
 
 Phase 12 remains RESERVED until explicit planning discussion.
+
+---
+
+# OCR Final Closure Results — 2026-08-13
+
+- Full regression: 873 PASS
+- Production-path E2E: PASS
+- Restart/recovery: PASS
+- WSS pair/token membership: PASS
+- Paper schema v3 migration: PASS
+- Opening-context persistence: PASS
+- Paper close/replay learning path: PASS
+- DB integrity / quick_check: PASS
+- Authority audit: PASS
+- Learning auto-apply: DISABLED
+- OCR: CLOSED
+- Phase 11: CLOSED
+- Phase 12: RESERVED

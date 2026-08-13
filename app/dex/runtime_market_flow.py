@@ -160,6 +160,7 @@ class RuntimeMarketFlowStore:
         self,
         max_pairs=256,
         max_events_per_pair=2048,
+        require_membership_confirmation=False,
     ):
         self.max_pairs = max(
             1,
@@ -169,6 +170,10 @@ class RuntimeMarketFlowStore:
         self.max_events_per_pair = max(
             1,
             int(max_events_per_pair),
+        )
+
+        self.require_membership_confirmation = bool(
+            require_membership_confirmation
         )
 
         self._pairs = OrderedDict()
@@ -250,6 +255,9 @@ class RuntimeMarketFlowStore:
             "token_is_0": (
                 token_int < quote_int
             ),
+            "membership_verified": (
+                not self.require_membership_confirmation
+            ),
         }
 
         self._events.setdefault(
@@ -265,6 +273,56 @@ class RuntimeMarketFlowStore:
             "token_is_0": (
                 token_int < quote_int
             ),
+            "decision_authority": False,
+            "execution_authority": False,
+        }
+
+    def confirm_pair_membership(
+        self,
+        pair,
+        token,
+        quote_token,
+    ):
+        pair = _address(pair)
+        token = _address(token)
+        quote = _address(quote_token)
+
+        meta = self._pairs.get(pair)
+
+        if meta is None:
+            return {
+                "state": "UNKNOWN_PAIR",
+                "membership_verified": False,
+            }
+
+        configured = {
+            meta["token"],
+            meta["quote_token"],
+        }
+
+        observed = {
+            token,
+            quote,
+        }
+
+        if (
+            None in observed
+            or configured != observed
+        ):
+            meta["membership_verified"] = False
+
+            return {
+                "state": "MISMATCH",
+                "membership_verified": False,
+                "decision_authority": False,
+                "execution_authority": False,
+            }
+
+        meta["membership_verified"] = True
+
+        return {
+            "state": "VERIFIED",
+            "membership_verified": True,
             "decision_authority": False,
             "execution_authority": False,
         }
@@ -779,6 +837,12 @@ class RuntimeMarketFlowStore:
         meta,
         decoded,
     ):
+        if not meta.get(
+            "membership_verified",
+            True,
+        ):
+            return "UNKNOWN"
+
         token_is_0 = meta[
             "token_is_0"
         ]

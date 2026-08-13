@@ -61,7 +61,7 @@ def _indexes(db):
     }
 
 
-def test_v1_clean_database_migrates_to_v2(
+def test_v1_clean_database_migrates_to_current(
     tmp_path,
 ):
     path = tmp_path / "old.db"
@@ -70,7 +70,7 @@ def test_v1_clean_database_migrates_to_v2(
 
     r = ensure_paper_schema(db)
 
-    assert r["schema_version"] == 2
+    assert r["schema_version"] == PAPER_SCHEMA_VERSION
     assert r[
         "single_open_db_enforced"
     ] is True
@@ -287,8 +287,8 @@ def test_migration_is_idempotent(
     first = ensure_paper_schema(db)
     second = ensure_paper_schema(db)
 
-    assert first["schema_version"] == 2
-    assert second["schema_version"] == 2
+    assert first["schema_version"] == PAPER_SCHEMA_VERSION
+    assert second["schema_version"] == PAPER_SCHEMA_VERSION
 
     indexes = _indexes(db)
 

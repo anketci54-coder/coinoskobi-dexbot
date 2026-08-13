@@ -2,7 +2,7 @@ import importlib
 import sqlite3
 from pathlib import Path
 
-from app.paper.schema import ensure_paper_schema
+from app.paper.schema import PAPER_SCHEMA_VERSION, ensure_paper_schema
 
 
 def test_application_can_be_built_repeatedly(monkeypatch):
@@ -29,7 +29,7 @@ def test_schema_reopen_preserves_version(tmp_path):
 
     assert db.execute(
         "PRAGMA user_version"
-    ).fetchone()[0] == 2
+    ).fetchone()[0] == PAPER_SCHEMA_VERSION
 
     assert db.execute(
         "PRAGMA integrity_check"
@@ -74,7 +74,7 @@ def test_existing_real_database_readonly_health():
 
     assert db.execute(
         "PRAGMA user_version"
-    ).fetchone()[0] == 2
+    ).fetchone()[0] == PAPER_SCHEMA_VERSION
 
     assert db.execute(
         "PRAGMA integrity_check"

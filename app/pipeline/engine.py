@@ -1,3 +1,4 @@
+import json
 import logging
 
 from app.analyzer.token import analyze as token_analyze
@@ -95,7 +96,9 @@ class PipelineEngine:
         )
 
         self.native_market_flow = (
-            RuntimeMarketFlowStore()
+            RuntimeMarketFlowStore(
+                require_membership_confirmation=True
+            )
         )
 
         self.native_actor_intelligence = (
@@ -431,6 +434,47 @@ class PipelineEngine:
 
                     token_amount = DEFAULT_AMOUNT_BNB / price
 
+                    opening_context = {
+                        "captured_at_entry": True,
+                        "historical_signal": "POSITIVE",
+                        "historical_action": "ALLOW",
+                        "signal_attribution": {
+                            "paper_entry": "UNKNOWN",
+                        },
+                        "raw_signals": {
+                            "strategy_decision": (
+                                strategy.get("decision")
+                            ),
+                            "unified_decision": (
+                                unified_decision.get(
+                                    "decision"
+                                )
+                            ),
+                            "hard_block": bool(
+                                risk_gate.get(
+                                    "hard_block"
+                                )
+                            ),
+                            "runtime_context_only": (
+                                intelligence_context.get(
+                                    "context_only",
+                                    True,
+                                )
+                            ),
+                        },
+                        "hindsight_reconstructed": False,
+                        "decision_authority": False,
+                        "live_authority": False,
+                        "wallet_authority": False,
+                        "execution_authority": False,
+                    }
+
+                    opening_context_json = json.dumps(
+                        opening_context,
+                        sort_keys=True,
+                        separators=(",", ":"),
+                    )
+
                     inserted = (
                         self.paper_db.insert_if_no_open_position({
                             "token": token_address,
@@ -458,6 +502,9 @@ class PipelineEngine:
                             "mev": DEFAULT_MEV_COST,
 
                             "status": "OPEN",
+                            "opening_context_json": (
+                                opening_context_json
+                            ),
                         })
                     )
 
@@ -607,6 +654,25 @@ class PipelineEngine:
 
         def process_row(row):
             token = row["token"]
+
+            runtime_feed = getattr(
+                self,
+                "native_market_flow",
+                None,
+            )
+
+            confirm_pair = getattr(
+                runtime_feed,
+                "confirm_pair_membership",
+                None,
+            )
+
+            if confirm_pair is not None:
+                confirm_pair(
+                    row.get("pool"),
+                    row.get("token"),
+                    row.get("quote_token"),
+                )
 
             market_context = (
                 build_market_context(

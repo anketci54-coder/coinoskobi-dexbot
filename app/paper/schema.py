@@ -1,4 +1,4 @@
-PAPER_SCHEMA_VERSION = 2
+PAPER_SCHEMA_VERSION = 3
 
 PAPER_TRADES_SCHEMA = """
 CREATE TABLE IF NOT EXISTS paper_trades (
@@ -29,7 +29,8 @@ CREATE TABLE IF NOT EXISTS paper_trades (
     status TEXT,
     token_amount REAL DEFAULT 0,
     pool TEXT,
-    dex TEXT
+    dex TEXT,
+    opening_context_json TEXT
 )
 """
 
@@ -83,6 +84,7 @@ REQUIRED_COLUMNS = {
     "token_amount",
     "pool",
     "dex",
+    "opening_context_json",
 }
 
 
@@ -167,6 +169,22 @@ def ensure_paper_schema(conn):
 
         for sql in INDEXES:
             conn.execute(sql)
+
+        columns_before = {
+            row[1]
+            for row in conn.execute(
+                "PRAGMA table_info(paper_trades)"
+            ).fetchall()
+        }
+
+        if (
+            "opening_context_json"
+            not in columns_before
+        ):
+            conn.execute(
+                "ALTER TABLE paper_trades "
+                "ADD COLUMN opening_context_json TEXT"
+            )
 
         columns = _verify_columns(
             conn

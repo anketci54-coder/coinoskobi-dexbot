@@ -285,3 +285,58 @@ def test_unknown_pair_never_invents_flow():
     ][
         "evidence_ready"
     ] is False
+
+def test_direction_requires_confirmed_pair_membership():
+    store = RuntimeMarketFlowStore(
+        require_membership_confirmation=True
+    )
+
+    registered = store.register_pair(
+        PAIR,
+        TOKEN,
+        QUOTE,
+    )
+
+    assert registered["state"] == "REGISTERED"
+
+    event = swap_event(
+        "0xconfirm:0x1",
+        amount0_in=0,
+        amount1_in=10,
+        amount0_out=5,
+        amount1_out=0,
+    )
+
+    first = store.observe_event(event)
+    assert first["direction"] == "UNKNOWN"
+
+    mismatch = store.confirm_pair_membership(
+        PAIR,
+        TOKEN,
+        "0x0000000000000000000000000000000000000999",
+    )
+
+    assert mismatch["state"] == "MISMATCH"
+
+    verified = store.confirm_pair_membership(
+        PAIR,
+        TOKEN,
+        QUOTE,
+    )
+
+    assert verified["state"] == "VERIFIED"
+
+    event2 = swap_event(
+        "0xconfirm2:0x2",
+        amount0_in=0,
+        amount1_in=10,
+        amount0_out=5,
+        amount1_out=0,
+    )
+
+    second = store.observe_event(event2)
+
+    assert second["direction"] in {
+        "BULL",
+        "BEAR",
+    }

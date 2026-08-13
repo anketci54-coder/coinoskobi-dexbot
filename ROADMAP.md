@@ -23,9 +23,9 @@ ROADMAP içinde tutulmaz.
 
 # PROJE DURUMU
 
-Current Phase: **PHASE 11 — CLOSED**
+Current Phase: **PHASE 12 — ACTIVE**
 
-Next Phase: **PHASE 12 — RESERVED**
+Current Work: **12B — Real Runtime Paper Smoke**
 
 Progress:
 
@@ -41,7 +41,7 @@ Progress:
 - Phase 9: ✅ CLOSED
 - Phase 10: ✅ CLOSED
 - Phase 11: ✅ CLOSED
-- Phase 12: ⏳ WAITING
+- Phase 12: 🟡 ACTIVE
 - Phase 13: ⏳ WAITING
 - Phase 14: ⏳ WAITING
 - Phase 15: ⏳ WAITING
@@ -53,6 +53,19 @@ Progress:
 Bu kararlar fazlardan bağımsızdır.
 
 - Sistem modüler, ölçülebilir ve sade tutulur.
+- Coinoskobi'nin numaralandırılmış ana modülleri PHASE 1–15 ile sınırlıdır.
+- PHASE 16, ERA, V2/V3 veya eşdeğer yeni ana roadmap zinciri açılmaz.
+- Her PHASE sökülebilir, değiştirilebilir ve geliştirilebilir bir ana modüldür.
+- Alt modüller düz harflerle adlandırılır: 12A, 12B, 12C ve devamı.
+- Alt modül harflerinde yapay bir alfabetik üst sınır yoktur.
+- Yeni harf yalnız iş gerçekten gerekliyse, bulunduğu PHASE'i somut biçimde
+  geliştiriyorsa ve mevcut alt modüllerde yapılacak değişikliklerle temiz biçimde
+  çözülemiyorsa açılır.
+- Yeni alt modülün bağımsız kapsamı ve ölçülebilir kabul kriteri olmalıdır.
+- Küçük düzeltme, test, refactor, provider ayarı veya isim değişikliği için yeni
+  harf açılmaz; iş ilgili mevcut alt modül içinde tamamlanır.
+- 12B1, 12B2A gibi iç içe alt numaralandırma kullanılmaz.
+- Alfabenin ilerlemesi yeni bir ana PHASE anlamına gelmez.
 - BSC başlangıç ağıdır.
 - Network veya DEX için ayrı pipeline kopyalanmaz.
 - Kaynaklar ortak Candidate sözleşmesine normalize edilir.

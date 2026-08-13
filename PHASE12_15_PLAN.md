@@ -2,6 +2,19 @@
 
 Bu belge Phase 11 + OCR kapanışı sonrasında Phase 12–15 için alınmış resmi kararları kilitler.
 
+## Aktif durum
+
+- Phase 11: ✅ CLOSED
+- OCR: ✅ CLOSED
+- Phase 12: 🟡 ACTIVE
+- Phase 13: ⏳ WAITING
+- Phase 14: ⏳ WAITING
+- Phase 15: ⏳ WAITING / FINAL ROADMAP PHASE
+- Phase 12 başlangıç baseline: **873 PASS**
+- İlk operasyonel hedef: **sistemi gerçek runtime ile tamamlayıp PAPER TRADE'e geçirmek**
+
+Phase 12'nin ilk işi yeni özellik eklemek değil; paper trade için gerçek runtime readiness durumunu deterministik olarak ölçmek ve yalnız gerçek blocker'ları kapatmaktır.
+
 ## Roadmap sınırı
 
 - Phase 12–15 mevcut numaralı roadmap'in son bölümüdür.
@@ -31,11 +44,47 @@ Takip edilecek önemli kalite metriği: Opportunity Kill Rate — güvenlik/filt
 
 # PHASE 12 — Operational Paper-Trade Readiness
 
+## Status
+
+🟡 ACTIVE
+
 ## Ana hedef
 
 Sistemi gerçek kaynaklarla uçtan uca çalışır hale getirip güvenilir PAPER TRADE operasyonuna geçirmek.
 
 Phase 12'nin başarı tanımı yeni özellik sayısı değildir. Başarı: gerçek runtime verisiyle adayın keşiften paper pozisyon kapanışına kadar aynı application lifecycle içinde izlenebilir ve tekrarlanabilir şekilde ilerlemesidir.
+
+## İlk iş sırası
+
+### 12A — Paper Readiness Preflight
+
+- production composition root kontrolü
+- WSS config + market-flow binding kontrolü
+- paper lifecycle binding kontrolü
+- paper DB/schema availability
+- outcome-learning feed availability
+- authority sınırlarının kapalı olduğunu doğrulama
+- blocker listesi üretme
+- hot path'e iş eklemeyen startup/read-only preflight
+
+### 12B — Real Runtime Paper Smoke
+
+12A READY olduktan sonra:
+
+- gerçek scanner/cache candidate
+- gerçek configured WSS/native context
+- market/flow + actor intelligence
+- risk/decision
+- paper admission
+- gerçek paper DB OPEN
+- position manager CLOSE
+- outcome → learning
+
+aynı application lifecycle içinde doğrulanır.
+
+### 12C — Paper Operation Start
+
+Smoke PASS sonrası sistem kontrollü paper modunda sürekli çalıştırılır. Bu noktadan sonra Phase 12'nin ana işi yeni guard eklemek değil gerçek davranışı ölçmektir.
 
 ## Kapsam
 

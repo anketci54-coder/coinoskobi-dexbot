@@ -99,6 +99,25 @@ Smoke PASS sonrası sistem kontrollü paper modunda sürekli çalıştırılır.
 9. Minimum operability görünürlüğü: hangi token, neden aday, giriş var mı, engel ne, SL/TP, beklenen maliyet/PnL, paper sonucu.
 10. Gereksiz script/artifact/log üretmeden temiz runtime işletimi.
 
+## Phase 12 altında sonra bakılacaklar
+
+### Honeypot.is provider hardening
+
+Honeypot.is sellability, honeypot ve buy/sell/transfer tax kanıtı için korunur.
+Çok yeni tokenlarda görülen `404` / indeksleme gecikmesi, tek adayı zorlayarak
+Phase 12B akışını dağıtmadan daha sonra Phase 12 altında değerlendirilecektir.
+
+İncelenecek başlıklar:
+
+- pair parametreli ve pair parametresiz sorgu davranışı
+- yeni-token indeksleme gecikmesi
+- bounded retry ve cache
+- UNKNOWN sonucunun paper admission etkisi
+- gerekirse Alchemy/NodeReal on-chain evidence veya alternatif provider
+
+Bu çalışma ilk gerçek paper lifecycle E2E'yi gereksiz yere bloke etmez; missing
+evidence güvenli kabul edilmez ve provider hot path'e taşınmaz.
+
 ## Phase 12 sınırları
 
 - Gerçek para YOK.

@@ -1,5 +1,6 @@
 import sqlite3
 import threading
+from datetime import datetime, timezone
 from pathlib import Path
 
 from app.paper.schema import ensure_paper_schema
@@ -78,7 +79,65 @@ class PaperDatabase:
                 self.conn.rollback()
                 raise
 
+    def insert_if_below_open_limit(
+        self,
+        trade,
+        max_open_positions,
+    ):
+        token = (trade or {}).get("token")
+
+        if not token:
+            raise ValueError("trade token is required")
+
+        limit = max(1, int(max_open_positions))
+
+        with self._db_lock:
+            try:
+                self.conn.execute("BEGIN IMMEDIATE")
+
+                duplicate = self.conn.execute(
+                    """
+                    SELECT 1
+                    FROM paper_trades
+                    WHERE lower(token)=lower(?)
+                      AND status='OPEN'
+                    LIMIT 1
+                    """,
+                    (token,),
+                ).fetchone()
+
+                if duplicate is not None:
+                    self.conn.rollback()
+                    return False
+
+                opened = self.conn.execute(
+                    """
+                    SELECT COUNT(*)
+                    FROM paper_trades
+                    WHERE status='OPEN'
+                    """
+                ).fetchone()[0]
+
+                if opened >= limit:
+                    self.conn.rollback()
+                    return False
+
+                self._insert_unlocked(trade)
+                self.conn.commit()
+                return True
+
+            except Exception:
+                self.conn.rollback()
+                raise
+
     def _insert_unlocked(self, trade):
+        trade = dict(trade or {})
+
+        if not trade.get("created_at"):
+            trade["created_at"] = (
+                datetime.now(timezone.utc).isoformat()
+            )
+
         cols = ",".join(trade.keys())
         vals = ",".join("?" * len(trade))
         self.conn.execute(

@@ -20,6 +20,8 @@ class GeckoCache:
 
             token TEXT,
 
+            quote_token TEXT,
+
             name TEXT,
 
             dex TEXT,
@@ -42,6 +44,19 @@ class GeckoCache:
 
         """)
 
+        columns = {
+            row[1]
+            for row in self.db.execute(
+                "PRAGMA table_info(gecko_pool_cache)"
+            )
+        }
+
+        if "quote_token" not in columns:
+            self.db.execute(
+                "ALTER TABLE gecko_pool_cache "
+                "ADD COLUMN quote_token TEXT"
+            )
+
         self.db.commit()
 
     def replace(self, row):
@@ -52,6 +67,7 @@ class GeckoCache:
 
             pool,
             token,
+            quote_token,
             name,
             dex,
             liquidity,
@@ -64,12 +80,13 @@ class GeckoCache:
 
         )
 
-        VALUES(?,?,?,?,?,?,?,?,?,?,datetime('now'))
+        VALUES(?,?,?,?,?,?,?,?,?,?,?,datetime('now'))
 
         """,(
 
             row["pool"],
             row["base_token"],
+            row.get("quote_token"),
             row["name"],
             row["dex"],
             row["liquidity"],
@@ -83,6 +100,108 @@ class GeckoCache:
 
         self.db.commit()
 
+    def prune_except(self, pools, preserve_tokens=None):
+        pools = list(dict.fromkeys(
+            str(value or "").strip().lower()
+            for value in pools
+            if str(value or "").strip()
+        ))
+
+        preserve = list(dict.fromkeys(
+            (
+                str(value).strip().lower()
+                if str(value).strip().lower().startswith("bsc_")
+                else f"bsc_{str(value).strip().lower()}"
+            )
+            for value in (preserve_tokens or [])
+            if str(value or "").strip()
+        ))
+
+        if not pools:
+            return 0
+
+        pool_marks = ",".join("?" for _ in pools)
+        sql = (
+            "DELETE FROM gecko_pool_cache "
+            f"WHERE lower(pool) NOT IN ({pool_marks})"
+        )
+        params = list(pools)
+
+        if preserve:
+            token_marks = ",".join("?" for _ in preserve)
+            sql += (
+                f" AND lower(token) NOT IN ({token_marks})"
+            )
+            params.extend(preserve)
+
+        cursor = self.db.execute(sql, params)
+        self.db.commit()
+        return cursor.rowcount
+
+    def pool_for_token(self, token):
+        row = self.db.execute(
+            """
+            SELECT pool
+            FROM gecko_pool_cache
+            WHERE lower(token)=lower(?)
+            ORDER BY updated_at DESC
+            LIMIT 1
+            """,
+            (f"bsc_{token}",),
+        ).fetchone()
+
+        return row[0] if row else None
+
+    def upsert_tracked_price(self, pool, token, price):
+        pool = str(pool or "").strip().lower()
+        token = str(token or "").strip().lower()
+        price = float(price)
+
+        if not pool or not token or price <= 0:
+            raise ValueError("valid pool, token and price required")
+
+        if not token.startswith("bsc_"):
+            token = f"bsc_{token}"
+
+        self.db.execute(
+            """
+            INSERT INTO gecko_pool_cache(
+                pool,
+                token,
+                price_usd,
+                updated_at
+            )
+            VALUES(?,?,?,datetime('now'))
+            ON CONFLICT(pool) DO UPDATE SET
+                token=excluded.token,
+                price_usd=excluded.price_usd,
+                updated_at=datetime('now')
+            """,
+            (pool, token, price),
+        )
+
+        self.db.commit()
+        return True
+
+    def update_pool_price(self, pool, price):
+        price = float(price)
+
+        if price <= 0:
+            raise ValueError("price must be positive")
+
+        cursor = self.db.execute(
+            """
+            UPDATE gecko_pool_cache
+            SET price_usd=?,
+                updated_at=datetime('now')
+            WHERE lower(pool)=lower(?)
+            """,
+            (price, pool),
+        )
+
+        self.db.commit()
+        return cursor.rowcount
+
     def all(self):
 
         cur=self.db.execute("""
@@ -91,6 +210,7 @@ class GeckoCache:
 
         pool,
         token,
+        quote_token,
         name,
         dex,
         liquidity,

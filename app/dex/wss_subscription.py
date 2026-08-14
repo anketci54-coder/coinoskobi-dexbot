@@ -6,9 +6,29 @@ TOPICS = {
 }
 
 
-def subscribe_request(pair, request_id=1):
-    if not pair:
+def subscribe_request(pair, request_id=1, max_addresses=256):
+    if isinstance(pair, str):
+        addresses = [pair.strip()]
+    else:
+        try:
+            addresses = [
+                str(value).strip()
+                for value in pair
+                if str(value).strip()
+            ]
+        except TypeError:
+            addresses = []
+
+    addresses = list(dict.fromkeys(addresses))
+
+    if not addresses or len(addresses) > int(max_addresses):
         return {"state": "INVALID"}
+
+    address_filter = (
+        addresses[0]
+        if len(addresses) == 1
+        else addresses
+    )
 
     return {
         "state": "READY",
@@ -19,11 +39,12 @@ def subscribe_request(pair, request_id=1):
             "params": [
                 "logs",
                 {
-                    "address": pair,
+                    "address": address_filter,
                     "topics": [[SWAP_TOPIC, SYNC_TOPIC]],
                 },
             ],
         },
+        "address_count": len(addresses),
         "bounded": True,
         "execution_authority": False,
     }

@@ -397,3 +397,35 @@ def test_service_cancels_stuck_runtime_task():
 
     assert status["thread_alive"] is False
     assert status["forced_stop_count"] == 1
+
+
+def test_replace_pairs_updates_stopped_service():
+    service = NativeWSSService(
+        "wss://provider",
+        "0xpair1",
+    )
+
+    result = service.replace_pairs([
+        "0xpair2",
+        "0xpair3",
+        "0xpair2",
+    ])
+
+    assert result["state"] == "UPDATED"
+    assert result["address_count"] == 2
+    assert result["restarted"] is False
+    assert service.pair == ["0xpair2", "0xpair3"]
+
+
+def test_replace_pairs_rejects_unbounded_filter():
+    service = NativeWSSService(
+        "wss://provider",
+        "0xpair",
+    )
+
+    result = service.replace_pairs(
+        [f"0x{i}" for i in range(257)]
+    )
+
+    assert result["state"] == "INVALID"
+    assert service.pair == "0xpair"

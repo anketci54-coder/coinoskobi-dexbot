@@ -1,5 +1,6 @@
 import json
 import logging
+import threading
 
 from app.analyzer.token import analyze as token_analyze
 from app.analyzer.pair import analyze as pair_analyze
@@ -29,9 +30,11 @@ from app.pipeline.execution_context import build_execution_context
 from app.pipeline.paper_admission import paper_admission_decision
 from app.pipeline.intelligence_composition import RuntimeIntelligenceComposition
 from app.learning.runtime_outcome_feed import RuntimeLearningOutcomeFeed
+from app.dex.pair_membership import verify_pair_membership
 from app.dex.runtime_market_flow import RuntimeMarketFlowStore
 from app.dex.runtime_actor_intelligence import RuntimeActorIntelligence
 from app.scanner.adapters.source_router import normalize_source_rows
+from app.scanner.gecko_scanner import GeckoScanner
 
 from app.config.scanner import (
     ANALYZER_WORKERS,
@@ -41,6 +44,7 @@ from app.config.scanner import (
 
 from app.config.trading import (
     DEFAULT_AMOUNT_BNB,
+    MAX_OPEN_PAPER_POSITIONS,
     TP_PRICE_MULTIPLIER,
     SL_PRICE_MULTIPLIER,
     DEFAULT_GAS_BUY,
@@ -65,10 +69,25 @@ _mev_risk = MEVExposureAnalyzer()
 
 class PipelineEngine:
 
-    def __init__(self):
+    def __init__(self, pair_membership_verifier=None):
         self.paper_db = PaperDatabase()
         self.price = CachePrice()
         self.cache = GeckoCache()
+        self.pair_membership_verifier = (
+            pair_membership_verifier
+            or verify_pair_membership
+        )
+        self.scanner = GeckoScanner()
+        self.last_scanner_refresh = {
+            "state": "NOT_RUN",
+            "rows": 0,
+            "error": None,
+        }
+        self.last_cache_pruned = 0
+        self.last_cycle_status = {
+            "state": "NOT_RUN",
+            "decisions": [],
+        }
         self.filter = CacheFilter()
         self.ingress_gate = IngressGate()
         self.learning_outcome_feed = (
@@ -125,6 +144,81 @@ class PipelineEngine:
             quote_token,
         )
 
+    def native_wss_targets(self, max_pairs=256):
+        normalized = normalize_source_rows(
+            "geckoterminal",
+            "bsc",
+            self.cache.all(),
+        )
+
+        targets = []
+        seen = set()
+
+        classified = (
+            self.ingress_gate.classify(
+                candidate.to_dict()
+            )
+            for candidate in normalized["candidates"]
+        )
+
+        rows = [
+            item["row"]
+            for item in classified
+            if item["lane"] == "ACTIVE"
+            and item["row"].get("dex") == "pancakeswap_v2"
+        ]
+
+        rows.sort(
+            key=lambda row: (
+                float(row.get("buys_24h") or row.get("buys24") or 0),
+                float(row.get("volume_24h") or row.get("volume24") or 0),
+                float(row.get("liquidity") or 0),
+            ),
+            reverse=True,
+        )
+
+        for row in rows:
+            pair = str(row.get("pool") or "").strip().lower()
+            token = str(row.get("token") or "").strip().lower()
+            quote = str(row.get("quote_token") or "").strip().lower()
+
+            if not pair or not token or not quote or pair in seen:
+                continue
+
+            membership = self.pair_membership_verifier(
+                pair,
+                token,
+                quote,
+            )
+
+            if membership.get("state") != "VERIFIED":
+                continue
+
+            seen.add(pair)
+            targets.append({
+                "pair": pair,
+                "token": token,
+                "quote_token": quote,
+                "membership_verified": True,
+            })
+
+            if len(targets) >= max(1, int(max_pairs)):
+                break
+
+        return targets
+
+    def confirm_native_market_flow(
+        self,
+        pair,
+        token,
+        quote_token,
+    ):
+        return self.native_market_flow.confirm_pair_membership(
+            pair,
+            token,
+            quote_token,
+        )
+
     async def on_native_event(
         self,
         event,
@@ -175,7 +269,131 @@ class PipelineEngine:
 
         return True
 
+    def refresh_open_position_prices(self, max_positions=30):
+        positions = self.manager.db.open_positions()
+        selected = positions[:max(1, int(max_positions))]
+
+        pool_by_token = {}
+        failed = 0
+
+        for position in selected:
+            pool = None
+            raw_context = position.get(
+                "opening_context_json"
+            )
+
+            if raw_context:
+                try:
+                    opening_context = json.loads(
+                        raw_context
+                    )
+                    pool = (
+                        opening_context.get(
+                            "raw_signals",
+                            {},
+                        ).get("pool")
+                    )
+                except (
+                    TypeError,
+                    ValueError,
+                    json.JSONDecodeError,
+                ):
+                    pool = None
+
+            if not pool:
+                pool = self.cache.pool_for_token(
+                    position["token"]
+                )
+
+            if pool:
+                pool_by_token[position["token"]] = pool
+            else:
+                failed += 1
+
+        pools = list(dict.fromkeys(
+            pool_by_token.values()
+        ))
+
+        if not pools:
+            return {
+                "state": "REFRESHED",
+                "open_positions": len(positions),
+                "refreshed": 0,
+                "failed": failed,
+                "requests": 0,
+                "bounded": True,
+            }
+
+        try:
+            pool_prices = getattr(
+                self.scanner,
+                "pool_prices",
+                None,
+            )
+
+            if pool_prices is not None:
+                prices = pool_prices(pools)
+            else:
+                prices = {
+                    pool: self.scanner.pool_price(pool)
+                    for pool in pools
+                }
+
+        except Exception:
+            return {
+                "state": "FAILED_USING_CACHE",
+                "open_positions": len(positions),
+                "refreshed": 0,
+                "failed": failed + len(pools),
+                "requests": 1,
+                "bounded": True,
+            }
+
+        refreshed = 0
+
+        for pool in pools:
+            price = prices.get(pool.lower())
+
+            if price is None:
+                failed += 1
+                continue
+
+            if self.cache.update_pool_price(pool, price):
+                refreshed += 1
+            else:
+                upsert = getattr(
+                    self.cache,
+                    "upsert_tracked_price",
+                    None,
+                )
+
+                token = next(
+                    (
+                        token
+                        for token, tracked_pool
+                        in pool_by_token.items()
+                        if tracked_pool == pool
+                    ),
+                    None,
+                )
+
+                if upsert is not None and token:
+                    upsert(pool, token, price)
+                    refreshed += 1
+                else:
+                    failed += 1
+
+        return {
+            "state": "REFRESHED",
+            "open_positions": len(positions),
+            "refreshed": refreshed,
+            "failed": failed,
+            "requests": 1,
+            "bounded": True,
+        }
+
     def process_positions(self):
+        self.refresh_open_position_prices()
         return self.manager.process()
 
     def run(
@@ -455,6 +673,26 @@ class PipelineEngine:
                                     "hard_block"
                                 )
                             ),
+                            "unified_score": (
+                                unified_score.get("score")
+                            ),
+                            "unified_confidence": (
+                                unified_score.get("confidence")
+                            ),
+                            "unified_coverage": (
+                                unified_score.get("coverage")
+                            ),
+                            "sellability_status": (
+                                analyzer_status[
+                                    "sellability"
+                                ]["status"]
+                            ),
+                            "pool": market_context.get(
+                                "candidate_pool"
+                            ),
+                            "quote_token": market_context.get(
+                                "candidate_quote_token"
+                            ),
                             "runtime_context_only": (
                                 intelligence_context.get(
                                     "context_only",
@@ -475,8 +713,7 @@ class PipelineEngine:
                         separators=(",", ":"),
                     )
 
-                    inserted = (
-                        self.paper_db.insert_if_no_open_position({
+                    trade_row = {
                             "token": token_address,
                             "symbol": token.get("symbol", "?"),
 
@@ -505,13 +742,37 @@ class PipelineEngine:
                             "opening_context_json": (
                                 opening_context_json
                             ),
-                        })
+                        }
+
+                    bounded_insert = getattr(
+                        self.paper_db,
+                        "insert_if_below_open_limit",
+                        None,
                     )
 
+                    if bounded_insert is not None:
+                        inserted = bounded_insert(
+                            trade_row,
+                            MAX_OPEN_PAPER_POSITIONS,
+                        )
+                    else:
+                        inserted = (
+                            self.paper_db.insert_if_no_open_position(
+                                trade_row
+                            )
+                        )
+
                     if not inserted:
+                        if self.paper_db.has_open_position(
+                            token_address
+                        ):
+                            reason = "OPEN_POSITION_EXISTS"
+                        else:
+                            reason = "PAPER_POSITION_CAP_REACHED"
+
                         paper = {
                             "action": "SKIP",
-                            "reason": "OPEN_POSITION_EXISTS",
+                            "reason": reason,
                         }
 
                     else:
@@ -554,7 +815,85 @@ class PipelineEngine:
             },
         }
 
+    def refresh_candidate_cache(self):
+        scanner = getattr(
+            self,
+            "scanner",
+            None,
+        )
+
+        if scanner is None:
+            result = {
+                "state": "DISABLED",
+                "rows": 0,
+                "error": None,
+            }
+            self.last_scanner_refresh = result
+            return result
+
+        rows = scanner.scan()
+
+        for row in rows:
+            self.cache.replace(row)
+
+        self.last_cache_pruned = 0
+        prune = getattr(
+            self.cache,
+            "prune_except",
+            None,
+        )
+
+        if rows and prune is not None:
+            preserve_tokens = []
+            manager = getattr(self, "manager", None)
+            manager_db = getattr(manager, "db", None)
+            open_reader = getattr(
+                manager_db,
+                "open_positions",
+                None,
+            )
+
+            if open_reader is not None:
+                preserve_tokens = [
+                    position["token"]
+                    for position in open_reader()
+                ]
+
+            self.last_cache_pruned = prune(
+                [
+                    row["pool"]
+                    for row in rows
+                    if row.get("pool")
+                ],
+                preserve_tokens=preserve_tokens,
+            )
+
+        result = {
+            "state": "REFRESHED",
+            "rows": len(rows),
+            "error": None,
+        }
+
+        self.last_scanner_refresh = result
+        return result
+
     def run_cycle(self):
+
+        try:
+            self.refresh_candidate_cache()
+        except Exception as exc:
+            self.last_scanner_refresh = {
+                "state": "FAILED_USING_CACHE",
+                "rows": 0,
+                "error": (
+                    f"{type(exc).__name__}: {exc}"
+                ),
+            }
+
+            logger.warning(
+                "Scanner refresh failed; using cache: %s",
+                self.last_scanner_refresh["error"],
+            )
 
         rows = self.cache.all()
 
@@ -652,6 +991,9 @@ class PipelineEngine:
             queue_stats["cooldown_skipped"],
         )
 
+        decision_rows = []
+        decision_lock = threading.Lock()
+
         def process_row(row):
             token = row["token"]
 
@@ -683,6 +1025,13 @@ class PipelineEngine:
                         None,
                     ),
                 )
+            )
+
+            market_context["candidate_pool"] = row.get(
+                "pool"
+            )
+            market_context["candidate_quote_token"] = row.get(
+                "quote_token"
             )
 
             actor_runtime = getattr(
@@ -728,6 +1077,60 @@ class PipelineEngine:
                     ),
                 )
 
+                data = result.get("data", {})
+                strategy = data.get("strategy") or {}
+                unified = data.get("unified_decision") or {}
+                paper = data.get("paper") or {}
+                score = data.get("unified_score") or {}
+                risk_gate = data.get("risk_gate") or {}
+                analyzer_status = (
+                    data.get("analyzer_status") or {}
+                )
+
+                summary = {
+                    "token": token,
+                    "pool": row.get("pool"),
+                    "strategy": strategy.get("decision"),
+                    "unified": unified.get("decision"),
+                    "paper": paper.get("action"),
+                    "reason": paper.get("reason"),
+                    "hard_block": bool(
+                        risk_gate.get("hard_block")
+                    ),
+                    "score": score.get("score"),
+                    "confidence": score.get("confidence"),
+                    "sellability": (
+                        analyzer_status.get(
+                            "sellability",
+                            {},
+                        ).get("status")
+                    ),
+                }
+
+                with decision_lock:
+                    if len(decision_rows) < 100:
+                        decision_rows.append(summary)
+
+                logger.info(
+                    (
+                        "Candidate token=%s pool=%s "
+                        "strategy=%s unified=%s "
+                        "paper=%s reason=%s "
+                        "hard_block=%s score=%s "
+                        "confidence=%s sellability=%s"
+                    ),
+                    summary["token"],
+                    summary["pool"],
+                    summary["strategy"],
+                    summary["unified"],
+                    summary["paper"],
+                    summary["reason"],
+                    summary["hard_block"],
+                    summary["score"],
+                    summary["confidence"],
+                    summary["sellability"],
+                )
+
                 if not result.get("success"):
                     logger.warning(
                         "Pipeline failed: %s",
@@ -752,10 +1155,69 @@ class PipelineEngine:
             process_row,
         )
 
+        manager_results = []
+        manager_error = None
+
         try:
-            self.manager.process()
-        except Exception:
+            manager_results = (
+                self.manager.process()
+                or []
+            )
+        except Exception as exc:
+            manager_error = (
+                f"{type(exc).__name__}: {exc}"
+            )
+
             logger.exception(
                 "Paper manager exception"
             )
+
+        paper_counts = {}
+
+        for row in decision_rows:
+            action = row.get("paper") or "UNKNOWN"
+            paper_counts[action] = (
+                paper_counts.get(action, 0)
+                + 1
+            )
+
+        status = {
+            "state": (
+                "READY"
+                if scheduler_result.get("failed", 0) == 0
+                and manager_error is None
+                else "DEGRADED"
+            ),
+            "scanner": dict(
+                self.last_scanner_refresh
+            ),
+            "ingress": dict(ingress_stats),
+            "queue": dict(queue_stats),
+            "scheduler": scheduler_result,
+            "decision_count": len(decision_rows),
+            "paper_actions": paper_counts,
+            "decisions": decision_rows,
+            "paper_manager_count": len(
+                manager_results
+            ),
+            "paper_manager_error": manager_error,
+            "decision_authority": False,
+            "live_authority": False,
+            "execution_authority": False,
+        }
+
+        self.last_cycle_status = status
+
+        logger.info(
+            (
+                "Cycle state=%s decisions=%s "
+                "paper_actions=%s manager=%s"
+            ),
+            status["state"],
+            status["decision_count"],
+            status["paper_actions"],
+            status["paper_manager_count"],
+        )
+
+        return status
 

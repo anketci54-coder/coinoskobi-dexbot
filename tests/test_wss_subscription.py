@@ -62,3 +62,24 @@ def test_authority_zero():
     r = normalize_wss_event(event())
     assert r["decision_authority"] is False
     assert r["execution_authority"] is False
+
+
+def test_subscribe_multiple_pairs_is_bounded():
+    pairs = [
+        "0x0000000000000000000000000000000000000001",
+        "0x0000000000000000000000000000000000000002",
+    ]
+
+    result = subscribe_request(pairs)
+
+    assert result["state"] == "READY"
+    assert result["address_count"] == 2
+    assert result["request"]["params"][1]["address"] == pairs
+    assert result["bounded"] is True
+    assert result["execution_authority"] is False
+
+
+def test_subscribe_pair_limit_rejects_overflow():
+    pairs = [f"0x{i:040x}" for i in range(257)]
+
+    assert subscribe_request(pairs)["state"] == "INVALID"

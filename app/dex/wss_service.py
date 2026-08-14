@@ -104,6 +104,76 @@ class NativeWSSService:
             "execution_authority": False,
         }
 
+    def replace_pairs(self, pair):
+        if isinstance(pair, str):
+            addresses = [pair.strip()]
+        else:
+            try:
+                addresses = [
+                    str(value).strip()
+                    for value in pair
+                    if str(value).strip()
+                ]
+            except TypeError:
+                addresses = []
+
+        addresses = list(dict.fromkeys(addresses))
+
+        if not addresses or len(addresses) > 256:
+            return {
+                "state": "INVALID",
+                "address_count": len(addresses),
+            }
+
+        replacement = (
+            addresses[0]
+            if len(addresses) == 1
+            else addresses
+        )
+
+        with self._lock:
+            current = (
+                [self.pair]
+                if isinstance(self.pair, str)
+                else list(self.pair)
+            )
+
+            running = bool(
+                self._thread
+                and self._thread.is_alive()
+            )
+
+        if current == addresses:
+            return {
+                "state": "UNCHANGED",
+                "address_count": len(addresses),
+                "restarted": False,
+            }
+
+        if running and not self.stop():
+            return {
+                "state": "STOP_FAILED",
+                "address_count": len(addresses),
+                "restarted": False,
+            }
+
+        with self._lock:
+            self.pair = replacement
+
+        restarted = self.start() if running else False
+
+        return {
+            "state": (
+                "RESTARTED"
+                if restarted
+                else "UPDATED"
+            ),
+            "address_count": len(addresses),
+            "restarted": restarted,
+            "decision_authority": False,
+            "execution_authority": False,
+        }
+
     @property
     def name(self):
         return "native_wss"

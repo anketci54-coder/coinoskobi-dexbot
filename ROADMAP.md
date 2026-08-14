@@ -23,9 +23,9 @@ ROADMAP içinde tutulmaz.
 
 # PROJE DURUMU
 
-Current Phase: **PHASE 12 — ACTIVE**
+Current Phase: **PHASE 12 — CLOSED**
 
-Current Work: **12B — Real Runtime Paper Smoke**
+Current Work: **AWAITING EXPLICIT PHASE 13 START DECISION**
 
 Progress:
 
@@ -41,7 +41,7 @@ Progress:
 - Phase 9: ✅ CLOSED
 - Phase 10: ✅ CLOSED
 - Phase 11: ✅ CLOSED
-- Phase 12: 🟡 ACTIVE
+- Phase 12: ✅ CLOSED
 - Phase 13: ⏳ WAITING
 - Phase 14: ⏳ WAITING
 - Phase 15: ⏳ WAITING
@@ -2250,7 +2250,7 @@ Takip edilecek önemli kalite metriği: Opportunity Kill Rate — güvenlik/filt
 
 ## Status
 
-🟡 ACTIVE
+✅ CLOSED — 2026-08-14
 
 ## Ana hedef
 
@@ -2334,6 +2334,31 @@ evidence güvenli kabul edilmez ve provider hot path'e taşınmaz.
 ## Phase 12 kapanış kriteri
 
 Sistem yeterli süre gerçek runtime altında stabil çalışır; paper trade açar/kapatır; sonuçları outcome memory/learning hattına taşır; restart/recovery ve DB bütünlüğünü korur; hot path ölçümlerinde kabul edilemez hantallık görülmez. Bundan sonra ana çalışma paper sonuçlarını toplamaya geçer.
+
+## Phase 12 kapanış kanıtı — 2026-08-14
+
+- 12A production composition root, WSS/market-flow, paper lifecycle, DB/schema,
+  outcome-learning feed ve authority sınırlarıyla PASS.
+- 12B gerçek scanner/cache adayı, on-chain doğrulanmış multi-pair WSS,
+  market/flow ve actor intelligence, risk/decision, paper admission, gerçek
+  PAPER OPEN, doğal CLOSE ve outcome-learning zinciriyle PASS.
+- 12C application-owned systemd runtime, dinamik WSS pair yenileme, bounded
+  scanner cache, bounded open-position fiyat yenileme, atomic paper position
+  limiti ve operability loglarıyla PASS.
+- Gerçek kapanış örneklerinde `VALID_SIGNAL` ve `FALSE_POSITIVE`
+  sınıflandırmaları üretildi; evidence coverage `1.0` oldu ve olumsuz sonuçlar
+  bounded outcome memory'ye yazıldı.
+- Provenance düzeltmesinden sonraki paper girişlerinde pool ve quote token
+  opening context içinde entry anında kalıcılaştırıldı.
+- Restart/recovery, tek runtime PID, `NRestarts=0`, runtime error/warning
+  sayılarının sıfır olması ve açık pozisyon fiyat recovery akışı doğrulandı.
+- Tam regresyon: `897 passed`; bilinen tek uyarı `websockets.legacy`
+  deprecation uyarısıdır.
+- Paper ve cache SQLite integrity/quick kontrolleri `ok`.
+- Gerçek para, wallet signing, live execution, learning auto-apply ve AI
+  authority kapalı kaldı.
+
+Phase 13 otomatik açılmaz; başlangıcı ayrı ve açık kullanıcı kararı gerektirir.
 
 ---
 

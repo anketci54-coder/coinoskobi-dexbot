@@ -96,12 +96,12 @@ def test_score_just_below_paper_is_watch():
 def test_confidence_boundary():
     below = evaluate(
         95,
-        79.99,
+        59.99,
     )
 
     exact = evaluate(
         95,
-        80,
+        60,
     )
 
     assert (

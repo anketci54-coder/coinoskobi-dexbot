@@ -53,6 +53,60 @@ class GeckoScanner:
             "unexpected GeckoTerminal retry state"
         )
 
+    def pool_prices(self, pools, max_pools=30):
+        addresses = list(dict.fromkeys(
+            str(pool or "").strip().lower()
+            for pool in pools
+            if str(pool or "").strip()
+        ))
+
+        if not addresses or len(addresses) > int(max_pools):
+            raise ValueError("invalid bounded pool list")
+
+        response = requests.get(
+            (
+                "https://api.geckoterminal.com/api/v2/"
+                f"networks/{NETWORK}/pools/multi/"
+                + ",".join(addresses)
+            ),
+            headers={
+                "Accept": (
+                    "application/json;"
+                    "version=20230302"
+                ),
+            },
+            timeout=HTTP_TIMEOUT,
+        )
+
+        response.raise_for_status()
+
+        prices = {}
+
+        for row in response.json().get("data", []):
+            attr = row.get("attributes", {})
+            pool = str(
+                attr.get("address") or ""
+            ).strip().lower()
+
+            price = float(
+                attr.get("base_token_price_usd")
+                or 0
+            )
+
+            if pool in addresses and price > 0:
+                prices[pool] = price
+
+        return prices
+
+    def pool_price(self, pool):
+        pool = str(pool or "").strip().lower()
+        prices = self.pool_prices([pool])
+
+        if pool not in prices:
+            raise RuntimeError("pool price unavailable")
+
+        return prices[pool]
+
     def scan(self):
         response = self._fetch()
 

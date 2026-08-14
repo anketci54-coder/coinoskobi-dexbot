@@ -110,7 +110,9 @@ UNIFIED_CONFIDENCE_MEV_WEIGHT = 20.0
 UNIFIED_DECISION_PAPER_SCORE = 90.0
 UNIFIED_DECISION_WATCH_SCORE = 70.0
 
-# Minimum evidence coverage required before a high score
-# can become a mature PAPER_BUY candidate.
-UNIFIED_DECISION_MIN_CONFIDENCE = 80.0
+# Minimum evidence coverage for PAPER observation.
+# Strategy + real market/MEV evidence is sufficient for paper learning.
+# Missing sellability/tax remains UNKNOWN in opening context.
+# This grants no live, wallet or execution authority.
+UNIFIED_DECISION_MIN_CONFIDENCE = 60.0
 

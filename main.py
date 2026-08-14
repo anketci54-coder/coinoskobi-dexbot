@@ -1,3 +1,4 @@
+import logging
 from app.config.contracts import WBNB
 from app.config.settings import (
     WSS_PAIR,
@@ -28,59 +29,189 @@ def build_application(
     market_flow_bound = False
 
     if WSS_URL and WSS_PAIR:
+        startup_refresh = getattr(
+            pipeline,
+            "refresh_candidate_cache",
+            None,
+        )
+
+        if startup_refresh is not None:
+            try:
+                startup_refresh()
+            except Exception as exc:
+                logging.getLogger(__name__).warning(
+                    "Startup scanner refresh failed; using cache: %s",
+                    f"{type(exc).__name__}: {exc}",
+                )
+
         factory = (
             wss_service_factory
             or NativeWSSService
         )
 
+        target_loader = getattr(
+            pipeline,
+            "native_wss_targets",
+            None,
+        )
+
+        targets = (
+            target_loader()
+            if target_loader is not None
+            else []
+        )
+
+        if not targets and WSS_TOKEN:
+            targets = [{
+                "pair": WSS_PAIR,
+                "token": WSS_TOKEN,
+                "quote_token": WBNB,
+            }]
+
+        pair_addresses = [
+            target["pair"]
+            for target in targets
+        ]
+
+        if len(pair_addresses) == 1:
+            pair_filter = pair_addresses[0]
+        elif pair_addresses:
+            pair_filter = pair_addresses
+        else:
+            pair_filter = WSS_PAIR
+
         service = factory(
             WSS_URL,
-            WSS_PAIR,
+            pair_filter,
         )
 
-        # Directional Swap semantics require explicit
-        # target token identity. We never guess it.
-        if WSS_TOKEN:
-            configure = getattr(
-                pipeline,
-                "configure_native_market_flow",
-                None,
-            )
+        configure = getattr(
+            pipeline,
+            "configure_native_market_flow",
+            None,
+        )
 
-            bind_callbacks = getattr(
-                service,
-                "bind_callbacks",
-                None,
-            )
+        bind_callbacks = getattr(
+            service,
+            "bind_callbacks",
+            None,
+        )
 
-            if (
-                configure is not None
-                and bind_callbacks is not None
-            ):
+        registered = 0
+
+        if configure is not None:
+            for target in targets:
                 result = configure(
-                    WSS_PAIR,
-                    WSS_TOKEN,
-                    WBNB,
+                    target["pair"],
+                    target["token"],
+                    target["quote_token"],
                 )
 
-                if (
-                    result.get("state")
-                    == "REGISTERED"
-                ):
-                    bind_callbacks(
-                        on_event=(
-                            pipeline.on_native_event
-                        ),
-                        on_retraction=(
-                            pipeline.on_native_retraction
-                        ),
+                if result.get("state") == "REGISTERED":
+                    confirm = getattr(
+                        pipeline,
+                        "confirm_native_market_flow",
+                        None,
                     )
 
-                    market_flow_bound = True
+                    if confirm is None:
+                        registered += 1
+                    else:
+                        confirmation = confirm(
+                            target["pair"],
+                            target["token"],
+                            target["quote_token"],
+                        )
 
-        services.append(
-            service
+                        if confirmation.get("state") == "VERIFIED":
+                            registered += 1
+
+        if registered and bind_callbacks is not None:
+            bind_callbacks(
+                on_event=pipeline.on_native_event,
+                on_retraction=pipeline.on_native_retraction,
+            )
+            market_flow_bound = True
+
+        services.append(service)
+
+    def application_scan_job():
+        result = pipeline.run_cycle()
+
+        if not services:
+            return result
+
+        target_loader = getattr(
+            pipeline,
+            "native_wss_targets",
+            None,
         )
+
+        if target_loader is None:
+            return result
+
+        refreshed_targets = target_loader()
+
+        if not refreshed_targets:
+            return result
+
+        configure = getattr(
+            pipeline,
+            "configure_native_market_flow",
+            None,
+        )
+
+        confirm = getattr(
+            pipeline,
+            "confirm_native_market_flow",
+            None,
+        )
+
+        verified_addresses = []
+
+        for target in refreshed_targets:
+            if configure is None:
+                break
+
+            registered = configure(
+                target["pair"],
+                target["token"],
+                target["quote_token"],
+            )
+
+            if registered.get("state") != "REGISTERED":
+                continue
+
+            if confirm is not None:
+                confirmation = confirm(
+                    target["pair"],
+                    target["token"],
+                    target["quote_token"],
+                )
+
+                if confirmation.get("state") != "VERIFIED":
+                    continue
+
+            verified_addresses.append(
+                target["pair"]
+            )
+
+        replace_pairs = getattr(
+            services[0],
+            "replace_pairs",
+            None,
+        )
+
+        if verified_addresses and replace_pairs is not None:
+            pair_filter = (
+                verified_addresses[0]
+                if len(verified_addresses) == 1
+                else verified_addresses
+            )
+
+            replace_pairs(pair_filter)
+
+        return result
 
     position_job = getattr(
         pipeline,
@@ -89,7 +220,7 @@ def build_application(
     )
 
     runner = Runner(
-        scan_job=pipeline.run_cycle,
+        scan_job=application_scan_job,
         position_job=position_job,
         services=services,
     )
@@ -115,8 +246,12 @@ def build_application(
 
 
 def main():
-    app = build_application()
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(name)s %(message)s",
+    )
 
+    app = build_application()
     app["runner"].run()
 
 

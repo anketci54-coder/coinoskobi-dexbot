@@ -20,6 +20,10 @@ TRAILING_STOP_FACTOR: float = 0.90
 # Default paper trade size in BNB
 DEFAULT_AMOUNT_BNB: float = 0.01
 
+# Maximum concurrently OPEN paper positions.
+# Aligned with one bounded Gecko multi-pool price request.
+MAX_OPEN_PAPER_POSITIONS: int = 30
+
 # TP price multiplier  (entry * TP_PRICE_MULTIPLIER)
 TP_PRICE_MULTIPLIER: float = 1.20
 

@@ -8,6 +8,7 @@ Type=simple
 WorkingDirectory=/root/projects/coinoskobi-dexbot
 EnvironmentFile=/root/projects/coinoskobi-dexbot/.env
 Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONDONTWRITEBYTECODE=1
 ExecStart=/root/projects/coinoskobi-dexbot/venv/bin/python /root/projects/coinoskobi-dexbot/main.py
 Restart=on-failure
 RestartSec=3

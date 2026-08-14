@@ -393,7 +393,25 @@ class PipelineEngine:
         }
 
     def process_positions(self):
-        self.refresh_open_position_prices()
+        manager_db = getattr(
+            self.manager,
+            "db",
+            None,
+        )
+
+        open_positions = getattr(
+            manager_db,
+            "open_positions",
+            None,
+        )
+
+        # Production uses the durable DB adapter and
+        # refreshes bounded prices before lifecycle
+        # evaluation. DB-less legacy/test adapters keep
+        # their historical process() contract.
+        if callable(open_positions):
+            self.refresh_open_position_prices()
+
         return self.manager.process()
 
     def run(
@@ -1159,8 +1177,13 @@ class PipelineEngine:
         manager_error = None
 
         try:
+            # Scanner cycle must use the same position
+            # lifecycle entrypoint as the scheduled
+            # paper-manager job. This guarantees that
+            # bounded open-position prices are refreshed
+            # before TP/SL/trailing evaluation.
             manager_results = (
-                self.manager.process()
+                self.process_positions()
                 or []
             )
         except Exception as exc:

@@ -14,60 +14,13 @@ Temel ilke:
 
 ## Current Project State
 
-- Phase 0: CLOSED
-- Phase 1: CLOSED
-- Phase 2: CLOSED
-- Phase 3: CLOSED
-- Phase 4: CLOSED
-- Phase 5: CLOSED
-- Phase 6: CLOSED
-- Phase 7: CLOSED
-- Phase 8: CLOSED
-- Phase 9: CLOSED
-- Phase 10: CLOSED
-- Phase 11: CLOSED
-
-Phase 5'in ana DEX Market Intelligence çekirdeği tamamlanmıştır.
-
-Completeness repair kapsamında eklenen ve test edilen alanlar:
-
-- Flow Acceleration
-- Wallet Flow
-- Reserve Dynamics
-- Price Impact
-- Unified DEX Signal Bundle
-- Phase 5 stress validation
-
-Completeness targeted tests:
-
-- 35 passed
-- 0 failed
-
-Gerçek native BSC `Swap/Sync` doğrulaması tamamlanmıştır.
-
-WebSocket üzerinden PancakeSwap V2 WBNB/USDT pair için bounded gerçek
-native event subscription doğrulandı:
-
-- BSC chain id: 56
-- real Swap events: 6
-- real Sync events: 6
-- unknown subscribed events: 0
-- clean unsubscribe: PASS
-- DB unchanged: PASS
-
-HTTP `eth_getLogs` provider sınırı native event yokluğu olarak
-yorumlanmamıştır. Gerçek native event doğrulaması WebSocket subscription
-üzerinden tamamlanmıştır.
-
-Bu durum:
-
-- eventlerin olmadığı anlamına gelmez
-- provider capability / policy sınırı olarak değerlendirilir
-- native event evidence tamamlanmadan Phase 5 yeniden CLOSED sayılmaz
-
-Phase 6, Phase 5 kapanış doğrulamasından sonra başlar.
-
----
+- **Phase 13 — Paper Outcome Learning & Calibration: CLOSED**
+- Phase 13A–13D completed with production paper and bounded counterfactual evidence.
+- Final Phase 13 evidence: 220 closed paper trades; 108 wins / 112 losses.
+- Repeated exit-loss evidence remains unresolved operational evidence, especially TRAILING_STOP behavior.
+- Learning/calibration remains proposal-only with zero automatic apply, live, wallet, or execution authority.
+- **Phase 14 — Command Center & AI Analyst: WAITING FOR EXPLICIT START DECISION.**
+- Phase 15 remains the final numbered roadmap phase.
 
 ## Vision
 

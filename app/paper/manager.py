@@ -41,6 +41,51 @@ class PaperManager:
             else None
         )
 
+    @staticmethod
+    def _expected_exit_price(
+        pos,
+        reason,
+    ):
+        if reason == "TAKE_PROFIT":
+            value = (pos or {}).get(
+                "tp_price"
+            )
+        elif reason == "STOP_LOSS":
+            value = (pos or {}).get(
+                "sl_price"
+            )
+        elif reason == "TRAILING_STOP":
+            highest = (pos or {}).get(
+                "highest_price"
+            )
+
+            try:
+                value = (
+                    float(highest)
+                    * TRAILING_STOP_FACTOR
+                )
+            except (
+                TypeError,
+                ValueError,
+            ):
+                value = None
+        else:
+            value = None
+
+        try:
+            value = float(value)
+        except (
+            TypeError,
+            ValueError,
+        ):
+            return None
+
+        return (
+            value
+            if value > 0
+            else None
+        )
+
     def _observe_learning_outcome(self, pos, current, roi, reason, closed_at):
         feed = getattr(self, "learning_feed", None)
         if feed is None:
@@ -54,6 +99,12 @@ class PaperManager:
             exit_price=current,
             realized_return=roi,
             close_reason=reason,
+            expected_exit_price=(
+                self._expected_exit_price(
+                    pos,
+                    reason,
+                )
+            ),
             opening_context=(
                 self._opening_context(pos)
             ),
@@ -158,8 +209,22 @@ class PaperManager:
                     action, reason = "SKIP", "ALREADY_CLOSED"
                 else:
                     try:
-                        learning_result = self._observe_learning_outcome(
-                            pos, current, roi, reason, result_closed_at
+                        outcome_position = dict(
+                            pos
+                        )
+
+                        outcome_position[
+                            "highest_price"
+                        ] = highest
+
+                        learning_result = (
+                            self._observe_learning_outcome(
+                                outcome_position,
+                                current,
+                                roi,
+                                reason,
+                                result_closed_at,
+                            )
                         )
                     except Exception as exc:
                         learning_result = {

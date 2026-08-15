@@ -30,6 +30,13 @@ from app.pipeline.execution_context import build_execution_context
 from app.pipeline.paper_admission import paper_admission_decision
 from app.pipeline.intelligence_composition import RuntimeIntelligenceComposition
 from app.learning.runtime_outcome_feed import RuntimeLearningOutcomeFeed
+from app.learning.counterfactual_observation import (
+    CounterfactualObservationStore,
+)
+from app.learning.entry_context import (
+    build_entry_signal_attribution,
+    build_exit_baseline,
+)
 from app.dex.pair_membership import verify_pair_membership
 from app.dex.runtime_market_flow import RuntimeMarketFlowStore
 from app.dex.runtime_actor_intelligence import RuntimeActorIntelligence
@@ -66,6 +73,10 @@ _risk_gate = RiskGate()
 _trap_risk = TrapRiskAnalyzer()
 _mev_risk = MEVExposureAnalyzer()
 
+from app.learning.unified_outcome_readmodel import (
+    build_unified_outcome_readmodel,
+)
+
 
 class PipelineEngine:
 
@@ -94,6 +105,9 @@ class PipelineEngine:
             RuntimeLearningOutcomeFeed(
                 chain="bsc"
             )
+        )
+        self.counterfactual_store = (
+            CounterfactualObservationStore()
         )
 
         self.manager = PaperManager(
@@ -674,9 +688,46 @@ class PipelineEngine:
                         "captured_at_entry": True,
                         "historical_signal": "POSITIVE",
                         "historical_action": "ALLOW",
-                        "signal_attribution": {
-                            "paper_entry": "UNKNOWN",
-                        },
+                        "entry_context_version": (
+                            "PHASE13A_V1"
+                        ),
+                        "signal_attribution": (
+                            build_entry_signal_attribution(
+                                strategy_decision=(
+                                    strategy.get(
+                                        "decision"
+                                    )
+                                ),
+                                unified_decision=(
+                                    unified_decision.get(
+                                        "decision"
+                                    )
+                                ),
+                                hard_block=(
+                                    risk_gate.get(
+                                        "hard_block"
+                                    )
+                                ),
+                                sellability_status=(
+                                    analyzer_status[
+                                        "sellability"
+                                    ]["status"]
+                                ),
+                            )
+                        ),
+                        "exit_baseline": (
+                            build_exit_baseline(
+                                entry_price=price,
+                                take_profit_price=(
+                                    price
+                                    * TP_PRICE_MULTIPLIER
+                                ),
+                                stop_loss_price=(
+                                    price
+                                    * SL_PRICE_MULTIPLIER
+                                ),
+                            )
+                        ),
                         "raw_signals": {
                             "strategy_decision": (
                                 strategy.get("decision")
@@ -832,6 +883,124 @@ class PipelineEngine:
                 "paper": paper,
             },
         }
+
+    def observe_counterfactual_candidate(
+        self,
+        row,
+        summary,
+        *,
+        now=None,
+    ):
+        store = getattr(
+            self,
+            "counterfactual_store",
+            None,
+        )
+
+        if store is None:
+            store = CounterfactualObservationStore()
+            self.counterfactual_store = store
+
+        token = row.get("token")
+        pool = row.get("pool")
+        price = row.get("price_usd")
+
+        evaluation = store.observe(
+            token=token,
+            current_price=price,
+            evaluated_at=now,
+        )
+
+        action = summary.get("paper")
+
+        if action == "WATCH":
+            signal_state = "POSITIVE"
+            candidate_action = "DOWNGRADE"
+
+        elif action == "REJECT":
+            signal_state = "NEGATIVE"
+            candidate_action = "BLOCK"
+
+        else:
+            return {
+                "evaluation": evaluation,
+                "record": {
+                    "state": "NOT_ELIGIBLE",
+                    "stored": False,
+                },
+                "status": store.status(),
+            }
+
+        record = store.record(
+            token=token,
+            pool=pool,
+            entry_price=price,
+            signal_state=signal_state,
+            candidate_action=candidate_action,
+            observed_at=now,
+            context={
+                "strategy": summary.get(
+                    "strategy"
+                ),
+                "unified": summary.get(
+                    "unified"
+                ),
+                "paper": action,
+                "reason": summary.get(
+                    "reason"
+                ),
+                "hard_block": bool(
+                    summary.get("hard_block")
+                ),
+                "score": summary.get("score"),
+                "confidence": summary.get(
+                    "confidence"
+                ),
+                "sellability": summary.get(
+                    "sellability"
+                ),
+                "hindsight_reconstructed": False,
+            },
+        )
+
+        return {
+            "evaluation": evaluation,
+            "record": record,
+            "status": store.status(),
+        }
+
+    def unified_outcome_snapshot(self):
+        paper_feed = getattr(
+            self,
+            "learning_outcome_feed",
+            None,
+        )
+        counterfactual_store = getattr(
+            self,
+            "counterfactual_store",
+            None,
+        )
+
+        paper_events = (
+            paper_feed.event_snapshot()
+            if paper_feed is not None
+            else []
+        )
+
+        counterfactual_events = (
+            counterfactual_store.outcome_snapshot()
+            if counterfactual_store is not None
+            else []
+        )
+
+        return build_unified_outcome_readmodel(
+            paper_events=paper_events,
+            counterfactual_events=(
+                counterfactual_events
+            ),
+            min_paper_samples=20,
+            min_counterfactual_samples=20,
+        )
 
     def refresh_candidate_cache(self):
         scanner = getattr(
@@ -1010,6 +1179,7 @@ class PipelineEngine:
         )
 
         decision_rows = []
+        counterfactual_rows = []
         decision_lock = threading.Lock()
 
         def process_row(row):
@@ -1125,9 +1295,30 @@ class PipelineEngine:
                     ),
                 }
 
+                counterfactual = (
+                    self.observe_counterfactual_candidate(
+                        row,
+                        summary,
+                    )
+                )
+
                 with decision_lock:
                     if len(decision_rows) < 100:
                         decision_rows.append(summary)
+
+                    evaluation = counterfactual[
+                        "evaluation"
+                    ]
+
+                    if (
+                        evaluation.get("state")
+                        == "EVALUATED"
+                        and len(counterfactual_rows)
+                        < 100
+                    ):
+                        counterfactual_rows.append(
+                            evaluation
+                        )
 
                 logger.info(
                     (
@@ -1204,6 +1395,43 @@ class PipelineEngine:
                 + 1
             )
 
+        counterfactual_counts = {}
+
+        for row in counterfactual_rows:
+            outcome = row.get(
+                "outcome_class",
+                "UNKNOWN",
+            )
+            counterfactual_counts[outcome] = (
+                counterfactual_counts.get(
+                    outcome,
+                    0,
+                )
+                + 1
+            )
+
+        counterfactual_store = getattr(
+            self,
+            "counterfactual_store",
+            None,
+        )
+
+        if counterfactual_store is None:
+            counterfactual_store = (
+                CounterfactualObservationStore()
+            )
+            self.counterfactual_store = (
+                counterfactual_store
+            )
+
+        counterfactual_status = (
+            counterfactual_store.status()
+        )
+
+        unified_outcome = (
+            self.unified_outcome_snapshot()
+        )
+
         status = {
             "state": (
                 "READY"
@@ -1220,6 +1448,26 @@ class PipelineEngine:
             "decision_count": len(decision_rows),
             "paper_actions": paper_counts,
             "decisions": decision_rows,
+            "unified_outcome": unified_outcome,
+            "counterfactual": {
+                "evaluated_count": len(
+                    counterfactual_rows
+                ),
+                "outcome_counts": (
+                    counterfactual_counts
+                ),
+                "results": counterfactual_rows,
+                "store": counterfactual_status,
+                "cumulative_outcome_counts": (
+                    counterfactual_status[
+                        "outcome_counts"
+                    ]
+                ),
+                "bounded": True,
+                "provider_call": False,
+                "decision_authority": False,
+                "execution_authority": False,
+            },
             "paper_manager_count": len(
                 manager_results
             ),
@@ -1234,12 +1482,32 @@ class PipelineEngine:
         logger.info(
             (
                 "Cycle state=%s decisions=%s "
-                "paper_actions=%s manager=%s"
+                "paper_actions=%s manager=%s "
+                "counterfactual=%s cumulative=%s "
+                "observed=%s unified=%s "
+                "paper_samples=%s "
+                "counterfactual_samples=%s"
             ),
             status["state"],
             status["decision_count"],
             status["paper_actions"],
             status["paper_manager_count"],
+            status["counterfactual"][
+                "outcome_counts"
+            ],
+            status["counterfactual"][
+                "cumulative_outcome_counts"
+            ],
+            status["counterfactual"][
+                "store"
+            ]["size"],
+            status["unified_outcome"]["state"],
+            status["unified_outcome"][
+                "paper_sample_count"
+            ],
+            status["unified_outcome"][
+                "counterfactual_sample_count"
+            ],
         )
 
         return status

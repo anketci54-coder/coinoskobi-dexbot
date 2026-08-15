@@ -9,6 +9,9 @@ from app.learning.outcome_classification import (
 from app.learning.signal_attribution import (
     attribute_signals,
 )
+from app.learning.entry_context import (
+    to_outcome_relative_states,
+)
 from app.learning.outcome_memory import (
     OutcomeMemory,
 )
@@ -21,6 +24,10 @@ from app.learning.calibration_proposal import (
 from app.learning.calibration_readmodel import (
     CalibrationReadModel,
     build_calibration_bucket,
+)
+
+from app.learning.outcome_segmentation import (
+    build_outcome_segments,
 )
 
 
@@ -99,6 +106,7 @@ class RuntimeLearningOutcomeFeed:
         exit_price,
         realized_return,
         close_reason,
+        expected_exit_price=None,
         opening_context=None,
         wallet_id=None,
         actor_id=None,
@@ -136,6 +144,9 @@ class RuntimeLearningOutcomeFeed:
             exit_price=exit_price,
             realized_return=realized_return,
             close_reason=close_reason,
+            expected_exit_price=(
+                expected_exit_price
+            ),
         )
 
         evidence_complete = bool(
@@ -228,12 +239,19 @@ class RuntimeLearningOutcomeFeed:
         attribution = attribute_signals(
             outcome_class=outcome_class,
             signal_states=(
-                signal_states
-                or {
-                    "paper_entry": (
-                        "UNKNOWN"
-                    )
-                }
+                to_outcome_relative_states(
+                    outcome_class=(
+                        outcome_class
+                    ),
+                    entry_signal_states=(
+                        signal_states
+                        or {
+                            "paper_entry": (
+                                "UNKNOWN"
+                            )
+                        }
+                    ),
+                )
             ),
             hard_safety_signals=[],
             freshness="FRESH",
@@ -275,6 +293,21 @@ class RuntimeLearningOutcomeFeed:
             ),
             "close_reason": (
                 close_reason
+            ),
+            "expected_exit_price": (
+                realized[
+                    "expected_exit_price"
+                ]
+            ),
+            "exit_price_drift_ratio": (
+                realized[
+                    "exit_price_drift_ratio"
+                ]
+            ),
+            "exit_price_drift_available": (
+                realized[
+                    "exit_price_drift_available"
+                ]
             ),
             "evidence": evidence,
             "classification": (
@@ -329,6 +362,12 @@ class RuntimeLearningOutcomeFeed:
             "OBSERVED",
             row,
         )
+
+    def event_snapshot(self):
+        return [
+            dict(row)
+            for row in self._events.values()
+        ]
 
     def calibration_snapshot(self):
         return self.readmodel.get(
@@ -446,8 +485,14 @@ class RuntimeLearningOutcomeFeed:
             freshness="FRESH",
         )
 
+        segmentation = build_outcome_segments(
+            self._events.values(),
+            min_samples=self.min_samples,
+        )
+
         payload = {
             **bucket,
+            "segmentation": segmentation,
             "statistics": stats,
             "weight_proposal": weight,
             "threshold_proposal": (
@@ -486,6 +531,7 @@ class RuntimeLearningOutcomeFeed:
         exit_price,
         realized_return,
         close_reason,
+        expected_exit_price=None,
     ):
         try:
             ret = float(
@@ -507,6 +553,39 @@ class RuntimeLearningOutcomeFeed:
         else:
             direction = "UNKNOWN"
 
+        try:
+            expected = float(
+                expected_exit_price
+            )
+        except (
+            TypeError,
+            ValueError,
+        ):
+            expected = None
+
+        try:
+            actual_exit = float(
+                exit_price
+            )
+        except (
+            TypeError,
+            ValueError,
+        ):
+            actual_exit = None
+
+        if (
+            expected is not None
+            and expected > 0
+            and actual_exit is not None
+        ):
+            exit_drift = (
+                actual_exit / expected
+                - 1.0
+            )
+        else:
+            expected = None
+            exit_drift = None
+
         return {
             "entry_price": (
                 entry_price
@@ -516,6 +595,15 @@ class RuntimeLearningOutcomeFeed:
             ),
             "return": ret,
             "direction": direction,
+            "expected_exit_price": (
+                expected
+            ),
+            "exit_price_drift_ratio": (
+                exit_drift
+            ),
+            "exit_price_drift_available": (
+                exit_drift is not None
+            ),
             "close_reason": (
                 close_reason
             ),

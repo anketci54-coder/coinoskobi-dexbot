@@ -23,9 +23,9 @@ ROADMAP içinde tutulmaz.
 
 # PROJE DURUMU
 
-Current Phase: **PHASE 12 — CLOSED**
+Current Phase: **PHASE 13 — CLOSED**
 
-Current Work: **AWAITING EXPLICIT PHASE 13 START DECISION**
+Current Work: **AWAITING EXPLICIT PHASE 14 START DECISION**
 
 Progress:
 
@@ -42,7 +42,7 @@ Progress:
 - Phase 10: ✅ CLOSED
 - Phase 11: ✅ CLOSED
 - Phase 12: ✅ CLOSED
-- Phase 13: ⏳ WAITING
+- Phase 13: ✅ CLOSED
 - Phase 14: ⏳ WAITING
 - Phase 15: ⏳ WAITING
 
@@ -2206,16 +2206,20 @@ olmalıdır.
 
 # PHASE 12–15 — FINAL ROADMAP LOCK
 
-## Aktif durum
+## Tarihsel lock durumu
+
+> Bu bölüm Phase 12 başlangıç döneminde alınmış roadmap lock kararını korur.
+> Aşağıdaki durum satırları tarihsel snapshot'tır; güncel proje durumunu göstermez.
+> Güncel durum dosyanın başındaki `PROJE DURUMU` bölümünden takip edilir.
 
 - Phase 11: ✅ CLOSED
 - OCR: ✅ CLOSED
-- Phase 12: ✅ CLOSED
-- Phase 13: ⏳ WAITING
-- Phase 14: ⏳ WAITING
+- Phase 12: ⏳ NEXT AT LOCK TIME
+- Phase 13: ⏳ WAITING AT LOCK TIME
+- Phase 14: ⏳ WAITING AT LOCK TIME
 - Phase 15: ⏳ WAITING / FINAL ROADMAP PHASE
 - Phase 12 başlangıç baseline: **873 PASS**
-- İlk operasyonel hedef: **sistemi gerçek runtime ile tamamlayıp PAPER TRADE'e geçirmek**
+- İlk operasyonel hedef at lock time: **sistemi gerçek runtime ile tamamlayıp PAPER TRADE'e geçirmek**
 
 Phase 12'nin ilk işi yeni özellik eklemek değil; paper trade için gerçek runtime readiness durumunu deterministik olarak ölçmek ve yalnız gerçek blocker'ları kapatmaktır.
 
@@ -2364,6 +2368,69 @@ Phase 13 otomatik açılmaz; başlangıcı ayrı ve açık kullanıcı kararı g
 
 # PHASE 13 — Paper Outcome Learning & Calibration
 
+## Status
+
+✅ CLOSED — 2026-08-15
+
+## İş sırası
+
+### 13A — Entry-Time Signal Attribution & Exit Drift Baseline
+
+✅ CLOSED — 2026-08-14
+
+- Entry-time signal attribution gerçek paper OPEN kayıtlarında persist edildi.
+- Outcome-relative attribution hindsight reconstruction yapmadan üretildi.
+- Entry, TP ve SL exit baseline giriş anında kaydedildi.
+- Gerçek kapanışta expected/actual exit-price drift ölçüldü.
+- Eski UNKNOWN outcome kayıtları geriye dönük yeniden yazılmadı.
+- Learning proposal-only kaldı; auto-apply ve execution authority kapalı tutuldu.
+- Full regression: 902 PASS.
+- Production startup smoke: PASS, 3.209 saniye.
+- Gerçek runtime kabulü: 3 OPEN ve 2 doğal TAKE_PROFIT CLOSE.
+- İki doğrulanmış exit drift oranı: %7.34 ve %5.03.
+
+### 13B — Outcome Segmentation & Calibration Baseline
+
+✅ CLOSED — 2026-08-14
+
+- Outcome, close reason, sellability ve score bucket segmentleri bounded readmodel olarak üretildi.
+- Production paper sonucu: 2 VALID_SIGNAL / TAKE_PROFIT.
+- Ortalama ROI: %22.87.
+- Ortalama exit drift: %6.19.
+- Minimum sample durumu 2/20 ve INSUFFICIENT olarak korundu.
+- Class diversity hazır olmadığı için threshold/weight önerisi uygulanmadı.
+- Raw DB scan, provider call ve automatic apply kapalı tutuldu.
+
+### 13C — Bounded Counterfactual Observation
+
+✅ CLOSED — 2026-08-14
+
+- WATCH ve REJECT adayları RAM-only bounded store ile izlendi.
+- Aynı token için horizon ve TTL cooldown tekrar örneklemeyi sınırladı.
+- Scanner cache fiyatı kullanıldı; ek provider çağrısı yapılmadı.
+- PAPER_BUY ve operasyonel SKIP kararları counterfactual örnek yapılmadı.
+- Gerçek üç-cycle runtime sonucu:
+  FALSE_NEGATIVE=1, MISSED_OPPORTUNITY=1, EXPECTED_LOSS=2.
+- Cumulative outcome readmodel scanner döngüleri arasında korundu.
+- Full regression: 911 PASS.
+- DB write, trade permission, auto-apply, wallet/live/execution authority kapalı kaldı.
+
+### 13D — Unified Outcome Calibration Readmodel
+
+✅ CLOSED — 2026-08-15
+
+- Paper outcome ve counterfactual outcome kanalları ayrı provenance ile birleştirildi.
+- PAPER_CLOSE ve COUNTERFACTUAL_CACHE_OBSERVATION birbirinden ayrı tutuldu.
+- Farklı observation horizonları aynı gerçeklik türü olarak değerlendirilmedi.
+- Unified sample coverage ve class diversity görünür hale getirildi.
+- Minimum sample guard ve INSUFFICIENT_EVIDENCE davranışı korundu.
+- Calibration/config/threshold/weight değişiklikleri proposal-only kaldı.
+- Hot path'e DB aggregate, history scan veya provider çağrısı eklenmedi.
+- Runtime kabulü: unified=READY; paper ve counterfactual kanalları birlikte aktif.
+- Targeted acceptance: 5 PASS.
+- Full regression: 914 PASS.
+- Production service restart edilmedi; runtime evidence collection kesilmedi.
+
 ## Ana hedef
 
 Phase 12'de oluşan gerçek paper sonuçlarını kullanarak sistemin nerede iyi, nerede kötü karar verdiğini ölçmek ve fırsat kaçırma/kötü işlem dengesini iyileştirmek.
@@ -2381,6 +2448,35 @@ Phase 12'de oluşan gerçek paper sonuçlarını kullanarak sistemin nerede iyi,
 ## Kapanış kriteri
 
 Yeterli paper evidence ile tekrarlanan hata/fırsat kaçırma sınıfları görünür hale gelir ve uygulanacak değişiklikler ölçülebilir proposal olarak üretilebilir.
+
+## Phase 13 Final Kapanış Kanıtı
+
+- Phase 13A, 13B, 13C ve 13D kapatıldı.
+- Final production evidence: 220 CLOSED paper trade.
+- Win/loss: 108 / 112; win rate %49.09.
+- Toplam net PnL: -0.78994730.
+- TAKE_PROFIT: 107 sample, 107 win, ortalama ROI %28.64.
+- TRAILING_STOP: 97 sample, 96 loss, ortalama ROI -%101.48.
+- STOP_LOSS: 16 sample, 16 loss, ortalama ROI -%70.03.
+- ROI <= -%90 ağır kayıp sample sayısı: 103.
+- Tekrarlanan exit/loss problemi ölçülebilir evidence olarak görünür hale geldi.
+- Counterfactual kanal FALSE_NEGATIVE, MISSED_OPPORTUNITY, EXPECTED_LOSS ve AVOIDED_LOSS sınıflarını runtime boyunca üretmeye devam etti.
+- Unified paper + counterfactual readmodel READY kaldı.
+- Calibration/threshold/weight mekanizması proposal-only kaldı.
+- Config/source/threshold/weight automatic apply authority açılmadı.
+- Live, wallet ve execution authority açılmadı.
+- Final Phase 13 targeted closure contract: 17 PASS.
+- Phase 13D full regression baseline: 914 PASS.
+- Production service restart edilmedi ve paper evidence collection kesilmedi.
+- SQLite integrity_check ve quick_check PASS.
+
+### Phase 14/15 Handoff — Exit-Loss Bulgusu
+
+Phase 13 kapanışı mevcut kötü exit sonuçlarını gizlemez veya çözülmüş saymaz.
+
+Özellikle TRAILING_STOP ve ağır exit-loss dağılımı yüksek öncelikli operational evidence olarak korunur. Phase 14 Command Center/AI bu problemi operatöre açıkça göstermeli; Phase 15 Simulation Drift Validator gerçekçi exit price, slippage, liquidity/sellability, quote delay, gas/MEV ve execution timing etkileriyle paper varsayımı arasındaki farkı ölçmelidir.
+
+Bu handoff hard safety'yi zayıflatma, otomatik threshold/config değişikliği veya live authority verme izni değildir.
 
 ---
 
@@ -2434,19 +2530,22 @@ Coinoskobi gerçek veriyle çalışan, paper sonuçlarıyla öğrenen, operatör
 
 # Uygulama sırası
 
-Şu anki tek aktif hedef **PHASE 12**'dir.
+Şu anki tek aktif ana hedef **PHASE 13 — Paper Outcome Learning & Calibration**'dır.
 
-Öncelik sırası:
+Tamamlanan ana sıra:
 
-1. Runtime truth ve production composition doğrulaması.
-2. Uçtan uca paper-trade readiness.
-3. Gerçek paper trade başlatma.
-4. Yeterli outcome toplama.
-5. Phase 13 learning/calibration.
-6. Phase 14 Command Center/AI.
-7. Phase 15 final operational validation ve yalnız açık onayla micro-live.
+1. Runtime truth ve production composition doğrulaması — Phase 12 kapsamında tamamlandı.
+2. Uçtan uca paper-trade readiness — Phase 12 kapsamında tamamlandı.
+3. Gerçek paper trade başlatma — Phase 12 kapsamında tamamlandı.
+4. Yeterli outcome/evidence toplama — Phase 12'de başladı, Phase 13 runtime'ında devam ediyor.
 
-Bir sonraki faz, mevcut fazın kapanış kriterleri gerçekten sağlanmadan açılmaz.
+Mevcut ve sonraki sıra:
+
+5. Phase 13 learning/calibration — ACTIVE.
+6. Phase 14 Command Center/AI — WAITING; Phase 13 kapanmadan açılmaz.
+7. Phase 15 final operational validation ve yalnız açık onayla micro-live — WAITING.
+
+Bir sonraki faz, mevcut fazın kapanış kriterleri gerçekten sağlanmadan ve açık başlangıç kararı verilmeden açılmaz.
 
 ---
 
@@ -2478,13 +2577,18 @@ Kurallar:
 - OCR tamamen kapanana kadar ara commit/push yapılmaz
 - finalde tek OCR validation + tek commit + tek push yapılır
 
-Current Phase:
+OCR kapanış anındaki tarihsel durum:
+
+Current Phase at OCR closure:
 
 **PHASE 11 — CLOSED**
 
-Next Phase:
+Next Phase at OCR closure:
 
 **PHASE 12 — RESERVED**
+
+> Bu alan tarihsel OCR snapshot'ıdır; güncel proje fazını göstermez.
+> Güncel durum dosyanın başındaki `PROJE DURUMU` bölümünden takip edilir.
 
 OCR Status:
 
@@ -2518,7 +2622,11 @@ bulamayacak kadar gerçek bağlantıları tamamlamaktır.**
 
 ---
 
-# Phase 0–11 Kısa Tarihçe
+# OCR Dönemi Tarihsel Snapshot — Phase 0–11 Kısa Tarihçe
+
+Bu tablo OCR'nin Phase 11 sonrası açıldığı noktadaki tarihsel özettir.
+Phase 12 ve sonrası güncel ana roadmap bölümlerinde tutulur; bu tarihsel tablo
+sonraki fazlarla genişletilmez.
 
 | Faz | Ne yapıldı? | Neden? | Sonuç |
 |---|---|---|---|

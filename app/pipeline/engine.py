@@ -684,8 +684,22 @@ class PipelineEngine:
 
                     token_amount = DEFAULT_AMOUNT_BNB / price
 
+                    entry_wallet_id = market_context.get(
+                        "wallet_id"
+                    )
+
                     opening_context = {
                         "captured_at_entry": True,
+                        "actor_identity": {
+                            "wallet_id": entry_wallet_id,
+                            "actor_id": entry_wallet_id,
+                            "identity_source": (
+                                "TRANSACTION_FROM_ONLY"
+                                if entry_wallet_id
+                                else "UNKNOWN"
+                            ),
+                            "hindsight_reconstructed": False,
+                        },
                         "historical_signal": "POSITIVE",
                         "historical_action": "ALLOW",
                         "entry_context_version": (

@@ -90,6 +90,20 @@ class PaperManager:
         feed = getattr(self, "learning_feed", None)
         if feed is None:
             return None
+        opening_context = self._opening_context(pos)
+
+        actor_identity = (
+            opening_context.get("actor_identity")
+            if isinstance(opening_context, dict)
+            else None
+        )
+
+        if not isinstance(actor_identity, dict):
+            actor_identity = {}
+
+        wallet_id = actor_identity.get("wallet_id")
+        actor_id = actor_identity.get("actor_id")
+
         return feed.observe_paper_close(
             position_id=pos["id"],
             token=pos["token"],
@@ -105,9 +119,9 @@ class PaperManager:
                     reason,
                 )
             ),
-            opening_context=(
-                self._opening_context(pos)
-            ),
+            opening_context=opening_context,
+            wallet_id=wallet_id,
+            actor_id=actor_id,
         )
 
     def replay_closed_outcomes(self):

@@ -112,12 +112,15 @@ Botun temel olarak çalışır ve test edilebilir hale gelmesi.
 - Aynı işi yapan duplicate modüller bırakılmayacak.
 - Geçici scriptler kalıcı mimarinin parçası olmayacak.
 
+## Doğrulama
+
+Bu erken fazın ayrıntılı tarihsel test çıktıları ROADMAP içinde korunmamıştır. Fazın kapanış durumu repository geçmişi ve sonraki regression zinciriyle korunur.
+
 ## Faz Sonu Sistem Durumu
 
 Temel scanner/cache/paper altyapısı çalışabilir hale getirildi.
 
-## Status
-
+## Durum
 ✅ CLOSED
 
 ---
@@ -146,12 +149,15 @@ Temiz, sürdürülebilir ve test edilebilir temel altyapıyı kurmak.
 - Yapay dağıtık mimari eklenmeyecek.
 - Config ve runtime sorumlulukları ayrılacak.
 
+## Doğrulama
+
+Bu erken fazın ayrıntılı tarihsel test çıktıları ROADMAP içinde korunmamıştır. Fazın kapanış durumu repository geçmişi ve sonraki regression zinciriyle korunur.
+
 ## Faz Sonu Sistem Durumu
 
 Coinoskobi temiz bir çekirdek uygulama yapısına sahip oldu.
 
-## Status
-
+## Durum
 ✅ CLOSED
 
 ---
@@ -262,8 +268,7 @@ Token akışını hızlı, bounded ve gelecekte çoklu network/DEX desteğine uy
 
 Coinoskobi bounded, chain-aware ve ölçeklenebilir ortak pipeline'a sahip oldu.
 
-## Status
-
+## Durum
 ✅ CLOSED
 
 ---
@@ -325,8 +330,7 @@ Phase 3 şu soruyu cevaplar:
 - adaptive protection
 - DEX-native short-horizon market intelligence
 
-## Status
-
+## Durum
 ✅ CLOSED
 
 ---
@@ -417,8 +421,7 @@ Phase 4 şu soruyu cevaplar:
 
 **"Pozisyon mekanik olarak nasıl yönetilecek?"**
 
-## Status
-
+## Durum
 ✅ CLOSED
 
 ---
@@ -590,8 +593,7 @@ Phase 5 şu soruyu cevaplayan gözlem çekirdeğini tamamlamıştır:
 
 **"DEX piyasasında çok kısa horizonlarda gerçekte ne oluyor?"**
 
-## Status
-
+## Durum
 ✅ CLOSED
 
 ---
@@ -613,8 +615,7 @@ Phase 5 native evidence boundary açık ve doğru şekilde sınıflandırılmı�
 
 Phase 6 başlaması Phase 5'in eksik kanıtını gizlemez.
 
-## Planlanan Kapsam
-
+## Sisteme Eklenenler
 ### 6A — Exit Intelligence Baseline
 
 - exit-state inputs
@@ -759,8 +760,7 @@ Senaryolar:
 - repository cleanup
 - final closure
 
-## Kapanış Kararları
-
+## Alınan Kararlar
 Phase 6 sonunda aşağıdaki davranışlar doğrulanmış ve kilitlenmiştir:
 
 - trend health deterministik olarak STRONG / HEALTHY / WEAKENING / BREAK / UNKNOWN üretir
@@ -776,14 +776,12 @@ Phase 6 sonunda aşağıdaki davranışlar doğrulanmış ve kilitlenmiştir:
 Phase 6 içinde kesin sayısal piyasa eşikleri gereksiz yere global sabit olarak kilitlenmemiştir;
 gelecekte gerçek veri ve outcome evidence ile kalibrasyon yapılabilir.
 
-## Beklenen Faz Sonu Durumu
-
+## Faz Sonu Sistem Durumu
 Phase 6 şu soruyu cevaplayacak:
 
 **"Runner hâlâ taşınmalı mı, koruma sıkılaştırılmalı mı, yoksa çıkış adayı mı?"**
 
-## Kapanış Doğrulaması
-
+## Doğrulama
 Phase 6 final validation:
 
 - Smoke: 2 PASS
@@ -824,8 +822,7 @@ Kalıcı kararlar:
 - exit intelligence advisory-only kalır
 - UNKNOWN / stale veri güvenli şekilde taşınır
 
-## Status
-
+## Durum
 ✅ CLOSED
 
 ---
@@ -846,8 +843,7 @@ Phase 7 observation/advisory katmanıdır.
 
 Trade, paper, live, wallet, signing veya execution authority taşımaz.
 
-## Planlanan Kapsam
-
+## Sisteme Eklenenler
 ### 7A — Flow Spread Baseline
 
 - buy flow
@@ -973,8 +969,7 @@ Phase 7 kapanmadan önce:
 
 Alt adımlarda ayrı push yapılmaz.
 
-## Phase 7 Temel Kuralları
-
+## Alınan Kararlar
 - DEX-native evidence first.
 - Tek büyük swap gerçek trend kanıtı değildir.
 - Raw volume tek başına confirmation değildir.
@@ -996,21 +991,21 @@ Bunlar daha önce fazları gereksiz uzatmamak için ileri fazlara bırakılmış
 Phase 7 kapanışında ve sonraki her faz planlamasında bu liste yeniden
 değerlendirilecektir.
 
-- production-grade WebSocket / native event ingestion
-- provider failover / reconnect / subscription health
-- wallet / entity / whale intelligence
-- smart-money / known-wallet intelligence
-- adversary / scam-actor / MEV intelligence
+- ✅ production-grade WebSocket / native event ingestion (Phase 8 / 8A-8E)
+- ✅ provider failover / reconnect / subscription health (Phase 8 / 8B-8G)
+- ✅ wallet / entity / whale intelligence (Phase 9 / 9A-9C, 9E)
+- ✅ smart-money / known-wallet intelligence (Phase 9 / 9D)
+- ✅ adversary / scam-actor / MEV intelligence (Phase 10 / 10A-10C, 10F-10H)
 - news / social / X / Telegram / Discord intelligence
 - listing / delisting / ICO / IDO / launchpad / airdrop radar
 - AI contract analyst
 - AI explanation / assistant layer
 - local / background AI
-- learning / calibration / outcome memory
-- false-positive / false-negative memory
-- missed-opportunity / avoided-loss memory
+- ✅ learning / calibration / outcome memory (Phase 11 / 11A-11H; Phase 13 / 13A-13D)
+- ✅ false-positive / false-negative memory (Phase 11 / 11D; Phase 13 / 13B-13D)
+- ✅ missed-opportunity / avoided-loss memory (Phase 11 / 11D; Phase 13 / 13B-13D)
 - shadow simulation
-- paper lifecycle / paper engine
+- ✅ paper lifecycle / paper engine (Phase 12 / 12A-12C)
 - provider budget / paid-call / cost guard
 - command center / panel intelligence
 - live alerts / AI communication panel
@@ -1026,15 +1021,13 @@ Backlog kuralları:
 5. Bir madde yeni faza alınırsa kendi resmi faz kapsamına taşınır.
 6. Backlog kaydı hiçbir execution/live/wallet/signing yetkisi oluşturmaz.
 
-## Beklenen Faz Sonu Durumu
-
+## Faz Sonu Sistem Durumu
 Phase 7 şu soruyu deterministik kanıtlarla cevaplayabilmelidir:
 
 **"Bu hareket gerçek çoklu akış tarafından teyit ediliyor mu ve piyasa hangi
 rejimde?"**
 
-## Kapanış Doğrulaması
-
+## Doğrulama
 Phase 7 final validation:
 
 - smoke: PASS
@@ -1060,8 +1053,7 @@ Kalıcı kararlar:
 - market regime advisory-only kalır
 - hard safety gate'leri flow confirmation tarafından override edilemez
 
-## Status
-
+## Durum
 ✅ CLOSED
 
 ---
@@ -1082,8 +1074,7 @@ Phase 8 yalnız veri-alım / observation altyapısıdır.
 
 Trade, paper, live-trade, wallet veya signing authority taşımaz.
 
-## Planlanan Kapsam
-
+## Sisteme Eklenenler
 ### 8A — Native Event Ingestion Baseline
 
 - mevcut HTTP / WSS capability inventory
@@ -1189,8 +1180,7 @@ Phase 8 yalnız event taşır ve normalize eder.
 
 Alt fazlarda ayrı push yapılmaz.
 
-## Phase 8 Temel Kuralları
-
+## Alınan Kararlar
 - WebSocket ingestion decision authority değildir.
 - Network failure event yokluğu değildir.
 - Retry / reconnect bounded olmalıdır.
@@ -1210,19 +1200,19 @@ Phase 8'e yalnız native event ingestion ve provider resilience alınmıştır.
 
 Kalan başlıklar korunur:
 
-- wallet / entity / whale intelligence
-- smart-money / known-wallet intelligence
-- adversary / scam-actor / MEV intelligence
+- ✅ wallet / entity / whale intelligence (Phase 9 / 9A-9C, 9E)
+- ✅ smart-money / known-wallet intelligence (Phase 9 / 9D)
+- ✅ adversary / scam-actor / MEV intelligence (Phase 10 / 10A-10C, 10F-10H)
 - news / social / X / Telegram / Discord intelligence
 - listing / delisting / ICO / IDO / launchpad / airdrop radar
 - AI contract analyst
 - AI explanation / assistant layer
 - local / background AI
-- learning / calibration / outcome memory
-- false-positive / false-negative memory
-- missed-opportunity / avoided-loss memory
+- ✅ learning / calibration / outcome memory (Phase 11 / 11A-11H; Phase 13 / 13A-13D)
+- ✅ false-positive / false-negative memory (Phase 11 / 11D; Phase 13 / 13B-13D)
+- ✅ missed-opportunity / avoided-loss memory (Phase 11 / 11D; Phase 13 / 13B-13D)
 - shadow simulation
-- paper lifecycle / paper engine
+- ✅ paper lifecycle / paper engine (Phase 12 / 12A-12C)
 - provider budget / paid-call / cost guard
 - command center / panel intelligence
 - live alerts / AI communication panel
@@ -1231,8 +1221,7 @@ Kalan başlıklar korunur:
 
 Phase 9-15 dağılımı şimdiden belirlenmez.
 
-## Kapanış Doğrulaması
-
+## Doğrulama
 Phase 8 final validation:
 
 - real bounded BSC WSS Swap/Sync: PASS
@@ -1263,8 +1252,11 @@ Kalıcı kararlar:
 - secrets loglanmaz
 - Phase 8 decision/paper/live/wallet/signing/execution authority taşımaz
 
-## Status
+## Faz Sonu Sistem Durumu
 
+Phase 8 sonunda Coinoskobi native event ingestion, bounded WebSocket subscription, reconnect/failover, event integrity ve provider resilience katmanlarını authority açmadan çalıştırabilir duruma geldi.
+
+## Durum
 ✅ CLOSED
 
 ---
@@ -1286,8 +1278,7 @@ Phase 9 observation / reputation / context katmanıdır.
 
 Wallet signing, live trade veya execution authority taşımaz.
 
-## Planlanan Kapsam
-
+## Sisteme Eklenenler
 ### 9A — Wallet Evidence Baseline
 
 - chain-aware wallet address normalization
@@ -1415,8 +1406,7 @@ Phase 9 kapanmadan önce:
 
 Alt fazlarda ayrı commit/push yapılmaz.
 
-## Phase 9 Temel Kuralları
-
+## Alınan Kararlar
 - Onchain behavior evidence first.
 - Known-wallet etiketi tek başına güven kanıtı değildir.
 - Wallet label trade signal değildir.
@@ -1437,17 +1427,17 @@ Phase 9'a yalnız wallet / entity / whale / smart-money intelligence alınmışt
 
 Kalan başlıklar sonraki faz planlamalarında korunacaktır:
 
-- adversary / scam-actor / MEV intelligence
+- ✅ adversary / scam-actor / MEV intelligence (Phase 10 / 10A-10C, 10F-10H)
 - news / social / X / Telegram / Discord intelligence
 - listing / delisting / ICO / IDO / launchpad / airdrop radar
 - AI contract analyst
 - AI explanation / assistant layer
 - local / background AI
-- learning / calibration / outcome memory
-- false-positive / false-negative memory
-- missed-opportunity / avoided-loss memory
+- ✅ learning / calibration / outcome memory (Phase 11 / 11A-11H; Phase 13 / 13A-13D)
+- ✅ false-positive / false-negative memory (Phase 11 / 11D; Phase 13 / 13B-13D)
+- ✅ missed-opportunity / avoided-loss memory (Phase 11 / 11D; Phase 13 / 13B-13D)
 - shadow simulation
-- paper lifecycle / paper engine
+- ✅ paper lifecycle / paper engine (Phase 12 / 12A-12C)
 - provider budget / paid-call / cost guard
 - command center / panel intelligence
 - live alerts / AI communication panel
@@ -1456,8 +1446,7 @@ Kalan başlıklar sonraki faz planlamalarında korunacaktır:
 
 Phase 10-15 dağılımı şimdiden belirlenmez.
 
-## Beklenen Faz Sonu Durumu
-
+## Faz Sonu Sistem Durumu
 Phase 9 sonunda Coinoskobi şu soruyu deterministik kanıtlarla
 cevaplayabilmelidir:
 
@@ -1465,8 +1454,7 @@ cevaplayabilmelidir:
 hareket geniş katılımlı gerçek akış mı, yoksa tekil/baskın/şüpheli aktör
 davranışı mı?"**
 
-## Kapanış Doğrulaması
-
+## Doğrulama
 Phase 9 final validation:
 
 - smoke: PASS
@@ -1503,8 +1491,7 @@ Kalıcı kararlar:
 - hard safety wallet intelligence tarafından override edilemez
 - Phase 9 decision/paper/live/wallet/signing/execution authority taşımaz
 
-## Status
-
+## Durum
 ✅ CLOSED
 
 ---
@@ -1526,8 +1513,7 @@ Phase 10 observation / risk / reputation / context katmanıdır.
 
 Trade, paper, live-trade, wallet, signing veya execution authority taşımaz.
 
-## Planlanan Kapsam
-
+## Sisteme Eklenenler
 ### 10A — Adversary Evidence Baseline
 
 - chain-aware adversary evidence identity
@@ -1717,8 +1703,7 @@ Phase 10 kapanmadan önce:
 
 Alt fazlarda ayrı commit/push yapılmaz.
 
-## Phase 10 Temel Kuralları
-
+## Alınan Kararlar
 - Suspicion proof değildir.
 - Adversary label trade signal değildir.
 - Tek olay repeat-offender reputation oluşturmaz.
@@ -1753,11 +1738,11 @@ Kalan başlıklar sonraki faz planlamalarında korunacaktır:
 - AI contract analyst
 - AI explanation / assistant layer
 - local / background AI
-- learning / calibration / outcome memory
-- false-positive / false-negative memory
-- missed-opportunity / avoided-loss memory
+- ✅ learning / calibration / outcome memory (Phase 11 / 11A-11H; Phase 13 / 13A-13D)
+- ✅ false-positive / false-negative memory (Phase 11 / 11D; Phase 13 / 13B-13D)
+- ✅ missed-opportunity / avoided-loss memory (Phase 11 / 11D; Phase 13 / 13B-13D)
 - shadow simulation
-- paper lifecycle / paper engine
+- ✅ paper lifecycle / paper engine (Phase 12 / 12A-12C)
 - provider budget / paid-call / cost guard
 - command center / panel intelligence
 - live alerts / AI communication panel
@@ -1766,8 +1751,7 @@ Kalan başlıklar sonraki faz planlamalarında korunacaktır:
 
 Phase 11-15 dağılımı şimdiden belirlenmez.
 
-## Beklenen Faz Sonu Durumu
-
+## Faz Sonu Sistem Durumu
 Phase 10 sonunda Coinoskobi şu soruyu deterministik ve bounded evidence
 ile cevaplayabilmelidir:
 
@@ -1786,8 +1770,7 @@ Ve cevap:
 
 olmalıdır.
 
-## Kapanış Doğrulaması
-
+## Doğrulama
 Phase 10 final validation:
 
 - test collection: PASS
@@ -1838,8 +1821,7 @@ Kalıcı kararlar:
 - hot path external fetch/provider call yapmaz
 - Phase 10 decision/paper/live/wallet/signing/execution authority taşımaz
 
-## Status
-
+## Durum
 ✅ CLOSED
 
 ---
@@ -1864,8 +1846,7 @@ Trade, paper, live-trade, wallet, signing veya execution authority taşımaz.
 
 Learning burada otomatik self-modifying sistem anlamına gelmez.
 
-## Planlanan Kapsam
-
+## Sisteme Eklenenler
 ### 11A — Outcome Evidence Baseline
 
 - chain-aware outcome identity
@@ -2124,8 +2105,7 @@ Phase 11 kapanmadan önce:
 
 Alt fazlarda ayrı commit/push yapılmaz.
 
-## Phase 11 Temel Kuralları
-
+## Alınan Kararlar
 - Outcome hindsight ile yeniden yazılmaz.
 - Missing outcome başarı değildir.
 - Missing outcome başarısızlık değildir.
@@ -2163,7 +2143,7 @@ Kalan başlıklar sonraki faz planlamalarında korunacaktır:
 - AI contract analyst
 - AI explanation / assistant layer
 - local / background AI
-- paper lifecycle / paper engine
+- ✅ paper lifecycle / paper engine (Phase 12 / 12A-12C)
 - provider budget / paid-call / cost guard
 - command center / panel intelligence
 - live alerts / AI communication panel
@@ -2174,8 +2154,11 @@ Phase 12-14 dağılımı şimdiden belirlenmez.
 
 Phase 15 Final Roadmap Phase olarak korunur.
 
-## Beklenen Faz Sonu Durumu
+## Doğrulama
 
+Phase 11 kapanışı targeted, learning/calibration stress, hot-path contract, regression, DB health ve authority audit zinciriyle doğrulanmıştır.
+
+## Faz Sonu Sistem Durumu
 Phase 11 sonunda Coinoskobi şu soruyu deterministik evidence ile
 cevaplayabilmelidir:
 
@@ -2198,13 +2181,12 @@ Cevap:
 
 olmalıdır.
 
-## Status
-
+## Durum
 ✅ CLOSED
 
 ---
 
-# PHASE 12–15 — FINAL ROADMAP LOCK
+# ROADMAP YÖNETİŞİMİ — PHASE 12–15 TARİHSEL LOCK
 
 ## Tarihsel lock durumu
 
@@ -2252,12 +2234,22 @@ Takip edilecek önemli kalite metriği: Opportunity Kill Rate — güvenlik/filt
 
 # PHASE 12 — Operational Paper-Trade Readiness
 
-## Status
+## Alınan Kararlar
 
+Bu fazın kalıcı mimari ve operasyon kararları mevcut faz kapsamı, sınırları ve kapanış kayıtlarıyla birlikte korunur.
+
+## Doğrulama
+
+Bu fazın doğrulama kanıtları aşağıdaki alt faz, kapanış kriteri ve kapanış kanıtı kayıtlarında korunur.
+
+## Faz Sonu Sistem Durumu
+
+Phase 12 sonunda gerçek runtime altında paper-trade readiness ve paper lifecycle operasyon zinciri doğrulandı.
+
+## Durum
 ✅ CLOSED — 2026-08-14
 
-## Ana hedef
-
+## Amaç
 Sistemi gerçek kaynaklarla uçtan uca çalışır hale getirip güvenilir PAPER TRADE operasyonuna geçirmek.
 
 Phase 12'nin başarı tanımı yeni özellik sayısı değildir. Başarı: gerçek runtime verisiyle adayın keşiften paper pozisyon kapanışına kadar aynı application lifecycle içinde izlenebilir ve tekrarlanabilir şekilde ilerlemesidir.
@@ -2294,8 +2286,7 @@ aynı application lifecycle içinde doğrulanır.
 
 Smoke PASS sonrası sistem kontrollü paper modunda sürekli çalıştırılır. Bu noktadan sonra Phase 12'nin ana işi yeni guard eklemek değil gerçek davranışı ölçmektir.
 
-## Kapsam
-
+## Sisteme Eklenenler
 1. Gerçek runtime kaynaklarının production composition root altında doğrulanması.
 2. Scanner → ingress → bounded queue → analysis → intelligence → risk/safety → decision → paper admission → paper lifecycle zincirinin tek akışta çalışması.
 3. WSS/native event, market/flow ve wallet/entity/adversary context'in paper kararına doğru bağlanması.
@@ -2368,8 +2359,19 @@ Phase 13 otomatik açılmaz; başlangıcı ayrı ve açık kullanıcı kararı g
 
 # PHASE 13 — Paper Outcome Learning & Calibration
 
-## Status
+## Alınan Kararlar
 
+Bu fazın kalıcı mimari ve operasyon kararları mevcut faz kapsamı, sınırları ve kapanış kayıtlarıyla birlikte korunur.
+
+## Doğrulama
+
+Bu fazın doğrulama kanıtları aşağıdaki alt faz, kapanış kriteri ve kapanış kanıtı kayıtlarında korunur.
+
+## Faz Sonu Sistem Durumu
+
+Phase 13 sonunda gerçek paper outcome ve counterfactual evidence aynı provenance kurallarını koruyan bounded calibration readmodelinde birleştirildi.
+
+## Durum
 ✅ CLOSED — 2026-08-15
 
 ## İş sırası
@@ -2431,12 +2433,10 @@ Phase 13 otomatik açılmaz; başlangıcı ayrı ve açık kullanıcı kararı g
 - Full regression: 914 PASS.
 - Production service restart edilmedi; runtime evidence collection kesilmedi.
 
-## Ana hedef
-
+## Amaç
 Phase 12'de oluşan gerçek paper sonuçlarını kullanarak sistemin nerede iyi, nerede kötü karar verdiğini ölçmek ve fırsat kaçırma/kötü işlem dengesini iyileştirmek.
 
-## Kapsam
-
+## Sisteme Eklenenler
 - VALID_SIGNAL / FALSE_POSITIVE / FALSE_NEGATIVE / AVOIDED_LOSS / MISSED_OPPORTUNITY / EXIT_FAILURE gerçek outcome analizi.
 - False-negative ve missed-opportunity özellikle korunur; sistem yalnız kayıptan korkmayı öğrenmez.
 - Opportunity Kill Rate ve avoided-loss dengesi ölçülür.
@@ -2482,12 +2482,10 @@ Bu handoff hard safety'yi zayıflatma, otomatik threshold/config değişikliği 
 
 # PHASE 14 — Command Center & AI Analyst
 
-## Ana hedef
-
+## Amaç
 Operatörün birkaç saniyede "hangi token, giriş var mı, neden, SL/TP nerede, vur-kaç uygun mu, paper sonucu ne, engel ne, onay gerekiyor mu?" sorularını cevaplayabildiği kapalı Command Center oluşturmak.
 
-## Kapsam
-
+## Sisteme Eklenenler
 - Candidate fırsat listesi ve önceliklendirme.
 - Atış Poligonu paper/simulation görünümü.
 - Vur-Kaç tactical görünümü.
@@ -2503,16 +2501,31 @@ Operatörün birkaç saniyede "hangi token, giriş var mı, neden, SL/TP nerede,
 
 Panel karar desteğini sade ve hızlı verir; paper/runtime truth ile uyumludur; AI açıklayıcı/analisttir, otorite değildir; UI veya AI hot path'i yavaşlatmaz.
 
----
+## Alınan Kararlar
 
+- Phase 14 henüz başlamamıştır.
+- AI açıklama, analiz ve öneri üretir; trade/sign/apply/hardblock-override authority taşımaz.
+- Command Center runtime truth/readmodel verisini gösterir; yeni truth kaynağı oluşturmaz.
+
+## Doğrulama
+
+⏳ Faz başlamadığı için kapanış doğrulaması henüz yoktur.
+
+## Faz Sonu Sistem Durumu
+
+Phase 14 henüz uygulanmamıştır. Phase 13 kapanmış, Phase 14 açık kullanıcı başlangıç kararını beklemektedir.
+
+## Durum
+
+⏳ WAITING
+
+---
 # PHASE 15 — Final Operational Validation & Controlled Micro-Live
 
-## Ana hedef
-
+## Amaç
 Paper varsayımları ile gerçek execution koşulları arasındaki farkı ölçmek ve yalnız açık kullanıcı onayıyla çok küçük kontrollü gerçek para doğrulamasına hazırlanmak/uygulamak.
 
-## Kapsam
-
+## Sisteme Eklenenler
 - Simulation Drift Validator: theoretical/paper PnL ile gerçekçi gas, slippage, fill, quote delay ve execution timing karşılaştırması.
 - Signal-to-block latency/time-drift guard: haber/social sinyali geldiğinde onchain durumun çoktan değişip değişmediğinin kontrolü.
 - Paper → micro-live drift ölçümü.
@@ -2525,6 +2538,28 @@ Paper varsayımları ile gerçek execution koşulları arasındaki farkı ölçm
 ## Final kapanış kriteri
 
 Coinoskobi gerçek veriyle çalışan, paper sonuçlarıyla öğrenen, operatöre hızlı karar desteği veren ve gerçek execution davranışı ölçülmüş bir sistemdir. Phase 15 kapanınca numbered roadmap kapanır.
+
+---
+
+## Alınan Kararlar
+
+- Phase 15 henüz başlamamıştır.
+- Micro-live otomatik açılamaz.
+- Wallet/signing/live authority yalnız ayrı ve açık kullanıcı onayıyla minimum kapsamda açılabilir.
+- Paper ve live evidence birbirinden ayrı tutulur.
+- Phase 15 sonrasında Phase 16 / Era / V2 / V3 otomatik açılmaz.
+
+## Doğrulama
+
+⏳ Faz başlamadığı için kapanış doğrulaması henüz yoktur.
+
+## Faz Sonu Sistem Durumu
+
+Phase 15 henüz uygulanmamıştır. Final operational validation ve controlled micro-live açık kullanıcı başlangıç/onay kararını beklemektedir.
+
+## Durum
+
+⏳ WAITING
 
 ---
 
@@ -2549,7 +2584,7 @@ Bir sonraki faz, mevcut fazın kapanış kriterleri gerçekten sağlanmadan ve a
 
 ---
 
-# OCR — Operational Closure Repair
+# TARİHSEL EK — OCR Operational Closure Repair
 
 > **OCR = Operational Closure Repair**
 >
@@ -2622,7 +2657,7 @@ bulamayacak kadar gerçek bağlantıları tamamlamaktır.**
 
 ---
 
-# OCR Dönemi Tarihsel Snapshot — Phase 0–11 Kısa Tarihçe
+## OCR Dönemi Tarihsel Snapshot — Phase 0–11 Kısa Tarihçe
 
 Bu tablo OCR'nin Phase 11 sonrası açıldığı noktadaki tarihsel özettir.
 Phase 12 ve sonrası güncel ana roadmap bölümlerinde tutulur; bu tarihsel tablo
@@ -2645,7 +2680,7 @@ sonraki fazlarla genişletilmez.
 
 ---
 
-# OCR Geçmiş Repair Kayıtları
+## OCR Geçmiş Repair Kayıtları
 
 Aşağıdaki R isimleri tarihsel kayıttır.
 
@@ -2917,7 +2952,7 @@ Bu işten itibaren R numaralandırması sona ermiştir.
 
 ---
 
-# OCR Aktif İş Listesi
+## OCR Aktif İş Listesi
 
 ## 1. Candidate Queue Strict Boundedness
 
@@ -3395,7 +3430,7 @@ Ardından:
 
 ---
 
-# OCR Kapanış Kriterleri
+## OCR Kapanış Kriterleri
 
 OCR ancak aşağıdakilerin tamamı sağlanırsa CLOSED olur:
 
@@ -3420,7 +3455,7 @@ OCR ancak aşağıdakilerin tamamı sağlanırsa CLOSED olur:
 
 ---
 
-# OCR Terminoloji Kuralı
+## OCR Terminoloji Kuralı
 
 Bundan sonra:
 
@@ -3457,8 +3492,19 @@ Yeni R numarası açılmaz.
 
 ---
 
-## Status
+## Alınan Kararlar
 
+Bu fazın kalıcı mimari ve operasyon kararları mevcut faz kapsamı, sınırları ve kapanış kayıtlarıyla birlikte korunur.
+
+## Doğrulama
+
+Bu fazın doğrulama kanıtları aşağıdaki alt faz, kapanış kriteri ve kapanış kanıtı kayıtlarında korunur.
+
+## Faz Sonu Sistem Durumu
+
+Phase 15 tamamlandığında paper varsayımları gerçek execution koşullarıyla doğrulanmış olacak ve numbered roadmap kapanacaktır.
+
+## Durum
 🟢 CLOSED
 
 ## OCR Final Technical Pre-Audit — 2026-08-12

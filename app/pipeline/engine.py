@@ -29,6 +29,10 @@ from app.pipeline.market_context import build_market_context
 from app.pipeline.execution_context import build_execution_context
 from app.pipeline.paper_admission import paper_admission_decision
 from app.pipeline.intelligence_composition import RuntimeIntelligenceComposition
+from app.pipeline.command_center import build_command_center_readmodel
+from app.pipeline.operating_mode import build_operating_mode_readmodel
+from app.pipeline.operator_command import build_operator_command
+from app.pipeline.tactical_truth import build_tactical_truth
 from app.learning.runtime_outcome_feed import RuntimeLearningOutcomeFeed
 from app.learning.counterfactual_observation import (
     CounterfactualObservationStore,
@@ -432,6 +436,7 @@ class PipelineEngine:
         self,
         token_address: str,
         market_context=None,
+        operator_input=None,
     ):
 
         market_context = dict(
@@ -873,6 +878,143 @@ class PipelineEngine:
                 "action": decision,
             }
 
+        tactical_truth = (
+            build_tactical_truth(
+                market_context=market_context,
+                execution_cost=execution_cost,
+                paper=paper,
+                tp_multiplier=TP_PRICE_MULTIPLIER,
+                sl_multiplier=SL_PRICE_MULTIPLIER,
+            )
+        )
+
+        # phase14_operating_mode_runtime_binding
+        operating_mode = build_operating_mode_readmodel()
+
+        # Phase 14 bounded operator input binding.
+        # Produces a request only. Never executes/signs.
+        operator_command = {}
+
+        if operator_input:
+            raw_operator_input = dict(operator_input)
+
+            operator_command = build_operator_command(
+                source=raw_operator_input.get(
+                    "source",
+                    "PANEL_OPERATOR",
+                ),
+                raw_input=raw_operator_input.get(
+                    "raw_input"
+                ),
+                intent=raw_operator_input.get(
+                    "intent"
+                ),
+                token=(
+                    raw_operator_input.get("token")
+                    or token_address
+                ),
+                pool=(
+                    raw_operator_input.get("pool")
+                    or market_context.get(
+                        "candidate_pool"
+                    )
+                ),
+                chain=(
+                    raw_operator_input.get("chain")
+                    or market_context.get(
+                        "chain",
+                        "bsc",
+                    )
+                ),
+                amount=raw_operator_input.get(
+                    "amount"
+                ),
+                amount_unit=raw_operator_input.get(
+                    "amount_unit"
+                ),
+                position_id=raw_operator_input.get(
+                    "position_id"
+                ),
+                requested_mode=raw_operator_input.get(
+                    "requested_mode",
+                    "MANUAL",
+                ),
+                reason=raw_operator_input.get(
+                    "reason"
+                ),
+                hard_block=bool(
+                    risk_gate.get("hard_block")
+                ),
+                sellability=(
+                    (
+                        analyzer_status.get(
+                            "sellability"
+                        )
+                        or {}
+                    ).get("status")
+                ),
+                liquidity_usd=market_context.get(
+                    "liquidity_usd"
+                ),
+                sl_tp_ready=bool(
+                    tactical_truth.get(
+                        "exit_plan"
+                    )
+                ),
+                command_id=raw_operator_input.get(
+                    "command_id"
+                ),
+            )
+
+
+        command_center = (
+            build_command_center_readmodel(
+                candidate={
+                    "token": token_address,
+                    "pool": market_context.get(
+                        "candidate_pool"
+                    ),
+                    "chain": market_context.get(
+                        "chain",
+                        "bsc",
+                    ),
+                    "liquidity": market_context.get(
+                        "liquidity_usd"
+                    ),
+                },
+                pipeline_data={
+                    "strategy": strategy,
+                    "unified_score": unified_score,
+                    "unified_decision": unified_decision,
+                    "risk_gate": risk_gate,
+                    "paper": paper,
+                    "analyzer_status": analyzer_status,
+                    "market_context": market_context,
+                    "runtime_intelligence": (
+                        intelligence_context
+                    ),
+                    "intelligence": (
+                        intelligence_context
+                    ),
+                    "execution_cost": execution_cost,
+                    "entry_plan": tactical_truth.get(
+                        "entry_plan"
+                    ),
+                    "exit_plan": tactical_truth.get(
+                        "exit_plan"
+                    ),
+                    "risk_reward": tactical_truth.get(
+                        "risk_reward"
+                    ),
+                    "expected_pnl": tactical_truth.get(
+                        "expected_pnl"
+                    ),
+                    "operating_mode": operating_mode,
+                    "operator_command": operator_command,
+                },
+            )
+        )
+
         return {
             "success": True,
             "source": "pipeline",
@@ -895,6 +1037,10 @@ class PipelineEngine:
                 "analyzer_status": analyzer_status,
                 "strategy": strategy,
                 "paper": paper,
+                "tactical_truth": tactical_truth,
+                "operating_mode": operating_mode,
+                "operator_command": operator_command,
+                "command_center": command_center,
             },
         }
 
@@ -1288,6 +1434,9 @@ class PipelineEngine:
                 analyzer_status = (
                     data.get("analyzer_status") or {}
                 )
+                command_center = (
+                    data.get("command_center") or {}
+                )
 
                 summary = {
                     "token": token,
@@ -1307,6 +1456,7 @@ class PipelineEngine:
                             {},
                         ).get("status")
                     ),
+                    "command_center": command_center,
                 }
 
                 counterfactual = (

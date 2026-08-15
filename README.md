@@ -19,8 +19,17 @@ Temel ilke:
 - Final Phase 13 evidence: 220 closed paper trades; 108 wins / 112 losses.
 - Repeated exit-loss evidence remains unresolved operational evidence, especially TRAILING_STOP behavior.
 - Learning/calibration remains proposal-only with zero automatic apply, live, wallet, or execution authority.
-- **Phase 14 — Command Center & AI Analyst: WAITING FOR EXPLICIT START DECISION.**
-- Phase 15 remains the final numbered roadmap phase.
+- **Phase 14 — Command Center & AI Analyst: ACTIVE / PARTIAL IMPLEMENTATION.**
+- Phase 14 smart-money wallet → paper-outcome identity binding is CLOSED.
+- Canonical transaction-origin wallet identity is persisted at paper entry and
+  carried into learning outcome memory without hindsight reconstruction.
+- Missing entry-time wallet identity remains unknown; it is never reconstructed
+  from later runtime state.
+- Phase 14 wallet/outcome binding validation: 13 targeted PASS; 916 full-suite
+  PASS; 0 failures; clean diff check.
+- Commit: `21e82fe` (`phase14: bind entry wallet identity to paper outcomes`).
+- Remaining Phase 14 Command Center / AI Analyst scope is not yet claimed complete.
+- Phase 15 remains WAITING and has not started.
 
 ## Vision
 

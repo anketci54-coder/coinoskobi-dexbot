@@ -23,9 +23,9 @@ ROADMAP içinde tutulmaz.
 
 # PROJE DURUMU
 
-Current Phase: **PHASE 13 — CLOSED**
+Current Phase: **PHASE 14 — ACTIVE / PARTIAL IMPLEMENTATION**
 
-Current Work: **AWAITING EXPLICIT PHASE 14 START DECISION**
+Current Work: **PHASE 14 — COMMAND CENTER / AI ANALYST REMAINING SCOPE**
 
 Progress:
 
@@ -43,7 +43,7 @@ Progress:
 - Phase 11: ✅ CLOSED
 - Phase 12: ✅ CLOSED
 - Phase 13: ✅ CLOSED
-- Phase 14: ⏳ WAITING
+- Phase 14: 🚧 ACTIVE / PARTIAL
 - Phase 15: ⏳ WAITING
 
 ---
@@ -2503,21 +2503,94 @@ Panel karar desteğini sade ve hızlı verir; paper/runtime truth ile uyumludur;
 
 ## Alınan Kararlar
 
-- Phase 14 henüz başlamamıştır.
-- AI açıklama, analiz ve öneri üretir; trade/sign/apply/hardblock-override authority taşımaz.
-- Command Center runtime truth/readmodel verisini gösterir; yeni truth kaynağı oluşturmaz.
+- Phase 14 başlatılmıştır; ana kapsam henüz tamamen kapanmamıştır.
+- Smart-money / runtime actor kimliği ile paper outcome learning arasındaki
+  canonical bağ tamamlanmıştır.
+- Wallet kimliği yalnız transaction origin `from` kanıtından alınır.
+- Paper giriş anındaki `wallet_id`, `opening_context.actor_identity` altında
+  kalıcı olarak saklanır.
+- Aynı entry-time kimlik paper kapanışında learning outcome feed'e
+  `wallet_id` ve `actor_id` olarak aktarılır.
+- Sonradan mevcut runtime state kullanılarak geçmiş wallet kimliği tahmin
+  edilmez veya yeniden yazılmaz.
+- Entry anında wallet kimliği yoksa sonuç `None` / unknown kalır.
+- `hindsight_reconstructed=False` korunur.
+- Bu binding decision, paper, live, wallet veya execution authority oluşturmaz.
+- AI açıklama, analiz ve öneri üretir; trade/sign/apply/hardblock-override
+  authority taşımaz.
+- Command Center runtime truth/readmodel verisini gösterir; yeni truth kaynağı
+  oluşturmaz.
+
+## Phase 14 Smart-Money Wallet → Outcome Binding Kanıtı
+
+Commit:
+
+`21e82fe` — `phase14: bind entry wallet identity to paper outcomes`
+
+Değişen kapsam:
+
+- `app/pipeline/engine.py`
+- `app/paper/manager.py`
+- `tests/test_phase14_wallet_outcome_binding.py`
+
+Doğrulanan zincir:
+
+`native transaction origin`
+→ `canonical wallet_id`
+→ `market_context`
+→ `paper opening_context.actor_identity`
+→ `paper close`
+→ `runtime outcome feed`
+→ `outcome memory wallet_id / actor_id`
+
+Safety / provenance kuralları:
+
+- identity source: `TRANSACTION_FROM_ONLY`
+- identity guessing: yok
+- hindsight reconstruction: yok
+- missing entry identity: unknown
+- automatic apply authority: yok
+- decision authority: yok
+- live authority: yok
+- wallet authority: yok
+- execution authority: yok
+
+Regression evidence:
+
+- Phase 14 targeted regression: **13 PASS**
+- Full repository regression: **916 PASS**
+- Failed: **0**
+- `git diff --check`: CLEAN
+- Full regression elapsed time: **453.06 s**
+- Mevcut websockets legacy deprecation warning non-blocking olarak kaldı.
+
+- Final fast smoke: **3 PASS / 0 FAIL**, wall **0.333 s**.
+- True composition-root E2E: **1 PASS / 0 FAIL**, wall **2.581 s**.
+- Pipeline E2E: **20 PASS / 0 FAIL**, wall **1.119 s**.
+- Final Phase 14 targeted regression: **13 PASS / 0 FAIL**, wall **2.586 s**.
+- Kalıcı test evidence:
+  `PHASE14_WALLET_OUTCOME_TEST_RESULTS_2026-08-15.md`.
 
 ## Doğrulama
 
-⏳ Faz başlamadığı için kapanış doğrulaması henüz yoktur.
+Wallet → paper → learning outcome binding kapanış kriteri sağlandı.
+
+Phase 14'ün kalan Command Center / AI Analyst kapsamı ayrıca uygulanıp
+doğrulanmadan ana Phase 14 CLOSED sayılmaz.
 
 ## Faz Sonu Sistem Durumu
 
-Phase 14 henüz uygulanmamıştır. Phase 13 kapanmış, Phase 14 açık kullanıcı başlangıç kararını beklemektedir.
+Phase 13 CLOSED durumundadır.
+
+Phase 14 ACTIVE / PARTIAL durumundadır. Smart-money wallet → paper outcome
+identity binding tamamlanmış ve regression ile doğrulanmıştır. Command Center /
+AI Analyst kalan kapsamı henüz tamamlanmamıştır.
+
+Phase 15 başlamamıştır ve otomatik açılmaz.
 
 ## Durum
 
-⏳ WAITING
+🚧 ACTIVE / PARTIAL
 
 ---
 # PHASE 15 — Final Operational Validation & Controlled Micro-Live
@@ -2565,7 +2638,11 @@ Phase 15 henüz uygulanmamıştır. Final operational validation ve controlled m
 
 # Uygulama sırası
 
-Şu anki tek aktif ana hedef **PHASE 13 — Paper Outcome Learning & Calibration**'dır.
+Şu anki tek aktif ana hedef **PHASE 14 — Command Center & AI Analyst**'tır.
+
+Phase 13 CLOSED durumundadır. Phase 14 içindeki smart-money wallet → paper
+outcome identity binding tamamlanmıştır; kalan Command Center / AI Analyst
+kapsamı devam etmektedir.
 
 Tamamlanan ana sıra:
 
@@ -2576,8 +2653,9 @@ Tamamlanan ana sıra:
 
 Mevcut ve sonraki sıra:
 
-5. Phase 13 learning/calibration — ACTIVE.
-6. Phase 14 Command Center/AI — WAITING; Phase 13 kapanmadan açılmaz.
+5. Phase 13 learning/calibration — CLOSED.
+6. Phase 14 Command Center/AI — ACTIVE / PARTIAL; wallet → paper outcome
+   identity binding tamamlandı, kalan Command Center / AI kapsamı açık.
 7. Phase 15 final operational validation ve yalnız açık onayla micro-live — WAITING.
 
 Bir sonraki faz, mevcut fazın kapanış kriterleri gerçekten sağlanmadan ve açık başlangıç kararı verilmeden açılmaz.

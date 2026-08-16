@@ -89,3 +89,110 @@ def test_command_center_preserves_hard_block():
     assert result["live_authority"] is False
     assert result["execution_authority"] is False
     assert result["hardblock_override_authority"] is False
+
+
+def test_command_center_projects_complete_simulation_drift():
+    result = build_command_center_readmodel(
+        candidate={"token": "0xdrift"},
+        pipeline_data={
+            "simulation_drift": {
+                "comparable_evidence_count": 6,
+                "comparison_complete": True,
+                "observed_evidence_count": 8,
+                "observed_evidence_complete": True,
+                "missing_observed_fields": [],
+                "simulation_drift": {
+                    "liquidity": {
+                        "paper_usd": 50000.0,
+                        "observed_usd": 48000.0,
+                        "delta_usd": -2000.0,
+                    },
+                    "sellability": {
+                        "paper": "SELLABILITY_OK",
+                        "observed": "SELLABILITY_OK",
+                        "changed": False,
+                    },
+                    "drift": {
+                        "slippage_pct": {
+                            "paper": 0.5,
+                            "observed": 0.7,
+                            "delta": 0.2,
+                        },
+                    },
+                },
+            },
+        },
+    )
+
+    drift = result["simulation_drift"]
+
+    assert drift["state"] == "OBSERVED"
+    assert drift["comparison_complete"] is True
+    assert drift["comparable_evidence_count"] == 6
+    assert drift["liquidity"]["delta_usd"] == -2000.0
+    assert drift["sellability"]["changed"] is False
+    assert drift["drift"]["slippage_pct"]["delta"] == 0.2
+
+    assert drift["observation_only"] is True
+    assert drift["decision_authority"] is False
+    assert drift["execution_authority"] is False
+    assert drift["hardblock_override_authority"] is False
+
+
+def test_command_center_drift_missing_evidence_is_not_bad_drift():
+    result = build_command_center_readmodel(
+        candidate={"token": "0xunknown"},
+        pipeline_data={
+            "simulation_drift": {
+                "comparable_evidence_count": 2,
+                "comparison_complete": False,
+                "observed_evidence_count": 2,
+                "observed_evidence_complete": False,
+                "missing_observed_fields": [
+                    "gas_cost_usd",
+                    "quote_delay_ms",
+                ],
+                "simulation_drift": {
+                    "liquidity": {
+                        "paper_usd": None,
+                        "observed_usd": 50000.0,
+                        "delta_usd": None,
+                    },
+                    "sellability": {
+                        "paper": None,
+                        "observed": "SELLABILITY_OK",
+                        "changed": None,
+                    },
+                    "drift": {},
+                },
+            },
+        },
+    )
+
+    drift = result["simulation_drift"]
+
+    assert drift["state"] == "INSUFFICIENT_EVIDENCE"
+    assert drift["comparison_complete"] is False
+    assert drift["comparable_evidence_count"] == 2
+    assert "gas_cost_usd" in drift["missing_observed_fields"]
+    assert drift["sellability"]["changed"] is None
+
+    assert result["decision"]["blockers"] == []
+    assert drift["decision_authority"] is False
+    assert drift["execution_authority"] is False
+    assert drift["hardblock_override_authority"] is False
+
+
+def test_command_center_drift_absent_is_unknown():
+    result = build_command_center_readmodel(
+        candidate={"token": "0xnone"},
+        pipeline_data={},
+    )
+
+    drift = result["simulation_drift"]
+
+    assert drift["state"] == "UNKNOWN"
+    assert drift["comparison_complete"] is False
+    assert drift["comparable_evidence_count"] == 0
+    assert drift["decision_authority"] is False
+    assert drift["execution_authority"] is False

@@ -38,6 +38,12 @@ def build_command_center_readmodel(
     exit_context = dict(data.get("exit_intelligence") or {})
     operating_mode = dict(data.get("operating_mode") or {})
     operator_command = dict(data.get("operator_command") or {})
+    simulation_drift = dict(
+        data.get("simulation_drift") or {}
+    )
+    drift_detail = dict(
+        simulation_drift.get("simulation_drift") or {}
+    )
 
     score = _number(score_data.get("score"))
     confidence = _number(score_data.get("confidence"))
@@ -61,6 +67,69 @@ def build_command_center_readmodel(
         "HONEYPOT",
     }:
         blockers.append("SELLABILITY_BLOCK")
+
+    drift_comparable_count = int(
+        simulation_drift.get(
+            "comparable_evidence_count",
+            0,
+        )
+        or 0
+    )
+
+    drift_comparison_complete = bool(
+        simulation_drift.get(
+            "comparison_complete",
+            False,
+        )
+    )
+
+    if not simulation_drift:
+        drift_state = "UNKNOWN"
+    elif not drift_comparison_complete:
+        drift_state = "INSUFFICIENT_EVIDENCE"
+    else:
+        drift_state = "OBSERVED"
+
+    drift_projection = {
+        "state": drift_state,
+        "comparison_complete": (
+            drift_comparison_complete
+        ),
+        "comparable_evidence_count": (
+            drift_comparable_count
+        ),
+        "observed_evidence_count": (
+            simulation_drift.get(
+                "observed_evidence_count",
+                0,
+            )
+        ),
+        "observed_evidence_complete": bool(
+            simulation_drift.get(
+                "observed_evidence_complete",
+                False,
+            )
+        ),
+        "missing_observed_fields": list(
+            simulation_drift.get(
+                "missing_observed_fields"
+            )
+            or []
+        ),
+        "liquidity": dict(
+            drift_detail.get("liquidity") or {}
+        ),
+        "sellability": dict(
+            drift_detail.get("sellability") or {}
+        ),
+        "drift": dict(
+            drift_detail.get("drift") or {}
+        ),
+        "observation_only": True,
+        "decision_authority": False,
+        "execution_authority": False,
+        "hardblock_override_authority": False,
+    }
 
     return {
         "contract": "phase14_command_center_readmodel_v1",
@@ -131,6 +200,13 @@ def build_command_center_readmodel(
         },
 
         "operating_mode": operating_mode,
+
+        # Phase 15E simulation-drift projection.
+        #
+        # INSUFFICIENT_EVIDENCE is not classified as
+        # harmful drift. No thresholds or authority
+        # are introduced here.
+        "simulation_drift": drift_projection,
 
         # Phase 14 structured operator request.
         # Projection only; never execution authority.

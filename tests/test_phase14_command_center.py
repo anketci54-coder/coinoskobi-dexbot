@@ -196,3 +196,103 @@ def test_command_center_drift_absent_is_unknown():
     assert drift["comparable_evidence_count"] == 0
     assert drift["decision_authority"] is False
     assert drift["execution_authority"] is False
+
+
+def test_command_center_projects_phase15_classification_observation_only():
+    result = build_command_center_readmodel(
+        candidate={"token": "0xclassified"},
+        pipeline_data={
+            "risk_gate": {"hard_block": False},
+            "simulation_drift": {
+                "comparable_evidence_count": 6,
+                "comparison_complete": True,
+                "observed_evidence_count": 8,
+                "observed_evidence_complete": True,
+                "missing_observed_fields": [],
+                "simulation_drift": {
+                    "liquidity": {},
+                    "sellability": {
+                        "changed": False,
+                    },
+                    "drift": {},
+                },
+                "drift_classification": {
+                    "contract": (
+                        "phase15_drift_classification_v1"
+                    ),
+                    "state": "CLASSIFIED",
+                    "classification": "CRITICAL_DRIFT",
+                    "severity": "CRITICAL",
+                    "metrics": {
+                        "slippage_pct": {
+                            "deterioration": 3.5,
+                            "severity": "CRITICAL",
+                        }
+                    },
+                    "blocks_trade": False,
+                    "blocks_paper": False,
+                    "risk_gate_binding": False,
+                },
+            },
+        },
+    )
+
+    drift = result["simulation_drift"]
+
+    assert drift["classification"] == "CRITICAL_DRIFT"
+    assert drift["severity"] == "CRITICAL"
+    assert drift["classification_state"] == "CLASSIFIED"
+    assert (
+        drift["classification_contract"]
+        == "phase15_drift_classification_v1"
+    )
+
+    # Critical drift is visible, but Phase 15G
+    # must not create a new blocker.
+    assert drift["blocks_trade"] is False
+    assert drift["blocks_paper"] is False
+    assert drift["risk_gate_binding"] is False
+    assert result["decision"]["blockers"] == []
+
+    assert drift["observation_only"] is True
+    assert drift["decision_authority"] is False
+    assert drift["execution_authority"] is False
+    assert drift["hardblock_override_authority"] is False
+
+
+def test_command_center_projects_incomplete_classification_without_block():
+    result = build_command_center_readmodel(
+        candidate={"token": "0xincomplete"},
+        pipeline_data={
+            "simulation_drift": {
+                "comparable_evidence_count": 2,
+                "comparison_complete": False,
+                "drift_classification": {
+                    "contract": (
+                        "phase15_drift_classification_v1"
+                    ),
+                    "state": "INSUFFICIENT_EVIDENCE",
+                    "classification": (
+                        "INSUFFICIENT_EVIDENCE"
+                    ),
+                    "severity": None,
+                    "metrics": {},
+                    "blocks_trade": False,
+                    "blocks_paper": False,
+                    "risk_gate_binding": False,
+                },
+            },
+        },
+    )
+
+    drift = result["simulation_drift"]
+
+    assert (
+        drift["classification"]
+        == "INSUFFICIENT_EVIDENCE"
+    )
+    assert drift["severity"] is None
+    assert drift["blocks_trade"] is False
+    assert drift["blocks_paper"] is False
+    assert drift["risk_gate_binding"] is False
+    assert result["decision"]["blockers"] == []

@@ -206,3 +206,68 @@ def test_sellability_change_is_visible_but_not_new_block():
     assert result["blocks_trade"] is False
     assert result["risk_gate_binding"] is False
     assert_safe(result)
+
+
+def test_phase15_composition_projects_classification():
+    from app.pipeline.simulation_drift_composition import (
+        build_phase15_drift_composition,
+    )
+
+    result = build_phase15_drift_composition(
+        paper_position={
+            "entry_price": 1,
+            "exit_price": 1,
+            "slippage": 0.5,
+            "net_pnl": 5.0,
+            "trade_value": 100.0,
+            "liquidity_usd": 100000,
+            "sellability": "SELLABILITY_OK",
+        },
+        runtime_evidence={
+            "entry_price": 1,
+            "exit_price": 1,
+            "slippage_pct": 2.0,
+            "net_pnl_pct": 5.0,
+            "liquidity_usd": 100000,
+            "sellability": "SELLABILITY_OK",
+        },
+    )
+
+    classification = result["drift_classification"]
+
+    assert (
+        result["classification_contract"]
+        == "phase15_drift_classification_v1"
+    )
+    assert classification["classification"] == "HIGH_DRIFT"
+    assert classification["severity"] == "HIGH"
+    assert classification["blocks_trade"] is False
+    assert classification["blocks_paper"] is False
+    assert classification["risk_gate_binding"] is False
+    assert result["authority_zero"] is True
+    assert result["observation_only"] is True
+
+
+def test_phase15_composition_incomplete_is_not_bad_drift():
+    from app.pipeline.simulation_drift_composition import (
+        build_phase15_drift_composition,
+    )
+
+    result = build_phase15_drift_composition(
+        paper_position={
+            "slippage_pct": 0.5,
+        },
+        runtime_evidence={
+            "slippage_pct": 10.0,
+        },
+    )
+
+    classification = result["drift_classification"]
+
+    assert (
+        classification["classification"]
+        == "INSUFFICIENT_EVIDENCE"
+    )
+    assert classification["severity"] is None
+    assert classification["blocks_trade"] is False
+    assert classification["risk_gate_binding"] is False

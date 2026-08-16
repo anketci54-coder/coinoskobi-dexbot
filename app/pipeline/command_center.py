@@ -44,6 +44,12 @@ def build_command_center_readmodel(
     drift_detail = dict(
         simulation_drift.get("simulation_drift") or {}
     )
+    drift_classification = dict(
+        simulation_drift.get(
+            "drift_classification"
+        )
+        or {}
+    )
 
     score = _number(score_data.get("score"))
     confidence = _number(score_data.get("confidence"))
@@ -125,6 +131,26 @@ def build_command_center_readmodel(
         "drift": dict(
             drift_detail.get("drift") or {}
         ),
+        "classification": (
+            drift_classification.get(
+                "classification"
+            )
+        ),
+        "severity": drift_classification.get(
+            "severity"
+        ),
+        "classification_state": (
+            drift_classification.get("state")
+        ),
+        "classification_contract": (
+            drift_classification.get("contract")
+        ),
+        "classification_metrics": dict(
+            drift_classification.get("metrics") or {}
+        ),
+        "blocks_trade": False,
+        "blocks_paper": False,
+        "risk_gate_binding": False,
         "observation_only": True,
         "decision_authority": False,
         "execution_authority": False,

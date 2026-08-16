@@ -4,6 +4,9 @@ from app.pipeline.simulation_drift import (
 from app.pipeline.simulation_drift_evidence import (
     build_phase15_execution_evidence,
 )
+from app.pipeline.simulation_drift_classification import (
+    classify_simulation_drift,
+)
 
 
 _AUTHORITY_FIELDS = (
@@ -63,9 +66,14 @@ def build_phase15_drift_composition(
         ),
     )
 
+    drift_classification = (
+        classify_simulation_drift(drift)
+    )
+
     authority_zero = all(
         evidence.get(field) is False
         and drift.get(field) is False
+        and drift_classification.get(field) is False
         for field in _AUTHORITY_FIELDS
     )
 
@@ -88,12 +96,16 @@ def build_phase15_drift_composition(
 
         "execution_evidence": evidence,
         "simulation_drift": drift,
+        "drift_classification": drift_classification,
 
         "evidence_contract": evidence.get(
             "contract"
         ),
         "drift_contract": drift.get(
             "contract"
+        ),
+        "classification_contract": (
+            drift_classification.get("contract")
         ),
 
         "observed_evidence_count": (

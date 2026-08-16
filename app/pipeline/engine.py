@@ -22,6 +22,9 @@ from app.paper.manager import PaperManager
 from app.cache.gecko_cache import GeckoCache
 from app.filter.cache_filter import CacheFilter
 from app.filter.ingress_gate import IngressGate
+from app.pipeline.simulation_drift_composition import (
+    build_phase15_drift_composition,
+)
 from app.pipeline.candidate_queue import CandidateAdmissionQueue
 from app.pipeline.conveyor import ConveyorLabeler
 from app.pipeline.work_scheduler import WorkScheduler
@@ -967,6 +970,60 @@ class PipelineEngine:
             )
 
 
+        # Phase 15D observation-only drift readmodel.
+        #
+        # Existing facts only:
+        # - no new provider/RPC fetch
+        # - no wallet/signing
+        # - no execution
+        # - no authority grant
+        #
+        # Missing evidence remains None.
+        phase15_runtime_evidence = {
+            "entry_price": market_context.get(
+                "price_usd"
+            ),
+            "liquidity_usd": market_context.get(
+                "liquidity_usd"
+            ),
+            "sellability": (
+                analyzer_status.get(
+                    "sellability",
+                    {}
+                ).get("status")
+            ),
+            "slippage_pct": execution_context.get(
+                "slippage_pct"
+            ),
+            "gas_cost_usd": execution_context.get(
+                "gas_cost_usd"
+            ),
+            "mev_cost_pct": execution_context.get(
+                "mev_cost_pct"
+            ),
+            "quote_delay_ms": market_context.get(
+                "quote_delay_ms"
+            ),
+            "execution_delay_ms": market_context.get(
+                "execution_delay_ms"
+            ),
+            "execution_started_at": market_context.get(
+                "execution_started_at"
+            ),
+            "execution_observed_at": market_context.get(
+                "execution_observed_at"
+            ),
+        }
+
+        simulation_drift = (
+            build_phase15_drift_composition(
+                paper_position=paper,
+                runtime_evidence=(
+                    phase15_runtime_evidence
+                ),
+            )
+        )
+
         command_center = (
             build_command_center_readmodel(
                 candidate={
@@ -1011,6 +1068,7 @@ class PipelineEngine:
                     ),
                     "operating_mode": operating_mode,
                     "operator_command": operator_command,
+                    "simulation_drift": simulation_drift,
                 },
             )
         )
@@ -1040,6 +1098,7 @@ class PipelineEngine:
                 "tactical_truth": tactical_truth,
                 "operating_mode": operating_mode,
                 "operator_command": operator_command,
+                "simulation_drift": simulation_drift,
                 "command_center": command_center,
             },
         }

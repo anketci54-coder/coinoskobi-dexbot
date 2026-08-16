@@ -716,3 +716,59 @@ Phase 12 remains RESERVED until explicit planning discussion.
 - OCR: CLOSED
 - Phase 11: CLOSED
 - Phase 12: RESERVED
+
+---
+
+# Phase 15 Final End-to-End Validation — 2026-08-16
+
+Status: ✅ PASS / CLOSED
+
+## Environment
+
+- Branch: `main`
+- Validated HEAD: `77bf54ff07aa9e46a1e546b1685b07b94b821bba`
+- Python: 3.13.5
+- Repository worktree: clean
+
+## Final Validation
+
+- Test collection: 966
+- Full regression: 966 passed / 0 failed
+- Root E2E: 21 passed
+- Application/runtime: 16 passed
+- Paper/learning: 28 passed
+- Risk/safety: 33 passed
+- Phase 14 + Phase 15 contract: 47 passed
+
+## Active Database
+
+- `data/paper_trades.db`
+- integrity_check: `ok`
+- quick_check: `ok`
+- foreign-key errors: `0`
+
+## Safety Boundary
+
+- Production code changed by validation: FALSE
+- DB write by validation: FALSE
+- Documentation write by validation: FALSE
+- Network call by audit: FALSE
+- Commit by validation: FALSE
+- Push by validation: FALSE
+- Phase 16 opened: FALSE
+
+## Known Non-Blocking Warning
+
+- dependency-owned `websockets.legacy` deprecation warning
+
+## Final Gate
+
+`PASS_PHASE15_END_TO_END_VALIDATION`
+
+`FULL_SYSTEM_VALIDATION=PASS`
+
+Phase 15: CLOSED.
+
+Numbered roadmap Phase 0–15: COMPLETE.
+
+Phase 16 / Era / V2 / V3: NOT AUTOMATICALLY OPENED.

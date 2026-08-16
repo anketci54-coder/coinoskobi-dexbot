@@ -15,21 +15,20 @@ Temel ilke:
 ## Current Project State
 
 - **Phase 13 — Paper Outcome Learning & Calibration: CLOSED**
-- Phase 13A–13D completed with production paper and bounded counterfactual evidence.
-- Final Phase 13 evidence: 220 closed paper trades; 108 wins / 112 losses.
-- Repeated exit-loss evidence remains unresolved operational evidence, especially TRAILING_STOP behavior.
-- Learning/calibration remains proposal-only with zero automatic apply, live, wallet, or execution authority.
-- **Phase 14 — Command Center & AI Analyst: ACTIVE / PARTIAL IMPLEMENTATION.**
-- Phase 14 smart-money wallet → paper-outcome identity binding is CLOSED.
-- Canonical transaction-origin wallet identity is persisted at paper entry and
-  carried into learning outcome memory without hindsight reconstruction.
-- Missing entry-time wallet identity remains unknown; it is never reconstructed
-  from later runtime state.
-- Phase 14 wallet/outcome binding validation: 13 targeted PASS; 916 full-suite
-  PASS; 0 failures; clean diff check.
-- Commit: `21e82fe` (`phase14: bind entry wallet identity to paper outcomes`).
-- Remaining Phase 14 Command Center / AI Analyst scope is not yet claimed complete.
-- Phase 15 remains WAITING and has not started.
+- **Phase 14 — Command Center & AI Analyst: CLOSED**
+- **Phase 15 — Final Operational Validation & Controlled Micro-Live: CLOSED**
+- Numbered roadmap **Phase 0–15 is complete**.
+- Final Phase 15 regression: **966 passed / 0 failed**.
+- Root E2E: **21 passed**.
+- Application/runtime: **16 passed**.
+- Paper/learning: **28 passed**.
+- Risk/safety: **33 passed**.
+- Phase 14 + Phase 15 contract validation: **47 passed**.
+- Active paper DB: integrity `ok`, quick check `ok`, foreign-key errors `0`.
+- Phase 15 validation introduced no production-code or DB mutation.
+- Learning/calibration remains proposal-only; roadmap closure creates no implicit
+  live, wallet, signing, AI or execution authority.
+- Phase 16 / Era / V2 / V3 is not automatically opened.
 
 ## Vision
 

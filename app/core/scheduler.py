@@ -28,7 +28,7 @@ class Scheduler:
             if now < job["next"]:
                 continue
 
-            log.info("[JOB] %s", job["name"])
+            log.info("[JOB] {}", job["name"])
 
             try:
                 job["func"]()

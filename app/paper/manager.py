@@ -190,12 +190,18 @@ class PaperManager:
             action = "HOLD"
             reason = ""
             trailing_price = highest * TRAILING_STOP_FACTOR
-            if current <= trailing_price and highest > entry:
-                action, reason = "CLOSE", "TRAILING_STOP"
+            # Exit precedence:
+            # 1. Hard stop-loss dominates when the current realized ROI
+            #    has already breached the configured loss limit.
+            # 2. Take-profit is evaluated next.
+            # 3. Trailing-stop applies only when neither hard boundary
+            #    has already determined the close reason.
+            if roi <= STOP_LOSS:
+                action, reason = "CLOSE", "STOP_LOSS"
             elif roi >= TAKE_PROFIT:
                 action, reason = "CLOSE", "TAKE_PROFIT"
-            elif roi <= STOP_LOSS:
-                action, reason = "CLOSE", "STOP_LOSS"
+            elif current <= trailing_price and highest > entry:
+                action, reason = "CLOSE", "TRAILING_STOP"
 
             learning_result = None
             result_closed_at = pos.get("closed_at", "") or ""

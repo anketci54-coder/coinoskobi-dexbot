@@ -104,3 +104,24 @@ def test_manager_closes_stop_loss_with_database_contract():
     assert values["close_reason"] == "STOP_LOSS"
     assert values["roi"] <= -0.10
     assert result[0]["data"]["reason"] == "STOP_LOSS"
+
+
+def test_manager_hard_stop_loss_dominates_trailing_after_large_drop():
+    position = make_position()
+    position["highest_price"] = 1.30
+
+    manager = PaperManager.__new__(PaperManager)
+    manager.db = FakeDB([position])
+    manager.price = FakePrice(0.50)
+    manager.learning_feed = None
+    manager._learning_replay_after_id = 0
+
+    result = manager.process()
+
+    trade_id, values = manager.db.closed[0]
+
+    assert trade_id == 1
+    assert values["exit_price"] == 0.50
+    assert values["roi"] <= -0.10
+    assert values["close_reason"] == "STOP_LOSS"
+    assert result[0]["data"]["reason"] == "STOP_LOSS"

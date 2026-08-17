@@ -30,7 +30,17 @@ CREATE TABLE IF NOT EXISTS paper_trades (
     token_amount REAL DEFAULT 0,
     pool TEXT,
     dex TEXT,
-    opening_context_json TEXT
+    opening_context_json TEXT,
+
+    paper_account_version TEXT,
+    entry_amount_usdt REAL,
+    risk_amount_usdt REAL,
+    capital_before_usdt REAL,
+    capital_after_entry_usdt REAL,
+    position_size_pct REAL,
+    sizing_reason TEXT,
+    gross_pnl_usdt REAL,
+    net_pnl_usdt REAL
 )
 """
 
@@ -74,9 +84,9 @@ REQUIRED_COLUMNS = {
     "roi",
     "gas_buy",
     "gas_sell",
-    "swap_fee",
     "buy_tax",
     "sell_tax",
+    "swap_fee",
     "slippage",
     "mev",
     "close_reason",
@@ -85,6 +95,16 @@ REQUIRED_COLUMNS = {
     "pool",
     "dex",
     "opening_context_json",
+
+    "paper_account_version",
+    "entry_amount_usdt",
+    "risk_amount_usdt",
+    "capital_before_usdt",
+    "capital_after_entry_usdt",
+    "position_size_pct",
+    "sizing_reason",
+    "gross_pnl_usdt",
+    "net_pnl_usdt",
 }
 
 
@@ -124,9 +144,7 @@ def _verify_columns(conn):
 
 
 def _migrate_to_v2(conn):
-    duplicates = _duplicate_open_groups(
-        conn
-    )
+    duplicates = _duplicate_open_groups(conn)
 
     if duplicates:
         count = sum(
@@ -141,9 +159,7 @@ def _migrate_to_v2(conn):
             f"rows={count}"
         )
 
-    conn.execute(
-        UNIQUE_OPEN_INDEX
-    )
+    conn.execute(UNIQUE_OPEN_INDEX)
 
 
 def ensure_paper_schema(conn):
@@ -163,9 +179,7 @@ def ensure_paper_schema(conn):
     )
 
     try:
-        conn.execute(
-            PAPER_TRADES_SCHEMA
-        )
+        conn.execute(PAPER_TRADES_SCHEMA)
 
         for sql in INDEXES:
             conn.execute(sql)
@@ -177,29 +191,18 @@ def ensure_paper_schema(conn):
             ).fetchall()
         }
 
-        if (
-            "opening_context_json"
-            not in columns_before
-        ):
+        if "opening_context_json" not in columns_before:
             conn.execute(
                 "ALTER TABLE paper_trades "
                 "ADD COLUMN opening_context_json TEXT"
             )
 
-        columns = _verify_columns(
-            conn
-        )
+        columns = _verify_columns(conn)
 
         if current < 2:
-            _migrate_to_v2(
-                conn
-            )
+            _migrate_to_v2(conn)
         else:
-            # Even an existing v2 DB must have
-            # the invariant physically present.
-            conn.execute(
-                UNIQUE_OPEN_INDEX
-            )
+            conn.execute(UNIQUE_OPEN_INDEX)
 
         conn.execute(
             f"PRAGMA user_version="
@@ -207,21 +210,18 @@ def ensure_paper_schema(conn):
         )
 
         conn.execute(
-            f"RELEASE SAVEPOINT "
-            f"{savepoint}"
+            f"RELEASE SAVEPOINT {savepoint}"
         )
 
         conn.commit()
 
     except Exception:
         conn.execute(
-            f"ROLLBACK TO SAVEPOINT "
-            f"{savepoint}"
+            f"ROLLBACK TO SAVEPOINT {savepoint}"
         )
 
         conn.execute(
-            f"RELEASE SAVEPOINT "
-            f"{savepoint}"
+            f"RELEASE SAVEPOINT {savepoint}"
         )
 
         conn.rollback()
@@ -229,9 +229,7 @@ def ensure_paper_schema(conn):
 
     return {
         "state": "READY",
-        "schema_version": (
-            PAPER_SCHEMA_VERSION
-        ),
+        "schema_version": PAPER_SCHEMA_VERSION,
         "columns": sorted(columns),
         "single_open_db_enforced": True,
         "unique_open_index": (

@@ -4,7 +4,11 @@ from datetime import datetime, timezone
 
 from app.paper.database import PaperDatabase
 from app.paper.cache_price import CachePrice
-from app.config.trading import TAKE_PROFIT, STOP_LOSS, TRAILING_STOP_FACTOR
+from app.config.trading import (
+    TAKE_PROFIT,
+    STOP_LOSS,
+    TRAILING_STOP_FACTOR,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -42,10 +46,7 @@ class PaperManager:
         )
 
     @staticmethod
-    def _expected_exit_price(
-        pos,
-        reason,
-    ):
+    def _expected_exit_price(pos, reason):
         if reason == "TAKE_PROFIT":
             value = (pos or {}).get(
                 "tp_price"
@@ -86,28 +87,218 @@ class PaperManager:
             else None
         )
 
-    def _observe_learning_outcome(self, pos, current, roi, reason, closed_at):
-        feed = getattr(self, "learning_feed", None)
+    @staticmethod
+    def _is_10k_account(pos):
+        return (
+            (pos or {}).get(
+                "paper_account_version"
+            )
+            == "PAPER_10K_V1"
+        )
+
+    @staticmethod
+    def _calculate_accounting(pos, current):
+        token_amount = float(
+            pos.get("token_amount") or 0.0
+        )
+
+        if token_amount <= 0:
+            return None
+
+        if PaperManager._is_10k_account(pos):
+            entry_amount = float(
+                pos.get("entry_amount_usdt")
+                or 0.0
+            )
+
+            if entry_amount <= 0:
+                return None
+
+            current_value = (
+                token_amount * current
+            )
+
+            gross = (
+                current_value
+                - entry_amount
+            )
+
+            trade_value = entry_amount
+
+            fees = (
+                float(pos.get("gas_buy") or 0)
+                + float(pos.get("gas_sell") or 0)
+                + trade_value
+                * (
+                    float(
+                        pos.get("swap_fee") or 0
+                    )
+                    / 100
+                )
+                + trade_value
+                * (
+                    float(
+                        pos.get("buy_tax") or 0
+                    )
+                    / 100
+                )
+                + trade_value
+                * (
+                    float(
+                        pos.get("sell_tax") or 0
+                    )
+                    / 100
+                )
+                + trade_value
+                * (
+                    float(
+                        pos.get("slippage") or 0
+                    )
+                    / 100
+                )
+                + trade_value
+                * (
+                    float(
+                        pos.get("mev") or 0
+                    )
+                    / 100
+                )
+            )
+
+            net = gross - fees
+            roi = net / entry_amount
+
+            return {
+                "gross": gross,
+                "net": net,
+                "roi": roi,
+                "gross_pnl_usdt": gross,
+                "net_pnl_usdt": net,
+                "account": "PAPER_10K_V1",
+            }
+
+        amount_bnb = float(
+            pos.get("amount_bnb") or 0.0
+        )
+
+        if amount_bnb <= 0:
+            return None
+
+        current_value = (
+            token_amount * current
+        )
+
+        gross = (
+            current_value
+            - amount_bnb
+        )
+
+        trade_value = amount_bnb
+
+        fees = (
+            float(pos.get("gas_buy") or 0)
+            + float(pos.get("gas_sell") or 0)
+            + trade_value
+            * (
+                float(
+                    pos.get("swap_fee") or 0
+                )
+                / 100
+            )
+            + trade_value
+            * (
+                float(
+                    pos.get("buy_tax") or 0
+                )
+                / 100
+            )
+            + trade_value
+            * (
+                float(
+                    pos.get("sell_tax") or 0
+                )
+                / 100
+            )
+            + trade_value
+            * (
+                float(
+                    pos.get("slippage") or 0
+                )
+                / 100
+            )
+            + trade_value
+            * (
+                float(
+                    pos.get("mev") or 0
+                )
+                / 100
+            )
+        )
+
+        net = gross - fees
+        roi = net / amount_bnb
+
+        return {
+            "gross": gross,
+            "net": net,
+            "roi": roi,
+            "gross_pnl_usdt": None,
+            "net_pnl_usdt": None,
+            "account": "LEGACY",
+        }
+
+    def _observe_learning_outcome(
+        self,
+        pos,
+        current,
+        roi,
+        reason,
+        closed_at,
+    ):
+        feed = getattr(
+            self,
+            "learning_feed",
+            None,
+        )
+
         if feed is None:
             return None
-        opening_context = self._opening_context(pos)
+
+        opening_context = (
+            self._opening_context(pos)
+        )
 
         actor_identity = (
-            opening_context.get("actor_identity")
-            if isinstance(opening_context, dict)
+            opening_context.get(
+                "actor_identity"
+            )
+            if isinstance(
+                opening_context,
+                dict,
+            )
             else None
         )
 
-        if not isinstance(actor_identity, dict):
+        if not isinstance(
+            actor_identity,
+            dict,
+        ):
             actor_identity = {}
 
-        wallet_id = actor_identity.get("wallet_id")
-        actor_id = actor_identity.get("actor_id")
+        wallet_id = actor_identity.get(
+            "wallet_id"
+        )
+        actor_id = actor_identity.get(
+            "actor_id"
+        )
 
         return feed.observe_paper_close(
             position_id=pos["id"],
             token=pos["token"],
-            observed_at=pos.get("created_at", ""),
+            observed_at=pos.get(
+                "created_at",
+                "",
+            ),
             evaluated_at=closed_at,
             entry_price=pos["entry_price"],
             exit_price=current,
@@ -125,115 +316,226 @@ class PaperManager:
         )
 
     def replay_closed_outcomes(self):
-        feed = getattr(self, "learning_feed", None)
-        reader = getattr(self.db, "closed_positions", None)
+        feed = getattr(
+            self,
+            "learning_feed",
+            None,
+        )
+
+        reader = getattr(
+            self.db,
+            "closed_positions",
+            None,
+        )
+
         if feed is None or reader is None:
             return []
 
         results = []
-        for pos in reader(after_id=self._learning_replay_after_id):
-            result = self._observe_learning_outcome(
-                pos,
-                pos.get("exit_price"),
-                pos.get("roi"),
-                pos.get("close_reason"),
-                pos.get("closed_at"),
+
+        for pos in reader(
+            after_id=(
+                self._learning_replay_after_id
             )
+        ):
+            result = (
+                self._observe_learning_outcome(
+                    pos,
+                    pos.get("exit_price"),
+                    pos.get("roi"),
+                    pos.get("close_reason"),
+                    pos.get("closed_at"),
+                )
+            )
+
             results.append(result)
+
             self._learning_replay_after_id = max(
                 self._learning_replay_after_id,
                 int(pos.get("id") or 0),
             )
+
         return results
 
     def process(self):
-        # Recover any DB-committed outcome whose in-memory learning step failed.
         self.replay_closed_outcomes()
-        positions = self.db.open_positions()
-        logger.debug("Açık Pozisyon : %d", len(positions))
+
+        positions = (
+            self.db.open_positions()
+        )
+
+        logger.debug(
+            "Açık Pozisyon : %d",
+            len(positions),
+        )
+
         results = []
 
         for pos in positions:
             token = pos["token"]
+
             try:
-                current = self.price.get_price(token)
-            except Exception as e:
-                logger.warning("[ERROR] token=%s error=%s", token, e)
+                current = (
+                    self.price.get_price(
+                        token
+                    )
+                )
+            except Exception as exc:
+                logger.warning(
+                    "[ERROR] token=%s error=%s",
+                    token,
+                    exc,
+                )
                 continue
 
-            highest = max(pos["highest_price"], current)
-            lowest = min(pos["lowest_price"], current)
-            entry = pos["entry_price"]
-            if entry <= 0 or pos["token_amount"] <= 0:
-                continue
-
-            current_value = pos["token_amount"] * current
-            gross = current_value - pos["amount_bnb"]
-            trade_value = pos["amount_bnb"]
-            fees = (
-                (pos["gas_buy"] or 0)
-                + (pos["gas_sell"] or 0)
-                + trade_value * ((pos["swap_fee"] or 0) / 100)
-                + trade_value * ((pos["buy_tax"] or 0) / 100)
-                + trade_value * ((pos["sell_tax"] or 0) / 100)
-                + trade_value * ((pos["slippage"] or 0) / 100)
-                + trade_value * ((pos["mev"] or 0) / 100)
+            highest = max(
+                pos["highest_price"],
+                current,
             )
-            net = gross - fees
-            roi = net / pos["amount_bnb"] if pos["amount_bnb"] > 0 else 0
+
+            lowest = min(
+                pos["lowest_price"],
+                current,
+            )
+
+            entry = pos["entry_price"]
+
+            if (
+                entry <= 0
+                or pos["token_amount"] <= 0
+            ):
+                continue
+
+            accounting = (
+                self._calculate_accounting(
+                    pos,
+                    current,
+                )
+            )
+
+            if accounting is None:
+                logger.warning(
+                    "paper accounting unavailable "
+                    "position_id=%s account=%s",
+                    pos.get("id"),
+                    pos.get(
+                        "paper_account_version"
+                    ),
+                )
+                continue
+
+            gross = accounting["gross"]
+            net = accounting["net"]
+            roi = accounting["roi"]
+
+            update = {
+                "current_price": current,
+                "highest_price": highest,
+                "lowest_price": lowest,
+                "gross_pnl": gross,
+                "net_pnl": net,
+                "roi": roi,
+            }
+
+            if (
+                accounting["account"]
+                == "PAPER_10K_V1"
+            ):
+                update[
+                    "gross_pnl_usdt"
+                ] = accounting[
+                    "gross_pnl_usdt"
+                ]
+
+                update[
+                    "net_pnl_usdt"
+                ] = accounting[
+                    "net_pnl_usdt"
+                ]
 
             self.db.update_position(
                 pos["id"],
-                {
+                update,
+            )
+
+            action = "HOLD"
+            reason = ""
+
+            trailing_price = (
+                highest
+                * TRAILING_STOP_FACTOR
+            )
+
+            if roi <= STOP_LOSS:
+                action = "CLOSE"
+                reason = "STOP_LOSS"
+
+            elif roi >= TAKE_PROFIT:
+                action = "CLOSE"
+                reason = "TAKE_PROFIT"
+
+            elif (
+                current <= trailing_price
+                and highest > entry
+            ):
+                action = "CLOSE"
+                reason = "TRAILING_STOP"
+
+            learning_result = None
+
+            result_closed_at = (
+                pos.get("closed_at", "")
+                or ""
+            )
+
+            if action == "CLOSE":
+                result_closed_at = (
+                    datetime.now(
+                        timezone.utc
+                    ).isoformat()
+                )
+
+                close_data = {
                     "current_price": current,
+                    "exit_price": current,
                     "highest_price": highest,
                     "lowest_price": lowest,
                     "gross_pnl": gross,
                     "net_pnl": net,
                     "roi": roi,
-                },
-            )
+                    "close_reason": reason,
+                    "closed_at": (
+                        result_closed_at
+                    ),
+                }
 
-            action = "HOLD"
-            reason = ""
-            trailing_price = highest * TRAILING_STOP_FACTOR
-            # Exit precedence:
-            # 1. Hard stop-loss dominates when the current realized ROI
-            #    has already breached the configured loss limit.
-            # 2. Take-profit is evaluated next.
-            # 3. Trailing-stop applies only when neither hard boundary
-            #    has already determined the close reason.
-            if roi <= STOP_LOSS:
-                action, reason = "CLOSE", "STOP_LOSS"
-            elif roi >= TAKE_PROFIT:
-                action, reason = "CLOSE", "TAKE_PROFIT"
-            elif current <= trailing_price and highest > entry:
-                action, reason = "CLOSE", "TRAILING_STOP"
+                if (
+                    accounting["account"]
+                    == "PAPER_10K_V1"
+                ):
+                    close_data[
+                        "gross_pnl_usdt"
+                    ] = accounting[
+                        "gross_pnl_usdt"
+                    ]
 
-            learning_result = None
-            result_closed_at = pos.get("closed_at", "") or ""
+                    close_data[
+                        "net_pnl_usdt"
+                    ] = accounting[
+                        "net_pnl_usdt"
+                    ]
 
-            if action == "CLOSE":
-                result_closed_at = datetime.now(timezone.utc).isoformat()
-                closed = self.db.close_position(
-                    pos["id"],
-                    {
-                        "current_price": current,
-                        "exit_price": current,
-                        "highest_price": highest,
-                        "lowest_price": lowest,
-                        "gross_pnl": gross,
-                        "net_pnl": net,
-                        "roi": roi,
-                        "close_reason": reason,
-                        "closed_at": result_closed_at,
-                    },
+                closed = (
+                    self.db.close_position(
+                        pos["id"],
+                        close_data,
+                    )
                 )
-                # Backward-compatible DB contract: only an explicit False means
-                # the idempotent close lost a race. Legacy/fake DB adapters may
-                # return None after a successful close.
+
                 if closed is False:
-                    action, reason = "SKIP", "ALREADY_CLOSED"
+                    action = "SKIP"
+                    reason = "ALREADY_CLOSED"
+
                 else:
                     try:
                         outcome_position = dict(
@@ -253,34 +555,71 @@ class PaperManager:
                                 result_closed_at,
                             )
                         )
+
                     except Exception as exc:
                         learning_result = {
-                            "state": "PENDING_REPLAY",
-                            "error": type(exc).__name__,
+                            "state": (
+                                "PENDING_REPLAY"
+                            ),
+                            "error": (
+                                type(exc).__name__
+                            ),
                             "proposal_only": True,
                             "automatic_apply_allowed": False,
                         }
 
-            status = "CLOSED" if action == "CLOSE" else "OPEN"
-            results.append({
-                "success": True,
-                "source": "paper",
-                "data": {
-                    "action": action,
-                    "token": token,
-                    "entry_price": entry,
-                    "current_price": current,
-                    "roi": roi,
-                    "status": status,
-                    "opened_at": pos.get("created_at", ""),
-                    "closed_at": result_closed_at,
-                    "reason": reason,
-                    "learning": learning_result,
-                },
-            })
+            status = (
+                "CLOSED"
+                if action == "CLOSE"
+                else "OPEN"
+            )
+
+            results.append(
+                {
+                    "success": True,
+                    "source": "paper",
+                    "data": {
+                        "action": action,
+                        "token": token,
+                        "entry_price": entry,
+                        "current_price": current,
+                        "roi": roi,
+                        "status": status,
+                        "opened_at": pos.get(
+                            "created_at",
+                            "",
+                        ),
+                        "closed_at": (
+                            result_closed_at
+                        ),
+                        "reason": reason,
+                        "account": (
+                            accounting[
+                                "account"
+                            ]
+                        ),
+                        "gross_pnl_usdt": (
+                            accounting[
+                                "gross_pnl_usdt"
+                            ]
+                        ),
+                        "net_pnl_usdt": (
+                            accounting[
+                                "net_pnl_usdt"
+                            ]
+                        ),
+                        "learning": (
+                            learning_result
+                        ),
+                    },
+                }
+            )
+
         return results
 
 
 if __name__ == "__main__":
-    logging.basicConfig(level=logging.DEBUG)
+    logging.basicConfig(
+        level=logging.DEBUG
+    )
     PaperManager().process()

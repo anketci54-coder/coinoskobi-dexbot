@@ -9,6 +9,10 @@ from app.risk.gate import RiskGate
 from app.risk.sellability import analyze as sellability_analyze
 from app.risk.traps import TrapRiskAnalyzer
 from app.risk.mev import MEVExposureAnalyzer
+from app.risk.paper_position_sizing import (
+    PAPER_CAPITAL_USDT,
+    calculate_paper_position_size,
+)
 
 from app.strategy.engine import StrategyEngine
 from app.strategy.unified_score import UnifiedScoreEngine
@@ -690,7 +694,56 @@ class PipelineEngine:
 
                 else:
 
-                    token_amount = DEFAULT_AMOUNT_BNB / price
+                    capital_row = self.paper_db.conn.execute(
+                        '''
+                        SELECT COALESCE(SUM(entry_amount_usdt), 0)
+                        FROM paper_trades
+                        WHERE status='OPEN'
+                          AND paper_account_version='PAPER_10K_V1'
+                        '''
+                    ).fetchone()
+
+                    capital_in_use = float(
+                        capital_row[0] or 0.0
+                    )
+
+                    available_capital_usdt = max(
+                        0.0,
+                        PAPER_CAPITAL_USDT - capital_in_use,
+                    )
+
+                    sl_distance_pct = max(
+                        0.0001,
+                        1.0 - SL_PRICE_MULTIPLIER,
+                    )
+
+                    sizing = calculate_paper_position_size(
+                        score=unified_score.get("score"),
+                        confidence=unified_score.get("confidence"),
+                        hard_block=risk_gate.get("hard_block"),
+                        sellability=sellability_status,
+                        available_capital_usdt=available_capital_usdt,
+                        sl_distance_pct=sl_distance_pct,
+                    )
+
+                    entry_amount_usdt = float(
+                        sizing["entry_amount_usdt"]
+                    )
+
+                    if entry_amount_usdt <= 0:
+                        paper = {
+                            "action": "SKIP",
+                            "reason": sizing["sizing_reason"],
+                        }
+                        return {
+                            "success": True,
+                            "source": "pipeline",
+                            "data": {
+                                "paper": paper,
+                            },
+                        }
+
+                    token_amount = entry_amount_usdt / price
 
                     entry_wallet_id = market_context.get(
                         "wallet_id"
@@ -819,8 +872,16 @@ class PipelineEngine:
                             "tp_price": price * TP_PRICE_MULTIPLIER,
                             "sl_price": price * SL_PRICE_MULTIPLIER,
 
-                            "amount_bnb": DEFAULT_AMOUNT_BNB,
+                            "amount_bnb": 0.0,
                             "token_amount": token_amount,
+
+                            "paper_account_version": "PAPER_10K_V1",
+                            "entry_amount_usdt": entry_amount_usdt,
+                            "risk_amount_usdt": sizing["risk_amount_usdt"],
+                            "capital_before_usdt": sizing["capital_before_usdt"],
+                            "capital_after_entry_usdt": sizing["capital_after_entry_usdt"],
+                            "position_size_pct": sizing["position_size_pct"],
+                            "sizing_reason": sizing["sizing_reason"],
 
                             "gas_buy": DEFAULT_GAS_BUY,
                             "gas_sell": DEFAULT_GAS_SELL,
@@ -875,7 +936,11 @@ class PipelineEngine:
                             "token": token_address,
                             "entry_price": price,
                             "token_amount": token_amount,
-                            "amount_bnb": DEFAULT_AMOUNT_BNB,
+                            "amount_bnb": 0.0,
+                            "entry_amount_usdt": entry_amount_usdt,
+                            "risk_amount_usdt": sizing["risk_amount_usdt"],
+                            "position_size_pct": sizing["position_size_pct"],
+                            "paper_account_version": "PAPER_10K_V1",
                         }
 
         else:

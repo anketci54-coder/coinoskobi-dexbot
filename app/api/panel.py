@@ -1,4 +1,5 @@
 from pathlib import Path
+import json
 import sqlite3
 
 from fastapi import FastAPI
@@ -145,8 +146,6 @@ def exits():
 
 @app.get("/api/positions-v2")
 def positions_v2():
-    import json
-
     rows = query(
         """
         SELECT
@@ -166,6 +165,17 @@ def positions_v2():
             close_reason,
             created_at,
             closed_at,
+
+            paper_account_version,
+            entry_amount_usdt,
+            risk_amount_usdt,
+            capital_before_usdt,
+            capital_after_entry_usdt,
+            position_size_pct,
+            sizing_reason,
+            gross_pnl_usdt,
+            net_pnl_usdt,
+
             opening_context_json
         FROM paper_trades
         WHERE id > 250
@@ -188,7 +198,9 @@ def positions_v2():
             context = {}
 
         signals = dict(context.get("raw_signals") or {})
-        attribution = dict(context.get("signal_attribution") or {})
+        attribution = dict(
+            context.get("signal_attribution") or {}
+        )
         baseline = dict(context.get("exit_baseline") or {})
 
         item["entry_evidence"] = {

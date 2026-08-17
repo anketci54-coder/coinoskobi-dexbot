@@ -9,16 +9,29 @@ from app.config.trading import (
     STOP_LOSS,
     TRAILING_STOP_FACTOR,
 )
+from app.risk.hybrid_exit_controller import (
+    evaluate_hybrid_exit,
+)
+from app.risk.hybrid_exit_runtime_adapter import (
+    build_hybrid_exit_runtime_input,
+)
 
 logger = logging.getLogger(__name__)
 
 
 class PaperManager:
 
-    def __init__(self, learning_feed=None):
+    def __init__(
+        self,
+        learning_feed=None,
+        hybrid_exit_evidence=None,
+    ):
         self.db = PaperDatabase()
         self.price = CachePrice()
         self.learning_feed = learning_feed
+        self.hybrid_exit_evidence = (
+            hybrid_exit_evidence
+        )
         self._learning_replay_after_id = 0
 
     @staticmethod
@@ -357,6 +370,138 @@ class PaperManager:
 
         return results
 
+    def _hybrid_runtime_evidence(
+        self,
+        pos,
+    ):
+        source = getattr(
+            self,
+            "hybrid_exit_evidence",
+            None,
+        )
+
+        if source is None:
+            return None
+
+        try:
+            if callable(source):
+                value = source(pos)
+            elif isinstance(source, dict):
+                token = (pos or {}).get(
+                    "token"
+                )
+
+                if token in source:
+                    value = source.get(token)
+                else:
+                    value = source
+            else:
+                return None
+        except Exception as exc:
+            logger.warning(
+                "hybrid exit evidence unavailable "
+                "position_id=%s error=%s",
+                (pos or {}).get("id"),
+                type(exc).__name__,
+            )
+            return None
+
+        return (
+            dict(value)
+            if isinstance(value, dict)
+            else None
+        )
+
+    def _evaluate_hybrid_paper_exit(
+        self,
+        *,
+        pos,
+        current,
+        highest,
+    ):
+        evidence = (
+            self._hybrid_runtime_evidence(
+                pos
+            )
+        )
+
+        if evidence is None:
+            return None
+
+        signal_bundle = evidence.get(
+            "signal_bundle"
+        )
+
+        if not isinstance(
+            signal_bundle,
+            dict,
+        ):
+            signal_bundle = {}
+
+        runtime_input = (
+            build_hybrid_exit_runtime_input(
+                position_state={
+                    "entry_price": (
+                        pos.get(
+                            "entry_price"
+                        )
+                    ),
+                    "current_price": current,
+                    "highest_price": highest,
+                    "sl_price": (
+                        pos.get(
+                            "sl_price"
+                        )
+                    ),
+                },
+                signal_bundle=signal_bundle,
+                trend_health=evidence.get(
+                    "trend_health"
+                ),
+                exit_pressure=evidence.get(
+                    "exit_pressure"
+                ),
+                hard_block=bool(
+                    evidence.get(
+                        "hard_block",
+                        False,
+                    )
+                ),
+                sellability=evidence.get(
+                    "sellability"
+                ),
+            )
+        )
+
+        controller_keys = (
+            "entry_price",
+            "current_price",
+            "highest_price",
+            "static_sl_price",
+            "hard_block",
+            "sellability",
+            "liquidity_health",
+            "flow_momentum",
+            "flow_acceleration",
+            "trend_health",
+            "exit_pressure",
+            "price_impact_health",
+        )
+
+        controller_input = {
+            key: runtime_input[key]
+            for key in controller_keys
+        }
+
+        decision = evaluate_hybrid_exit(
+            **controller_input
+        )
+
+        return {
+            "decision": decision,
+            "runtime_input": runtime_input,
+        }
+
     def process(self):
         self.replay_closed_outcomes()
 
@@ -460,26 +605,54 @@ class PaperManager:
 
             action = "HOLD"
             reason = ""
+            hybrid_result = None
+            hybrid_decision = None
 
-            trailing_price = (
-                highest
-                * TRAILING_STOP_FACTOR
+            hybrid_result = (
+                self._evaluate_hybrid_paper_exit(
+                    pos=pos,
+                    current=current,
+                    highest=highest,
+                )
             )
 
-            if roi <= STOP_LOSS:
-                action = "CLOSE"
-                reason = "STOP_LOSS"
+            if hybrid_result is not None:
+                hybrid_decision = (
+                    hybrid_result["decision"]
+                )
 
-            elif roi >= TAKE_PROFIT:
-                action = "CLOSE"
-                reason = "TAKE_PROFIT"
+                if hybrid_decision.exit_now:
+                    action = "CLOSE"
+                    reason = (
+                        hybrid_decision.reason
+                    )
 
-            elif (
-                current <= trailing_price
-                and highest > entry
-            ):
-                action = "CLOSE"
-                reason = "TRAILING_STOP"
+                else:
+                    action = "HOLD"
+                    reason = (
+                        hybrid_decision.reason
+                    )
+
+            else:
+                trailing_price = (
+                    highest
+                    * TRAILING_STOP_FACTOR
+                )
+
+                if roi <= STOP_LOSS:
+                    action = "CLOSE"
+                    reason = "STOP_LOSS"
+
+                elif roi >= TAKE_PROFIT:
+                    action = "CLOSE"
+                    reason = "TAKE_PROFIT"
+
+                elif (
+                    current <= trailing_price
+                    and highest > entry
+                ):
+                    action = "CLOSE"
+                    reason = "TRAILING_STOP"
 
             learning_result = None
 
@@ -610,6 +783,48 @@ class PaperManager:
                         ),
                         "learning": (
                             learning_result
+                        ),
+                        "hybrid_exit": (
+                            {
+                                "bound": True,
+                                "action": (
+                                    hybrid_decision.action
+                                ),
+                                "reason": (
+                                    hybrid_decision.reason
+                                ),
+                                "exit_now": (
+                                    hybrid_decision.exit_now
+                                ),
+                                "protect_profit": (
+                                    hybrid_decision.protect_profit
+                                ),
+                                "runner_active": (
+                                    hybrid_decision.runner_active
+                                ),
+                                "protection_price": (
+                                    hybrid_decision.protection_price
+                                ),
+                                "profit_lock_price": (
+                                    hybrid_decision.profit_lock_price
+                                ),
+                                "health_score": (
+                                    hybrid_decision.health_score
+                                ),
+                                "decision_authority": False,
+                                "live_authority": False,
+                                "wallet_authority": False,
+                                "execution_authority": False,
+                            }
+                            if hybrid_decision
+                            is not None
+                            else {
+                                "bound": False,
+                                "decision_authority": False,
+                                "live_authority": False,
+                                "wallet_authority": False,
+                                "execution_authority": False,
+                            }
                         ),
                     },
                 }

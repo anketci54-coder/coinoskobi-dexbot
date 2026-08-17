@@ -578,6 +578,9 @@ class PipelineEngine:
         ):
             return None
 
+        # Preserve the existing runtime evidence contract.
+        # Canonical semantic migration can overlay these fields
+        # without breaking current consumers.
         signal_bundle = {}
 
         if market_ready:
@@ -589,6 +592,42 @@ class PipelineEngine:
             signal_bundle.update(
                 flow
             )
+
+        # Normalize semantic aliases already produced by the
+        # native runtime. No new authority or external work.
+        if signal_bundle.get(
+            "liquidity_health"
+        ) is None:
+            market_quality = signal_bundle.get(
+                "market_quality"
+            )
+
+            if isinstance(
+                market_quality,
+                dict,
+            ):
+                signal_bundle[
+                    "liquidity_health"
+                ] = market_quality.get(
+                    "liquidity_state"
+                )
+
+        if signal_bundle.get(
+            "price_impact_health"
+        ) is None:
+            price_impact = signal_bundle.get(
+                "price_impact"
+            )
+
+            if isinstance(
+                price_impact,
+                dict,
+            ):
+                signal_bundle[
+                    "price_impact_health"
+                ] = price_impact.get(
+                    "estimated_impact_context"
+                )
 
         return {
             "state": snapshot.get(

@@ -807,6 +807,9 @@ class PipelineEngine:
                     trade_row = {
                             "token": token_address,
                             "symbol": token.get("symbol", "?"),
+                            "pool": market_context.get(
+                                "candidate_pool"
+                            ),
 
                             "entry_price": price,
                             "current_price": price,

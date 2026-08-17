@@ -62,11 +62,12 @@ def test_manager_updates_open_position_with_database_contract():
     trade_id, values = manager.db.updated[0]
 
     assert trade_id == 1
-    assert values == {
-        "current_price": 1.05,
-        "highest_price": 1.05,
-        "lowest_price": 1.0,
-    }
+    assert values["current_price"] == 1.05
+    assert values["highest_price"] == 1.05
+    assert values["lowest_price"] == 1.0
+    assert values["gross_pnl"] > 0
+    assert values["net_pnl"] > 0
+    assert values["roi"] > 0
     assert manager.db.closed == []
     assert result[0]["data"]["action"] == "HOLD"
 

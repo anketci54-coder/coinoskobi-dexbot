@@ -184,7 +184,14 @@ class PaperManager:
 
             self.db.update_position(
                 pos["id"],
-                {"current_price": current, "highest_price": highest, "lowest_price": lowest},
+                {
+                    "current_price": current,
+                    "highest_price": highest,
+                    "lowest_price": lowest,
+                    "gross_pnl": gross,
+                    "net_pnl": net,
+                    "roi": roi,
+                },
             )
 
             action = "HOLD"

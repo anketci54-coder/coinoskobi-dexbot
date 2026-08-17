@@ -418,6 +418,201 @@ class PipelineEngine:
             "bounded": True,
         }
 
+    def _hybrid_exit_runtime_evidence(
+        self,
+        position,
+    ):
+        position = dict(position or {})
+
+        token = position.get("token")
+        pool = None
+        candidate = {}
+
+        raw_context = position.get(
+            "opening_context_json"
+        )
+
+        if raw_context:
+            try:
+                opening_context = json.loads(
+                    raw_context
+                )
+
+                if isinstance(
+                    opening_context,
+                    dict,
+                ):
+                    raw_signals = (
+                        opening_context.get(
+                            "raw_signals"
+                        )
+                        or {}
+                    )
+
+                    if isinstance(
+                        raw_signals,
+                        dict,
+                    ):
+                        candidate = dict(
+                            raw_signals
+                        )
+
+                        pool = (
+                            raw_signals.get(
+                                "pool"
+                            )
+                        )
+
+                    market_context = (
+                        opening_context.get(
+                            "market_context"
+                        )
+                        or {}
+                    )
+
+                    if isinstance(
+                        market_context,
+                        dict,
+                    ):
+                        for key in (
+                            "liquidity",
+                            "volume_24h",
+                            "volume24",
+                            "buys_24h",
+                            "buys24",
+                            "price_usd",
+                        ):
+                            if (
+                                key
+                                not in candidate
+                                and key
+                                in market_context
+                            ):
+                                candidate[key] = (
+                                    market_context[
+                                        key
+                                    ]
+                                )
+
+            except (
+                TypeError,
+                ValueError,
+                json.JSONDecodeError,
+            ):
+                pool = None
+                candidate = {}
+
+        if not pool and token:
+            pool = self.cache.pool_for_token(
+                token
+            )
+
+        if not pool:
+            return None
+
+        candidate.setdefault(
+            "pool",
+            pool,
+        )
+
+        runtime = getattr(
+            self,
+            "native_market_flow",
+            None,
+        )
+
+        snapshot_fn = getattr(
+            runtime,
+            "snapshot",
+            None,
+        )
+
+        if not callable(snapshot_fn):
+            return None
+
+        try:
+            snapshot = snapshot_fn(
+                pool,
+                candidate=candidate,
+            )
+        except Exception:
+            return None
+
+        if not isinstance(
+            snapshot,
+            dict,
+        ):
+            return None
+
+        market = (
+            snapshot.get(
+                "market_intelligence"
+            )
+            or {}
+        )
+
+        flow = (
+            snapshot.get(
+                "flow_intelligence"
+            )
+            or {}
+        )
+
+        market_ready = bool(
+            isinstance(market, dict)
+            and market.get(
+                "evidence_ready"
+            )
+        )
+
+        flow_ready = bool(
+            isinstance(flow, dict)
+            and flow.get(
+                "evidence_ready"
+            )
+        )
+
+        if not (
+            market_ready
+            or flow_ready
+        ):
+            return None
+
+        signal_bundle = {}
+
+        if market_ready:
+            signal_bundle.update(
+                market
+            )
+
+        if flow_ready:
+            signal_bundle.update(
+                flow
+            )
+
+        return {
+            "state": snapshot.get(
+                "state",
+                "UNKNOWN",
+            ),
+            "signal_bundle": (
+                signal_bundle
+            ),
+            "runtime_market_flow": (
+                snapshot
+            ),
+            "source": snapshot.get(
+                "source",
+                "SCANNER_PLUS_NATIVE_WSS",
+            ),
+            "synthetic": False,
+            "decision_authority": False,
+            "paper_authority": False,
+            "live_authority": False,
+            "wallet_authority": False,
+            "execution_authority": False,
+        }
+
     def process_positions(self):
         manager_db = getattr(
             self.manager,
@@ -438,7 +633,22 @@ class PipelineEngine:
         if callable(open_positions):
             self.refresh_open_position_prices()
 
-        return self.manager.process()
+        previous_evidence = getattr(
+            self.manager,
+            "hybrid_exit_evidence",
+            None,
+        )
+
+        self.manager.hybrid_exit_evidence = (
+            self._hybrid_exit_runtime_evidence
+        )
+
+        try:
+            return self.manager.process()
+        finally:
+            self.manager.hybrid_exit_evidence = (
+                previous_evidence
+            )
 
     def run(
         self,

@@ -76,8 +76,21 @@ class CacheRows:
             "created_at": None,
         }]
 
+    def replace(self, row):
+        return None
+
+    def prune_except(self, pools, preserve_tokens=None):
+        return 0
+
 
 class PassIngress:
+    def classify(self, row, now=None):
+        return {
+            "lane": "ACTIVE",
+            "reason": "TEST_PASS",
+            "row": dict(row),
+        }
+
     def classify_many(self, rows):
         rows = list(rows)
         return {
@@ -155,6 +168,7 @@ def _analysis_stubs(monkeypatch):
             "data": {
                 "decision": "PAPER_BUY",
                 "paper_trade": True,
+                "score": 100,
                 "reasons": [],
             }
         },

@@ -44,21 +44,21 @@ def status():
         """
         SELECT
             COUNT(*) AS total,
-            SUM(CASE WHEN id > 250
-                      AND pool IS NOT NULL
-                      AND trim(pool) <> ''
-                     THEN 1 ELSE 0 END) AS new_generation,
-            SUM(CASE WHEN id > 250
-                      AND pool IS NOT NULL
-                      AND trim(pool) <> ''
-                      AND status='OPEN'
-                     THEN 1 ELSE 0 END) AS open_positions,
-            SUM(CASE WHEN id > 250
-                      AND pool IS NOT NULL
-                      AND trim(pool) <> ''
-                      AND status='CLOSED'
-                     THEN 1 ELSE 0 END) AS closed_positions
+            COUNT(*) AS new_generation,
+            SUM(
+                CASE
+                    WHEN status='OPEN'
+                    THEN 1 ELSE 0
+                END
+            ) AS open_positions,
+            SUM(
+                CASE
+                    WHEN status='CLOSED'
+                    THEN 1 ELSE 0
+                END
+            ) AS closed_positions
         FROM paper_trades
+        WHERE paper_account_version='PAPER_10K_V1'
         """
     )
     return rows[0]
@@ -101,23 +101,42 @@ def performance():
         """
         SELECT
             COUNT(*) AS closed,
-            SUM(CASE WHEN net_pnl > 0
-                     THEN 1 ELSE 0 END) AS wins,
-            SUM(CASE WHEN net_pnl <= 0
-                     THEN 1 ELSE 0 END) AS losses,
+            SUM(
+                CASE
+                    WHEN net_pnl_usdt > 0
+                    THEN 1 ELSE 0
+                END
+            ) AS wins,
+            SUM(
+                CASE
+                    WHEN net_pnl_usdt <= 0
+                    THEN 1 ELSE 0
+                END
+            ) AS losses,
             ROUND(
                 100.0 *
-                SUM(CASE WHEN net_pnl > 0
-                         THEN 1 ELSE 0 END)
+                SUM(
+                    CASE
+                        WHEN net_pnl_usdt > 0
+                        THEN 1 ELSE 0
+                    END
+                )
                 / NULLIF(COUNT(*), 0),
                 2
             ) AS win_rate_pct,
-            ROUND(AVG(roi) * 100, 2) AS avg_roi_pct,
-            ROUND(SUM(net_pnl), 8) AS net_total
+            ROUND(
+                AVG(roi) * 100,
+                2
+            ) AS avg_roi_pct,
+            ROUND(
+                COALESCE(
+                    SUM(net_pnl_usdt),
+                    0
+                ),
+                8
+            ) AS net_total
         FROM paper_trades
-        WHERE id > 250
-          AND pool IS NOT NULL
-          AND trim(pool) <> ''
+        WHERE paper_account_version='PAPER_10K_V1'
           AND status='CLOSED'
         """
     )
@@ -131,12 +150,19 @@ def exits():
         SELECT
             close_reason,
             COUNT(*) AS trades,
-            ROUND(AVG(roi) * 100, 2) AS avg_roi_pct,
-            ROUND(SUM(net_pnl), 8) AS net_total
+            ROUND(
+                AVG(roi) * 100,
+                2
+            ) AS avg_roi_pct,
+            ROUND(
+                COALESCE(
+                    SUM(net_pnl_usdt),
+                    0
+                ),
+                8
+            ) AS net_total
         FROM paper_trades
-        WHERE id > 250
-          AND pool IS NOT NULL
-          AND trim(pool) <> ''
+        WHERE paper_account_version='PAPER_10K_V1'
           AND status='CLOSED'
         GROUP BY close_reason
         ORDER BY trades DESC

@@ -13,6 +13,7 @@ from app.risk.paper_position_sizing import (
     PAPER_CAPITAL_USDT,
     calculate_paper_position_size,
 )
+from app.risk.dynamic_stop_loss import calculate_dynamic_sl
 
 from app.strategy.engine import StrategyEngine
 from app.strategy.unified_score import UnifiedScoreEngine
@@ -712,10 +713,40 @@ class PipelineEngine:
                         PAPER_CAPITAL_USDT - capital_in_use,
                     )
 
-                    sl_distance_pct = max(
-                        0.0001,
-                        1.0 - SL_PRICE_MULTIPLIER,
+                    mq = intelligence_context.get(
+                        "market_quality"
+                    ) or {}
+                    fs = intelligence_context.get(
+                        "flow_spread"
+                    ) or {}
+
+                    flow_momentum = fs.get("spread")
+                    flow_acceleration = fs.get(
+                        "acceleration"
                     )
+                    liquidity_health = mq.get(
+                        "liquidity_state"
+                    )
+
+                    if (
+                        flow_momentum is None
+                        and flow_acceleration is None
+                        and not liquidity_health
+                    ):
+                        dynamic_sl = None
+                        sl_distance_pct = max(
+                            0.0001,
+                            1.0 - SL_PRICE_MULTIPLIER,
+                        )
+                    else:
+                        dynamic_sl = calculate_dynamic_sl(
+                            flow_momentum=flow_momentum,
+                            flow_acceleration=flow_acceleration,
+                            liquidity_health=liquidity_health,
+                        )
+                        sl_distance_pct = dynamic_sl[
+                            "sl_distance_pct"
+                        ]
 
                     sizing = calculate_paper_position_size(
                         score=unified_score.get("score"),
@@ -870,7 +901,7 @@ class PipelineEngine:
                             "lowest_price": price,
 
                             "tp_price": price * TP_PRICE_MULTIPLIER,
-                            "sl_price": price * SL_PRICE_MULTIPLIER,
+                            "sl_price": price * (1.0 - sl_distance_pct),
 
                             "amount_bnb": 0.0,
                             "token_amount": token_amount,

@@ -162,6 +162,35 @@ def _migrate_to_v2(conn):
     conn.execute(UNIQUE_OPEN_INDEX)
 
 
+V3_COLUMNS = {
+    "paper_account_version": "TEXT",
+    "entry_amount_usdt": "REAL",
+    "risk_amount_usdt": "REAL",
+    "capital_before_usdt": "REAL",
+    "capital_after_entry_usdt": "REAL",
+    "position_size_pct": "REAL",
+    "sizing_reason": "TEXT",
+    "gross_pnl_usdt": "REAL",
+    "net_pnl_usdt": "REAL",
+}
+
+
+def _migrate_to_v3(conn):
+    columns = {
+        row[1]
+        for row in conn.execute(
+            "PRAGMA table_info(paper_trades)"
+        ).fetchall()
+    }
+
+    for name, column_type in V3_COLUMNS.items():
+        if name not in columns:
+            conn.execute(
+                "ALTER TABLE paper_trades "
+                f"ADD COLUMN {name} {column_type}"
+            )
+
+
 def ensure_paper_schema(conn):
     current = conn.execute(
         "PRAGMA user_version"
@@ -197,12 +226,15 @@ def ensure_paper_schema(conn):
                 "ADD COLUMN opening_context_json TEXT"
             )
 
-        columns = _verify_columns(conn)
-
         if current < 2:
             _migrate_to_v2(conn)
         else:
             conn.execute(UNIQUE_OPEN_INDEX)
+
+        if current < 3:
+            _migrate_to_v3(conn)
+
+        columns = _verify_columns(conn)
 
         conn.execute(
             f"PRAGMA user_version="

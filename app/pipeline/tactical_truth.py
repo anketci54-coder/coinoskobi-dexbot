@@ -16,7 +16,6 @@ def _ratio_reward_to_risk(
     entry = _number(entry_price)
     tp = _number(take_profit_price)
     sl = _number(stop_loss_price)
-
     if (
         entry is None
         or tp is None
@@ -27,14 +26,8 @@ def _ratio_reward_to_risk(
         or sl <= 0
     ):
         return None
-
-    reward = tp - entry
     risk = entry - sl
-
-    if risk <= 0:
-        return None
-
-    return reward / risk
+    return None if risk <= 0 else (tp - entry) / risk
 
 
 def build_tactical_truth(
@@ -45,57 +38,25 @@ def build_tactical_truth(
     tp_multiplier=None,
     sl_multiplier=None,
 ):
-    """
-    Phase 14 deterministic tactical truth producer.
+    """Compose runtime tactical truth without fixed TP/SL authority.
 
-    Composes existing runtime truth only.
-
-    It does not:
-    - make trade decisions
-    - open paper/live positions
-    - call providers
-    - perform external fetches
-    - perform AI inference
-    - override hard blocks
+    Multiplier arguments are retained only for compatibility with older
+    callers and deliberately ignored. Dynamic trade control owns levels.
     """
     market = dict(market_context or {})
     execution = dict(execution_cost or {})
     paper_data = dict(paper or {})
 
-    price = _number(
-        market.get("price_usd")
-    )
-
+    price = _number(market.get("price_usd"))
     if price is None:
-        price = _number(
-            paper_data.get("entry_price")
-        )
+        price = _number(paper_data.get("entry_price"))
 
-    tp_mult = _number(tp_multiplier)
-    sl_mult = _number(sl_multiplier)
-
-    take_profit_price = None
-    stop_loss_price = None
-
-    if (
-        price is not None
-        and price > 0
-        and tp_mult is not None
-        and tp_mult > 0
-    ):
-        take_profit_price = (
-            price * tp_mult
-        )
-
-    if (
-        price is not None
-        and price > 0
-        and sl_mult is not None
-        and sl_mult > 0
-    ):
-        stop_loss_price = (
-            price * sl_mult
-        )
+    take_profit_price = _number(paper_data.get("tp_price"))
+    stop_loss_price = _number(
+        paper_data.get("sl_price")
+        if paper_data.get("sl_price") is not None
+        else paper_data.get("protection_price")
+    )
 
     risk_reward = _ratio_reward_to_risk(
         entry_price=price,
@@ -103,103 +64,52 @@ def build_tactical_truth(
         stop_loss_price=stop_loss_price,
     )
 
-    net_edge_pct = _number(
-        execution.get("net_edge_pct")
-    )
-
-    expected_gross_edge_pct = _number(
-        execution.get(
-            "expected_gross_edge_pct"
-        )
-    )
-
-    known_total_cost_pct = _number(
-        execution.get(
-            "known_total_cost_pct"
-        )
-    )
-
     entry_plan = {
         "entry_price": price,
         "source": (
             "RUNTIME_MARKET_CONTEXT"
-            if _number(
-                market.get("price_usd")
-            ) is not None
+            if _number(market.get("price_usd")) is not None
             else (
                 "PAPER_ENTRY_PRICE"
-                if _number(
-                    paper_data.get(
-                        "entry_price"
-                    )
-                ) is not None
+                if _number(paper_data.get("entry_price")) is not None
                 else "UNKNOWN"
             )
         ),
     }
 
     exit_plan = {
-        "take_profit_price": (
-            take_profit_price
-        ),
-        "stop_loss_price": (
-            stop_loss_price
-        ),
-        "tp_multiplier": tp_mult,
-        "sl_multiplier": sl_mult,
+        "take_profit_price": take_profit_price,
+        "stop_loss_price": stop_loss_price,
+        "static_multiplier_authority": False,
+        "runner_authority": "HYBRID_DYNAMIC_CONTROLLER",
     }
 
     expected_pnl = {
-        "gross_edge_pct": (
-            expected_gross_edge_pct
-        ),
-        "known_total_cost_pct": (
-            known_total_cost_pct
-        ),
-        "net_expected_pnl_pct": (
-            net_edge_pct
-        ),
-        "source_model": (
-            execution.get("model")
-        ),
-        "feasibility": (
-            execution.get("feasibility")
-        ),
-        "cost_complete": bool(
-            execution.get(
-                "cost_complete",
-                False,
-            )
-        ),
+        "gross_edge_pct": _number(execution.get("expected_gross_edge_pct")),
+        "known_total_cost_pct": _number(execution.get("known_total_cost_pct")),
+        "net_expected_pnl_pct": _number(execution.get("net_edge_pct")),
+        "source_model": execution.get("model"),
+        "feasibility": execution.get("feasibility"),
+        "cost_complete": bool(execution.get("cost_complete", False)),
     }
 
     return {
-        "contract": (
-            "phase14_tactical_truth_v1"
-        ),
-
+        "contract": "phase14_tactical_truth_v1",
         "entry_plan": entry_plan,
         "exit_plan": exit_plan,
-
         "risk_reward": {
             "reward_to_risk": risk_reward,
-            "available": (
-                risk_reward is not None
-            ),
+            "available": risk_reward is not None,
         },
-
         "expected_pnl": expected_pnl,
-
         "bounded": True,
         "deterministic": True,
         "read_only": True,
         "proposal_only": True,
-
         "hot_path_wait": False,
         "provider_call": False,
         "external_fetch": False,
         "ai_inference": False,
-
         "trade_authority": False,
         "decision_authority": False,
         "paper_authority": False,

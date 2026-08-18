@@ -3712,3 +3712,55 @@ Architectural authority remains unchanged:
 
 This section records post-roadmap operational integration only and does not
 extend or renumber the closed Phase 0–15 roadmap.
+
+---
+
+# COINOSKOBI PANEL UI IMMUTABILITY CONTRACT
+
+Panel development is governed by `PANEL_UI_POLICY.md`.
+
+Permanent core rule:
+
+**APPROVED WINDOWS NEVER CHANGE.**
+
+An approved panel window may only be modified after the user
+explicitly unlocks that exact window.
+
+All future visible panel development must use:
+
+TARGET
+-> BACKUP
+-> TARGETED UPDATE
+-> TEST
+-> RUNTIME RESTART
+-> HTTP/HEALTH CHECK
+-> USER BROWSER REVIEW
+-> EXPLICIT APPROVAL
+-> LOCK
+
+Approved windows must have stable lock identifiers and protected
+source boundaries.
+
+Their approved source SHA256 values must remain unchanged during
+updates to other panel windows.
+
+After the first approved window is locked, full-page UI replacement
+is forbidden.
+
+Unexpected modification of any locked window is a FAIL / STOP
+condition.
+
+Canonical panel:
+`app.api.panel:app`
+
+Canonical port:
+`8098`
+
+Current fresh paper generation:
+`PAPER_10K_V2`
+
+Starting paper capital:
+`10000 USDT`
+
+This UI contract grants no authority to change trading strategy,
+database state, live execution, wallet access or signing.

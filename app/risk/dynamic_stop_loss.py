@@ -17,15 +17,24 @@ def calculate_dynamic_sl(
     price_impact_health=None,
     trend_health=None,
     exit_pressure=None,
+    atr_pct=None,
 ):
-    # Neutral baseline: 10%, but NOT a fixed SL.
-    distance = 0.10
+    """Calculate a bounded dynamic protection distance.
+
+    Measured ATR, when available, is the volatility anchor. Missing ATR is
+    never invented: the existing market-state model supplies a bounded
+    fallback until real volatility evidence arrives.
+    """
+    measured_atr = _num(atr_pct, 0.0)
+    if measured_atr > 0:
+        # ATR is expected as a ratio (0.05 == 5%). Give volatile assets
+        # enough room while keeping the initial risk envelope bounded.
+        distance = _clamp(measured_atr * 1.75, 0.025, 0.22)
+    else:
+        distance = 0.10
 
     m = _clamp(_num(flow_momentum), -1.0, 1.0)
     a = _clamp(_num(flow_acceleration), -1.0, 1.0)
-
-    # Strong flow permits more breathing room;
-    # weak flow tightens initial risk.
     distance += 0.025 * m
     distance += 0.015 * a
 
@@ -58,12 +67,13 @@ def calculate_dynamic_sl(
     elif pressure == "HIGH":
         distance -= 0.035
 
-    # Risk envelope, not fixed stop.
-    distance = _clamp(distance, 0.04, 0.18)
+    distance = _clamp(distance, 0.025, 0.22)
 
     return {
         "sl_distance_pct": round(distance, 6),
         "sl_multiplier": round(1.0 - distance, 6),
+        "atr_pct": round(measured_atr, 6) if measured_atr > 0 else None,
+        "volatility_source": "MEASURED_ATR" if measured_atr > 0 else "MARKET_STATE",
         "model": "DYNAMIC_SL_V1",
         "decision_authority": False,
         "live_authority": False,

@@ -772,3 +772,44 @@ Phase 15: CLOSED.
 Numbered roadmap Phase 0–15: COMPLETE.
 
 Phase 16 / Era / V2 / V3: NOT AUTOMATICALLY OPENED.
+
+---
+## Post-Roadmap Full Regression — Unified Entry Admission Integration
+
+Current synchronized baseline:
+
+- Branch: `main`
+- Commit: `6ef4c57`
+- Commit title: `Complete unified entry admission integration`
+- Full pytest result: **1011 passed / 0 failed**
+- Warning count: **1**
+- Warning: upstream `websockets.legacy` deprecation warning
+- Python compile: **PASS**
+- Git synchronization: **PASS**
+- Final worktree: **CLEAN**
+
+Validation performed after the final unified entry-admission integration:
+
+- full repository pytest suite completed successfully
+- all 1011 collected tests passed
+- no failed tests
+- local and `origin/main` resolved to the same commit
+- cache cleanup completed
+- Python compile completed successfully
+- no residual tracked worktree changes remained
+
+Entry-admission semantic validation established:
+
+- hard block => REJECT
+- confirmed safe sellability + final unified candidate => PAPER_BUY
+- sellability UNKNOWN => REQUIRE_MORE_EVIDENCE
+- provider/network sellability failure is not treated as conviction
+- confirmed honeypot/unsellable evidence hard-blocks admission
+- WATCH remains WATCH
+- REJECT remains REJECT
+- Stage-1 grants no paper/live/execution authority
+- wallet/signing/execution authority remains false
+
+The earlier **966 passed / 0 failed** result remains the historical Phase 15
+roadmap-closure regression. It is not the current repository-wide regression
+count.

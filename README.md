@@ -18,7 +18,9 @@ Temel ilke:
 - **Phase 14 — Command Center & AI Analyst: CLOSED**
 - **Phase 15 — Final Operational Validation & Controlled Micro-Live: CLOSED**
 - Numbered roadmap **Phase 0–15 is complete**.
-- Final Phase 15 regression: **966 passed / 0 failed**.
+- Final Phase 15 regression at roadmap closure: **966 passed / 0 failed**.
+- Current post-roadmap full regression baseline: **1011 passed / 0 failed**.
+- Current synchronized integration commit: `6ef4c57` — Complete unified entry admission integration.
 - Root E2E: **21 passed**.
 - Application/runtime: **16 passed**.
 - Paper/learning: **28 passed**.
@@ -29,6 +31,52 @@ Temel ilke:
 - Learning/calibration remains proposal-only; roadmap closure creates no implicit
   live, wallet, signing, AI or execution authority.
 - Phase 16 / Era / V2 / V3 is not automatically opened.
+
+## Post-Roadmap Integration Status
+
+After Phase 0–15 closure, development continued without opening
+Phase 16.
+
+Current integrated post-roadmap state includes:
+
+- paper accounting and risk hardening
+- hybrid exit runtime binding
+- native market-flow to hybrid paper-exit binding
+- unified score and unified decision integration
+- two-stage entry evaluation
+- bounded deep sellability work only for qualified local candidates
+- final paper admission after deep-risk evidence
+- hard risk remains dominant
+- provider/network sellability failure remains UNKNOWN rather than conviction
+- no live-trade authority
+- no wallet/signing authority
+- no execution-authority escalation
+
+The current entry flow is:
+
+1. cheap/local RiskGate
+2. local strategy prequalification for bounded deep-work budgeting
+3. bounded sellability analysis when justified
+4. RiskGate re-evaluation after deep evidence
+5. TrapRisk and MEVRisk
+6. final UnifiedScore
+7. final UnifiedDecision
+8. conservative paper admission
+
+Stage-1 prequalification does not grant paper or live execution authority.
+Final paper admission requires the final unified candidate state, no hard
+block, and positively ready sellability evidence.
+
+Current verified repository baseline:
+
+- branch: `main`
+- integration commit: `6ef4c57`
+- Python compile: PASS
+- full pytest regression: **1011 passed / 0 failed**
+- worktree after validation: CLEAN
+- local and `origin/main`: synchronized
+
+---
 
 ## Vision
 

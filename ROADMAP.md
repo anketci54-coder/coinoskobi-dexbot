@@ -3668,4 +3668,47 @@ Status: ✅ CLOSED
 - learning auto-apply: DISABLED
 - independent re-audit: COMPLETE
 
+---
+## Post-Roadmap Operational Integration
 
+**Status: CURRENT BASELINE SYNCHRONIZED**
+
+The numbered Phase 0–15 roadmap remains closed. No Phase 16 is opened by
+the following work.
+
+Post-roadmap integration completed after the numbered roadmap closure:
+
+- paper accounting and risk hardening
+- hybrid exit runtime binding
+- native market-flow to hybrid paper-exit binding
+- unified score / unified decision integration
+- conservative unified paper-admission binding
+- two-stage entry evaluation to avoid circular sellability dependency
+- bounded deep sellability analysis for qualified candidates
+- final RiskGate re-evaluation after deep sellability evidence
+- provider/network sellability failure preserved as UNKNOWN
+- confirmed honeypot / unsellable evidence preserved as hard block
+- no live, wallet, signing or execution authority introduced
+
+Latest integrated baseline:
+
+- branch: `main`
+- commit: `6ef4c57` — Complete unified entry admission integration
+- full regression: **1011 passed / 0 failed**
+- Python compile: PASS
+- Git synchronization: local `main` = `origin/main`
+- final worktree: CLEAN
+
+Architectural authority remains unchanged:
+
+- local Stage-1 qualification is budget/admission-to-deep-analysis only
+- Stage-1 cannot open paper positions
+- UnifiedDecision cannot open live positions
+- hard risk cannot be overridden
+- sellability UNKNOWN cannot open a paper position
+- wallet authority remains false
+- signing authority remains false
+- execution authority remains false
+
+This section records post-roadmap operational integration only and does not
+extend or renumber the closed Phase 0–15 roadmap.

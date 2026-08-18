@@ -106,7 +106,7 @@ class PaperManager:
             (pos or {}).get(
                 "paper_account_version"
             )
-            == "PAPER_10K_V1"
+            == "PAPER_10K_V2"
         )
 
     @staticmethod
@@ -187,7 +187,7 @@ class PaperManager:
                 "roi": roi,
                 "gross_pnl_usdt": gross,
                 "net_pnl_usdt": net,
-                "account": "PAPER_10K_V1",
+                "account": "PAPER_10K_V2",
             }
 
         amount_bnb = float(
@@ -584,7 +584,7 @@ class PaperManager:
 
             if (
                 accounting["account"]
-                == "PAPER_10K_V1"
+                == "PAPER_10K_V2"
             ):
                 update[
                     "gross_pnl_usdt"
@@ -684,7 +684,7 @@ class PaperManager:
 
                 if (
                     accounting["account"]
-                    == "PAPER_10K_V1"
+                    == "PAPER_10K_V2"
                 ):
                     close_data[
                         "gross_pnl_usdt"

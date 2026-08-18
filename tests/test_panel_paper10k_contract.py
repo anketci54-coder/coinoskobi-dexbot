@@ -41,7 +41,7 @@ def panel_db(tmp_path, monkeypatch):
             "net_pnl": 20.0,
             "roi": 0.20,
             "close_reason": "TAKE_PROFIT",
-            "paper_account_version": "PAPER_10K_V1",
+            "paper_account_version": "PAPER_10K_V2",
             "net_pnl_usdt": 20.0,
         },
         {
@@ -56,7 +56,7 @@ def panel_db(tmp_path, monkeypatch):
             "net_pnl": -10.0,
             "roi": -0.10,
             "close_reason": "STOP_LOSS",
-            "paper_account_version": "PAPER_10K_V1",
+            "paper_account_version": "PAPER_10K_V2",
             "net_pnl_usdt": -10.0,
         },
         {
@@ -71,7 +71,7 @@ def panel_db(tmp_path, monkeypatch):
             "net_pnl": 0.0,
             "roi": 0.0,
             "close_reason": None,
-            "paper_account_version": "PAPER_10K_V1",
+            "paper_account_version": "PAPER_10K_V2",
             "net_pnl_usdt": 0.0,
         },
     ]

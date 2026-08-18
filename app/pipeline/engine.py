@@ -949,7 +949,7 @@ class PipelineEngine:
                         SELECT COALESCE(SUM(entry_amount_usdt), 0)
                         FROM paper_trades
                         WHERE status='OPEN'
-                          AND paper_account_version='PAPER_10K_V1'
+                          AND paper_account_version='PAPER_10K_V2'
                         '''
                     ).fetchone()
 
@@ -1155,7 +1155,7 @@ class PipelineEngine:
                             "amount_bnb": 0.0,
                             "token_amount": token_amount,
 
-                            "paper_account_version": "PAPER_10K_V1",
+                            "paper_account_version": "PAPER_10K_V2",
                             "entry_amount_usdt": entry_amount_usdt,
                             "risk_amount_usdt": sizing["risk_amount_usdt"],
                             "capital_before_usdt": sizing["capital_before_usdt"],
@@ -1220,7 +1220,7 @@ class PipelineEngine:
                             "entry_amount_usdt": entry_amount_usdt,
                             "risk_amount_usdt": sizing["risk_amount_usdt"],
                             "position_size_pct": sizing["position_size_pct"],
-                            "paper_account_version": "PAPER_10K_V1",
+                            "paper_account_version": "PAPER_10K_V2",
                         }
 
         else:

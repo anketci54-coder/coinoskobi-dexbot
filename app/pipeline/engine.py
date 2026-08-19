@@ -51,6 +51,7 @@ from app.learning.entry_context import (
 )
 from app.dex.pair_membership import verify_pair_membership
 from app.dex.runtime_market_flow import RuntimeMarketFlowStore
+from app.dex.flow_spread import flow_spread
 from app.dex.runtime_actor_intelligence import RuntimeActorIntelligence
 from app.scanner.adapters.source_router import normalize_source_rows
 from app.scanner.gecko_scanner import GeckoScanner
@@ -592,6 +593,70 @@ class PipelineEngine:
             signal_bundle.update(
                 flow
             )
+
+            # Bind native runtime directional measurements into
+            # the canonical adaptive-exit semantics.  This does
+            # not invent percentages or thresholds: it reuses the
+            # existing flow transformer and preserves its
+            # freshness / complete-coverage contract.
+            canonical_flow = flow_spread(
+                flow.get("buy_flow"),
+                flow.get("sell_flow"),
+                prev_spread=flow.get(
+                    "prev_spread"
+                ),
+                prev_velocity=flow.get(
+                    "prev_velocity"
+                ),
+                freshness=flow.get(
+                    "freshness",
+                    "UNKNOWN",
+                ),
+                coverage=flow.get(
+                    "coverage",
+                    0.0,
+                ),
+            )
+
+            if (
+                canonical_flow.get("state")
+                == "READY"
+            ):
+                buy_flow = canonical_flow.get(
+                    "buy_flow"
+                )
+                sell_flow = canonical_flow.get(
+                    "sell_flow"
+                )
+                total_flow = (
+                    (buy_flow or 0.0)
+                    + (sell_flow or 0.0)
+                )
+
+                if total_flow > 0:
+                    signal_bundle[
+                        "flow_momentum"
+                    ] = (
+                        canonical_flow["spread"]
+                        / total_flow
+                    )
+
+                acceleration = (
+                    canonical_flow.get(
+                        "acceleration"
+                    )
+                )
+
+                if (
+                    acceleration is not None
+                    and total_flow > 0
+                ):
+                    signal_bundle[
+                        "flow_acceleration"
+                    ] = (
+                        acceleration
+                        / total_flow
+                    )
 
         # Normalize semantic aliases already produced by the
         # native runtime. No new authority or external work.

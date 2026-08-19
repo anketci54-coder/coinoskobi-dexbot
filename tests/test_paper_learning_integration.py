@@ -28,6 +28,7 @@ class FakeDB:
             "mev": 0,
             "gas_buy": 0,
             "gas_sell": 0,
+            "sl_price": 2.0,
         }]
 
     def update_position(
@@ -84,7 +85,7 @@ def test_real_paper_close_feeds_phase11():
 
     assert row[
         "reason"
-    ] == "TAKE_PROFIT"
+    ] == "PERSISTED_STOP_LOSS"
 
     assert row[
         "learning"
@@ -124,6 +125,12 @@ def test_hold_does_not_create_outcome():
     )
 
     manager.db = FakeDB()
+    manager.db.open_positions = lambda: [
+        {
+            **FakeDB().open_positions()[0],
+            "sl_price": None,
+        }
+    ]
 
     class HoldPrice:
         def get_price(

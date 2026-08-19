@@ -246,3 +246,67 @@ def test_authority_is_always_zero():
         "execution_authority",
     ):
         assert result[key] is False
+
+
+def test_native_directional_measurements_bind_to_canonical_flow():
+    engine = engine_for(
+        {
+            "state": "READY",
+            "market_intelligence": {
+                "evidence_ready": False,
+            },
+            "flow_intelligence": {
+                "evidence_ready": True,
+                "buy_flow": 8,
+                "sell_flow": 2,
+                "prev_spread": 4,
+                "prev_velocity": 1,
+                "freshness": "FRESH",
+                "coverage": 1.0,
+            },
+            "source": "SCANNER_PLUS_NATIVE_WSS",
+        }
+    )
+
+    result = (
+        engine._hybrid_exit_runtime_evidence(
+            position("0xpool")
+        )
+    )
+
+    bundle = result["signal_bundle"]
+
+    assert bundle["flow_momentum"] == 0.6
+    assert bundle["flow_acceleration"] == 0.1
+    assert result["synthetic"] is False
+
+
+def test_partial_native_flow_does_not_invent_canonical_momentum():
+    engine = engine_for(
+        {
+            "state": "READY",
+            "market_intelligence": {
+                "evidence_ready": False,
+            },
+            "flow_intelligence": {
+                "evidence_ready": True,
+                "buy_flow": 8,
+                "sell_flow": 2,
+                "prev_spread": 4,
+                "prev_velocity": 1,
+                "freshness": "FRESH",
+                "coverage": 0.8,
+            },
+        }
+    )
+
+    result = (
+        engine._hybrid_exit_runtime_evidence(
+            position("0xpool")
+        )
+    )
+
+    bundle = result["signal_bundle"]
+
+    assert "flow_momentum" not in bundle
+    assert "flow_acceleration" not in bundle

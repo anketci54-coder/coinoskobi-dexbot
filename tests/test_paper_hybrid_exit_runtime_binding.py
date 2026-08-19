@@ -126,7 +126,7 @@ def manager(
     return m
 
 
-def test_no_evidence_preserves_legacy_take_profit():
+def test_no_evidence_runs_always_on_adaptive_protection():
     m = manager(
         price=1.30,
         runtime_evidence=None,
@@ -134,20 +134,29 @@ def test_no_evidence_preserves_legacy_take_profit():
 
     result = m.process()
 
-    assert len(m.db.closed) == 1
+    assert m.db.closed == []
+
+    data = result[0]["data"]
+
+    assert data["action"] == "HOLD"
 
     assert (
-        m.db.closed[0][1][
-            "close_reason"
-        ]
-        == "TAKE_PROFIT"
+        data["hybrid_exit"]["bound"]
+        is True
     )
 
     assert (
-        result[0]["data"][
-            "hybrid_exit"
-        ]["bound"]
-        is False
+        data["hybrid_exit"][
+            "protection_price"
+        ]
+        is not None
+    )
+
+    assert (
+        data["hybrid_exit"][
+            "protection_price"
+        ]
+        > 0.90
     )
 
 
@@ -209,14 +218,21 @@ def test_hybrid_static_sl_still_closes():
         m.db.closed[0][1][
             "close_reason"
         ]
-        == "STATIC_SAFETY_FLOOR"
+        == "PERSISTED_STOP_LOSS"
+    )
+
+    assert (
+        result[0]["data"][
+            "reason"
+        ]
+        == "PERSISTED_STOP_LOSS"
     )
 
     assert (
         result[0]["data"][
             "hybrid_exit"
-        ]["exit_now"]
-        is True
+        ]["bound"]
+        is False
     )
 
 

@@ -587,3 +587,30 @@ Current core stack includes:
 Private Repository.
 
 All Rights Reserved.
+
+---
+
+## Dynamic Mathematical Trade Planning Rule
+
+Coinoskobi'nin kalıcı işlem-planlama kuralı şudur:
+
+**Coinoskobi hiçbir score, sermaye miktarı, entry, SL, TP seviyesi veya TP'de realize edilecek pozisyon oranını keyfi sabitlerle belirleyemez. Tüm karar değerleri doğrulanmış piyasa, onchain, likidite, flow, risk ve execution-cost verilerinden açık, izlenebilir ve tekrar üretilebilir matematiksel modellerle türetilir. Eksik kanıt sayı uydurmaz; `UNKNOWN` üretir.**
+
+Bu kural aşağıdaki davranışları zorunlu kılar:
+
+1. Keyfi score ağırlığı, magic-number threshold, sabit SL/TP yüzdesi veya sabit satış oranı nihai karar kuralı olamaz.
+2. Üretilen her score doğrulanmış girdilere, açık matematiksel hesaba, veri kaynağına, freshness bilgisine ve evidence coverage'a dayanmalıdır.
+3. Sistem elindeki uygun token, pair, onchain, liquidity, reserve, flow, contract, risk ve maliyet verilerini mümkün olduğunca hızlı işleyerek tek bir dinamik işlem planı üretmelidir.
+4. İşleme ayrılacak sermaye cüzdanın keyfi sabit yüzdesiyle değil; ölçülen downside, exit capacity, likidite derinliği, price impact, volatilite, gas, slippage, tax, MEV ve gerçek net kayıp kapasitesinden matematiksel olarak türetilmelidir.
+5. Entry tek bir keyfi yüzde veya sabit uzaklıkla belirlenmez; mevcut piyasa yapısı, reserve davranışı, kısa-horizon momentum/flow, volatilite, likidite eğrisi, price impact ve beklenen net edge üzerinden hesaplanır.
+6. İlk SL sabit yüzde değildir. Piyasa yapısından türetilir ve pozisyon ilerledikçe trend, volatilite, peak, reserve, flow ve liquidity değişimine göre yeniden hesaplanır. Long pozisyonda koruyucu SL aşağı gevşemez; yalnız aynı kalabilir veya yukarı taşınabilir.
+7. TP1'e ulaşıldığında satılacak pozisyon miktarı sabit bir yüzde değildir. Sistem, başlangıçta üstlenilen gerçek net riski azaltmak veya nötralize etmek için gerekli minimum realizasyon miktarını matematiksel olarak hesaplar.
+8. TP2'ye ulaşıldığında satılacak miktar yeniden hesaplanır. Dinamik SL'nin zaten garanti ettiği net kâr dikkate alınır; yalnız korunması gereken fakat henüz korunmayan kâr kadar pozisyon realize edilir. Gerekli matematiksel sonuç sıfır ise TP2'de satış yapılması zorunlu değildir.
+9. TP3 klasik sabit take-profit değildir. TP1 ve TP2 sonrasında kalan pozisyon trend runner olarak taşınır. Runner; peak, momentum, acceleration, buy/sell flow, reserve health, liquidity, volatility, execution cost ve exit feasibility ile sürekli yeniden değerlendirilir.
+10. Runner'ın amacı teorik tepeyi önceden tahmin etmek değil; trend bozulmasını mümkün olduğunca doğru ve geç yakalayarak matematiksel olarak mümkün olan ölçüde tepeye yakın net çıkış üretmektir.
+11. Gas, slippage, tax, MEV, price impact ve çıkış maliyetleri hesaba katılmadan brüt getiri tek başına işlem avantajı olarak kabul edilmez. Karar motoru net sonucu esas alır.
+12. Her işlem planı en az şu çıktıları açıklayabilmelidir: gir/girme, kullanılacak sermaye, entry veya entry bandı, initial SL, current dynamic SL, TP1 seviyesi ve realize miktarı, TP2 seviyesi ve realize miktarı, runner miktarı, beklenen net P&L, exit capacity, kullanılan veriler ve matematiksel karar gerekçesi.
+13. Hard safety gate her zaman matematiksel fırsat sonucundan üstündür. Confirmed hard-risk uygun görünen score, trend veya beklenen kâr ile override edilemez.
+14. Veri eksikse sistem sayı veya güven üretmez. Eksik alan `UNKNOWN` olarak korunur ve karar modeli bunu açıkça taşır.
+
+Bu kural, geçmişte uygulanmış sabit mekaniklerin tarihsel kaydını silmez; ancak gelecekteki işlem-planlama ve pozisyon-yönetimi geliştirmelerinde keyfi sabitler yerine veri-türevli matematiksel modellerin hedef mimari olduğunu tanımlar.

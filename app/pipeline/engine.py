@@ -944,6 +944,14 @@ class PipelineEngine:
             strategy,
             unified_decision,
             risk_gate,
+            sellability_status=(
+                sellability_result.get(
+                    "sellability"
+                )
+                or sellability_result.get(
+                    "status"
+                )
+            ),
         )
 
         if sellability_result.get(

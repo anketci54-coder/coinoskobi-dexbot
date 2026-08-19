@@ -32,12 +32,7 @@ class PaperManager:
 
     @staticmethod
     def _expected_exit_price(pos, reason):
-        if reason in {
-            "DYNAMIC_PROTECTION_FLOOR",
-            "DYNAMIC_PROFIT_PROTECTION",
-            "SEVERE_MARKET_DETERIORATION",
-            "PERSISTED_STOP_LOSS",
-        }:
+        if reason in {"DYNAMIC_PROTECTION_FLOOR", "DYNAMIC_PROFIT_PROTECTION", "SEVERE_MARKET_DETERIORATION", "PERSISTED_STOP_LOSS"}:
             value = (pos or {}).get("sl_price")
         else:
             value = None
@@ -56,7 +51,6 @@ class PaperManager:
         token_amount = float(pos.get("token_amount") or 0.0)
         if token_amount <= 0:
             return None
-
         if PaperManager._is_10k_account(pos):
             entry_amount = float(pos.get("entry_amount_usdt") or 0.0)
             if entry_amount <= 0:
@@ -73,26 +67,10 @@ class PaperManager:
             gross = current_value - entry_amount
             trade_value = entry_amount
             account = "LEGACY"
-
-        fees = (
-            float(pos.get("gas_buy") or 0)
-            + float(pos.get("gas_sell") or 0)
-            + trade_value * float(pos.get("swap_fee") or 0) / 100
-            + trade_value * float(pos.get("buy_tax") or 0) / 100
-            + trade_value * float(pos.get("sell_tax") or 0) / 100
-            + trade_value * float(pos.get("slippage") or 0) / 100
-            + trade_value * float(pos.get("mev") or 0) / 100
-        )
+        fees = (float(pos.get("gas_buy") or 0) + float(pos.get("gas_sell") or 0) + trade_value * float(pos.get("swap_fee") or 0) / 100 + trade_value * float(pos.get("buy_tax") or 0) / 100 + trade_value * float(pos.get("sell_tax") or 0) / 100 + trade_value * float(pos.get("slippage") or 0) / 100 + trade_value * float(pos.get("mev") or 0) / 100)
         net = gross - fees
         roi = net / entry_amount
-        return {
-            "gross": gross,
-            "net": net,
-            "roi": roi,
-            "gross_pnl_usdt": gross if account == "PAPER_10K_V2" else None,
-            "net_pnl_usdt": net if account == "PAPER_10K_V2" else None,
-            "account": account,
-        }
+        return {"gross": gross, "net": net, "roi": roi, "gross_pnl_usdt": gross if account == "PAPER_10K_V2" else None, "net_pnl_usdt": net if account == "PAPER_10K_V2" else None, "account": account}
 
     def _observe_learning_outcome(self, pos, current, roi, reason, closed_at):
         feed = getattr(self, "learning_feed", None)
@@ -102,13 +80,7 @@ class PaperManager:
         actor_identity = opening_context.get("actor_identity") if isinstance(opening_context, dict) else None
         if not isinstance(actor_identity, dict):
             actor_identity = {}
-        return feed.observe_paper_close(
-            position_id=pos["id"], token=pos["token"], observed_at=pos.get("created_at", ""),
-            evaluated_at=closed_at, entry_price=pos["entry_price"], exit_price=current,
-            realized_return=roi, close_reason=reason,
-            expected_exit_price=self._expected_exit_price(pos, reason), opening_context=opening_context,
-            wallet_id=actor_identity.get("wallet_id"), actor_id=actor_identity.get("actor_id"),
-        )
+        return feed.observe_paper_close(position_id=pos["id"], token=pos["token"], observed_at=pos.get("created_at", ""), evaluated_at=closed_at, entry_price=pos["entry_price"], exit_price=current, realized_return=roi, close_reason=reason, expected_exit_price=self._expected_exit_price(pos, reason), opening_context=opening_context, wallet_id=actor_identity.get("wallet_id"), actor_id=actor_identity.get("actor_id"))
 
     def replay_closed_outcomes(self):
         feed = getattr(self, "learning_feed", None)
@@ -139,17 +111,15 @@ class PaperManager:
         return dict(value) if isinstance(value, dict) else None
 
     def _evaluate_hybrid_paper_exit(self, *, pos, current, highest):
-        evidence = self._hybrid_runtime_evidence(pos)
-        if evidence is None:
-            return None
+        # Optional intelligence enriches the controller; it is never required
+        # for deterministic adaptive protection to remain active.
+        evidence = self._hybrid_runtime_evidence(pos) or {}
         signal_bundle = evidence.get("signal_bundle")
         if not isinstance(signal_bundle, dict):
             signal_bundle = {}
         runtime_input = build_hybrid_exit_runtime_input(
             position_state={"entry_price": pos.get("entry_price"), "current_price": current, "highest_price": highest, "sl_price": pos.get("sl_price")},
-            signal_bundle=signal_bundle, trend_health=evidence.get("trend_health"),
-            exit_pressure=evidence.get("exit_pressure"), hard_block=bool(evidence.get("hard_block", False)),
-            sellability=evidence.get("sellability"),
+            signal_bundle=signal_bundle, trend_health=evidence.get("trend_health"), exit_pressure=evidence.get("exit_pressure"), hard_block=bool(evidence.get("hard_block", False)), sellability=evidence.get("sellability"),
         )
         controller_keys = ("entry_price", "current_price", "highest_price", "static_sl_price", "hard_block", "sellability", "liquidity_health", "flow_momentum", "flow_acceleration", "trend_health", "exit_pressure", "price_impact_health", "atr_pct")
         decision = evaluate_hybrid_exit(**{key: runtime_input.get(key) for key in controller_keys})
@@ -184,27 +154,23 @@ class PaperManager:
 
             persisted_floor = float(pos.get("sl_price") or 0.0)
             action = "HOLD"
-            reason = "WAIT_DYNAMIC_EVIDENCE"
+            reason = "NO_EXIT_CONDITION"
             hybrid_decision = None
 
-            # Safety invariant: a persisted stop is authoritative even when
-            # optional hybrid evidence is missing/stale. Evidence may tighten
-            # the floor, but can never disable or lower it.
             if persisted_floor > 0 and current <= persisted_floor:
                 action = "CLOSE"
                 reason = "PERSISTED_STOP_LOSS"
             else:
                 hybrid_result = self._evaluate_hybrid_paper_exit(pos=pos, current=current, highest=highest)
-                hybrid_decision = hybrid_result["decision"] if hybrid_result is not None else None
-                if hybrid_decision is not None:
-                    reason = hybrid_decision.reason
-                    if hybrid_decision.protection_price is not None:
-                        raised_floor = max(persisted_floor, float(hybrid_decision.protection_price))
-                        if raised_floor > 0:
-                            update["sl_price"] = raised_floor
-                            pos["sl_price"] = raised_floor
-                    if hybrid_decision.exit_now:
-                        action = "CLOSE"
+                hybrid_decision = hybrid_result["decision"]
+                reason = hybrid_decision.reason
+                if hybrid_decision.protection_price is not None:
+                    raised_floor = max(persisted_floor, float(hybrid_decision.protection_price))
+                    if raised_floor > 0:
+                        update["sl_price"] = raised_floor
+                        pos["sl_price"] = raised_floor
+                if hybrid_decision.exit_now:
+                    action = "CLOSE"
 
             self.db.update_position(pos["id"], update)
             learning_result = None

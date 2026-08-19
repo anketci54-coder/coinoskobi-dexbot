@@ -1,0 +1,4614 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Coinoskobi İşlem Merkezi</title>
+
+<style>
+:root{
+  --page:#01070b;
+  --panel:#06131b;
+  --panel-alt:#071821;
+  --panel-deep:#041018;
+
+  --line:#15343f;
+  --line-soft:#102b34;
+  --line-bright:#1c4d59;
+
+  --text:#f2f6f7;
+  --soft:#c1cdd1;
+  --muted:#7f959c;
+
+  --green:#00e978;
+  --green-dark:#06763b;
+  --cyan:#0bd7ea;
+  --yellow:#ffd02a;
+  --red:#ff3049;
+  --gold:#efbd25;
+}
+
+*{
+  box-sizing:border-box;
+}
+
+html,
+body{
+  width:100%;
+  height:100%;
+  margin:0;
+  overflow:hidden;
+
+  color:var(--text);
+
+  background:
+    radial-gradient(
+      circle at 50% -170px,
+      #092630 0,
+      transparent 35%
+    ),
+    var(--page);
+
+  font-family:
+    "Segoe UI",
+    Arial,
+    Helvetica,
+    sans-serif;
+
+  text-rendering:optimizeLegibility;
+  -webkit-font-smoothing:antialiased;
+  -moz-osx-font-smoothing:grayscale;
+}
+
+button,
+input{
+  font:inherit;
+}
+
+button{
+  cursor:pointer;
+}
+
+/* =========================================================
+   MASTER NATIVE VIEWPORT
+
+   No transform, no global scale, no compressed design stage.
+   Target: browser viewport around 1330 x 590 at 100% zoom.
+   ========================================================= */
+
+.dashboard{
+  width:100vw;
+  height:100dvh;
+  min-width:1190px;
+
+  padding:8px;
+
+  display:grid;
+  grid-template-rows:
+    56px
+    277px
+    minmax(160px,1fr)
+    42px;
+
+  gap:8px;
+
+  overflow:hidden;
+}
+
+/* =========================================================
+   COMMON
+   ========================================================= */
+
+.card{
+  min-width:0;
+  min-height:0;
+
+  overflow:hidden;
+
+  border:1px solid var(--line);
+  border-radius:6px;
+
+  background:
+    linear-gradient(
+      180deg,
+      rgba(7,22,31,.995),
+      rgba(3,13,19,.995)
+    );
+
+  box-shadow:
+    inset 0 0 22px rgba(0,180,205,.02),
+    0 4px 14px rgba(0,0,0,.17);
+}
+
+.card-head{
+  height:28px;
+
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+
+  padding:0 10px;
+
+  border-bottom:1px solid var(--line-soft);
+
+  color:#f5f8f9;
+
+  font-size:10px;
+  font-weight:900;
+}
+
+.card-link{
+  padding:0;
+
+  border:0;
+  background:transparent;
+
+  color:var(--cyan);
+
+  font-size:7px;
+  font-weight:800;
+}
+
+.green{
+  color:var(--green)!important;
+}
+
+.red{
+  color:var(--red)!important;
+}
+
+.cyan{
+  color:var(--cyan)!important;
+}
+
+.yellow{
+  color:var(--yellow)!important;
+}
+
+.muted{
+  color:var(--muted)!important;
+}
+
+.placeholder{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+
+  color:#657d85;
+
+  text-align:center;
+  font-size:8px;
+  line-height:1.45;
+}
+
+/* =========================================================
+   HEADER
+   ========================================================= */
+
+.header{
+  min-width:0;
+
+  display:grid;
+  grid-template-columns:
+    236px
+    repeat(7,minmax(91px,1fr))
+    250px;
+
+  gap:6px;
+}
+
+.brand-card{
+  display:flex;
+  align-items:center;
+
+  gap:11px;
+  padding:7px 12px;
+}
+
+.brand-piece{
+  width:35px;
+
+  color:var(--gold);
+
+  font-family:
+    Georgia,
+    "Times New Roman",
+    serif;
+
+  font-size:36px;
+  line-height:1;
+
+  text-shadow:
+    0 0 8px rgba(239,189,37,.55),
+    0 0 18px rgba(239,189,37,.16);
+}
+
+.brand-title{
+  color:#f8fafb;
+
+  font-size:16px;
+  font-weight:900;
+
+  white-space:nowrap;
+}
+
+.brand-subtitle{
+  margin-top:5px;
+
+  color:var(--cyan);
+
+  font-size:10px;
+  font-weight:900;
+}
+
+.metric-card{
+  padding:6px 8px;
+}
+
+.metric-label{
+  color:#9badb2;
+
+  font-size:7px;
+  font-weight:700;
+
+  white-space:nowrap;
+}
+
+.metric-value{
+  margin-top:7px;
+
+  color:#f7f9fa;
+
+  font-size:12px;
+  line-height:1;
+  font-weight:900;
+
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+
+.metric-sub{
+  margin-top:5px;
+
+  color:#70868e;
+
+  font-size:6px;
+
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+
+.market-name{
+  display:flex;
+  align-items:center;
+
+  gap:5px;
+
+  color:#eaf0f2;
+
+  font-size:7px;
+  font-weight:900;
+}
+
+.coin-icon{
+  width:18px;
+  height:18px;
+
+  display:grid;
+  place-items:center;
+
+  border-radius:50%;
+
+  background:#e98b00;
+  color:white;
+
+  font-size:10px;
+}
+
+.coin-icon.eth{
+  background:#536bd2;
+}
+
+.mode-card{
+  padding:3px 7px;
+}
+
+.live-clock{
+  height:12px;
+
+  display:flex;
+  justify-content:flex-end;
+
+  gap:5px;
+
+  color:#b7c4c8;
+
+  font-size:6px;
+}
+
+.live-clock b{
+  color:var(--green);
+}
+
+.mode-label{
+  margin:0 0 3px;
+
+  color:#879ba2;
+
+  text-align:center;
+  font-size:6px;
+}
+
+.mode-buttons{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+
+  gap:4px;
+}
+
+.mode-button{
+  height:25px;
+
+  border:1px solid #17404c;
+  border-radius:3px;
+
+  background:#07141c;
+  color:#edf3f4;
+
+  font-size:7px;
+  font-weight:900;
+}
+
+.mode-button.paper{
+  border-color:#08763d;
+
+  background:
+    linear-gradient(
+      180deg,
+      #07572e,
+      #06331e
+    );
+}
+
+.mode-foot{
+  margin-top:2px;
+
+  color:#6f858d;
+
+  text-align:center;
+  font-size:5px;
+}
+
+/* =========================================================
+   HERO AREA
+   ========================================================= */
+
+.hero{
+  min-width:0;
+  min-height:0;
+
+  display:grid;
+  grid-template-columns:
+    242px
+    minmax(0,1fr)
+    420px;
+
+  grid-template-rows:
+    215px
+    54px;
+
+  gap:8px;
+}
+
+/* =========================================================
+   VEZIR
+   ========================================================= */
+
+.vezir-card{
+  grid-column:1;
+  grid-row:1 / 3;
+
+  padding:6px 10px;
+
+  display:grid;
+  grid-template-rows:
+    22px
+    108px
+    50px
+    36px
+    23px;
+
+  gap:4px;
+}
+
+.vezir-header{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+}
+
+.vezir-title{
+  color:#f5f8f9;
+
+  font-size:15px;
+  line-height:1;
+  font-weight:900;
+}
+
+.vezir-role{
+  margin-top:3px;
+
+  color:var(--green);
+
+  font-size:7px;
+  font-weight:700;
+}
+
+.vezir-live{
+  color:var(--green);
+
+  font-size:7px;
+  font-weight:900;
+}
+
+.vezir-art{
+  position:relative;
+
+  display:flex;
+  align-items:center;
+  justify-content:center;
+
+  overflow:hidden;
+}
+
+.vezir-ring{
+  position:absolute;
+
+  width:115px;
+  height:115px;
+
+  border:1px solid rgba(0,233,120,.6);
+  border-radius:50%;
+
+  box-shadow:
+    0 0 22px rgba(0,233,120,.12),
+    inset 0 0 25px rgba(11,215,234,.06);
+}
+
+.vezir-image{
+  position:relative;
+
+  width:132px;
+  height:132px;
+
+  object-fit:contain;
+  object-position:center bottom;
+
+  background:transparent;
+
+  filter:
+    contrast(1.12)
+    saturate(1.1)
+    brightness(.97);
+}
+
+.vezir-quote{
+  position:relative;
+
+  overflow:hidden;
+
+  padding:6px 7px 5px 21px;
+
+  border:1px solid #143944;
+  border-radius:4px;
+
+  background:#04121a;
+  color:#edf3f4;
+
+  font-size:7px;
+  font-weight:600;
+  line-height:1.35;
+}
+
+.quote-mark{
+  position:absolute;
+
+  left:6px;
+  top:0;
+
+  color:var(--green);
+
+  font-size:17px;
+  font-weight:900;
+}
+
+.vezir-points{
+  display:grid;
+  grid-template-rows:repeat(3,1fr);
+
+  color:#b8c5c9;
+
+  font-size:6px;
+  font-weight:600;
+}
+
+.vezir-point{
+  display:flex;
+  align-items:center;
+}
+
+.vezir-point:before{
+  content:"●";
+
+  margin-right:5px;
+
+  color:#b8ff00;
+}
+
+.vezir-report{
+  width:100%;
+  height:23px;
+
+  border:1px solid #006fab;
+  border-radius:3px;
+
+  background:
+    linear-gradient(
+      180deg,
+      #07528d,
+      #043a64
+    );
+
+  color:white;
+
+  font-size:7px;
+  font-weight:900;
+}
+
+/* =========================================================
+   BEST OPPORTUNITY
+   ========================================================= */
+
+.best-card{
+  grid-column:2;
+  grid-row:1;
+}
+
+.best-content{
+  height:calc(100% - 28px);
+
+  padding:7px 9px 5px;
+
+  display:grid;
+  grid-template-rows:
+    minmax(0,1fr)
+    35px;
+
+  gap:5px;
+}
+
+.best-main{
+  min-height:0;
+
+  display:grid;
+  grid-template-columns:
+    244px
+    minmax(155px,1fr)
+    178px;
+
+  gap:9px;
+}
+
+.asset-column{
+  min-width:0;
+
+  display:grid;
+  grid-template-columns:
+    61px
+    1fr;
+
+  gap:8px;
+}
+
+.asset-logo{
+  width:59px;
+  height:59px;
+
+  display:grid;
+  place-items:center;
+
+  border:1px solid #078fc6;
+  border-radius:50%;
+
+  background:#031019;
+  color:var(--cyan);
+
+  font-size:22px;
+}
+
+.asset-name{
+  margin-top:1px;
+
+  color:#f7f9fa;
+
+  font-size:17px;
+  font-weight:900;
+}
+
+.asset-pair{
+  color:#c1ccd0;
+
+  font-size:11px;
+  font-weight:500;
+}
+
+.asset-chain{
+  margin-top:3px;
+
+  color:#8ca0a6;
+
+  font-size:7px;
+
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+
+.signal-box{
+  width:108px;
+
+  margin-top:7px;
+  padding:5px;
+
+  border:1px solid #075f39;
+  border-radius:4px;
+
+  text-align:center;
+}
+
+.signal-label{
+  color:#c5d0d3;
+
+  font-size:6px;
+  font-weight:700;
+}
+
+.signal-value{
+  margin-top:2px;
+
+  color:var(--green);
+
+  font-size:21px;
+  font-weight:900;
+}
+
+.signal-state{
+  margin-top:2px;
+
+  color:var(--green);
+
+  font-size:7px;
+  font-weight:900;
+}
+
+.best-section{
+  min-width:0;
+
+  padding-left:9px;
+
+  border-left:1px solid var(--line-soft);
+}
+
+.best-section-title{
+  margin-bottom:3px;
+
+  color:#f5f8f9;
+
+  font-size:8px;
+  font-weight:900;
+}
+
+.check-row,
+.plan-row{
+  height:19px;
+
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+
+  gap:6px;
+
+  color:#dce5e7;
+
+  font-size:7px;
+  font-weight:600;
+}
+
+.check-name:before{
+  content:"✓";
+
+  margin-right:4px;
+
+  color:white;
+
+  font-size:8px;
+}
+
+.check-value{
+  color:var(--green);
+
+  font-weight:900;
+
+  white-space:nowrap;
+}
+
+.plan-name{
+  color:#afbdc1;
+}
+
+.plan-value{
+  color:#f7f9fa;
+
+  font-weight:900;
+
+  white-space:nowrap;
+}
+
+.best-bottom{
+  display:grid;
+  grid-template-columns:
+    repeat(5,minmax(42px,1fr))
+    100px
+    132px;
+
+  gap:4px;
+}
+
+.best-tag{
+  min-width:0;
+
+  height:35px;
+  padding:4px;
+
+  border:1px solid #12323d;
+  border-radius:4px;
+}
+
+.best-tag small{
+  display:block;
+
+  color:#879ca3;
+
+  font-size:5px;
+  font-weight:700;
+}
+
+.best-tag b{
+  display:block;
+
+  margin-top:3px;
+
+  color:#f4f7f8;
+
+  font-size:7px;
+  font-weight:900;
+
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+
+.best-action{
+  height:35px;
+
+  border-radius:4px;
+
+  color:white;
+
+  font-size:7px;
+  font-weight:900;
+}
+
+.watch-action{
+  border:1px solid #087b41;
+
+  background:#07562f;
+}
+
+.range-action{
+  border:1px solid #806200;
+
+  background:#211b02;
+  color:var(--yellow);
+}
+
+/* =========================================================
+   OPEN POSITIONS
+   ========================================================= */
+
+.positions-card{
+  grid-column:3;
+  grid-row:1;
+}
+
+.positions-content{
+  height:calc(100% - 28px);
+
+  padding:5px 9px;
+
+  display:grid;
+  grid-template-rows:
+    22px
+    minmax(0,1fr)
+    47px;
+
+  gap:5px;
+}
+
+.position-header,
+.position-row{
+  display:grid;
+  grid-template-columns:
+    1.35fr
+    .68fr
+    .68fr
+    .78fr
+    .65fr;
+
+  gap:6px;
+  align-items:center;
+}
+
+.position-header{
+  color:#97a9ae;
+
+  font-size:6px;
+  font-weight:700;
+
+  border-bottom:1px solid var(--line-soft);
+}
+
+.position-list{
+  min-height:0;
+
+  overflow:hidden;
+}
+
+.position-row{
+  min-height:36px;
+
+  color:#edf3f4;
+
+  font-size:7px;
+  font-weight:600;
+
+  border-bottom:1px solid var(--line-soft);
+}
+
+.position-token{
+  font-weight:900;
+}
+
+.position-token small{
+  display:block;
+
+  margin-top:2px;
+
+  color:#82969d;
+
+  font-size:6px;
+  font-weight:400;
+}
+
+.position-summary{
+  display:grid;
+  grid-template-columns:repeat(4,1fr);
+
+  gap:4px;
+}
+
+.summary-box{
+  min-width:0;
+
+  padding:5px;
+
+  border:1px solid #12323d;
+  border-radius:4px;
+}
+
+.summary-box small{
+  display:block;
+
+  color:#81969d;
+
+  font-size:5px;
+  font-weight:700;
+}
+
+.summary-box b{
+  display:block;
+
+  margin-top:7px;
+
+  color:#f5f8f9;
+
+  font-size:8px;
+  font-weight:900;
+
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+
+/* =========================================================
+   CONTROL STRIP
+   ========================================================= */
+
+.control-card{
+  grid-column:2 / 4;
+  grid-row:2;
+}
+
+.control-content{
+  height:100%;
+
+  display:grid;
+  grid-template-columns:
+    180px
+    160px
+    140px
+    140px
+    1fr;
+
+  gap:6px;
+  align-items:center;
+
+  padding:5px 9px;
+}
+
+.control-title{
+  color:#f5f8f9;
+
+  font-size:10px;
+  font-weight:900;
+}
+
+.control-title span{
+  color:#8da1a7;
+}
+
+.amount-box{
+  height:40px;
+
+  padding:4px 6px;
+
+  border:1px solid #12323d;
+  border-radius:4px;
+}
+
+.amount-box small{
+  color:#81969d;
+
+  font-size:5px;
+}
+
+.amount-box b{
+  display:block;
+
+  margin-top:4px;
+
+  color:#f4f7f8;
+
+  font-size:8px;
+  font-weight:900;
+}
+
+.trade-action{
+  height:44px;
+
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+
+  border-radius:4px;
+
+  color:white;
+
+  font-size:15px;
+  font-weight:900;
+}
+
+.trade-action small{
+  margin-top:3px;
+
+  color:#e5ecee;
+
+  font-size:5px;
+  font-weight:600;
+}
+
+.buy-action{
+  border:1px solid #0b8243;
+
+  background:
+    linear-gradient(
+      135deg,
+      #075d31,
+      #07351e
+    );
+}
+
+.sell-action{
+  border:1px solid #a51d30;
+
+  background:
+    linear-gradient(
+      135deg,
+      #67101d,
+      #351018
+    );
+}
+
+.authority-note{
+  color:#91a4aa;
+
+  font-size:6px;
+  font-weight:500;
+  line-height:1.3;
+}
+
+/* =========================================================
+   LOWER GRID
+   ========================================================= */
+
+.lower-grid{
+  min-width:0;
+  min-height:0;
+
+  display:grid;
+  grid-template-columns:
+    370px
+    300px
+    360px
+    minmax(230px,1fr);
+
+  gap:8px;
+}
+
+.lower-card{
+  min-width:0;
+  min-height:0;
+}
+
+.lower-content{
+  height:calc(100% - 28px);
+
+  padding:5px 9px 6px;
+
+  overflow:hidden;
+}
+
+/* candidates */
+
+.candidate-header,
+.candidate-row{
+  display:grid;
+  grid-template-columns:
+    22px
+    1.35fr
+    .72fr
+    .64fr
+    .64fr
+    .82fr;
+
+  gap:5px;
+  align-items:center;
+}
+
+.candidate-header{
+  height:17px;
+
+  color:#82979e;
+
+  font-size:5px;
+  font-weight:700;
+
+  border-bottom:1px solid var(--line-soft);
+}
+
+.candidate-row{
+  min-height:23px;
+
+  color:#edf3f4;
+
+  font-size:7px;
+  font-weight:600;
+
+  border-bottom:1px solid var(--line-soft);
+}
+
+.candidate-row b{
+  font-weight:900;
+}
+
+/* intelligence */
+
+.intel-row{
+  min-height:25px;
+
+  display:grid;
+  grid-template-columns:
+    22px
+    1fr
+    auto;
+
+  gap:6px;
+  align-items:center;
+
+  border-bottom:1px solid var(--line-soft);
+}
+
+.intel-icon{
+  width:20px;
+  height:20px;
+
+  display:grid;
+  place-items:center;
+
+  border:1px solid #08709a;
+  border-radius:50%;
+
+  color:var(--cyan);
+
+  font-size:7px;
+}
+
+.intel-copy b{
+  display:block;
+
+  color:#f2f6f7;
+
+  font-size:7px;
+  font-weight:900;
+}
+
+.intel-copy small{
+  display:block;
+
+  margin-top:2px;
+
+  color:#80959c;
+
+  font-size:5px;
+  font-weight:500;
+}
+
+.intel-state{
+  color:#9aabb0;
+
+  font-size:6px;
+  font-weight:800;
+}
+
+/* performance */
+
+.performance-layout{
+  height:100%;
+
+  display:grid;
+  grid-template-rows:
+    21px
+    minmax(65px,1fr)
+    34px;
+
+  gap:4px;
+}
+
+.tabs{
+  display:flex;
+
+  gap:3px;
+}
+
+.tab-button{
+  height:20px;
+
+  padding:0 9px;
+
+  border:1px solid #14343f;
+  border-radius:3px;
+
+  background:#06131b;
+  color:#91a4aa;
+
+  font-size:5px;
+  font-weight:800;
+}
+
+.tab-button.active{
+  border-color:#087c3e;
+
+  background:#07572e;
+  color:white;
+}
+
+.chart{
+  position:relative;
+
+  min-height:0;
+
+  border-bottom:1px solid var(--line-soft);
+
+  background:
+    linear-gradient(
+      to bottom,
+      transparent 24%,
+      #0a2028 25%,
+      transparent 26%
+    ),
+    linear-gradient(
+      to bottom,
+      transparent 49%,
+      #0a2028 50%,
+      transparent 51%
+    ),
+    linear-gradient(
+      to bottom,
+      transparent 74%,
+      #0a2028 75%,
+      transparent 76%
+    );
+}
+
+.chart svg{
+  width:100%;
+  height:100%;
+}
+
+.chart-placeholder{
+  position:absolute;
+
+  inset:0;
+
+  display:flex;
+  align-items:center;
+  justify-content:center;
+
+  color:#748a91;
+
+  font-size:6px;
+  font-weight:600;
+}
+
+.performance-stats{
+  display:grid;
+  grid-template-columns:repeat(6,1fr);
+}
+
+.performance-stat{
+  min-width:0;
+
+  padding:2px 3px;
+
+  border-right:1px solid var(--line-soft);
+}
+
+.performance-stat:last-child{
+  border-right:0;
+}
+
+.performance-stat small{
+  display:block;
+
+  color:#71878f;
+
+  font-size:4px;
+  font-weight:700;
+}
+
+.performance-stat b{
+  display:block;
+
+  margin-top:4px;
+
+  color:#f4f7f8;
+
+  font-size:7px;
+  font-weight:900;
+}
+
+/* health */
+
+.health-banner{
+  height:38px;
+
+  display:flex;
+  align-items:center;
+
+  gap:7px;
+  padding:5px;
+
+  border:1px solid #12333e;
+  border-radius:4px;
+}
+
+.shield{
+  color:var(--green);
+
+  font-size:20px;
+}
+
+.health-banner b{
+  color:var(--green);
+
+  font-size:9px;
+  font-weight:900;
+}
+
+.health-banner small{
+  display:block;
+
+  margin-top:1px;
+
+  color:#80959c;
+
+  font-size:6px;
+}
+
+.health-row{
+  height:20px;
+
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+
+  color:#e7edef;
+
+  font-size:6px;
+  font-weight:600;
+
+  border-bottom:1px solid var(--line-soft);
+}
+
+.health-row span:first-child:before{
+  content:"•";
+
+  margin-right:6px;
+
+  color:var(--green);
+}
+
+.health-row b{
+  font-weight:900;
+}
+
+/* =========================================================
+   FOOT GRID
+   ========================================================= */
+
+.foot-grid{
+  min-width:0;
+
+  display:grid;
+  grid-template-columns:
+    minmax(0,2fr)
+    minmax(390px,1fr);
+
+  gap:8px;
+}
+
+.foot-card{
+  min-width:0;
+}
+
+.signal-layout,
+.quick-layout{
+  height:100%;
+
+  display:flex;
+  align-items:center;
+
+  gap:6px;
+  padding:5px 9px;
+}
+
+.signal-heading,
+.quick-heading{
+  color:#f5f8f9;
+
+  font-size:8px;
+  font-weight:900;
+
+  white-space:nowrap;
+}
+
+.signal-list{
+  flex:1;
+
+  display:flex;
+
+  min-width:0;
+
+  gap:6px;
+
+  overflow:hidden;
+}
+
+.signal-item{
+  min-width:104px;
+
+  padding-left:6px;
+
+  border-left:1px solid var(--line-soft);
+}
+
+.signal-item b{
+  display:block;
+
+  color:#edf3f4;
+
+  font-size:6px;
+  font-weight:900;
+}
+
+.signal-item small{
+  display:block;
+
+  margin-top:2px;
+
+  color:#81969d;
+
+  font-size:5px;
+}
+
+.quick-button{
+  flex:1;
+
+  height:24px;
+
+  border:1px solid #14343f;
+  border-radius:3px;
+
+  background:#06141b;
+  color:#91a4aa;
+
+  font-size:6px;
+  font-weight:800;
+}
+
+/* =========================================================
+   EMPTY PLACEHOLDERS
+   ========================================================= */
+
+.placeholder-row{
+  color:#6d858d!important;
+}
+
+.placeholder-row span,
+.placeholder-row b{
+  color:#6d858d!important;
+}
+
+.placeholder-note{
+  padding-top:5px;
+
+  color:#708890;
+
+  text-align:center;
+  font-size:6px;
+}
+
+/* =========================================================
+   MODAL
+   ========================================================= */
+
+.modal{
+  position:fixed;
+  inset:0;
+
+  z-index:100;
+
+  display:none;
+  align-items:center;
+  justify-content:center;
+
+  padding:20px;
+
+  background:rgba(0,5,8,.82);
+}
+
+.modal.open{
+  display:flex;
+}
+
+.modal-box{
+  width:min(760px,92vw);
+  max-height:84vh;
+
+  overflow:auto;
+
+  border:1px solid #1a5967;
+  border-radius:7px;
+
+  background:#06131b;
+
+  box-shadow:
+    0 0 45px rgba(0,0,0,.7);
+}
+
+.modal-head{
+  height:42px;
+
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+
+  padding:0 14px;
+
+  border-bottom:1px solid var(--line-soft);
+
+  font-size:11px;
+  font-weight:900;
+}
+
+.modal-close{
+  width:27px;
+  height:27px;
+
+  border:1px solid #17414c;
+  border-radius:4px;
+
+  background:#071821;
+  color:white;
+}
+
+.modal-content{
+  padding:14px;
+
+  color:#bdc9cd;
+
+  font-size:10px;
+  line-height:1.55;
+}
+
+.modal-content pre{
+  white-space:pre-wrap;
+  overflow-wrap:anywhere;
+
+  padding:11px;
+
+  border:1px solid #12313b;
+  border-radius:5px;
+
+  background:#041018;
+  color:#a9c4ca;
+
+  font-family:
+    Consolas,
+    monospace;
+
+  font-size:9px;
+}
+
+.modal-content table{
+  width:100%;
+
+  border-collapse:collapse;
+}
+
+.modal-content th,
+.modal-content td{
+  padding:7px;
+
+  border-bottom:1px solid var(--line-soft);
+
+  text-align:left;
+}
+
+/* =========================================================
+   CURRENT USER VIEWPORT TUNING
+   ========================================================= */
+
+@media(max-height:600px){
+  .dashboard{
+    grid-template-rows:
+      54px
+      272px
+      minmax(154px,1fr)
+      40px;
+  }
+
+  .hero{
+    grid-template-rows:
+      211px
+      53px;
+  }
+
+  .brand-title{
+    font-size:15px;
+  }
+
+  .metric-value{
+    font-size:11px;
+  }
+}
+
+@media(max-width:1250px){
+  .dashboard{
+    min-width:1180px;
+  }
+
+  .header{
+    grid-template-columns:
+      220px
+      repeat(7,minmax(82px,1fr))
+      225px;
+  }
+
+  .hero{
+    grid-template-columns:
+      228px
+      minmax(0,1fr)
+      390px;
+  }
+
+  .lower-grid{
+    grid-template-columns:
+      350px
+      285px
+      340px
+      minmax(205px,1fr);
+  }
+}
+</style>
+</head>
+
+<body>
+
+<div class="dashboard">
+
+<!-- ======================================================
+     HEADER
+     ====================================================== -->
+
+<header class="header">
+
+  <article class="card brand-card">
+
+    <div class="brand-piece">♜</div>
+
+    <div>
+      <div class="brand-title">
+        İŞLEM MERKEZİ
+      </div>
+
+      <div class="brand-subtitle">
+        PAPER_10K
+      </div>
+    </div>
+
+  </article>
+
+  <article class="card metric-card">
+    <div class="metric-label">
+      BAKİYE
+    </div>
+
+    <div
+      class="metric-value"
+      id="balance">
+      10.000,00 USDT
+    </div>
+
+    <div
+      class="metric-sub"
+      id="balanceSub">
+      Paper sermaye
+    </div>
+  </article>
+
+  <article class="card metric-card">
+    <div class="metric-label">
+      GÜNLÜK P&L
+    </div>
+
+    <div
+      class="metric-value"
+      id="dailyPnl">
+      0,00 USDT
+    </div>
+
+    <div
+      class="metric-sub"
+      id="dailyPnlSub">
+      Yeni dönem
+    </div>
+  </article>
+
+  <article class="card metric-card">
+    <div class="metric-label">
+      TOPLAM P&L
+    </div>
+
+    <div
+      class="metric-value"
+      id="totalPnl">
+      0,00 USDT
+    </div>
+
+    <div
+      class="metric-sub"
+      id="totalPnlSub">
+      0,00%
+    </div>
+  </article>
+
+  <article class="card metric-card">
+    <div class="metric-label">
+      AÇIK POZİSYON
+    </div>
+
+    <div
+      class="metric-value"
+      id="openCount">
+      0
+    </div>
+
+    <div
+      class="metric-sub"
+      id="openInvestment">
+      0,00 USDT
+    </div>
+  </article>
+
+  <article class="card metric-card">
+    <div class="metric-label">
+      KULLANILAN RİSK
+    </div>
+
+    <div
+      class="metric-value"
+      id="riskUsed">
+      0,00%
+    </div>
+
+    <div
+      class="metric-sub"
+      id="riskAmountTop">
+      0,00 USDT
+    </div>
+  </article>
+
+  <article class="card metric-card">
+    <div class="market-name">
+      <span class="coin-icon">₿</span>
+      BTC / USDT
+    </div>
+
+    <div class="metric-value">
+      —
+    </div>
+
+    <div class="metric-sub">
+      Market feed bağlı değil
+    </div>
+  </article>
+
+  <article class="card metric-card">
+    <div class="market-name">
+      <span class="coin-icon eth">♦</span>
+      ETH / USDT
+    </div>
+
+    <div class="metric-value">
+      —
+    </div>
+
+    <div class="metric-sub">
+      Market feed bağlı değil
+    </div>
+  </article>
+
+  <article class="card mode-card">
+
+    <div class="live-clock">
+      <span id="clock">--:--:--</span>
+      <b>● CANLI</b>
+    </div>
+
+    <div class="mode-label">
+      ÇALIŞMA MODU
+    </div>
+
+    <div class="mode-buttons">
+
+      <button
+        class="mode-button paper"
+        onclick="openAuthority('OTOMATİK PİLOT')">
+        🤖 OTOMATİK PİLOT
+      </button>
+
+      <button
+        class="mode-button"
+        onclick="openAuthority('MANUEL')">
+        ☝ MANUEL
+      </button>
+
+    </div>
+
+    <div class="mode-foot">
+      PAPER aktif · Authority kontrollü
+    </div>
+
+  </article>
+
+</header>
+
+<!-- ======================================================
+     HERO AREA
+     ====================================================== -->
+
+<section class="hero">
+
+  <!-- VEZIR -->
+
+  <article class="card vezir-card">
+
+    <div class="vezir-header">
+
+      <div>
+        <div class="vezir-title">
+          VEZİR
+        </div>
+
+        <div class="vezir-role">
+          Sistem Asistanı
+        </div>
+      </div>
+
+      <div class="vezir-live">
+        ● ─╱╲─
+      </div>
+
+    </div>
+
+    <div class="vezir-art">
+
+      <div class="vezir-ring"></div>
+
+      <img
+        id="vezirImage"
+        class="vezir-image"
+        src="/static/vezir.png"
+        alt="Vezir">
+
+    </div>
+
+    <div class="vezir-quote">
+
+      <span class="quote-mark">“</span>
+
+      <span id="vezirText">
+        Yeni temiz paper dönemi aktif.
+        Gerçek işlem verileri geldikçe fırsat,
+        risk ve performans yorumu burada oluşacak.
+      </span>
+
+    </div>
+
+    <div class="vezir-points">
+
+      <div
+        class="vezir-point"
+        id="vezirPoint1">
+        Paper runtime izleniyor.
+      </div>
+
+      <div
+        class="vezir-point"
+        id="vezirPoint2">
+        Yeni dönem işlemleri bekleniyor.
+      </div>
+
+      <div
+        class="vezir-point"
+        id="vezirPoint3">
+        Live execution kapalı.
+      </div>
+
+    </div>
+
+    <button
+      class="vezir-report"
+      onclick="openIntelligence()">
+      ☆ VEZİR DETAY RAPORU
+    </button>
+
+  </article>
+
+  <!-- BEST OPPORTUNITY -->
+
+  <article class="card best-card">
+
+    <div class="card-head">
+
+      <span>★ EN İYİ FIRSAT</span>
+
+      <button
+        class="card-link"
+        id="bestDetailButton"
+        onclick="openBestEvidence()">
+        VERİ BEKLENİYOR
+      </button>
+
+    </div>
+
+    <div class="best-content">
+
+      <div class="best-main">
+
+        <div class="asset-column">
+
+          <div class="asset-logo">
+            ◎
+          </div>
+
+          <div>
+
+            <div class="asset-name">
+              <span id="bestToken">
+                BEKLENİYOR
+              </span>
+
+              <span
+                class="asset-pair"
+                id="bestPair">
+              </span>
+            </div>
+
+            <div
+              class="asset-chain"
+              id="bestChain">
+              Yeni paper pozisyon bekleniyor
+            </div>
+
+            <div class="signal-box">
+
+              <div class="signal-label">
+                SİNYAL GÜCÜ
+              </div>
+
+              <div
+                class="signal-value"
+                id="bestScore">
+                —
+              </div>
+
+              <div
+                class="signal-state"
+                id="bestScoreState">
+                VERİ BEKLENİYOR
+              </div>
+
+            </div>
+
+          </div>
+
+        </div>
+
+        <div class="best-section">
+
+          <div class="best-section-title">
+            NEDEN UYGUN?
+          </div>
+
+          <div class="check-row">
+            <span class="check-name">
+              Likidite
+            </span>
+
+            <b
+              class="check-value"
+              id="liquidity">
+              —
+            </b>
+          </div>
+
+          <div class="check-row">
+            <span class="check-name">
+              Sellability
+            </span>
+
+            <b
+              class="check-value"
+              id="sellability">
+              —
+            </b>
+          </div>
+
+          <div class="check-row">
+            <span class="check-name">
+              Güvenlik Taraması
+            </span>
+
+            <b
+              class="check-value"
+              id="security">
+              —
+            </b>
+          </div>
+
+          <div class="check-row">
+            <span class="check-name">
+              Risk Skoru
+            </span>
+
+            <b
+              class="check-value"
+              id="riskState">
+              —
+            </b>
+          </div>
+
+          <div class="check-row">
+            <span class="check-name">
+              Atış Poligonu
+            </span>
+
+            <b
+              class="check-value"
+              id="rangeState">
+              —
+            </b>
+          </div>
+
+          <div class="check-row">
+            <span class="check-name">
+              Piyasa Koşulları
+            </span>
+
+            <b
+              class="check-value"
+              id="marketState">
+              —
+            </b>
+          </div>
+
+        </div>
+
+        <div class="best-section">
+
+          <div class="best-section-title">
+            İŞLEM PLANI
+          </div>
+
+          <div class="plan-row">
+            <span class="plan-name">
+              Giriş
+            </span>
+
+            <b
+              class="plan-value"
+              id="entryPrice">
+              —
+            </b>
+          </div>
+
+          <div class="plan-row">
+            <span class="plan-name">
+              Mevcut
+            </span>
+
+            <b
+              class="plan-value"
+              id="currentPrice">
+              —
+            </b>
+          </div>
+
+          <div class="plan-row">
+            <span class="plan-name">
+              Hedef (TP)
+            </span>
+
+            <b
+              class="plan-value"
+              id="tpPrice">
+              —
+            </b>
+          </div>
+
+          <div class="plan-row">
+            <span class="plan-name">
+              Stop Loss (SL)
+            </span>
+
+            <b
+              class="plan-value"
+              id="slPrice">
+              —
+            </b>
+          </div>
+
+          <div class="plan-row">
+            <span class="plan-name">
+              Pozisyon Büyüklüğü
+            </span>
+
+            <b
+              class="plan-value"
+              id="positionSize">
+              —
+            </b>
+          </div>
+
+          <div class="plan-row">
+            <span class="plan-name">
+              Risk Tutarı
+            </span>
+
+            <b
+              class="plan-value"
+              id="riskAmount">
+              —
+            </b>
+          </div>
+
+        </div>
+
+      </div>
+
+      <div class="best-bottom">
+
+        <div class="best-tag">
+          <small>TREND</small>
+          <b id="trend">—</b>
+        </div>
+
+        <div class="best-tag">
+          <small>ZAMANLAMA</small>
+          <b id="timing">—</b>
+        </div>
+
+        <div class="best-tag">
+          <small>GÜVEN</small>
+          <b id="confidence">—</b>
+        </div>
+
+        <div class="best-tag">
+          <small>ROI</small>
+          <b id="bestRoi">—</b>
+        </div>
+
+        <div class="best-tag">
+          <small>NET P&L</small>
+          <b id="bestNet">—</b>
+        </div>
+
+        <button
+          class="best-action watch-action"
+          onclick="openBestEvidence()">
+          ★ İZLE / KANIT
+        </button>
+
+        <button
+          class="best-action range-action"
+          onclick="openBestEvidence()">
+          ◎ ATIŞ POLİGONU RAPORU
+        </button>
+
+      </div>
+
+    </div>
+
+  </article>
+
+  <!-- OPEN POSITIONS -->
+
+  <article class="card positions-card">
+
+    <div class="card-head">
+
+      <span>AÇIK POZİSYONLAR</span>
+
+      <button
+        class="card-link"
+        onclick="openPositionsModal()">
+        TÜMÜNÜ GÖR →
+      </button>
+
+    </div>
+
+    <div class="positions-content">
+
+      <div class="position-header">
+        <span>TOKEN / PAIR</span>
+        <span>GİRİŞ</span>
+        <span>GÜNCEL</span>
+        <span>P&L (USDT)</span>
+        <span>P&L %</span>
+      </div>
+
+      <div
+        class="position-list"
+        id="positionList">
+
+        <div class="position-row placeholder-row">
+          <b>VERİ BEKLENİYOR</b>
+          <span>—</span>
+          <span>—</span>
+          <span>—</span>
+          <span>—</span>
+        </div>
+
+        <div class="position-row placeholder-row">
+          <b>—</b>
+          <span>—</span>
+          <span>—</span>
+          <span>—</span>
+          <span>—</span>
+        </div>
+
+      </div>
+
+      <div class="position-summary">
+
+        <div class="summary-box">
+          <small>TOPLAM POZİSYON</small>
+          <b id="summaryPositions">0</b>
+        </div>
+
+        <div class="summary-box">
+          <small>TOPLAM YATIRIM</small>
+          <b id="summaryInvestment">
+            0,00 USDT
+          </b>
+        </div>
+
+        <div class="summary-box">
+          <small>TOPLAM P&L</small>
+          <b id="summaryPnl">
+            0,00 USDT
+          </b>
+        </div>
+
+        <div class="summary-box">
+          <small>TOPLAM P&L %</small>
+          <b id="summaryRoi">—</b>
+        </div>
+
+      </div>
+
+    </div>
+
+  </article>
+
+  <!-- CONTROL -->
+
+  <article class="card control-card">
+
+    <div class="control-content">
+
+      <div class="control-title">
+        İŞLEM KONTROL
+        <span>(PAPER MOD)</span>
+      </div>
+
+      <div class="amount-box">
+        <small>MİKTAR (USDT)</small>
+        <b id="controlAmount">—</b>
+      </div>
+
+      <button
+        class="trade-action buy-action"
+        onclick="openAuthority('AL')">
+        AL
+        <small>Authority kontrolü</small>
+      </button>
+
+      <button
+        class="trade-action sell-action"
+        onclick="openAuthority('SAT')">
+        SAT
+        <small>Authority kontrolü</small>
+      </button>
+
+      <div class="authority-note">
+        Kontroller gerçek backend authority durumuna bağlıdır.
+        Yetkisiz trade, wallet veya signing işlemi gönderilmez.
+      </div>
+
+    </div>
+
+  </article>
+
+</section>
+
+<!-- ======================================================
+     LOWER GRID
+     ====================================================== -->
+
+<section class="lower-grid">
+
+  <!-- CANDIDATES -->
+
+  <article class="card lower-card">
+
+    <div class="card-head">
+
+      <span>HIZLI ADAY LİSTESİ</span>
+
+      <button
+        class="card-link"
+        onclick="openCandidatesModal()">
+        TÜM ADAYLARI GÖR →
+      </button>
+
+    </div>
+
+    <div class="lower-content">
+
+      <div class="candidate-header">
+        <span>#</span>
+        <span>TOKEN / PAIR</span>
+        <span>ZİNCİR</span>
+        <span>SİNYAL</span>
+        <span>RİSK</span>
+        <span>CONFIDENCE</span>
+      </div>
+
+      <div id="candidateList">
+
+        <div class="candidate-row placeholder-row">
+          <span>1</span>
+          <b>VERİ BEKLENİYOR</b>
+          <span>—</span>
+          <span>—</span>
+          <span>—</span>
+          <span>—</span>
+        </div>
+
+        <div class="candidate-row placeholder-row">
+          <span>2</span>
+          <b>—</b>
+          <span>—</span>
+          <span>—</span>
+          <span>—</span>
+          <span>—</span>
+        </div>
+
+        <div class="candidate-row placeholder-row">
+          <span>3</span>
+          <b>—</b>
+          <span>—</span>
+          <span>—</span>
+          <span>—</span>
+          <span>—</span>
+        </div>
+
+        <div class="candidate-row placeholder-row">
+          <span>4</span>
+          <b>—</b>
+          <span>—</span>
+          <span>—</span>
+          <span>—</span>
+          <span>—</span>
+        </div>
+
+        <div class="candidate-row placeholder-row">
+          <span>5</span>
+          <b>—</b>
+          <span>—</span>
+          <span>—</span>
+          <span>—</span>
+          <span>—</span>
+        </div>
+
+      </div>
+
+    </div>
+
+  </article>
+
+  <!-- INTELLIGENCE -->
+
+  <article class="card lower-card">
+
+    <div class="card-head">
+
+      <span>İSTİHBARAT MERKEZİ</span>
+
+      <button
+        class="card-link"
+        onclick="openIntelligence()">
+        TÜM RAPOR →
+      </button>
+
+    </div>
+
+    <div class="lower-content">
+
+      <div class="intel-row">
+        <div class="intel-icon">◉</div>
+
+        <div class="intel-copy">
+          <b>BALİNA HAREKETLERİ</b>
+          <small id="whaleText">
+            Veri bekleniyor.
+          </small>
+        </div>
+
+        <div
+          class="intel-state"
+          id="whaleState">
+          —
+        </div>
+      </div>
+
+      <div class="intel-row">
+        <div class="intel-icon">♜</div>
+
+        <div class="intel-copy">
+          <b>BAŞARILI CÜZDANLAR</b>
+          <small id="walletText">
+            Veri bekleniyor.
+          </small>
+        </div>
+
+        <div
+          class="intel-state"
+          id="walletState">
+          —
+        </div>
+      </div>
+
+      <div class="intel-row">
+        <div class="intel-icon">▤</div>
+
+        <div class="intel-copy">
+          <b>OUTCOME / ÖĞRENME</b>
+          <small id="outcomeText">
+            Veri bekleniyor.
+          </small>
+        </div>
+
+        <div
+          class="intel-state"
+          id="outcomeState">
+          —
+        </div>
+      </div>
+
+      <div class="intel-row">
+        <div class="intel-icon">⌁</div>
+
+        <div class="intel-copy">
+          <b>WALLET REGISTRY</b>
+          <small id="registryText">
+            Veri bekleniyor.
+          </small>
+        </div>
+
+        <div
+          class="intel-state"
+          id="registryState">
+          —
+        </div>
+      </div>
+
+      <div class="intel-row">
+        <div class="intel-icon">♟</div>
+
+        <div class="intel-copy">
+          <b>VEZİR YORUMU</b>
+          <small id="intelVezirText">
+            Yeni dönem izleniyor.
+          </small>
+        </div>
+
+        <div class="intel-state green">
+          FIRSAT
+        </div>
+      </div>
+
+    </div>
+
+  </article>
+
+  <!-- PERFORMANCE -->
+
+  <article class="card lower-card">
+
+    <div class="card-head">
+      <span>PERFORMANS ÖZETİ</span>
+      <span class="card-link">PAPER</span>
+    </div>
+
+    <div class="lower-content performance-layout">
+
+      <div class="tabs">
+
+        <button
+          class="tab-button active"
+          onclick="setChartRange('day',this)">
+          GÜNLÜK
+        </button>
+
+        <button
+          class="tab-button"
+          onclick="setChartRange('week',this)">
+          HAFTALIK
+        </button>
+
+        <button
+          class="tab-button"
+          onclick="setChartRange('month',this)">
+          AYLIK
+        </button>
+
+        <button
+          class="tab-button"
+          onclick="setChartRange('all',this)">
+          TÜM ZAMAN
+        </button>
+
+      </div>
+
+      <div class="chart">
+
+        <svg
+          id="chartSvg"
+          viewBox="0 0 600 170"
+          preserveAspectRatio="none">
+
+          <defs>
+            <linearGradient
+              id="chartGradient"
+              x1="0"
+              y1="0"
+              x2="0"
+              y2="1">
+
+              <stop
+                offset="0%"
+                stop-color="#00e978"
+                stop-opacity=".25">
+              </stop>
+
+              <stop
+                offset="100%"
+                stop-color="#00e978"
+                stop-opacity="0">
+              </stop>
+
+            </linearGradient>
+          </defs>
+
+          <path
+            id="chartFill"
+            fill="url(#chartGradient)"
+            stroke="none">
+          </path>
+
+          <path
+            id="chartLine"
+            fill="none"
+            stroke="#00e978"
+            stroke-width="2">
+          </path>
+
+        </svg>
+
+        <div
+          class="chart-placeholder"
+          id="chartPlaceholder">
+          Kapanmış işlem verisi bekleniyor.
+        </div>
+
+      </div>
+
+      <div class="performance-stats">
+
+        <div class="performance-stat">
+          <small>TOPLAM İŞLEM</small>
+          <b id="perfTotal">0</b>
+        </div>
+
+        <div class="performance-stat">
+          <small>KÂRLI</small>
+          <b id="perfWins">—</b>
+        </div>
+
+        <div class="performance-stat">
+          <small>ZARARLI</small>
+          <b id="perfLosses">—</b>
+        </div>
+
+        <div class="performance-stat">
+          <small>WIN RATE</small>
+          <b id="perfWinRate">—</b>
+        </div>
+
+        <div class="performance-stat">
+          <small>ORT. P&L</small>
+          <b id="perfAverage">—</b>
+        </div>
+
+        <div class="performance-stat">
+          <small>PROFIT FACTOR</small>
+          <b id="profitFactor">—</b>
+        </div>
+
+      </div>
+
+    </div>
+
+  </article>
+
+  <!-- SYSTEM HEALTH -->
+
+  <article class="card lower-card">
+
+    <div class="card-head">
+      <span>SİSTEM SAĞLIĞI</span>
+      <span class="card-link">CANLI</span>
+    </div>
+
+    <div class="lower-content">
+
+      <div class="health-banner">
+
+        <div class="shield">♢</div>
+
+        <div>
+          <b id="healthTitle">
+            SİSTEM SAĞLIKLI
+          </b>
+
+          <small id="healthSubtitle">
+            Sistem kontrol ediliyor.
+          </small>
+        </div>
+
+      </div>
+
+      <div class="health-row">
+        <span>Panel API</span>
+        <b id="panelHealth">—</b>
+      </div>
+
+      <div class="health-row">
+        <span>Veritabanı</span>
+        <b id="databaseHealth">—</b>
+      </div>
+
+      <div class="health-row">
+        <span>Paper Runtime</span>
+        <b id="runtimeHealth">—</b>
+      </div>
+
+      <div class="health-row">
+        <span>Disk Kullanımı</span>
+        <b id="diskHealth">—</b>
+      </div>
+
+      <div class="health-row">
+        <span>Live Execution</span>
+        <b class="red">KAPALI</b>
+      </div>
+
+      <div class="health-row">
+        <span>Wallet Authority</span>
+        <b class="red">YOK</b>
+      </div>
+
+    </div>
+
+  </article>
+
+</section>
+
+<!-- ======================================================
+     FOOT GRID
+     ====================================================== -->
+
+<section class="foot-grid">
+
+  <article class="card foot-card">
+
+    <div class="signal-layout">
+
+      <div class="signal-heading">
+        SON SİNYALLER
+      </div>
+
+      <div
+        class="signal-list"
+        id="signalList">
+
+        <div class="signal-item">
+          <b>SYSTEM</b>
+          <small>
+            Yeni temiz paper dönemi izleniyor.
+          </small>
+        </div>
+
+      </div>
+
+      <button
+        class="card-link"
+        onclick="openSignalsModal()">
+        TÜMÜ →
+      </button>
+
+    </div>
+
+  </article>
+
+  <article class="card foot-card">
+
+    <div class="quick-layout">
+
+      <div class="quick-heading">
+        HIZLI KONTROLLER
+      </div>
+
+      <button
+        class="quick-button"
+        onclick="refreshDashboard()">
+        YENİLE
+      </button>
+
+      <button
+        class="quick-button"
+        onclick="openPositionsModal()">
+        POZİSYONLAR
+      </button>
+
+      <button
+        class="quick-button"
+        onclick="openIntelligence()">
+        VEZİR
+      </button>
+
+      <button
+        class="quick-button"
+        onclick="focusPerformance()">
+        PERFORMANS
+      </button>
+
+      <button
+        class="quick-button"
+        onclick="openAuthority('YETKİ')">
+        YETKİ
+      </button>
+
+    </div>
+
+  </article>
+
+</section>
+
+</div>
+
+<!-- ======================================================
+     MODAL
+     ====================================================== -->
+
+<div
+  class="modal"
+  id="modal"
+  onclick="modalBackdrop(event)">
+
+  <div class="modal-box">
+
+    <div class="modal-head">
+
+      <span id="modalTitle">
+        DETAY
+      </span>
+
+      <button
+        class="modal-close"
+        onclick="closeModal()">
+        ×
+      </button>
+
+    </div>
+
+    <div
+      class="modal-content"
+      id="modalContent">
+    </div>
+
+  </div>
+
+</div>
+
+<script>
+const $ = id =>
+  document.getElementById(id);
+
+let dashboard = null;
+let selectedBest = null;
+let chartRange = "day";
+
+
+function escapeHtml(value){
+  return String(value ?? "")
+    .replaceAll("&","&amp;")
+    .replaceAll("<","&lt;")
+    .replaceAll(">","&gt;")
+    .replaceAll('"',"&quot;")
+    .replaceAll("'","&#039;");
+}
+
+
+function number(value,fallback=0){
+  const parsed = Number(value);
+
+  return Number.isFinite(parsed)
+    ? parsed
+    : fallback;
+}
+
+
+function formatMoney(value){
+  return number(value).toLocaleString(
+    "tr-TR",
+    {
+      minimumFractionDigits:2,
+      maximumFractionDigits:2
+    }
+  ) + " USDT";
+}
+
+
+function formatPercent(value){
+  if(
+    value === null ||
+    value === undefined ||
+    value === ""
+  ){
+    return "—";
+  }
+
+  const parsed = Number(value);
+
+  if(!Number.isFinite(parsed)){
+    return "—";
+  }
+
+  return parsed.toLocaleString(
+    "tr-TR",
+    {
+      minimumFractionDigits:2,
+      maximumFractionDigits:2
+    }
+  ) + "%";
+}
+
+
+function formatPrice(value){
+  const parsed = Number(value);
+
+  if(
+    !Number.isFinite(parsed) ||
+    parsed <= 0
+  ){
+    return "—";
+  }
+
+  if(parsed < 0.000001){
+    return parsed.toExponential(3);
+  }
+
+  if(parsed < 0.01){
+    return parsed.toLocaleString(
+      "tr-TR",
+      {
+        minimumFractionDigits:8,
+        maximumFractionDigits:8
+      }
+    );
+  }
+
+  if(parsed < 1){
+    return parsed.toLocaleString(
+      "tr-TR",
+      {
+        minimumFractionDigits:6,
+        maximumFractionDigits:6
+      }
+    );
+  }
+
+  return parsed.toLocaleString(
+    "tr-TR",
+    {
+      minimumFractionDigits:2,
+      maximumFractionDigits:6
+    }
+  );
+}
+
+
+function paint(node,value){
+  if(!node){
+    return;
+  }
+
+  node.classList.remove(
+    "green",
+    "red"
+  );
+
+  const parsed = number(value);
+
+  if(parsed > 0){
+    node.classList.add("green");
+  }
+
+  if(parsed < 0){
+    node.classList.add("red");
+  }
+}
+
+
+function textValue(value){
+  if(
+    value === null ||
+    value === undefined ||
+    value === ""
+  ){
+    return "—";
+  }
+
+  if(typeof value === "boolean"){
+    return value
+      ? "EVET"
+      : "HAYIR";
+  }
+
+  return String(value)
+    .replaceAll("_"," ")
+    .toUpperCase();
+}
+
+
+function shortToken(row){
+  if(row?.symbol){
+    return row.symbol;
+  }
+
+  const token = String(
+    row?.token || "TOKEN"
+  );
+
+  return token.length > 15
+    ? token.slice(0,8) +
+      "…" +
+      token.slice(-5)
+    : token;
+}
+
+
+async function getJson(path){
+  const response = await fetch(
+    path,
+    {cache:"no-store"}
+  );
+
+  if(!response.ok){
+    throw new Error(
+      path +
+      " HTTP " +
+      response.status
+    );
+  }
+
+  return response.json();
+}
+
+
+function openModal(title,html){
+  $("modalTitle").textContent = title;
+  $("modalContent").innerHTML = html;
+  $("modal").classList.add("open");
+}
+
+
+function closeModal(){
+  $("modal").classList.remove("open");
+}
+
+
+function modalBackdrop(event){
+  if(event.target === $("modal")){
+    closeModal();
+  }
+}
+
+
+function openJsonModal(title,value){
+  openModal(
+    title,
+    "<pre>" +
+      escapeHtml(
+        JSON.stringify(
+          value,
+          null,
+          2
+        )
+      ) +
+    "</pre>"
+  );
+}
+
+
+async function openAuthority(action){
+  try{
+    const authority = await getJson(
+      "/api/authority"
+    );
+
+    openModal(
+      action + " · YETKİ DURUMU",
+      `
+        <p>
+          ${escapeHtml(authority.message)}
+        </p>
+
+        <pre>
+${escapeHtml(
+  JSON.stringify(
+    authority,
+    null,
+    2
+  )
+)}
+        </pre>
+      `
+    );
+
+  }catch(error){
+    openModal(
+      "YETKİ HATASI",
+      "<p>" +
+        escapeHtml(error.message) +
+      "</p>"
+    );
+  }
+}
+
+
+async function openIntelligence(){
+  try{
+    const intelligence = await getJson(
+      "/api/intelligence"
+    );
+
+    openJsonModal(
+      "VEZİR · İSTİHBARAT RAPORU",
+      intelligence
+    );
+
+  }catch(error){
+    openModal(
+      "İSTİHBARAT HATASI",
+      "<p>" +
+        escapeHtml(error.message) +
+      "</p>"
+    );
+  }
+}
+
+
+async function openBestEvidence(){
+  if(!selectedBest?.id){
+    openModal(
+      "ATIŞ POLİGONU",
+      "<p>Seçili gerçek paper pozisyonu bulunmuyor.</p>"
+    );
+    return;
+  }
+
+  try{
+    const evidence = await getJson(
+      "/api/position/" +
+      selectedBest.id +
+      "/evidence"
+    );
+
+    openJsonModal(
+      shortToken(selectedBest) +
+      " · GİRİŞ KANITI",
+      evidence
+    );
+
+  }catch(error){
+    openModal(
+      "KANIT HATASI",
+      "<p>" +
+        escapeHtml(error.message) +
+      "</p>"
+    );
+  }
+}
+
+
+function openPositionsModal(){
+  const positions =
+    dashboard?.positions || [];
+
+  if(!positions.length){
+    openModal(
+      "AÇIK POZİSYONLAR",
+      "<p>Açık paper pozisyon yok.</p>"
+    );
+    return;
+  }
+
+  const rows = positions.map(position=>`
+    <tr>
+      <td>
+        ${escapeHtml(shortToken(position))}
+      </td>
+
+      <td>
+        ${escapeHtml(
+          formatPrice(position.entry_price)
+        )}
+      </td>
+
+      <td>
+        ${escapeHtml(
+          formatPrice(position.current_price)
+        )}
+      </td>
+
+      <td>
+        ${escapeHtml(
+          formatPrice(position.sl_price)
+        )}
+      </td>
+
+      <td>
+        ${escapeHtml(
+          formatPercent(position.roi_pct)
+        )}
+      </td>
+
+      <td>
+        ${escapeHtml(
+          formatMoney(
+            position.net_pnl_usdt ??
+            position.net_pnl
+          )
+        )}
+      </td>
+    </tr>
+  `).join("");
+
+  openModal(
+    "TÜM AÇIK POZİSYONLAR",
+    `
+      <table>
+
+        <thead>
+          <tr>
+            <th>Token</th>
+            <th>Giriş</th>
+            <th>Güncel</th>
+            <th>SL</th>
+            <th>ROI</th>
+            <th>Net</th>
+          </tr>
+        </thead>
+
+        <tbody>
+          ${rows}
+        </tbody>
+
+      </table>
+    `
+  );
+}
+
+
+function openCandidatesModal(){
+  openJsonModal(
+    "TÜM ADAYLAR / PAPER KAYITLARI",
+    dashboard?.candidates || []
+  );
+}
+
+
+function openSignalsModal(){
+  openJsonModal(
+    "SON SİNYALLER",
+    dashboard?.signals || []
+  );
+}
+
+
+function focusPerformance(){
+  openJsonModal(
+    "PERFORMANS DETAYI",
+    {
+      summary:
+        dashboard?.summary,
+      performance:
+        dashboard?.performance,
+      series:
+        dashboard?.series
+    }
+  );
+}
+
+
+function renderSummary(summary){
+  $("balance").textContent =
+    formatMoney(summary.equity);
+
+  $("dailyPnl").textContent =
+    formatMoney(summary.daily_pnl);
+
+  $("totalPnl").textContent =
+    formatMoney(summary.total_pnl);
+
+  $("openCount").textContent =
+    summary.open_count ?? 0;
+
+  $("openInvestment").textContent =
+    formatMoney(summary.open_investment);
+
+  $("riskUsed").textContent =
+    formatPercent(summary.risk_used_pct);
+
+  $("riskAmountTop").textContent =
+    formatMoney(summary.open_risk);
+
+  $("dailyPnlSub").textContent =
+    "Yeni dönem";
+
+  $("totalPnlSub").textContent =
+    formatPercent(
+      summary.starting_capital > 0
+        ? (
+            summary.total_pnl /
+            summary.starting_capital *
+            100
+          )
+        : 0
+    );
+
+  paint(
+    $("dailyPnl"),
+    summary.daily_pnl
+  );
+
+  paint(
+    $("totalPnl"),
+    summary.total_pnl
+  );
+}
+
+
+function renderVezir(data){
+  const intelligence =
+    data.intelligence || {};
+
+  const summary =
+    intelligence.summary || {};
+
+  if(summary.vezir_summary){
+    $("vezirText").textContent =
+      summary.vezir_summary;
+  }
+
+  $("vezirPoint1").textContent =
+    (data.summary.open_count || 0) +
+    " açık paper pozisyon izleniyor.";
+
+  $("vezirPoint2").textContent =
+    (intelligence.tracked_wallets || 0) +
+    " wallet registry kaydı mevcut.";
+
+  $("vezirPoint3").textContent =
+    "Live execution kapalı · Panel read-only.";
+}
+
+
+function renderBest(best){
+  selectedBest = best || null;
+
+  if(!best){
+    $("bestToken").textContent =
+      "BEKLENİYOR";
+
+    $("bestPair").textContent =
+      "";
+
+    $("bestChain").textContent =
+      "Yeni paper pozisyon bekleniyor";
+
+    $("bestScore").textContent =
+      "—";
+
+    $("bestScoreState").textContent =
+      "VERİ BEKLENİYOR";
+
+    $("bestDetailButton").textContent =
+      "VERİ BEKLENİYOR";
+
+    [
+      "liquidity",
+      "sellability",
+      "security",
+      "riskState",
+      "rangeState",
+      "marketState",
+      "entryPrice",
+      "currentPrice",
+      "tpPrice",
+      "slPrice",
+      "positionSize",
+      "riskAmount",
+      "trend",
+      "timing",
+      "confidence",
+      "bestRoi",
+      "bestNet"
+    ].forEach(id=>{
+      $(id).textContent = "—";
+    });
+
+    $("controlAmount").textContent =
+      "—";
+
+    return;
+  }
+
+  const evidence =
+    best.entry_evidence || {};
+
+  $("bestToken").textContent =
+    shortToken(best);
+
+  $("bestPair").textContent =
+    " / PAPER";
+
+  $("bestChain").textContent =
+    [
+      best.dex,
+      best.pool
+        ? String(best.pool).slice(0,14)
+        : null
+    ]
+    .filter(Boolean)
+    .join(" · ") ||
+    "PAPER";
+
+  $("bestScore").textContent =
+    evidence.score === null ||
+    evidence.score === undefined
+      ? "—"
+      : number(evidence.score)
+          .toLocaleString(
+            "tr-TR",
+            {
+              minimumFractionDigits:0,
+              maximumFractionDigits:2
+            }
+          ) +
+        " /100";
+
+  $("bestScoreState").textContent =
+    evidence.unified_decision
+      ? textValue(
+          evidence.unified_decision
+        )
+      : (
+          best.roi_pct > 0
+            ? "POZİTİF"
+            : "İZLENİYOR"
+        );
+
+  $("bestDetailButton").textContent =
+    "KANITI GÖR";
+
+  $("liquidity").textContent =
+    textValue(evidence.liquidity);
+
+  $("sellability").textContent =
+    textValue(evidence.sellability);
+
+  $("security").textContent =
+    evidence.hard_block === true
+      ? "BLOCK"
+      : evidence.hard_block === false
+        ? "TEMİZ"
+        : "—";
+
+  $("riskState").textContent =
+    evidence.hard_block === true
+      ? "YÜKSEK"
+      : evidence.hard_block === false
+        ? "DÜŞÜK"
+        : "—";
+
+  $("rangeState").textContent =
+    textValue(evidence.range_state);
+
+  $("marketState").textContent =
+    textValue(evidence.market_state);
+
+  $("entryPrice").textContent =
+    formatPrice(best.entry_price);
+
+  $("currentPrice").textContent =
+    formatPrice(best.current_price);
+
+  $("tpPrice").textContent =
+    formatPrice(best.tp_price);
+
+  $("slPrice").textContent =
+    formatPrice(best.sl_price);
+
+  $("positionSize").textContent =
+    best.entry_amount_usdt === null ||
+    best.entry_amount_usdt === undefined
+      ? "—"
+      : formatMoney(
+          best.entry_amount_usdt
+        );
+
+  $("riskAmount").textContent =
+    best.risk_amount_usdt === null ||
+    best.risk_amount_usdt === undefined
+      ? "—"
+      : formatMoney(
+          best.risk_amount_usdt
+        );
+
+  $("trend").textContent =
+    textValue(evidence.trend);
+
+  $("timing").textContent =
+    textValue(evidence.timing);
+
+  $("confidence").textContent =
+    evidence.confidence === null ||
+    evidence.confidence === undefined
+      ? "—"
+      : number(evidence.confidence)
+          .toLocaleString(
+            "tr-TR",
+            {
+              minimumFractionDigits:0,
+              maximumFractionDigits:2
+            }
+          );
+
+  $("bestRoi").textContent =
+    formatPercent(best.roi_pct);
+
+  const net =
+    best.net_pnl_usdt ??
+    best.net_pnl ??
+    0;
+
+  $("bestNet").textContent =
+    formatMoney(net);
+
+  paint(
+    $("bestRoi"),
+    best.roi_pct
+  );
+
+  paint(
+    $("bestNet"),
+    net
+  );
+
+  $("controlAmount").textContent =
+    best.entry_amount_usdt === null ||
+    best.entry_amount_usdt === undefined
+      ? "—"
+      : formatMoney(
+          best.entry_amount_usdt
+        );
+}
+
+
+function positionPlaceholder(){
+  return `
+    <div class="position-row placeholder-row">
+      <b>VERİ BEKLENİYOR</b>
+      <span>—</span>
+      <span>—</span>
+      <span>—</span>
+      <span>—</span>
+    </div>
+
+    <div class="position-row placeholder-row">
+      <b>—</b>
+      <span>—</span>
+      <span>—</span>
+      <span>—</span>
+      <span>—</span>
+    </div>
+  `;
+}
+
+
+function renderPositions(data){
+  const positions =
+    data.positions || [];
+
+  const summary =
+    data.summary || {};
+
+  $("summaryPositions").textContent =
+    positions.length;
+
+  $("summaryInvestment").textContent =
+    formatMoney(summary.open_investment);
+
+  $("summaryPnl").textContent =
+    formatMoney(summary.open_pnl);
+
+  $("summaryRoi").textContent =
+    formatPercent(summary.open_roi_pct);
+
+  paint(
+    $("summaryPnl"),
+    summary.open_pnl
+  );
+
+  paint(
+    $("summaryRoi"),
+    summary.open_roi_pct
+  );
+
+  if(!positions.length){
+    $("positionList").innerHTML =
+      positionPlaceholder();
+
+    return;
+  }
+
+  $("positionList").innerHTML =
+    positions
+      .slice(0,2)
+      .map((position,index)=>{
+
+        const pnl =
+          position.net_pnl_usdt ??
+          position.net_pnl ??
+          0;
+
+        return `
+          <div class="position-row">
+
+            <div class="position-token">
+              ${index + 1}.
+              ${escapeHtml(
+                shortToken(position)
+              )}
+
+              <small>
+                ${escapeHtml(
+                  position.dex ||
+                  "PAPER"
+                )}
+              </small>
+            </div>
+
+            <span>
+              ${escapeHtml(
+                formatPrice(
+                  position.entry_price
+                )
+              )}
+            </span>
+
+            <span>
+              ${escapeHtml(
+                formatPrice(
+                  position.current_price
+                )
+              )}
+            </span>
+
+            <b class="${
+              number(pnl) >= 0
+                ? "green"
+                : "red"
+            }">
+              ${escapeHtml(
+                formatMoney(pnl)
+              )}
+            </b>
+
+            <b class="${
+              number(position.roi_pct) >= 0
+                ? "green"
+                : "red"
+            }">
+              ${escapeHtml(
+                formatPercent(
+                  position.roi_pct
+                )
+              )}
+            </b>
+
+          </div>
+        `;
+      })
+      .join("");
+}
+
+
+function candidatePlaceholder(){
+  return Array.from(
+    {length:5},
+    (_,index)=>`
+      <div class="candidate-row placeholder-row">
+        <span>${index + 1}</span>
+        <b>${
+          index === 0
+            ? "VERİ BEKLENİYOR"
+            : "—"
+        }</b>
+        <span>—</span>
+        <span>—</span>
+        <span>—</span>
+        <span>—</span>
+      </div>
+    `
+  ).join("");
+}
+
+
+function renderCandidates(candidates){
+  const list =
+    candidates || [];
+
+  if(!list.length){
+    $("candidateList").innerHTML =
+      candidatePlaceholder();
+
+    return;
+  }
+
+  $("candidateList").innerHTML =
+    list
+      .slice(0,5)
+      .map((candidate,index)=>{
+
+        const evidence =
+          candidate.entry_evidence || {};
+
+        const hard =
+          evidence.hard_block;
+
+        const riskText =
+          hard === true
+            ? "YÜKSEK"
+            : hard === false
+              ? "DÜŞÜK"
+              : "—";
+
+        const riskClass =
+          hard === true
+            ? "red"
+            : hard === false
+              ? "green"
+              : "";
+
+        return `
+          <div
+            class="candidate-row"
+            onclick="selectCandidate(${index})">
+
+            <span>${index + 1}</span>
+
+            <b>
+              ${escapeHtml(
+                shortToken(candidate)
+              )}
+            </b>
+
+            <span>
+              ${escapeHtml(
+                candidate.dex ||
+                "PAPER"
+              )}
+            </span>
+
+            <b class="green">
+              ${
+                evidence.score === null ||
+                evidence.score === undefined
+                  ? "—"
+                  : escapeHtml(
+                      number(
+                        evidence.score
+                      ).toLocaleString(
+                        "tr-TR",
+                        {
+                          maximumFractionDigits:2
+                        }
+                      )
+                    )
+              }
+            </b>
+
+            <b class="${riskClass}">
+              ${riskText}
+            </b>
+
+            <span>
+              ${
+                evidence.confidence === null ||
+                evidence.confidence === undefined
+                  ? "—"
+                  : escapeHtml(
+                      number(
+                        evidence.confidence
+                      ).toLocaleString(
+                        "tr-TR",
+                        {
+                          maximumFractionDigits:2
+                        }
+                      )
+                    )
+              }
+            </span>
+
+          </div>
+        `;
+      })
+      .join("");
+}
+
+
+function selectCandidate(index){
+  const candidate =
+    dashboard?.candidates?.[index];
+
+  if(candidate){
+    renderBest(candidate);
+  }
+}
+
+
+function renderIntelligence(intelligence){
+  const summary =
+    intelligence?.summary || {};
+
+  $("whaleText").textContent =
+    (intelligence.active_whales || 0) +
+    " whale snapshot kaydı.";
+
+  $("whaleState").textContent =
+    intelligence.active_whales || "—";
+
+  $("walletText").textContent =
+    (intelligence.successful_wallets || 0) +
+    " wallet success kaydı.";
+
+  $("walletState").textContent =
+    intelligence.successful_wallets ||
+    "—";
+
+  $("outcomeText").textContent =
+    (intelligence.outcome_evidence || 0) +
+    " outcome evidence kaydı.";
+
+  $("outcomeState").textContent =
+    intelligence.outcome_evidence ||
+    "—";
+
+  $("registryText").textContent =
+    (intelligence.tracked_wallets || 0) +
+    " wallet registry kaydı.";
+
+  $("registryState").textContent =
+    intelligence.tracked_wallets ||
+    "—";
+
+  if(summary.vezir_summary){
+    $("intelVezirText").textContent =
+      summary.vezir_summary;
+  }
+}
+
+
+function renderHealth(health){
+  const databaseOk =
+    Boolean(health.database);
+
+  $("panelHealth").textContent =
+    textValue(
+      health.panel_api ||
+      "unknown"
+    );
+
+  $("databaseHealth").textContent =
+    databaseOk
+      ? "AKTİF"
+      : "HATA";
+
+  $("runtimeHealth").textContent =
+    textValue(
+      health.paper_runtime ||
+      "unknown"
+    );
+
+  $("diskHealth").textContent =
+    formatPercent(
+      health.disk_usage_pct
+    );
+
+  $("healthTitle").textContent =
+    databaseOk
+      ? "SİSTEM SAĞLIKLI"
+      : "VERİTABANI KONTROL";
+
+  $("healthSubtitle").textContent =
+    databaseOk
+      ? "Panel API ve paper DB erişilebilir."
+      : "Paper DB erişimi kontrol edilmeli.";
+
+  $("databaseHealth").className =
+    databaseOk
+      ? "green"
+      : "red";
+}
+
+
+function filterSeries(series,range){
+  if(range === "all"){
+    return series;
+  }
+
+  const now = Date.now();
+
+  const duration = {
+    day:
+      24 *
+      60 *
+      60 *
+      1000,
+
+    week:
+      7 *
+      24 *
+      60 *
+      60 *
+      1000,
+
+    month:
+      30 *
+      24 *
+      60 *
+      60 *
+      1000
+  }[range];
+
+  return series.filter(point=>{
+    const timestamp =
+      Date.parse(
+        point.timestamp || ""
+      );
+
+    return (
+      Number.isFinite(timestamp) &&
+      now - timestamp <= duration
+    );
+  });
+}
+
+
+function drawChart(){
+  const series =
+    filterSeries(
+      dashboard?.series || [],
+      chartRange
+    );
+
+  const line =
+    $("chartLine");
+
+  const fill =
+    $("chartFill");
+
+  const placeholder =
+    $("chartPlaceholder");
+
+  if(!series.length){
+    line.setAttribute("d","");
+    fill.setAttribute("d","");
+
+    placeholder.style.display =
+      "flex";
+
+    return;
+  }
+
+  placeholder.style.display =
+    "none";
+
+  const values =
+    series.map(point=>
+      number(point.cumulative)
+    );
+
+  let minimum =
+    Math.min(...values);
+
+  let maximum =
+    Math.max(...values);
+
+  if(minimum === maximum){
+    minimum -= 1;
+    maximum += 1;
+  }
+
+  const width = 600;
+  const height = 170;
+  const padding = 8;
+
+  const points =
+    values.map((value,index)=>{
+
+      const x =
+        padding +
+        (
+          index /
+          Math.max(
+            values.length - 1,
+            1
+          )
+        ) *
+        (
+          width -
+          padding * 2
+        );
+
+      const y =
+        height -
+        padding -
+        (
+          (value - minimum) /
+          (maximum - minimum)
+        ) *
+        (
+          height -
+          padding * 2
+        );
+
+      return [x,y];
+    });
+
+  const path =
+    points
+      .map((point,index)=>
+        (
+          index === 0
+            ? "M"
+            : "L"
+        ) +
+        point[0].toFixed(2) +
+        " " +
+        point[1].toFixed(2)
+      )
+      .join(" ");
+
+  const fillPath =
+    path +
+    " L " +
+    points[
+      points.length - 1
+    ][0].toFixed(2) +
+    " " +
+    (
+      height -
+      padding
+    ) +
+    " L " +
+    points[0][0].toFixed(2) +
+    " " +
+    (
+      height -
+      padding
+    ) +
+    " Z";
+
+  line.setAttribute(
+    "d",
+    path
+  );
+
+  fill.setAttribute(
+    "d",
+    fillPath
+  );
+}
+
+
+function setChartRange(range,button){
+  chartRange = range;
+
+  document
+    .querySelectorAll(
+      ".tab-button"
+    )
+    .forEach(item=>
+      item.classList.remove(
+        "active"
+      )
+    );
+
+  button.classList.add(
+    "active"
+  );
+
+  drawChart();
+}
+
+
+function renderPerformance(data){
+  const performance =
+    data.performance || {};
+
+  $("perfTotal").textContent =
+    performance.closed ?? 0;
+
+  $("perfWins").textContent =
+    performance.wins ?? "—";
+
+  $("perfLosses").textContent =
+    performance.losses ?? "—";
+
+  $("perfWinRate").textContent =
+    formatPercent(
+      performance.win_rate_pct
+    );
+
+  $("perfAverage").textContent =
+    formatPercent(
+      performance.avg_roi_pct
+    );
+
+  $("profitFactor").textContent =
+    performance.profit_factor === null ||
+    performance.profit_factor === undefined
+      ? "—"
+      : number(
+          performance.profit_factor
+        ).toLocaleString(
+          "tr-TR",
+          {
+            minimumFractionDigits:2,
+            maximumFractionDigits:2
+          }
+        );
+
+  drawChart();
+}
+
+
+function signalPlaceholder(){
+  return `
+    <div class="signal-item">
+      <b>SYSTEM</b>
+      <small>
+        Yeni temiz paper dönemi izleniyor.
+      </small>
+    </div>
+
+    <div class="signal-item">
+      <b>PAPER</b>
+      <small>
+        Yeni işlem bekleniyor.
+      </small>
+    </div>
+
+    <div class="signal-item">
+      <b>VEZİR</b>
+      <small>
+        İstihbarat verisi bekleniyor.
+      </small>
+    </div>
+  `;
+}
+
+
+function renderSignals(signals){
+  const list =
+    signals || [];
+
+  if(!list.length){
+    $("signalList").innerHTML =
+      signalPlaceholder();
+
+    return;
+  }
+
+  $("signalList").innerHTML =
+    list
+      .slice(0,5)
+      .map(signal=>{
+
+        const timestamp =
+          signal.timestamp
+            ? new Date(
+                signal.timestamp
+              ).toLocaleTimeString(
+                "tr-TR",
+                {
+                  hour:"2-digit",
+                  minute:"2-digit"
+                }
+              )
+            : "--:--";
+
+        return `
+          <div class="signal-item">
+
+            <b>
+              ${escapeHtml(timestamp)}
+              ${escapeHtml(signal.source)}
+            </b>
+
+            <small>
+              ${escapeHtml(signal.message)}
+            </small>
+
+            ${
+              signal.pnl === null ||
+              signal.pnl === undefined
+                ? ""
+                : `
+                  <small class="${
+                    number(signal.pnl) >= 0
+                      ? "green"
+                      : "red"
+                  }">
+                    ${escapeHtml(
+                      formatMoney(
+                        signal.pnl
+                      )
+                    )}
+                  </small>
+                `
+            }
+
+          </div>
+        `;
+      })
+      .join("");
+}
+
+
+function renderDashboard(data){
+  dashboard = data;
+
+  renderSummary(
+    data.summary || {}
+  );
+
+  renderVezir(data);
+
+  renderBest(data.best);
+
+  renderPositions(data);
+
+  renderCandidates(
+    data.candidates || []
+  );
+
+  renderIntelligence(
+    data.intelligence || {}
+  );
+
+  renderHealth(
+    data.health || {}
+  );
+
+  renderPerformance(data);
+
+  renderSignals(
+    data.signals || []
+  );
+}
+
+
+async function refreshDashboard(){
+  try{
+    const data = await getJson(
+      "/api/dashboard"
+    );
+
+    renderDashboard(data);
+
+  }catch(error){
+    openModal(
+      "PANEL VERİ HATASI",
+      "<p>" +
+        escapeHtml(
+          error.message
+        ) +
+      "</p>"
+    );
+  }
+}
+
+
+function updateClock(){
+  $("clock").textContent =
+    new Date().toLocaleTimeString(
+      "tr-TR"
+    );
+}
+
+
+/* ========================================================
+   VEZIR BACKGROUND CLEANUP
+   ======================================================== */
+
+function prepareVezirImage(){
+  const target =
+    $("vezirImage");
+
+  if(!target){
+    return;
+  }
+
+  const source =
+    new Image();
+
+  source.onload = function(){
+    try{
+      const width =
+        source.naturalWidth;
+
+      const height =
+        source.naturalHeight;
+
+      if(!width || !height){
+        return;
+      }
+
+      const canvas =
+        document.createElement(
+          "canvas"
+        );
+
+      canvas.width = width;
+      canvas.height = height;
+
+      const context =
+        canvas.getContext(
+          "2d",
+          {
+            willReadFrequently:true
+          }
+        );
+
+      context.drawImage(
+        source,
+        0,
+        0,
+        width,
+        height
+      );
+
+      const image =
+        context.getImageData(
+          0,
+          0,
+          width,
+          height
+        );
+
+      const pixels =
+        image.data;
+
+      const total =
+        width * height;
+
+      const visited =
+        new Uint8Array(total);
+
+      const queue =
+        new Int32Array(total);
+
+      let head = 0;
+      let tail = 0;
+
+      function enqueue(index){
+        if(
+          index < 0 ||
+          index >= total ||
+          visited[index]
+        ){
+          return;
+        }
+
+        visited[index] = 1;
+        queue[tail++] = index;
+      }
+
+      function isBackground(index){
+        const offset =
+          index * 4;
+
+        const red =
+          pixels[offset];
+
+        const green =
+          pixels[offset + 1];
+
+        const blue =
+          pixels[offset + 2];
+
+        const alpha =
+          pixels[offset + 3];
+
+        if(alpha === 0){
+          return true;
+        }
+
+        const maximum =
+          Math.max(
+            red,
+            green,
+            blue
+          );
+
+        const minimum =
+          Math.min(
+            red,
+            green,
+            blue
+          );
+
+        const brightness =
+          (
+            red +
+            green +
+            blue
+          ) / 3;
+
+        return (
+          maximum - minimum <= 90 &&
+          brightness >= 132
+        );
+      }
+
+      for(
+        let x=0;
+        x<width;
+        x++
+      ){
+        enqueue(x);
+
+        enqueue(
+          (height - 1) *
+          width +
+          x
+        );
+      }
+
+      for(
+        let y=0;
+        y<height;
+        y++
+      ){
+        enqueue(
+          y * width
+        );
+
+        enqueue(
+          y * width +
+          width -
+          1
+        );
+      }
+
+      while(head < tail){
+        const index =
+          queue[head++];
+
+        if(!isBackground(index)){
+          continue;
+        }
+
+        pixels[
+          index * 4 + 3
+        ] = 0;
+
+        const x =
+          index % width;
+
+        const y =
+          Math.floor(
+            index / width
+          );
+
+        if(x > 0){
+          enqueue(index - 1);
+        }
+
+        if(x + 1 < width){
+          enqueue(index + 1);
+        }
+
+        if(y > 0){
+          enqueue(
+            index - width
+          );
+        }
+
+        if(y + 1 < height){
+          enqueue(
+            index + width
+          );
+        }
+      }
+
+      context.putImageData(
+        image,
+        0,
+        0
+      );
+
+      /*
+        Crop transparent borders so the character fills the
+        reference Vezir area instead of looking too small.
+      */
+      let minX = width;
+      let minY = height;
+      let maxX = -1;
+      let maxY = -1;
+
+      for(
+        let y=0;
+        y<height;
+        y++
+      ){
+        for(
+          let x=0;
+          x<width;
+          x++
+        ){
+          const alpha =
+            pixels[
+              (y * width + x) *
+              4 +
+              3
+            ];
+
+          if(alpha > 4){
+            minX =
+              Math.min(
+                minX,
+                x
+              );
+
+            minY =
+              Math.min(
+                minY,
+                y
+              );
+
+            maxX =
+              Math.max(
+                maxX,
+                x
+              );
+
+            maxY =
+              Math.max(
+                maxY,
+                y
+              );
+          }
+        }
+      }
+
+      if(
+        maxX >= minX &&
+        maxY >= minY
+      ){
+        const cropWidth =
+          maxX -
+          minX +
+          1;
+
+        const cropHeight =
+          maxY -
+          minY +
+          1;
+
+        const cropped =
+          document.createElement(
+            "canvas"
+          );
+
+        cropped.width =
+          cropWidth;
+
+        cropped.height =
+          cropHeight;
+
+        const croppedContext =
+          cropped.getContext(
+            "2d"
+          );
+
+        croppedContext.drawImage(
+          canvas,
+          minX,
+          minY,
+          cropWidth,
+          cropHeight,
+          0,
+          0,
+          cropWidth,
+          cropHeight
+        );
+
+        target.src =
+          cropped.toDataURL(
+            "image/png"
+          );
+
+      }else{
+        target.src =
+          canvas.toDataURL(
+            "image/png"
+          );
+      }
+
+    }catch(error){
+      console.warn(
+        "Vezir image cleanup skipped",
+        error
+      );
+    }
+  };
+
+  source.src =
+    "/static/vezir.png?v=" +
+    Date.now();
+}
+
+
+prepareVezirImage();
+
+updateClock();
+
+setInterval(
+  updateClock,
+  1000
+);
+
+refreshDashboard();
+
+setInterval(
+  refreshDashboard,
+  15000
+);
+</script>
+
+</body>
+</html>

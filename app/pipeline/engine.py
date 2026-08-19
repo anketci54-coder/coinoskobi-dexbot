@@ -940,27 +940,27 @@ class PipelineEngine:
                     f"HARD_BLOCK: {reason}"
                 )
 
-        decision = paper_admission_decision(
-            strategy,
-            unified_decision,
-            risk_gate,
-            sellability_status=(
-                sellability_result.get(
-                    "sellability"
-                )
-                or sellability_result.get(
-                    "status"
-                )
-            ),
+        sellability_data = (
+            sellability_result.get("data") or {}
+        )
+        sellable = sellability_data.get(
+            "sellable"
         )
 
-        if sellability_result.get(
-            "success"
+        if (
+            sellability_result.get("success")
+            and sellable is True
         ):
             sellability_status = (
                 "SELLABILITY_OK"
             )
-
+        elif (
+            sellability_result.get("success")
+            and sellable is False
+        ):
+            sellability_status = (
+                "SELLABILITY_FAIL"
+            )
         elif (
             strategy.get("decision")
             == "PAPER_BUY"
@@ -971,11 +971,19 @@ class PipelineEngine:
             sellability_status = (
                 "SELLABILITY_UNKNOWN"
             )
-
         else:
             sellability_status = (
                 "SELLABILITY_SKIPPED"
             )
+
+        decision = paper_admission_decision(
+            strategy,
+            unified_decision,
+            risk_gate,
+            sellability_status=(
+                sellability_status
+            ),
+        )
 
         analyzer_status[
             "sellability"

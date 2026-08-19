@@ -60,11 +60,8 @@ def make_manager(price, position=None):
 
 def test_manager_updates_open_position_with_database_contract():
     manager = make_manager(1.05)
-
     result = manager.process()
-
     trade_id, values = manager.db.updated[0]
-
     assert trade_id == 1
     assert values["current_price"] == 1.05
     assert values["highest_price"] == 1.05
@@ -76,23 +73,21 @@ def test_manager_updates_open_position_with_database_contract():
     assert result[0]["data"]["action"] == "HOLD"
 
 
-def test_manager_does_not_reintroduce_legacy_static_take_profit_without_hybrid_evidence():
+def test_manager_runs_adaptive_protection_without_optional_hybrid_evidence():
     manager = make_manager(1.30)
-
     result = manager.process()
-
     assert manager.db.closed == []
     assert result[0]["data"]["action"] == "HOLD"
-    assert result[0]["data"]["reason"] == "WAIT_DYNAMIC_EVIDENCE"
+    assert result[0]["data"]["reason"] == "NO_EXIT_CONDITION"
+    assert result[0]["data"]["hybrid_exit"]["bound"] is True
+    _, values = manager.db.updated[0]
+    assert values["sl_price"] > 0.885
 
 
 def test_manager_closes_at_persisted_stop_without_hybrid_evidence():
     manager = make_manager(0.88)
-
     result = manager.process()
-
     trade_id, values = manager.db.closed[0]
-
     assert trade_id == 1
     assert values["exit_price"] == 0.88
     assert values["close_reason"] == "PERSISTED_STOP_LOSS"
@@ -104,12 +99,9 @@ def test_manager_closes_at_persisted_stop_without_hybrid_evidence():
 def test_manager_persisted_stop_dominates_after_large_drop():
     position = make_position()
     position["highest_price"] = 1.30
-
     manager = make_manager(0.50, position=position)
     result = manager.process()
-
     trade_id, values = manager.db.closed[0]
-
     assert trade_id == 1
     assert values["exit_price"] == 0.50
     assert values["roi"] <= -0.10
@@ -120,10 +112,8 @@ def test_manager_persisted_stop_dominates_after_large_drop():
 def test_manager_catastrophic_drop_cannot_remain_open_when_persisted_stop_exists():
     position = make_position()
     position["highest_price"] = 1.40
-
     manager = make_manager(0.0001, position=position)
     result = manager.process()
-
     assert len(manager.db.closed) == 1
     trade_id, values = manager.db.closed[0]
     assert trade_id == 1
@@ -132,13 +122,12 @@ def test_manager_catastrophic_drop_cannot_remain_open_when_persisted_stop_exists
     assert result[0]["data"]["action"] == "CLOSE"
 
 
-def test_missing_persisted_stop_fails_safe_to_hold_without_hybrid_evidence():
+def test_missing_persisted_stop_uses_controller_without_optional_evidence():
     position = make_position()
     position["sl_price"] = None
-
     manager = make_manager(0.50, position=position)
     result = manager.process()
-
     assert manager.db.closed == []
     assert result[0]["data"]["action"] == "HOLD"
-    assert result[0]["data"]["reason"] == "WAIT_DYNAMIC_EVIDENCE"
+    assert result[0]["data"]["reason"] == "NO_EXIT_CONDITION"
+    assert result[0]["data"]["hybrid_exit"]["bound"] is True

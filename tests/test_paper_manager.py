@@ -33,6 +33,7 @@ def make_position():
         "current_price": 1.0,
         "highest_price": 1.0,
         "lowest_price": 1.0,
+        "sl_price": 0.885,
         "amount_bnb": 0.01,
         "token_amount": 0.01,
         "gas_buy": 0.0,
@@ -47,10 +48,13 @@ def make_position():
     }
 
 
-def make_manager(price):
+def make_manager(price, position=None):
     manager = PaperManager.__new__(PaperManager)
-    manager.db = FakeDB([make_position()])
+    manager.db = FakeDB([position or make_position()])
     manager.price = FakePrice(price)
+    manager.learning_feed = None
+    manager.hybrid_exit_evidence = None
+    manager._learning_replay_after_id = 0
     return manager
 
 
@@ -72,51 +76,36 @@ def test_manager_updates_open_position_with_database_contract():
     assert result[0]["data"]["action"] == "HOLD"
 
 
-def test_manager_closes_take_profit_with_database_contract():
+def test_manager_does_not_reintroduce_legacy_static_take_profit_without_hybrid_evidence():
     manager = make_manager(1.30)
 
     result = manager.process()
 
-    trade_id, values = manager.db.closed[0]
-
-    assert trade_id == 1
-    assert values["current_price"] == 1.30
-    assert values["exit_price"] == 1.30
-    assert values["highest_price"] == 1.30
-    assert values["lowest_price"] == 1.0
-    assert values["close_reason"] == "TAKE_PROFIT"
-    assert values["gross_pnl"] > 0
-    assert values["net_pnl"] > 0
-    assert values["roi"] >= 0.20
-    assert values["closed_at"]
-    assert result[0]["data"]["action"] == "CLOSE"
-    assert result[0]["data"]["reason"] == "TAKE_PROFIT"
+    assert manager.db.closed == []
+    assert result[0]["data"]["action"] == "HOLD"
+    assert result[0]["data"]["reason"] == "WAIT_DYNAMIC_EVIDENCE"
 
 
-def test_manager_closes_stop_loss_with_database_contract():
-    manager = make_manager(0.80)
+def test_manager_closes_at_persisted_stop_without_hybrid_evidence():
+    manager = make_manager(0.88)
 
     result = manager.process()
 
     trade_id, values = manager.db.closed[0]
 
     assert trade_id == 1
-    assert values["exit_price"] == 0.80
-    assert values["close_reason"] == "STOP_LOSS"
+    assert values["exit_price"] == 0.88
+    assert values["close_reason"] == "PERSISTED_STOP_LOSS"
     assert values["roi"] <= -0.10
-    assert result[0]["data"]["reason"] == "STOP_LOSS"
+    assert result[0]["data"]["action"] == "CLOSE"
+    assert result[0]["data"]["reason"] == "PERSISTED_STOP_LOSS"
 
 
-def test_manager_hard_stop_loss_dominates_trailing_after_large_drop():
+def test_manager_persisted_stop_dominates_after_large_drop():
     position = make_position()
     position["highest_price"] = 1.30
 
-    manager = PaperManager.__new__(PaperManager)
-    manager.db = FakeDB([position])
-    manager.price = FakePrice(0.50)
-    manager.learning_feed = None
-    manager._learning_replay_after_id = 0
-
+    manager = make_manager(0.50, position=position)
     result = manager.process()
 
     trade_id, values = manager.db.closed[0]
@@ -124,5 +113,32 @@ def test_manager_hard_stop_loss_dominates_trailing_after_large_drop():
     assert trade_id == 1
     assert values["exit_price"] == 0.50
     assert values["roi"] <= -0.10
-    assert values["close_reason"] == "STOP_LOSS"
-    assert result[0]["data"]["reason"] == "STOP_LOSS"
+    assert values["close_reason"] == "PERSISTED_STOP_LOSS"
+    assert result[0]["data"]["reason"] == "PERSISTED_STOP_LOSS"
+
+
+def test_manager_catastrophic_drop_cannot_remain_open_when_persisted_stop_exists():
+    position = make_position()
+    position["highest_price"] = 1.40
+
+    manager = make_manager(0.0001, position=position)
+    result = manager.process()
+
+    assert len(manager.db.closed) == 1
+    trade_id, values = manager.db.closed[0]
+    assert trade_id == 1
+    assert values["close_reason"] == "PERSISTED_STOP_LOSS"
+    assert result[0]["data"]["status"] == "CLOSED"
+    assert result[0]["data"]["action"] == "CLOSE"
+
+
+def test_missing_persisted_stop_fails_safe_to_hold_without_hybrid_evidence():
+    position = make_position()
+    position["sl_price"] = None
+
+    manager = make_manager(0.50, position=position)
+    result = manager.process()
+
+    assert manager.db.closed == []
+    assert result[0]["data"]["action"] == "HOLD"
+    assert result[0]["data"]["reason"] == "WAIT_DYNAMIC_EVIDENCE"

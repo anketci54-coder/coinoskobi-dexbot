@@ -17,9 +17,15 @@ from app.config.strategy import (
 _cache = AnalyzerCache()
 
 
-def _unknown(error):
+def _unknown(
+    error,
+    *,
+    status_code=None,
+):
     return {
         "success": False,
+        "provider_success": False,
+        "provider_status_code": status_code,
         "source": "sellability",
         "error": str(error),
         "data": {
@@ -59,15 +65,6 @@ def _parse_payload(payload):
         )
     )
 
-    # Strict semantics:
-    #
-    # Honeypot TRUE is explicit evidence.
-    #
-    # Sellable TRUE requires:
-    # - successful simulation
-    # - explicit non-honeypot result
-    #
-    # Anything else stays UNKNOWN.
     if is_honeypot is True:
         sellable = False
 
@@ -134,10 +131,11 @@ def _parse_payload(payload):
     }
 
 
-def analyze(
+def _request_once(
     address,
     *,
     pair=None,
+    simulate_liquidity=False,
 ):
     try:
         token = Web3.to_checksum_address(
@@ -166,6 +164,11 @@ def analyze(
         except Exception:
             pair = None
 
+    if simulate_liquidity:
+        cache_key = (
+            f"{cache_key}:simulate_liquidity"
+        )
+
     try:
         cached = _cache.get(
             "sellability",
@@ -179,7 +182,26 @@ def analyze(
 
     if cached is not None:
         try:
-            return json.loads(cached)
+            cached_result = json.loads(
+                cached
+            )
+
+            if (
+                cached_result.get(
+                    "provider_success"
+                )
+                is True
+                or (
+                    "provider_success"
+                    not in cached_result
+                    and cached_result.get(
+                        "success"
+                    )
+                    is True
+                )
+            ):
+                return cached_result
+
         except Exception:
             pass
 
@@ -191,6 +213,11 @@ def analyze(
     if pair:
         params["pair"] = pair
 
+    if simulate_liquidity:
+        params[
+            "simulateLiquidity"
+        ] = "true"
+
     try:
         response = requests.get(
             HONEYPOT_API_URL,
@@ -200,21 +227,40 @@ def analyze(
             ),
         )
 
+        status_code = getattr(
+            response,
+            "status_code",
+            None,
+        )
+
         response.raise_for_status()
 
-        payload = response.json()
+        data = _parse_payload(
+            response.json()
+        )
 
     except Exception as exc:
-        # Provider/network failure is UNKNOWN.
-        # Never classify it as a honeypot.
-        return _unknown(exc)
+        response = getattr(
+            exc,
+            "response",
+            None,
+        )
 
-    data = _parse_payload(
-        payload
-    )
+        status_code = getattr(
+            response,
+            "status_code",
+            None,
+        )
+
+        return _unknown(
+            exc,
+            status_code=status_code,
+        )
 
     result = {
         "success": True,
+        "provider_success": True,
+        "provider_status_code": status_code,
         "source": "sellability",
         "error": None,
         "data": data,
@@ -230,3 +276,133 @@ def analyze(
         pass
 
     return result
+
+
+def _provider_404(result):
+    if not isinstance(
+        result,
+        dict,
+    ):
+        return False
+
+    if (
+        result.get(
+            "provider_status_code"
+        )
+        == 404
+    ):
+        return True
+
+    return (
+        "404"
+        in str(
+            result.get("error")
+            or ""
+        )
+    )
+
+
+def _with_fallback_metadata(
+    result,
+    *,
+    mode,
+    pair_error=None,
+    token_error=None,
+):
+    if not isinstance(
+        result,
+        dict,
+    ):
+        return result
+
+    result = dict(result)
+
+    data = dict(
+        result.get("data")
+        or {}
+    )
+
+    data[
+        "provider_fallback_mode"
+    ] = mode
+
+    if pair_error:
+        data[
+            "provider_pair_error"
+        ] = str(pair_error)
+
+    if token_error:
+        data[
+            "provider_token_error"
+        ] = str(token_error)
+
+    result["data"] = data
+
+    return result
+
+
+def analyze(
+    address,
+    *,
+    pair=None,
+):
+    """Return provider-backed sellability evidence.
+
+    Provider failures remain UNKNOWN. Pair-specific HTTP 404 is retried once
+    token-only; a second HTTP 404 is retried with simulateLiquidity=true.
+    No failure path is converted into verified sellability.
+    """
+
+    first = _request_once(
+        address,
+        pair=pair,
+    )
+
+    if first.get("success") is True:
+        return first
+
+    if (
+        not pair
+        or not _provider_404(
+            first
+        )
+    ):
+        return first
+
+    pair_error = first.get("error")
+
+    token_only = _request_once(
+        address,
+        pair=None,
+    )
+
+    if token_only.get("success") is True:
+        return _with_fallback_metadata(
+            token_only,
+            mode="TOKEN_ONLY",
+            pair_error=pair_error,
+        )
+
+    if not _provider_404(
+        token_only
+    ):
+        return _with_fallback_metadata(
+            token_only,
+            mode="TOKEN_ONLY_FAILED",
+            pair_error=pair_error,
+        )
+
+    simulated = _request_once(
+        address,
+        pair=None,
+        simulate_liquidity=True,
+    )
+
+    return _with_fallback_metadata(
+        simulated,
+        mode="SIMULATE_LIQUIDITY",
+        pair_error=pair_error,
+        token_error=(
+            token_only.get("error")
+        ),
+    )

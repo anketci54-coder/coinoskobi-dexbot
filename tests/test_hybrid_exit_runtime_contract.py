@@ -73,15 +73,14 @@ def test_persisted_floor_dominates_healthy_intelligence():
     assert decision.protection_price == 0.90
 
 
-def test_stale_intelligence_does_not_create_fake_deterioration():
-    adapter, decision = build(current=1.02, highest=1.02, freshness="STALE", liquidity="CRITICAL", momentum=-1.0, acceleration=-1.0, trend="BREAK", pressure="HIGH", impact="CRITICAL")
-    assert adapter["evidence_ready"] is False
-    assert adapter["liquidity_health"] == 0.50
-    assert adapter["flow_momentum"] == 0.0
-    assert adapter["flow_acceleration"] == 0.0
-    assert adapter["trend_health"] == 0.50
-    assert adapter["exit_pressure"] == 0.0
-    assert decision.reason != "SEVERE_MARKET_DETERIORATION"
+
+def test_stale_intelligence_cannot_create_exit():
+    a,d = build(current=1.02,highest=1.02,freshness="STALE",liquidity="CRITICAL",momentum=-1.0,acceleration=-1.0,trend="BREAK",pressure="HIGH",impact="CRITICAL")
+    assert a["evidence_ready"] is False
+    assert a["liquidity_health"] is None
+    assert d.exit_now is False
+    assert d.reason == "MATHEMATICAL_FLOOR_RUNNER"
+
 
 
 def test_runtime_adapter_has_no_execution_authority():

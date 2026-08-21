@@ -73,15 +73,17 @@ def test_manager_updates_open_position_with_database_contract():
     assert result[0]["data"]["action"] == "HOLD"
 
 
-def test_manager_runs_adaptive_protection_without_optional_hybrid_evidence():
+
+def test_manager_does_not_invent_protection_without_optional_hybrid_evidence():
     manager = make_manager(1.30)
     result = manager.process()
     assert manager.db.closed == []
     assert result[0]["data"]["action"] == "HOLD"
-    assert result[0]["data"]["reason"] == "NO_EXIT_CONDITION"
+    assert result[0]["data"]["reason"] == "MATHEMATICAL_FLOOR_RUNNER"
     assert result[0]["data"]["hybrid_exit"]["bound"] is True
     _, values = manager.db.updated[0]
-    assert values["sl_price"] > 0.885
+    assert values["sl_price"] == 0.885
+
 
 
 def test_manager_closes_at_persisted_stop_without_hybrid_evidence():

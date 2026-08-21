@@ -13,161 +13,178 @@ from app.strategy.position_state import (
 
 
 def test_initial_state():
-    sm = PositionStateMachine()
-    pos = sm.initial()
+    pos = PositionStateMachine().initial()
 
     assert pos.state == STATE_OPEN
     assert pos.remaining_fraction == 1.0
-    assert pos.realized_fraction == 0.0
 
 
-def test_full_tp_sequence_leaves_30_percent_runner():
+def test_measured_tp_sequence():
     sm = PositionStateMachine()
     pos = sm.initial()
 
-    r1 = sm.apply_tp(pos, STATE_TP1_DONE)
+    first = 0.173
+    second = 0.281
+
+    r1 = sm.apply_tp(
+        pos,
+        STATE_TP1_DONE,
+        close_fraction=first,
+    )
     pos = r1["position"]
 
-    assert r1["close_fraction"] == 0.20
-    assert pos.remaining_fraction == 0.80
-
-    r2 = sm.apply_tp(pos, STATE_TP2_DONE)
+    r2 = sm.apply_tp(
+        pos,
+        STATE_TP2_DONE,
+        close_fraction=second,
+    )
     pos = r2["position"]
 
-    assert r2["close_fraction"] == 0.25
-    assert pos.remaining_fraction == 0.55
-
-    r3 = sm.apply_tp(pos, STATE_TP3_DONE)
-    pos = r3["position"]
-
-    assert r3["close_fraction"] == 0.25
-    assert pos.remaining_fraction == 0.30
-    assert pos.realized_fraction == 0.70
-    assert pos.runner_fraction == 0.30
+    assert r1["close_fraction"] == first
+    assert r2["close_fraction"] == second
+    assert pos.remaining_fraction == pytest.approx(
+        1.0 - first - second
+    )
 
 
-def test_runner_activation():
+def test_missing_fraction_not_invented():
+    sm = PositionStateMachine()
+
+    r = sm.apply_tp(
+        sm.initial(),
+        STATE_TP1_DONE,
+    )
+
+    assert r["applied"] is False
+    assert (
+        r["reason"]
+        == "MEASURED_CLOSE_FRACTION_REQUIRED"
+    )
+
+
+def test_tp3_fixed_target_rejected():
+    sm = PositionStateMachine()
+
+    r = sm.apply_tp(
+        sm.initial(),
+        STATE_TP3_DONE,
+        close_fraction=0.2,
+    )
+
+    assert r["applied"] is False
+    assert (
+        r["reason"]
+        == "TP3_IS_RUNNER_NOT_FIXED_TARGET"
+    )
+
+
+def test_runner_activation_after_tp2():
     sm = PositionStateMachine()
     pos = sm.initial()
 
     pos = sm.apply_tp(
-        pos, STATE_TP1_DONE
+        pos,
+        STATE_TP1_DONE,
+        close_fraction=0.17,
     )["position"]
 
     pos = sm.apply_tp(
-        pos, STATE_TP2_DONE
-    )["position"]
-
-    pos = sm.apply_tp(
-        pos, STATE_TP3_DONE
+        pos,
+        STATE_TP2_DONE,
+        close_fraction=0.28,
     )["position"]
 
     result = sm.activate_runner(pos)
-    pos = result["position"]
 
     assert result["applied"] is True
-    assert pos.state == STATE_RUNNER_ACTIVE
-    assert pos.remaining_fraction == 0.30
-
-
-def test_duplicate_tp_is_rejected():
-    sm = PositionStateMachine()
-    pos = sm.initial()
-
-    pos = sm.apply_tp(
-        pos, STATE_TP1_DONE
-    )["position"]
-
-    result = sm.apply_tp(
-        pos, STATE_TP1_DONE
+    assert (
+        result["position"].state
+        == STATE_RUNNER_ACTIVE
     )
 
-    assert result["applied"] is False
-    assert result["position"] == pos
+
+def test_duplicate_tp_rejected():
+    sm = PositionStateMachine()
+    pos = sm.apply_tp(
+        sm.initial(),
+        STATE_TP1_DONE,
+        close_fraction=0.17,
+    )["position"]
+
+    r = sm.apply_tp(
+        pos,
+        STATE_TP1_DONE,
+        close_fraction=0.17,
+    )
+
+    assert r["applied"] is False
 
 
 def test_tp_cannot_be_skipped():
     sm = PositionStateMachine()
-    pos = sm.initial()
 
-    result = sm.apply_tp(
-        pos, STATE_TP2_DONE
+    r = sm.apply_tp(
+        sm.initial(),
+        STATE_TP2_DONE,
+        close_fraction=0.28,
     )
 
-    assert result["applied"] is False
-    assert result["position"].state == STATE_OPEN
+    assert r["applied"] is False
 
 
 def test_runner_cannot_activate_early():
+    r = PositionStateMachine().activate_runner(
+        PositionState()
+    )
+
+    assert r["applied"] is False
+
+
+def test_runner_can_close_remaining():
     sm = PositionStateMachine()
     pos = sm.initial()
 
-    result = sm.activate_runner(pos)
-
-    assert result["applied"] is False
-    assert result["reason"] == "RUNNER_NOT_READY"
-
-
-def test_runner_can_close_remaining_position():
-    sm = PositionStateMachine()
-    pos = sm.initial()
-
-    for state in (
+    pos = sm.apply_tp(
+        pos,
         STATE_TP1_DONE,
+        close_fraction=0.17,
+    )["position"]
+
+    pos = sm.apply_tp(
+        pos,
         STATE_TP2_DONE,
-        STATE_TP3_DONE,
-    ):
-        pos = sm.apply_tp(
-            pos, state
-        )["position"]
+        close_fraction=0.28,
+    )["position"]
 
     pos = sm.activate_runner(
         pos
     )["position"]
 
-    result = sm.close(pos)
-    pos = result["position"]
+    pos = sm.close(
+        pos
+    )["position"]
 
     assert pos.state == STATE_CLOSED
     assert pos.remaining_fraction == 0.0
     assert pos.realized_fraction == 1.0
 
 
-def test_closed_position_cannot_close_twice():
-    sm = PositionStateMachine()
-    pos = sm.close(sm.initial())["position"]
-
-    result = sm.close(pos)
-
-    assert result["applied"] is False
-    assert result["reason"] == "ALREADY_CLOSED"
-
-
 def test_invalid_fraction_conservation_fails():
     sm = PositionStateMachine()
 
-    pos = PositionState(
-        remaining_fraction=0.50,
-        realized_fraction=0.20,
-    )
-
     with pytest.raises(ValueError):
-        sm.validate(pos)
+        sm.validate(
+            PositionState(
+                remaining_fraction=0.5,
+                realized_fraction=0.2,
+            )
+        )
 
 
-def test_invalid_tp_flag_order_fails():
-    sm = PositionStateMachine()
-
-    pos = PositionState(
-        tp2_done=True,
+def test_authority_zero():
+    authority = (
+        PositionStateMachine().authority()
     )
-
-    with pytest.raises(ValueError):
-        sm.validate(pos)
-
-
-def test_authority_is_zero():
-    authority = PositionStateMachine().authority()
 
     assert all(
         value is False

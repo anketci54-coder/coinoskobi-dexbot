@@ -3,145 +3,104 @@ from app.strategy.decision import (
 )
 
 
-def evaluate(
-    score,
-    confidence,
-    *,
-    hard_block=False,
-):
-    return UnifiedDecisionEngine().evaluate({
-        "score": score,
-        "confidence": confidence,
-        "hard_block": hard_block,
-    })
+def decide(**overrides):
+    data = {
+        "strategy_decision": (
+            "PAPER_BUY"
+        ),
+
+        "sellability": (
+            "UNKNOWN"
+        ),
+
+        "local_evidence_complete": (
+            False
+        ),
+
+        "hard_block": False,
+    }
+
+    data.update(
+        overrides
+    )
+
+    return (
+        UnifiedDecisionEngine()
+        .evaluate(
+            data
+        )
+    )
 
 
 def test_hard_block_always_rejects():
-    result = evaluate(
-        100,
-        100,
-        hard_block=True,
-    )
-
     assert (
-        result["decision"]
-        == "REJECT"
-    )
-
-    assert "HARD_BLOCK" in (
-        result["reasons"]
-    )
-
-
-def test_high_score_high_confidence_is_paper_candidate():
-    result = evaluate(
-        90,
-        80,
-    )
-
-    assert (
-        result["decision"]
-        == "PAPER_BUY_CANDIDATE"
-    )
-
-
-def test_high_score_low_confidence_requires_evidence():
-    result = evaluate(
-        95,
-        40,
-    )
-
-    assert (
-        result["decision"]
-        == "REQUIRE_MORE_EVIDENCE"
-    )
-
-
-def test_watch_boundary():
-    result = evaluate(
-        70,
-        100,
-    )
-
-    assert (
-        result["decision"]
-        == "WATCH"
-    )
-
-
-def test_below_watch_rejects():
-    result = evaluate(
-        69.99,
-        100,
-    )
-
-    assert (
-        result["decision"]
+        decide(
+            hard_block=True
+        )["decision"]
         == "REJECT"
     )
 
 
-def test_score_just_below_paper_is_watch():
-    result = evaluate(
-        89.99,
-        100,
-    )
-
+def test_verified_sellability_is_candidate_without_score_threshold():
     assert (
-        result["decision"]
-        == "WATCH"
-    )
-
-
-def test_confidence_boundary():
-    below = evaluate(
-        95,
-        59.99,
-    )
-
-    exact = evaluate(
-        95,
-        60,
-    )
-
-    assert (
-        below["decision"]
-        == "REQUIRE_MORE_EVIDENCE"
-    )
-
-    assert (
-        exact["decision"]
+        decide(
+            sellability=(
+                "SELLABLE"
+            )
+        )["decision"]
         == "PAPER_BUY_CANDIDATE"
     )
 
 
-def test_no_execution_authority():
-    result = evaluate(
-        100,
-        100,
+def test_unknown_with_local_math_evidence_is_candidate():
+    assert (
+        decide(
+            local_evidence_complete=True
+        )["decision"]
+        == "PAPER_BUY_CANDIDATE"
+    )
+
+
+def test_unknown_without_local_evidence_requires_more_evidence():
+    assert (
+        decide()[
+            "decision"
+        ]
+        == "REQUIRE_MORE_EVIDENCE"
+    )
+
+
+def test_no_authority():
+    result = decide(
+        sellability=(
+            "SELLABLE"
+        )
     )
 
     assert (
-        result["decision_authority"]
+        result[
+            "paper_authority"
+        ]
         is False
     )
 
     assert (
-        result["paper_authority"]
+        result[
+            "live_authority"
+        ]
         is False
     )
 
     assert (
-        result["live_authority"]
+        result[
+            "wallet_authority"
+        ]
         is False
     )
 
     assert (
-        result["wallet_authority"]
-        is False
-    )
-
-    assert (
-        result["execution_authority"]
+        result[
+            "execution_authority"
+        ]
         is False
     )

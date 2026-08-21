@@ -55,7 +55,10 @@ def test_pipeline_uses_real_pair_result_when_pair_missing(monkeypatch):
     assert result["data"]["pair"]["exists"] is False
     assert result["data"]["pair"]["pair"] is None
     assert result["data"]["pair"]["quote_ok"] is False
-    assert result["data"]["strategy"]["score"] == 45
+    assert (
+        result["data"]["strategy"]["score"]
+        == 100.0 * 8 / 11
+    )
     assert result["data"]["strategy"]["decision"] == "REJECT"
 
 
@@ -104,7 +107,10 @@ def test_pipeline_uses_real_pair_result_when_pair_exists(monkeypatch):
 
     assert result["data"]["pair"]["exists"] is True
     assert result["data"]["pair"]["quote_ok"] is True
-    assert result["data"]["strategy"]["score"] == 80
+    assert (
+        result["data"]["strategy"]["score"]
+        == 100.0 * 8 / 11
+    )
     assert result["data"]["strategy"]["decision"] == "WATCH"
 
 

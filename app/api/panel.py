@@ -20,6 +20,10 @@ INDEX_FILE = STATIC_DIR / "index.html"
 
 PAPER_STARTING_CAPITAL_USDT = 10_000.0
 
+# Active dashboard epoch. Historical trades remain in DB for empirical memory/calibration.
+PANEL_ACTIVE_PERIOD_MIN_TRADE_ID = 16
+PANEL_ACTIVE_PERIOD_LABEL = "PAPER_ACTIVE_ID_16_PLUS"
+
 
 app = FastAPI(
     title="Coinoskobi İşlem Merkezi",
@@ -286,9 +290,31 @@ def extract_entry_evidence(
     }
 
 
-def paper_rows(limit: int = 100) -> list[dict[str, Any]]:
+
+def paper_rows(
+    limit: int = 100,
+    *,
+    active_only: bool = False,
+) -> list[dict[str, Any]]:
+    where_clause = (
+        "WHERE paper_account_version = "
+        "'PAPER_10K_V2'"
+    )
+
+    params: list[Any] = []
+
+    if active_only:
+        where_clause += (
+            " AND id >= ?"
+        )
+        params.append(
+            PANEL_ACTIVE_PERIOD_MIN_TRADE_ID
+        )
+
+    params.append(limit)
+
     rows = query(
-        """
+        f"""
         SELECT
             id,
             created_at,
@@ -329,11 +355,11 @@ def paper_rows(limit: int = 100) -> list[dict[str, Any]]:
             gross_pnl_usdt,
             net_pnl_usdt
         FROM paper_trades
-        WHERE paper_account_version = 'PAPER_10K_V2'
+        {where_clause}
         ORDER BY id DESC
         LIMIT ?
         """,
-        (limit,),
+        tuple(params),
     )
 
     result: list[dict[str, Any]] = []
@@ -341,11 +367,21 @@ def paper_rows(limit: int = 100) -> list[dict[str, Any]]:
     for row in rows:
         item = dict(row)
 
-        roi = number(item.get("roi"))
-        item["roi_pct"] = roi * 100.0
+        roi = number(
+            item.get("roi")
+        )
 
-        item["entry_evidence"] = extract_entry_evidence(
-            item.pop("opening_context_json", None)
+        item["roi_pct"] = (
+            roi * 100.0
+        )
+
+        item["entry_evidence"] = (
+            extract_entry_evidence(
+                item.pop(
+                    "opening_context_json",
+                    None,
+                )
+            )
         )
 
         result.append(item)
@@ -353,20 +389,44 @@ def paper_rows(limit: int = 100) -> list[dict[str, Any]]:
     return result
 
 
-def performance_payload() -> dict[str, Any]:
+
+
+def performance_payload(
+    *,
+    active_only: bool = False,
+) -> dict[str, Any]:
+    active_filter = ""
+    params: tuple[Any, ...] = ()
+
+    if active_only:
+        active_filter = (
+            " AND id >= ?"
+        )
+        params = (
+            PANEL_ACTIVE_PERIOD_MIN_TRADE_ID,
+        )
+
     row = query_one(
-        """
+        f"""
         SELECT
             COUNT(*) AS closed,
             SUM(
                 CASE
-                WHEN COALESCE(net_pnl_usdt, net_pnl, 0) > 0
+                WHEN COALESCE(
+                    net_pnl_usdt,
+                    net_pnl,
+                    0
+                ) > 0
                 THEN 1 ELSE 0
                 END
             ) AS wins,
             SUM(
                 CASE
-                WHEN COALESCE(net_pnl_usdt, net_pnl, 0) < 0
+                WHEN COALESCE(
+                    net_pnl_usdt,
+                    net_pnl,
+                    0
+                ) < 0
                 THEN 1 ELSE 0
                 END
             ) AS losses,
@@ -384,8 +444,16 @@ def performance_payload() -> dict[str, Any]:
             COALESCE(
                 SUM(
                     CASE
-                    WHEN COALESCE(net_pnl_usdt, net_pnl, 0) > 0
-                    THEN COALESCE(net_pnl_usdt, net_pnl, 0)
+                    WHEN COALESCE(
+                        net_pnl_usdt,
+                        net_pnl,
+                        0
+                    ) > 0
+                    THEN COALESCE(
+                        net_pnl_usdt,
+                        net_pnl,
+                        0
+                    )
                     ELSE 0
                     END
                 ),
@@ -394,8 +462,18 @@ def performance_payload() -> dict[str, Any]:
             COALESCE(
                 SUM(
                     CASE
-                    WHEN COALESCE(net_pnl_usdt, net_pnl, 0) < 0
-                    THEN ABS(COALESCE(net_pnl_usdt, net_pnl, 0))
+                    WHEN COALESCE(
+                        net_pnl_usdt,
+                        net_pnl,
+                        0
+                    ) < 0
+                    THEN ABS(
+                        COALESCE(
+                            net_pnl_usdt,
+                            net_pnl,
+                            0
+                        )
+                    )
                     ELSE 0
                     END
                 ),
@@ -403,23 +481,46 @@ def performance_payload() -> dict[str, Any]:
             ) AS gross_loss
         FROM paper_trades
         WHERE paper_account_version = 'PAPER_10K_V2'
-          AND UPPER(COALESCE(status, '')) = 'CLOSED'
-        """
+          AND UPPER(
+                COALESCE(
+                    status,
+                    ''
+                )
+              ) = 'CLOSED'
+          {active_filter}
+        """,
+        params,
     )
 
-    closed = int(row.get("closed") or 0)
-    wins = int(row.get("wins") or 0)
-    losses = int(row.get("losses") or 0)
+    closed = int(
+        row.get("closed") or 0
+    )
 
-    avg_roi = row.get("avg_roi")
+    wins = int(
+        row.get("wins") or 0
+    )
+
+    losses = int(
+        row.get("losses") or 0
+    )
+
+    avg_roi = row.get(
+        "avg_roi"
+    )
+
     avg_roi_pct = (
         number(avg_roi) * 100.0
         if avg_roi is not None
         else None
     )
 
-    gross_profit = number(row.get("gross_profit"))
-    gross_loss = number(row.get("gross_loss"))
+    gross_profit = number(
+        row.get("gross_profit")
+    )
+
+    gross_loss = number(
+        row.get("gross_loss")
+    )
 
     profit_factor = (
         gross_profit / gross_loss
@@ -429,52 +530,102 @@ def performance_payload() -> dict[str, Any]:
 
     return {
         "closed": closed,
-        "wins": wins if closed else None,
-        "losses": losses if closed else None,
+        "wins": (
+            wins
+            if closed
+            else None
+        ),
+        "losses": (
+            losses
+            if closed
+            else None
+        ),
         "win_rate_pct": (
             wins / closed * 100.0
             if closed
             else None
         ),
         "avg_roi_pct": avg_roi_pct,
-        "net_total": number(row.get("realized_net")),
+        "net_total": number(
+            row.get("realized_net")
+        ),
         "gross_profit": gross_profit,
         "gross_loss": gross_loss,
         "profit_factor": profit_factor,
     }
 
 
-def performance_series() -> list[dict[str, Any]]:
+
+
+def performance_series(
+    *,
+    active_only: bool = False,
+) -> list[dict[str, Any]]:
+    active_filter = ""
+    params: tuple[Any, ...] = ()
+
+    if active_only:
+        active_filter = (
+            " AND id >= ?"
+        )
+        params = (
+            PANEL_ACTIVE_PERIOD_MIN_TRADE_ID,
+        )
+
     rows = query(
-        """
+        f"""
         SELECT
             id,
-            COALESCE(closed_at, created_at) AS timestamp,
-            COALESCE(net_pnl_usdt, net_pnl, 0) AS pnl
+            COALESCE(
+                closed_at,
+                created_at
+            ) AS timestamp,
+            COALESCE(
+                net_pnl_usdt,
+                net_pnl,
+                0
+            ) AS pnl
         FROM paper_trades
         WHERE paper_account_version = 'PAPER_10K_V2'
-          AND UPPER(COALESCE(status, '')) = 'CLOSED'
+          AND UPPER(
+                COALESCE(
+                    status,
+                    ''
+                )
+              ) = 'CLOSED'
+          {active_filter}
         ORDER BY
-            COALESCE(closed_at, created_at) ASC,
+            COALESCE(
+                closed_at,
+                created_at
+            ) ASC,
             id ASC
         LIMIT 500
-        """
+        """,
+        params,
     )
 
     cumulative = 0.0
     result = []
 
     for row in rows:
-        cumulative += number(row.get("pnl"))
+        cumulative += number(
+            row.get("pnl")
+        )
 
         result.append({
             "id": row.get("id"),
-            "timestamp": row.get("timestamp"),
-            "pnl": number(row.get("pnl")),
+            "timestamp": row.get(
+                "timestamp"
+            ),
+            "pnl": number(
+                row.get("pnl")
+            ),
             "cumulative": cumulative,
         })
 
     return result
+
 
 
 def intelligence_payload() -> dict[str, Any]:
@@ -508,6 +659,252 @@ def intelligence_payload() -> dict[str, Any]:
             "wallet_activity_bucket"
         ),
     }
+
+
+
+# PANEL_MOBILE_LIVE_BACKEND_V2
+
+
+def _runtime_number(value: Any) -> float | None:
+    if value is None:
+        return None
+
+    try:
+        return float(value)
+
+    except (TypeError, ValueError):
+        return None
+
+
+def _runtime_bool(value: Any) -> bool | None:
+    normalized = str(
+        value or ""
+    ).strip().lower()
+
+    if normalized == "true":
+        return True
+
+    if normalized == "false":
+        return False
+
+    return None
+
+
+def runtime_candidate_rows(
+    limit: int = 20,
+) -> list[dict[str, Any]]:
+    """
+    Latest scanner candidates from runtime journal.
+
+    Read-only panel projection only.
+    No trade / DB / wallet / execution authority.
+    """
+
+    try:
+        result = subprocess.run(
+            [
+                "journalctl",
+                "-u",
+                "coinoskobi-paper-runtime.service",
+                "--since",
+                "-20 minutes",
+                "-n",
+                "400",
+                "--no-pager",
+                "-o",
+                "short-iso",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=4,
+            check=False,
+        )
+
+    except Exception:
+        return []
+
+    if result.returncode != 0:
+        return []
+
+    lines = result.stdout.splitlines()
+
+    scanner_index = None
+
+    for index, line in enumerate(lines):
+        if "[JOB] scanner" in line:
+            scanner_index = index
+
+    if scanner_index is not None:
+        lines = lines[
+            scanner_index + 1:
+        ]
+
+    rows = []
+    seen = set()
+
+    for line in reversed(lines):
+
+        marker = "Candidate token="
+
+        if marker not in line:
+            continue
+
+        prefix, payload = line.split(
+            marker,
+            1,
+        )
+
+        parts = payload.split()
+
+        if not parts:
+            continue
+
+        fields = {
+            "token": parts[0],
+        }
+
+        for part in parts[1:]:
+            if "=" not in part:
+                continue
+
+            key, value = part.split(
+                "=",
+                1,
+            )
+
+            fields[key] = value
+
+        token = str(
+            fields.get("token") or ""
+        ).strip()
+
+        pool = str(
+            fields.get("pool") or ""
+        ).strip()
+
+        if not token:
+            continue
+
+        identity = (
+            token.lower(),
+            pool.lower(),
+        )
+
+        if identity in seen:
+            continue
+
+        seen.add(identity)
+
+        timestamp = None
+
+        prefix_parts = prefix.strip().split()
+
+        if prefix_parts:
+            timestamp = prefix_parts[0]
+
+        reason = fields.get("reason")
+
+        if reason in {
+            "",
+            "None",
+            "null",
+        }:
+            reason = None
+
+        rows.append({
+            "token": token,
+            "pool": pool or None,
+            "observed_at": timestamp,
+            "strategy": fields.get(
+                "strategy"
+            ),
+            "unified": fields.get(
+                "unified"
+            ),
+            "paper_action": fields.get(
+                "paper"
+            ),
+            "reason": reason,
+            "hard_block": (
+                _runtime_bool(
+                    fields.get(
+                        "hard_block"
+                    )
+                )
+            ),
+            "evidence_coverage": (
+                _runtime_number(
+                    fields.get(
+                        "evidence_coverage"
+                    )
+                )
+            ),
+            "coverage_confidence": (
+                _runtime_number(
+                    fields.get(
+                        "coverage_confidence"
+                    )
+                )
+            ),
+            "sellability": fields.get(
+                "sellability"
+            ),
+            "source": (
+                "PAPER_RUNTIME_JOURNAL"
+            ),
+            "panel_display_only": True,
+            "decision_authority": False,
+            "paper_authority": False,
+            "live_authority": False,
+            "wallet_authority": False,
+            "execution_authority": False,
+        })
+
+        if len(rows) >= max(
+            1,
+            int(limit),
+        ):
+            break
+
+    return rows
+
+
+@app.middleware("http")
+async def panel_no_cache(
+    request,
+    call_next,
+):
+    response = await call_next(
+        request
+    )
+
+    if (
+        request.url.path == "/"
+        or request.url.path.startswith(
+            "/static/"
+        )
+    ):
+        response.headers[
+            "Cache-Control"
+        ] = (
+            "no-store, no-cache, "
+            "must-revalidate, max-age=0"
+        )
+
+        response.headers[
+            "Pragma"
+        ] = "no-cache"
+
+        response.headers[
+            "Expires"
+        ] = "0"
+
+    return response
+
+
+@app.get("/api/runtime-candidates")
+def api_runtime_candidates() -> list[dict[str, Any]]:
+    return runtime_candidate_rows()
 
 
 def health_payload() -> dict[str, Any]:
@@ -635,6 +1032,59 @@ def recent_signals(
     return signals[:10]
 
 
+def status() -> dict[str, Any]:
+    rows = paper_rows()
+
+    open_count = sum(
+        1
+        for row in rows
+        if str(
+            row.get("status") or "OPEN"
+        ).upper() != "CLOSED"
+    )
+
+    closed_count = sum(
+        1
+        for row in rows
+        if str(
+            row.get("status") or ""
+        ).upper() == "CLOSED"
+    )
+
+    return {
+        "total": len(rows),
+        "new_generation": len(rows),
+        "open_positions": open_count,
+        "closed_positions": closed_count,
+    }
+
+
+def performance() -> dict[str, Any]:
+    return performance_payload()
+
+
+def exits() -> list[dict[str, Any]]:
+    return query(
+        """
+        SELECT
+            close_reason,
+            COUNT(*) AS trades,
+            AVG(roi) * 100.0 AS avg_roi_pct,
+            COALESCE(
+                SUM(net_pnl_usdt),
+                0
+            ) AS net_total
+        FROM paper_trades
+        WHERE paper_account_version = 'PAPER_10K_V2'
+          AND UPPER(
+                COALESCE(status, '')
+              ) = 'CLOSED'
+        GROUP BY close_reason
+        ORDER BY trades DESC
+        """
+    )
+
+
 @app.get("/", include_in_schema=False)
 def panel_home() -> FileResponse:
     return FileResponse(INDEX_FILE)
@@ -647,7 +1097,7 @@ def healthz() -> dict[str, Any]:
 
 @app.get("/api/status")
 def api_status() -> dict[str, Any]:
-    rows = paper_rows()
+    rows = paper_rows(active_only=True)
 
     open_count = sum(
         1
@@ -675,29 +1125,29 @@ def api_status() -> dict[str, Any]:
 
 @app.get("/api/positions")
 def api_positions() -> list[dict[str, Any]]:
-    return paper_rows()
+    return paper_rows(active_only=True)
 
 
 @app.get("/api/positions-v2")
 def api_positions_v2() -> list[dict[str, Any]]:
-    return paper_rows()
+    return paper_rows(active_only=True)
 
 
 @app.get("/api/performance")
 def api_performance() -> dict[str, Any]:
-    return performance_payload()
+    return performance_payload(active_only=True)
 
 
 @app.get("/api/performance-series")
 def api_performance_series() -> list[dict[str, Any]]:
-    return performance_series()
+    return performance_series(active_only=True)
 
 
 @app.get("/api/exits")
 def api_exits() -> list[dict[str, Any]]:
     return [
         row
-        for row in paper_rows()
+        for row in paper_rows(active_only=True)
         if str(
             row.get("status") or ""
         ).upper() == "CLOSED"
@@ -757,8 +1207,8 @@ def api_position_evidence(
 
 @app.get("/api/dashboard")
 def api_dashboard() -> dict[str, Any]:
-    rows = paper_rows()
-    performance = performance_payload()
+    rows = paper_rows(active_only=True)
+    performance = performance_payload(active_only=True)
     intelligence = intelligence_payload()
     health = health_payload()
     authority = authority_payload()
@@ -825,13 +1275,17 @@ def api_dashboard() -> dict[str, Any]:
         FROM paper_trades
         WHERE paper_account_version = 'PAPER_10K_V2'
           AND UPPER(COALESCE(status, '')) = 'CLOSED'
+          AND id >= ?
           AND SUBSTR(
                 COALESCE(closed_at, created_at),
                 1,
                 10
               ) = ?
         """,
-        (today,),
+        (
+            PANEL_ACTIVE_PERIOD_MIN_TRADE_ID,
+            today,
+        ),
     )
 
     daily_pnl = (
@@ -915,7 +1369,7 @@ def api_dashboard() -> dict[str, Any]:
         "positions": open_positions,
         "candidates": candidates,
         "exits": closed_positions[:10],
-        "series": performance_series(),
+        "series": performance_series(active_only=True),
         "performance": performance,
         "intelligence": intelligence,
         "signals": recent_signals(

@@ -13,12 +13,11 @@ from app.risk.paper_position_sizing import (
     PAPER_CAPITAL_USDT,
     calculate_paper_position_size,
 )
-from app.risk.dynamic_stop_loss import calculate_dynamic_sl
-
 from app.strategy.engine import StrategyEngine
 from app.strategy.unified_score import UnifiedScoreEngine
 from app.strategy.decision import UnifiedDecisionEngine
 from app.strategy.execution_cost import ExecutionCostEngine
+from app.strategy.mathematical_trade_plan import build_trade_plan
 
 from app.paper.database import PaperDatabase
 from app.paper.cache_price import CachePrice
@@ -63,18 +62,10 @@ from app.config.scanner import (
 )
 
 from app.config.trading import (
-    DEFAULT_AMOUNT_BNB,
     MAX_OPEN_PAPER_POSITIONS,
-    TP_PRICE_MULTIPLIER,
-    SL_PRICE_MULTIPLIER,
-    DEFAULT_GAS_BUY,
-    DEFAULT_GAS_SELL,
-    DEFAULT_SWAP_FEE,
-    DEFAULT_BUY_TAX,
-    DEFAULT_SELL_TAX,
-    DEFAULT_SLIPPAGE,
-    DEFAULT_MEV_COST,
 )
+
+from app.strategy.mathematical_trade_plan import initial_net_risk_usdt
 
 logger = logging.getLogger(__name__)
 
@@ -89,6 +80,305 @@ _mev_risk = MEVExposureAnalyzer()
 from app.learning.unified_outcome_readmodel import (
     build_unified_outcome_readmodel,
 )
+
+
+
+# CANONICAL_RUNTIME_MATH_EVIDENCE
+#
+# Mathematical paper admission must use measured runtime evidence.
+# Missing evidence stays UNKNOWN; no gate is relaxed and no value is
+# fabricated. Price history and liquidity persistence below are built
+# only from observations actually seen by this runtime.
+
+_RUNTIME_PRICE_HISTORY = {}
+_RUNTIME_QUOTE_RESERVE_HISTORY = {}
+
+
+def _runtime_positive_number(value):
+    import math
+
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+
+    if not math.isfinite(number) or number <= 0:
+        return None
+
+    return number
+
+
+def _runtime_walk_evidence(value):
+    if isinstance(value, dict):
+        yield value
+
+        for nested in value.values():
+            yield from _runtime_walk_evidence(nested)
+
+    elif isinstance(value, (list, tuple)):
+        for nested in value:
+            yield from _runtime_walk_evidence(nested)
+
+
+def _runtime_find_number(sources, keys):
+    wanted = {
+        str(key).lower()
+        for key in keys
+    }
+
+    for source in sources:
+        for mapping in _runtime_walk_evidence(source):
+            for key, value in mapping.items():
+                if str(key).lower() not in wanted:
+                    continue
+
+                number = _runtime_positive_number(value)
+
+                if number is not None:
+                    return number, str(key)
+
+    return None, None
+
+
+def _runtime_fraction(value):
+    number = _runtime_positive_number(value)
+
+    if number is None:
+        return None
+
+    if number > 1.0:
+        if number <= 100.0:
+            number = number / 100.0
+        else:
+            return None
+
+    return min(1.0, number)
+
+
+def _runtime_find_fraction(sources):
+    direct_keys = {
+        "lp_protected_fraction",
+        "lp_locked_fraction",
+        "lp_burned_fraction",
+        "locked_lp_fraction",
+        "burned_lp_fraction",
+        "liquidity_locked_fraction",
+    }
+
+    pct_keys = {
+        "lp_locked_pct",
+        "lp_burned_pct",
+        "locked_lp_pct",
+        "burned_lp_pct",
+        "liquidity_locked_pct",
+        "lp_locked_percentage",
+        "lp_burned_percentage",
+    }
+
+    fractions = []
+
+    for source in sources:
+        for mapping in _runtime_walk_evidence(source):
+            for key, value in mapping.items():
+                normalized = str(key).lower()
+
+                if normalized in direct_keys:
+                    fraction = _runtime_fraction(value)
+
+                    if fraction is not None:
+                        fractions.append(
+                            (fraction, str(key))
+                        )
+
+                elif normalized in pct_keys:
+                    number = _runtime_positive_number(value)
+
+                    if number is not None and number <= 100.0:
+                        fractions.append(
+                            (
+                                min(1.0, number / 100.0),
+                                str(key),
+                            )
+                        )
+
+    if not fractions:
+        return None, None
+
+    # Multiple independent evidence fields can use different names.
+    # We do not add them because overlap may be unknown; taking the
+    # strongest individually verified fraction avoids double counting.
+    return max(
+        fractions,
+        key=lambda item: item[0],
+    )
+
+
+def _runtime_math_evidence(
+    *,
+    token_address,
+    price,
+    upstream_price_series,
+    exit_evidence,
+    lp_evidence,
+    market_context,
+    sellability_data,
+):
+    token_key = str(
+        token_address or ""
+    ).lower()
+
+    current_price = _runtime_positive_number(price)
+
+    history = _RUNTIME_PRICE_HISTORY.setdefault(
+        token_key,
+        [],
+    )
+
+    # Seed once from a real upstream series when one exists.
+    if not history:
+        for item in upstream_price_series or []:
+            observed = _runtime_positive_number(item)
+
+            if observed is not None:
+                history.append(observed)
+
+    # Every runtime cycle is an actual observation. Equal prices are
+    # retained because a zero return is still a measured return.
+    if current_price is not None:
+        history.append(current_price)
+
+    if len(history) > 64:
+        del history[:-64]
+
+    if len(_RUNTIME_PRICE_HISTORY) > 2048:
+        oldest_key = next(iter(_RUNTIME_PRICE_HISTORY))
+
+        if oldest_key != token_key:
+            _RUNTIME_PRICE_HISTORY.pop(
+                oldest_key,
+                None,
+            )
+            _RUNTIME_QUOTE_RESERVE_HISTORY.pop(
+                oldest_key,
+                None,
+            )
+
+    sources = (
+        exit_evidence or {},
+        lp_evidence or {},
+        market_context or {},
+        sellability_data or {},
+    )
+
+    quote_reserve, quote_source = _runtime_find_number(
+        sources,
+        {
+            "quote_reserve_usd",
+            "quote_reserve_value_usd",
+            "reserve_quote_usd",
+            "quote_liquidity_usd",
+            "quote_side_usd",
+        },
+    )
+
+    # Gecko/AMM normalized data commonly exposes total two-asset
+    # pool reserve in USD. When a concrete quote token and pool are
+    # known, the pool spot-price identity makes either side one half
+    # of total reserve value for a constant-product pair.
+    if quote_reserve is None:
+        total_reserve, total_source = _runtime_find_number(
+            sources,
+            {
+                "reserve_in_usd",
+                "total_reserve_usd",
+                "total_liquidity_usd",
+                "pool_liquidity_usd",
+                "liquidity_usd",
+            },
+        )
+
+        quote_token = (
+            (market_context or {}).get(
+                "candidate_quote_token"
+            )
+        )
+
+        candidate_pool = (
+            (market_context or {}).get(
+                "candidate_pool"
+            )
+        )
+
+        if (
+            total_reserve is not None
+            and quote_token
+            and candidate_pool
+        ):
+            quote_reserve = (
+                total_reserve / 2.0
+            )
+            quote_source = (
+                f"{total_source}:TWO_ASSET_POOL_HALF"
+            )
+
+    protected, protected_source = (
+        _runtime_find_fraction(sources)
+    )
+
+    if quote_reserve is not None:
+        reserve_history = (
+            _RUNTIME_QUOTE_RESERVE_HISTORY.setdefault(
+                token_key,
+                [],
+            )
+        )
+
+        reserve_history.append(
+            quote_reserve
+        )
+
+        if len(reserve_history) > 64:
+            del reserve_history[:-64]
+
+        # If no explicit lock/burn evidence exists, two or more real
+        # reserve observations establish an empirical persistent
+        # liquidity floor. min/max is conservative and contains no
+        # fixed percentage threshold.
+        if (
+            protected is None
+            and len(reserve_history) >= 2
+        ):
+            observed_min = min(
+                reserve_history
+            )
+            observed_max = max(
+                reserve_history
+            )
+
+            if observed_max > 0:
+                protected = min(
+                    1.0,
+                    max(
+                        0.0,
+                        observed_min
+                        / observed_max,
+                    ),
+                )
+
+                if protected > 0:
+                    protected_source = (
+                        "OBSERVED_RESERVE_PERSISTENCE"
+                    )
+                else:
+                    protected = None
+
+    return {
+        "price_series": list(history),
+        "quote_reserve_usd": quote_reserve,
+        "quote_reserve_source": quote_source,
+        "lp_protected_fraction": protected,
+        "lp_protection_source": protected_source,
+    }
 
 
 class PipelineEngine:
@@ -848,6 +1138,8 @@ class PipelineEngine:
             "data": {},
         }
 
+        sellability_attempted = False
+
         # Deep external sellability check is NOT
         # run for every discovered candidate.
         #
@@ -855,11 +1147,11 @@ class PipelineEngine:
         # for PAPER_BUY pays this cost.
         if (
             not risk_gate["hard_block"]
-            and strategy.get("decision")
-            == "PAPER_BUY"
             and pair.get("exists") is True
             and pair.get("quote_ok") is True
         ):
+            sellability_attempted = True
+
             sellability_result = (
                 sellability_analyze(
                     token_address,
@@ -962,8 +1254,7 @@ class PipelineEngine:
                 "SELLABILITY_FAIL"
             )
         elif (
-            strategy.get("decision")
-            == "PAPER_BUY"
+            sellability_attempted
             and not risk_gate[
                 "hard_block"
             ]
@@ -998,314 +1289,1046 @@ class PipelineEngine:
             ),
         }
 
+        # Mathematical planning uses canonical local
+        # onchain evidence even when an external sellability
+        # provider returns UNKNOWN.
+        local_math_evidence = (
+            risk_gate.get("local_evidence")
+            or risk.get("local_evidence")
+            or sellability_data.get("local_evidence")
+            or {}
+        )
+
+        local_math_exit = (
+            local_math_evidence.get(
+                "exit_feasibility"
+            )
+            or {}
+        )
+
+        local_math_price_series = list(
+            local_math_exit.get(
+                "spot_price_series_usd"
+            )
+            or []
+        )
+
+        mathematical_plan = None
         paper = {}
 
         if decision == "PAPER_BUY":
 
-            if self.paper_db.has_open_position(token_address):
-
+            if self.paper_db.has_open_position(
+                token_address
+            ):
                 paper = {
                     "action": "SKIP",
                     "reason": "OPEN_POSITION_EXISTS",
                 }
 
             else:
-
                 try:
-                    price = self.price.get_price(token_address)
+                    price = (
+                        self.price.get_price(
+                            token_address
+                        )
+                    )
                 except Exception:
                     price = 0.0
 
-                if price <= 0:
+                # Cache absence is not evidence of
+                # price absence. Use the latest price already
+                # measured from verified pair reserves.
+                if (
+                    (
+                        price is None
+                        or price <= 0
+                    )
+                    and local_math_price_series
+                ):
+                    try:
+                        price = float(
+                            local_math_price_series[-1]
+                        )
+                    except (
+                        TypeError,
+                        ValueError,
+                    ):
+                        price = 0.0
 
+                # Propagate measured facts to downstream
+                # readmodels without inventing values.
+                if (
+                    price is not None
+                    and price > 0
+                    and market_context.get(
+                        "price_usd"
+                    ) is None
+                ):
+                    market_context[
+                        "price_usd"
+                    ] = price
+
+                measured_liquidity = (
+                    local_math_exit.get(
+                        "liquidity_usd_estimate"
+                    )
+                )
+
+                try:
+                    measured_liquidity = (
+                        float(measured_liquidity)
+                        if measured_liquidity is not None
+                        else None
+                    )
+                except (
+                    TypeError,
+                    ValueError,
+                ):
+                    measured_liquidity = None
+
+                if (
+                    measured_liquidity is not None
+                    and measured_liquidity > 0
+                    and market_context.get(
+                        "liquidity_usd"
+                    ) in (
+                        None,
+                        0,
+                        0.0,
+                    )
+                ):
+                    market_context[
+                        "liquidity_usd"
+                    ] = measured_liquidity
+
+                if (
+                    price is None
+                    or price <= 0
+                ):
                     paper = {
-                        "action": "SKIP",
+                        "action": "WATCH",
                         "reason": "PRICE_UNAVAILABLE",
                     }
 
                 else:
-
-                    capital_row = self.paper_db.conn.execute(
-                        '''
-                        SELECT COALESCE(SUM(entry_amount_usdt), 0)
-                        FROM paper_trades
-                        WHERE status='OPEN'
-                          AND paper_account_version='PAPER_10K_V2'
-                        '''
-                    ).fetchone()
+                    capital_row = (
+                        self.paper_db.conn.execute(
+                            """
+                            SELECT
+                                COALESCE(
+                                    SUM(entry_amount_usdt),
+                                    0
+                                )
+                            FROM paper_trades
+                            WHERE status='OPEN'
+                              AND paper_account_version='PAPER_10K_V2'
+                            """
+                        ).fetchone()
+                    )
 
                     capital_in_use = float(
-                        capital_row[0] or 0.0
+                        capital_row[0]
+                        or 0.0
                     )
 
                     available_capital_usdt = max(
                         0.0,
-                        PAPER_CAPITAL_USDT - capital_in_use,
+                        (
+                            PAPER_CAPITAL_USDT
+                            - capital_in_use
+                        ),
                     )
 
-                    mq = intelligence_context.get(
-                        "market_quality"
-                    ) or {}
-                    fs = intelligence_context.get(
-                        "flow_spread"
-                    ) or {}
-
-                    flow_momentum = fs.get("spread")
-                    flow_acceleration = fs.get(
-                        "acceleration"
+                    local_evidence = (
+                        local_math_evidence
                     )
-                    liquidity_health = mq.get(
-                        "liquidity_state"
+
+                    lp_evidence = (
+                        local_evidence.get(
+                            "lp_security"
+                        )
+                        or {}
+                    )
+
+                    exit_evidence = (
+                        local_evidence.get(
+                            "exit_feasibility"
+                        )
+                        or {}
+                    )
+
+                    price_series = list(
+                        exit_evidence.get(
+                            "spot_price_series_usd"
+                        )
+                        or []
                     )
 
                     if (
-                        flow_momentum is None
-                        and flow_acceleration is None
-                        and not liquidity_health
+                        price > 0
+                        and (
+                            not price_series
+                            or (
+                                price_series[-1]
+                                != price
+                            )
+                        )
                     ):
-                        dynamic_sl = None
-                        sl_distance_pct = max(
-                            0.0001,
-                            1.0 - SL_PRICE_MULTIPLIER,
+                        price_series.append(
+                            price
                         )
-                    else:
-                        dynamic_sl = calculate_dynamic_sl(
-                            flow_momentum=flow_momentum,
-                            flow_acceleration=flow_acceleration,
-                            liquidity_health=liquidity_health,
+
+                    runtime_math_evidence = (
+                        _runtime_math_evidence(
+                            token_address=token_address,
+                            price=price,
+                            upstream_price_series=(
+                                price_series
+                            ),
+                            exit_evidence=(
+                                exit_evidence
+                            ),
+                            lp_evidence=(
+                                lp_evidence
+                            ),
+                            market_context=(
+                                market_context
+                            ),
+                            sellability_data=(
+                                sellability_data
+                            ),
                         )
-                        sl_distance_pct = dynamic_sl[
-                            "sl_distance_pct"
+                    )
+
+                    price_series = (
+                        runtime_math_evidence[
+                            "price_series"
+                        ]
+                    )
+
+                    exit_evidence = dict(
+                        exit_evidence or {}
+                    )
+
+                    lp_evidence = dict(
+                        lp_evidence or {}
+                    )
+
+                    if (
+                        exit_evidence.get(
+                            "quote_reserve_usd"
+                        )
+                        is None
+                        and runtime_math_evidence.get(
+                            "quote_reserve_usd"
+                        )
+                        is not None
+                    ):
+                        exit_evidence[
+                            "quote_reserve_usd"
+                        ] = runtime_math_evidence[
+                            "quote_reserve_usd"
                         ]
 
-                    sizing = calculate_paper_position_size(
-                        score=unified_score.get("score"),
-                        confidence=unified_score.get("confidence"),
-                        hard_block=risk_gate.get("hard_block"),
-                        sellability=sellability_status,
-                        available_capital_usdt=available_capital_usdt,
-                        sl_distance_pct=sl_distance_pct,
-                    )
+                        exit_evidence[
+                            "quote_reserve_source"
+                        ] = runtime_math_evidence[
+                            "quote_reserve_source"
+                        ]
 
-                    entry_amount_usdt = float(
-                        sizing["entry_amount_usdt"]
-                    )
+                    if (
+                        lp_evidence.get(
+                            "lp_protected_fraction"
+                        )
+                        is None
+                        and runtime_math_evidence.get(
+                            "lp_protected_fraction"
+                        )
+                        is not None
+                    ):
+                        lp_evidence[
+                            "lp_protected_fraction"
+                        ] = runtime_math_evidence[
+                            "lp_protected_fraction"
+                        ]
 
-                    if entry_amount_usdt <= 0:
-                        paper = {
-                            "action": "SKIP",
-                            "reason": sizing["sizing_reason"],
-                        }
-                        return {
-                            "success": True,
-                            "source": "pipeline",
-                            "data": {
-                                "paper": paper,
-                            },
-                        }
+                        lp_evidence[
+                            "lp_protection_source"
+                        ] = runtime_math_evidence[
+                            "lp_protection_source"
+                        ]
 
-                    token_amount = entry_amount_usdt / price
+                    mathematical_plan = (
+                        build_trade_plan(
+                            entry_price=price,
 
-                    entry_wallet_id = market_context.get(
-                        "wallet_id"
-                    )
-
-                    opening_context = {
-                        "captured_at_entry": True,
-                        "actor_identity": {
-                            "wallet_id": entry_wallet_id,
-                            "actor_id": entry_wallet_id,
-                            "identity_source": (
-                                "TRANSACTION_FROM_ONLY"
-                                if entry_wallet_id
-                                else "UNKNOWN"
+                            available_capital_usdt=(
+                                available_capital_usdt
                             ),
-                            "hindsight_reconstructed": False,
-                        },
-                        "historical_signal": "POSITIVE",
-                        "historical_action": "ALLOW",
-                        "entry_context_version": (
-                            "PHASE13A_V1"
-                        ),
-                        "signal_attribution": (
-                            build_entry_signal_attribution(
-                                strategy_decision=(
-                                    strategy.get(
-                                        "decision"
-                                    )
-                                ),
-                                unified_decision=(
-                                    unified_decision.get(
-                                        "decision"
-                                    )
-                                ),
-                                hard_block=(
-                                    risk_gate.get(
-                                        "hard_block"
-                                    )
-                                ),
-                                sellability_status=(
-                                    analyzer_status[
-                                        "sellability"
-                                    ]["status"]
-                                ),
-                            )
-                        ),
-                        "exit_baseline": (
-                            build_exit_baseline(
-                                entry_price=price,
-                                take_profit_price=(
-                                    price
-                                    * TP_PRICE_MULTIPLIER
-                                ),
-                                stop_loss_price=(
-                                    price
-                                    * SL_PRICE_MULTIPLIER
-                                ),
-                            )
-                        ),
-                        "raw_signals": {
-                            "strategy_decision": (
-                                strategy.get("decision")
+
+                            price_series=(
+                                price_series
                             ),
-                            "unified_decision": (
-                                unified_decision.get(
-                                    "decision"
+
+                            quote_reserve_usd=(
+                                exit_evidence.get(
+                                    "quote_reserve_usd"
                                 )
                             ),
-                            "hard_block": bool(
+
+                            lp_protected_fraction=(
+                                lp_evidence.get(
+                                    "lp_protected_fraction"
+                                )
+                            ),
+
+                            sellability_status=(
+                                sellability_status
+                            ),
+
+                            hard_block=bool(
                                 risk_gate.get(
                                     "hard_block"
                                 )
                             ),
-                            "unified_score": (
-                                unified_score.get("score")
-                            ),
-                            "unified_confidence": (
-                                unified_score.get("confidence")
-                            ),
-                            "unified_coverage": (
-                                unified_score.get("coverage")
-                            ),
-                            "sellability_status": (
-                                analyzer_status[
-                                    "sellability"
-                                ]["status"]
-                            ),
-                            "pool": market_context.get(
-                                "candidate_pool"
-                            ),
-                            "quote_token": market_context.get(
-                                "candidate_quote_token"
-                            ),
-                            "runtime_context_only": (
-                                intelligence_context.get(
-                                    "context_only",
-                                    True,
-                                )
-                            ),
-                        },
-                        "hindsight_reconstructed": False,
-                        "decision_authority": False,
-                        "live_authority": False,
-                        "wallet_authority": False,
-                        "execution_authority": False,
-                    }
 
-                    opening_context_json = json.dumps(
-                        opening_context,
-                        sort_keys=True,
-                        separators=(",", ":"),
+                            sellability_data=(
+                                sellability_data
+                            ),
+
+                            exit_evidence=(
+                                exit_evidence
+                            ),
+
+                            market_context={
+                                "market_intelligence": (
+                                    market_context.get(
+                                        "market_intelligence"
+                                    )
+                                ),
+
+                                "flow_intelligence": (
+                                    market_context.get(
+                                        "flow_intelligence"
+                                    )
+                                ),
+
+                                "runtime_intelligence": (
+                                    intelligence_context
+                                ),
+                            },
+                        )
                     )
 
-                    trade_row = {
-                            "token": token_address,
-                            "symbol": token.get("symbol", "?"),
-                            "pool": market_context.get(
-                                "candidate_pool"
+                    sizing = (
+                        calculate_paper_position_size(
+                            mathematical_plan=(
+                                mathematical_plan
                             ),
 
-                            "entry_price": price,
-                            "current_price": price,
-                            "highest_price": price,
-                            "lowest_price": price,
+                            available_capital_usdt=(
+                                available_capital_usdt
+                            ),
+                        )
+                    )
 
-                            "tp_price": price * TP_PRICE_MULTIPLIER,
-                            "sl_price": price * (1.0 - sl_distance_pct),
+                    entry_amount_usdt = float(
+                        sizing.get(
+                            "entry_amount_usdt",
+                            0.0,
+                        )
+                    )
 
-                            "amount_bnb": 0.0,
-                            "token_amount": token_amount,
+                    # CANONICAL_PAPER_EXECUTION_INVENTORY_V1
+                    token_amount = (
+                        entry_amount_usdt
+                        / float(price)
+                        if (
+                            entry_amount_usdt > 0
+                            and float(price) > 0
+                        )
+                        else 0.0
+                    )
 
-                            "paper_account_version": "PAPER_10K_V2",
-                            "entry_amount_usdt": entry_amount_usdt,
-                            "risk_amount_usdt": sizing["risk_amount_usdt"],
-                            "capital_before_usdt": sizing["capital_before_usdt"],
-                            "capital_after_entry_usdt": sizing["capital_after_entry_usdt"],
-                            "position_size_pct": sizing["position_size_pct"],
-                            "sizing_reason": sizing["sizing_reason"],
+                    if (
+                        sellability_status
+                        != "SELLABILITY_OK"
+                        or not mathematical_plan.get(
+                            "paper_eligible"
+                        )
+                        or entry_amount_usdt <= 0
+                        or token_amount <= 0
+                    ):
+                        paper = {
+                            "action": "WATCH",
 
-                            "gas_buy": DEFAULT_GAS_BUY,
-                            "gas_sell": DEFAULT_GAS_SELL,
-                            "swap_fee": DEFAULT_SWAP_FEE,
+                            "reason": (
+                                "MATHEMATICAL_PLAN_BLOCKED"
+                            ),
 
-                            "buy_tax": DEFAULT_BUY_TAX,
-                            "sell_tax": DEFAULT_SELL_TAX,
+                            "blockers": (
+                                mathematical_plan.get(
+                                    "blockers",
+                                    [],
+                                )
+                            ),
 
-                            "slippage": DEFAULT_SLIPPAGE,
-                            "mev": DEFAULT_MEV_COST,
+                            "unknowns": (
+                                mathematical_plan.get(
+                                    "unknowns",
+                                    [],
+                                )
+                            ),
 
-                            "status": "OPEN",
-                            "opening_context_json": (
-                                opening_context_json
+                            "mathematical_plan": (
+                                mathematical_plan
                             ),
                         }
 
-                    bounded_insert = getattr(
-                        self.paper_db,
-                        "insert_if_below_open_limit",
-                        None,
-                    )
-
-                    if bounded_insert is not None:
-                        inserted = bounded_insert(
-                            trade_row,
-                            MAX_OPEN_PAPER_POSITIONS,
-                        )
                     else:
-                        inserted = (
-                            self.paper_db.insert_if_no_open_position(
-                                trade_row
+                        entry_wallet_id = (
+                            market_context.get(
+                                "wallet_id"
                             )
                         )
 
-                    if not inserted:
-                        if self.paper_db.has_open_position(
-                            token_address
-                        ):
-                            reason = "OPEN_POSITION_EXISTS"
-                        else:
-                            reason = "PAPER_POSITION_CAP_REACHED"
+                        initial_sl = float(
+                            (
+                                mathematical_plan.get(
+                                    "sl"
+                                )
+                                or {}
+                            ).get(
+                                "initial_price"
+                            )
+                        )
 
-                        paper = {
-                            "action": "SKIP",
-                            "reason": reason,
+                        tp1_activation = float(
+                            (
+                                mathematical_plan.get(
+                                    "tp1"
+                                )
+                                or {}
+                            ).get(
+                                "activation_price"
+                            )
+                        )
+
+                        opening_context = {
+                            "captured_at_entry": True,
+
+                            "actor_identity": {
+                                "wallet_id": (
+                                    entry_wallet_id
+                                ),
+
+                                "actor_id": (
+                                    entry_wallet_id
+                                ),
+
+                                "identity_source": (
+                                    "TRANSACTION_FROM_ONLY"
+                                    if entry_wallet_id
+                                    else "UNKNOWN"
+                                ),
+
+                                "hindsight_reconstructed": (
+                                    False
+                                ),
+                            },
+
+                            "historical_signal": (
+                                "POSITIVE"
+                            ),
+
+                            "historical_action": (
+                                "ALLOW"
+                            ),
+
+                            "entry_context_version": (
+                                "MATHEMATICAL_PLAN"
+                            ),
+
+                            "signal_attribution": (
+                                build_entry_signal_attribution(
+                                    strategy_decision=(
+                                        strategy.get(
+                                            "decision"
+                                        )
+                                    ),
+
+                                    unified_decision=(
+                                        unified_decision.get(
+                                            "decision"
+                                        )
+                                    ),
+
+                                    hard_block=(
+                                        risk_gate.get(
+                                            "hard_block"
+                                        )
+                                    ),
+
+                                    sellability_status=(
+                                        analyzer_status[
+                                            "sellability"
+                                        ][
+                                            "status"
+                                        ]
+                                    ),
+                                )
+                            ),
+
+                            "exit_baseline": (
+                                build_exit_baseline(
+                                    entry_price=(
+                                        price
+                                    ),
+
+                                    take_profit_price=(
+                                        tp1_activation
+                                    ),
+
+                                    stop_loss_price=(
+                                        initial_sl
+                                    ),
+                                )
+                            ),
+
+                            "mathematical_trade_plan": (
+                                mathematical_plan
+                            ),
+
+                            "raw_signals": {
+                                "strategy_decision": (
+                                    strategy.get(
+                                        "decision"
+                                    )
+                                ),
+
+                                "unified_decision": (
+                                    unified_decision.get(
+                                        "decision"
+                                    )
+                                ),
+
+                                "hard_block": bool(
+                                    risk_gate.get(
+                                        "hard_block"
+                                    )
+                                ),
+
+                                "evidence_coverage_score": (
+                                    unified_score.get(
+                                        "score"
+                                    )
+                                ),
+
+                                "mathematical_score": (
+                                    (
+                                        mathematical_plan.get(
+                                            "score"
+                                        )
+                                        or {}
+                                    ).get(
+                                        "value"
+                                    )
+                                ),
+
+                                "sellability_status": (
+                                    analyzer_status[
+                                        "sellability"
+                                    ][
+                                        "status"
+                                    ]
+                                ),
+
+                                "pool": (
+                                    market_context.get(
+                                        "candidate_pool"
+                                    )
+                                ),
+
+                                "quote_token": (
+                                    market_context.get(
+                                        "candidate_quote_token"
+                                    )
+                                ),
+
+                                "runtime_context_only": (
+                                    intelligence_context.get(
+                                        "context_only",
+                                        True,
+                                    )
+                                ),
+                            },
+
+                            "hindsight_reconstructed": (
+                                False
+                            ),
+
+                            "decision_authority": False,
+                            "live_authority": False,
+                            "wallet_authority": False,
+                            "execution_authority": False,
                         }
 
-                    else:
-                        paper = {
-                            "action": "PAPER_BUY",
-                            "token": token_address,
-                            "entry_price": price,
-                            "token_amount": token_amount,
+                        opening_context_json = (
+                            json.dumps(
+                                opening_context,
+
+                                sort_keys=True,
+
+                                separators=(
+                                    ",",
+                                    ":",
+                                ),
+
+                                default=str,
+                            )
+                        )
+
+                        mathematical_plan_json = (
+                            json.dumps(
+                                mathematical_plan,
+
+                                sort_keys=True,
+
+                                separators=(
+                                    ",",
+                                    ":",
+                                ),
+
+                                default=str,
+                            )
+                        )
+
+                        trade_row = {
+                            "token": (
+                                token_address
+                            ),
+
+                            "symbol": (
+                                token.get(
+                                    "symbol",
+                                    "?",
+                                )
+                            ),
+
+                            "pool": (
+                                market_context.get(
+                                    "candidate_pool"
+                                )
+                            ),
+
+                            "dex": (
+                                market_context.get(
+                                    "candidate_dex"
+                                )
+                            ),
+
+                            "entry_price": (
+                                price
+                            ),
+
+                            "current_price": (
+                                price
+                            ),
+
+                            "highest_price": (
+                                price
+                            ),
+
+                            "lowest_price": (
+                                price
+                            ),
+
+                            "tp_price": (
+                                tp1_activation
+                            ),
+
+                            "sl_price": (
+                                initial_sl
+                            ),
+
                             "amount_bnb": 0.0,
-                            "entry_amount_usdt": entry_amount_usdt,
-                            "risk_amount_usdt": sizing["risk_amount_usdt"],
-                            "position_size_pct": sizing["position_size_pct"],
-                            "paper_account_version": "PAPER_10K_V2",
+
+                            "token_amount": (
+                                token_amount
+                            ),
+
+                            "initial_token_amount": (
+                                token_amount
+                            ),
+
+                            "paper_account_version": (
+                                "PAPER_10K_V2"
+                            ),
+
+                            "entry_amount_usdt": (
+                                entry_amount_usdt
+                            ),
+
+                            "risk_amount_usdt": (
+                                sizing[
+                                    "risk_amount_usdt"
+                                ]
+                            ),
+
+                            "capital_before_usdt": (
+                                sizing[
+                                    "capital_before_usdt"
+                                ]
+                            ),
+
+                            "capital_after_entry_usdt": (
+                                sizing[
+                                    "capital_after_entry_usdt"
+                                ]
+                            ),
+
+                            "position_size_pct": (
+                                sizing[
+                                    "position_size_pct"
+                                ]
+                            ),
+
+                            "sizing_reason": (
+                                sizing[
+                                    "sizing_reason"
+                                ]
+                            ),
+
+                            "remaining_cost_basis_usdt": (
+                                entry_amount_usdt
+                            ),
+
+                            "realized_gross_proceeds_usdt": (
+                                0.0
+                            ),
+
+                            "realized_proceeds_usdt": (
+                                0.0
+                            ),
+
+                            "realized_pnl_usdt": (
+                                0.0
+                            ),
+
+                            "tp1_done": 0,
+                            "tp2_done": 0,
+                            "runner_active": 0,
+
+                            # Legacy cost columns are deliberately
+                            # not populated with invented defaults.
+                            "gas_buy": None,
+                            "gas_sell": None,
+                            "swap_fee": None,
+                            "buy_tax": None,
+                            "sell_tax": None,
+                            "slippage": None,
+                            "mev": None,
+
+                            "gross_pnl_usdt": (
+                                0.0
+                            ),
+
+                            "net_pnl_usdt": (
+                                0.0
+                            ),
+
+                            "status": "OPEN",
+
+                            "opening_context_json": (
+                                opening_context_json
+                            ),
+
+                            "mathematical_plan_json": (
+                                mathematical_plan_json
+                            ),
+
+                            "math_state_json": "{}",
+
+                            "cost_model_complete": (
+                                int(
+                                    bool(
+                                        (
+                                            mathematical_plan.get(
+                                                "cost_model"
+                                            )
+                                            or {}
+                                        ).get(
+                                            "cost_complete"
+                                        )
+                                    )
+                                )
+                            ),
                         }
+
+                        # CANONICAL_PAPER_OPENING_RISK_V1
+                        opening_entry_amount = float(
+                            trade_row.get(
+                                "entry_amount_usdt"
+                            )
+                            or 0.0
+                        )
+
+                        opening_entry_price = float(
+                            trade_row.get(
+                                "entry_price"
+                            )
+                            or 0.0
+                        )
+
+                        opening_token_amount = (
+                            opening_entry_amount
+                            / opening_entry_price
+                            if (
+                                opening_entry_amount > 0
+                                and opening_entry_price > 0
+                            )
+                            else 0.0
+                        )
+
+                        trade_row[
+                            "token_amount"
+                        ] = opening_token_amount
+
+                        trade_row[
+                            "remaining_cost_basis_usdt"
+                        ] = opening_entry_amount
+
+                        opening_initial_risk = (
+                            initial_net_risk_usdt(
+                                token_amount=(
+                                    opening_token_amount
+                                ),
+                                entry_amount_usdt=(
+                                    opening_entry_amount
+                                ),
+                                stop_price=(
+                                    trade_row.get(
+                                        "sl_price"
+                                    )
+                                ),
+                                cost_model=(
+                                    mathematical_plan.get(
+                                        "cost_model"
+                                    )
+                                    or {}
+                                ),
+                            )
+                        )
+
+                        if opening_initial_risk is None:
+                            opening_initial_risk = (
+                                opening_entry_amount
+                            )
+
+                        trade_row[
+                            "risk_amount_usdt"
+                        ] = float(
+                            opening_initial_risk
+                        )
+
+                        opening_math_state = {}
+
+                        raw_opening_state = (
+                            trade_row.get(
+                                "math_state_json"
+                            )
+                        )
+
+                        if isinstance(
+                            raw_opening_state,
+                            str,
+                        ) and raw_opening_state:
+                            try:
+                                parsed_opening_state = (
+                                    json.loads(
+                                        raw_opening_state
+                                    )
+                                )
+                            except (
+                                TypeError,
+                                ValueError,
+                                json.JSONDecodeError,
+                            ):
+                                parsed_opening_state = None
+
+                            if isinstance(
+                                parsed_opening_state,
+                                dict,
+                            ):
+                                opening_math_state.update(
+                                    parsed_opening_state
+                                )
+
+                        opening_math_state[
+                            "initial_net_risk_usdt"
+                        ] = float(
+                            opening_initial_risk
+                        )
+
+                        trade_row[
+                            "math_state_json"
+                        ] = json.dumps(
+                            opening_math_state,
+                            sort_keys=True,
+                        )
+
+                        bounded_insert = getattr(
+                            self.paper_db,
+
+                            "insert_if_below_open_limit",
+
+                            None,
+                        )
+
+                        if (
+                            bounded_insert
+                            is not None
+                        ):
+                            inserted = (
+                                bounded_insert(
+                                    trade_row,
+
+                                    MAX_OPEN_PAPER_POSITIONS,
+                                )
+                            )
+
+                        else:
+                            inserted = (
+                                self.paper_db
+                                .insert_if_no_open_position(
+                                    trade_row
+                                )
+                            )
+
+                        if not inserted:
+                            if (
+                                self.paper_db
+                                .has_open_position(
+                                    token_address
+                                )
+                            ):
+                                reason = (
+                                    "OPEN_POSITION_EXISTS"
+                                )
+
+                            else:
+                                reason = (
+                                    "PAPER_POSITION_CAP_REACHED"
+                                )
+
+                            paper = {
+                                "action": "SKIP",
+                                "reason": reason,
+                            }
+
+                        else:
+                            paper = {
+                                "action": (
+                                    "PAPER_BUY"
+                                ),
+
+                                "token": (
+                                    token_address
+                                ),
+
+                                "entry_price": (
+                                    price
+                                ),
+
+                                "entry_band": {
+                                    "low": (
+                                        mathematical_plan[
+                                            "entry"
+                                        ][
+                                            "band_low"
+                                        ]
+                                    ),
+
+                                    "high": (
+                                        mathematical_plan[
+                                            "entry"
+                                        ][
+                                            "band_high"
+                                        ]
+                                    ),
+                                },
+
+                                "token_amount": (
+                                    token_amount
+                                ),
+
+                                "amount_bnb": 0.0,
+
+                                "entry_amount_usdt": (
+                                    entry_amount_usdt
+                                ),
+
+                                "risk_amount_usdt": (
+                                    sizing[
+                                        "risk_amount_usdt"
+                                    ]
+                                ),
+
+                                "position_size_pct": (
+                                    sizing[
+                                        "position_size_pct"
+                                    ]
+                                ),
+
+                                "initial_sl": (
+                                    initial_sl
+                                ),
+
+                                "tp1_activation_price": (
+                                    tp1_activation
+                                ),
+
+                                "tp1_static_fraction": (
+                                    None
+                                ),
+
+                                "tp2_static_fraction": (
+                                    None
+                                ),
+
+                                "tp3_static_price": (
+                                    None
+                                ),
+
+                                "runner_rule": (
+                                    mathematical_plan[
+                                        "runner"
+                                    ][
+                                        "rule"
+                                    ]
+                                ),
+
+                                "mathematical_score": (
+                                    mathematical_plan[
+                                        "score"
+                                    ]
+                                ),
+
+                                "cost_complete": (
+                                    mathematical_plan[
+                                        "cost_model"
+                                    ][
+                                        "cost_complete"
+                                    ]
+                                ),
+
+                                "paper_account_version": (
+                                    "PAPER_10K_V2"
+                                ),
+                            }
 
         else:
-
             paper = {
                 "action": decision,
             }
@@ -1315,8 +2338,7 @@ class PipelineEngine:
                 market_context=market_context,
                 execution_cost=execution_cost,
                 paper=paper,
-                tp_multiplier=TP_PRICE_MULTIPLIER,
-                sl_multiplier=SL_PRICE_MULTIPLIER,
+                mathematical_plan=mathematical_plan,
             )
         )
 
@@ -1977,8 +2999,8 @@ class PipelineEngine:
                         "Candidate token=%s pool=%s "
                         "strategy=%s unified=%s "
                         "paper=%s reason=%s "
-                        "hard_block=%s score=%s "
-                        "confidence=%s sellability=%s"
+                        "hard_block=%s evidence_coverage=%s "
+                        "coverage_confidence=%s sellability=%s"
                     ),
                     summary["token"],
                     summary["pool"],
@@ -2163,4 +3185,3 @@ class PipelineEngine:
         )
 
         return status
-

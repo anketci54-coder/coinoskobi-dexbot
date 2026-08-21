@@ -1651,35 +1651,172 @@ class PipelineEngine:
                         else 0.0
                     )
 
+                    plan_blockers = sorted(
+                        {
+                            str(value)
+                            for value in (
+                                mathematical_plan.get(
+                                    "blockers"
+                                )
+                                or []
+                            )
+                        }
+                    )
+
+                    plan_unknowns = sorted(
+                        {
+                            str(value)
+                            for value in (
+                                mathematical_plan.get(
+                                    "unknowns"
+                                )
+                                or []
+                            )
+                        }
+                    )
+
+                    sizing_blockers = sorted(
+                        {
+                            str(value)
+                            for value in (
+                                sizing.get(
+                                    "blockers"
+                                )
+                                or []
+                            )
+                        }
+                    )
+
                     if (
                         sellability_status
                         != "SELLABILITY_OK"
-                        or not mathematical_plan.get(
-                            "paper_eligible"
+                    ):
+                        block_reason = (
+                            "SELLABILITY_NOT_OK"
                         )
-                        or entry_amount_usdt <= 0
+
+                    elif not mathematical_plan.get(
+                        "paper_eligible"
+                    ):
+                        block_reason = (
+                            "PLAN_BLOCKED"
+                        )
+
+                    elif (
+                        entry_amount_usdt <= 0
                         or token_amount <= 0
                     ):
+                        block_reason = (
+                            "POSITION_SIZING_BLOCKED"
+                        )
+
+                    else:
+                        block_reason = None
+
+                    if block_reason is not None:
+                        combined_blockers = sorted(
+                            set(
+                                plan_blockers
+                                + sizing_blockers
+                            )
+                        )
+
                         paper = {
                             "action": "WATCH",
 
                             "reason": (
-                                "MATHEMATICAL_PLAN_BLOCKED"
+                                block_reason
                             ),
 
+                            # Compatibility field:
+                            # every concrete blocker,
+                            # regardless of source layer.
                             "blockers": (
-                                mathematical_plan.get(
-                                    "blockers",
-                                    [],
-                                )
+                                combined_blockers
                             ),
 
                             "unknowns": (
-                                mathematical_plan.get(
-                                    "unknowns",
-                                    [],
+                                plan_unknowns
+                            ),
+
+                            # Exact source attribution.
+                            "plan_blockers": (
+                                plan_blockers
+                            ),
+
+                            "plan_unknowns": (
+                                plan_unknowns
+                            ),
+
+                            "sizing_blockers": (
+                                sizing_blockers
+                            ),
+
+                            "sizing_reason": (
+                                sizing.get(
+                                    "sizing_reason"
                                 )
                             ),
+
+                            "entry_amount_usdt": (
+                                entry_amount_usdt
+                            ),
+
+                            "sizing_diagnostics": {
+                                "raw_plan_amount_usdt": (
+                                    sizing.get(
+                                        "raw_plan_amount_usdt"
+                                    )
+                                ),
+
+                                "safe_quote_reserve_usd": (
+                                    sizing.get(
+                                        "safe_quote_reserve_usd"
+                                    )
+                                ),
+
+                                "risk_log_distance": (
+                                    sizing.get(
+                                        "risk_log_distance"
+                                    )
+                                ),
+
+                                "gap_multiplier": (
+                                    sizing.get(
+                                        "gap_multiplier"
+                                    )
+                                ),
+
+                                "gap_samples": (
+                                    sizing.get(
+                                        "gap_samples"
+                                    )
+                                ),
+
+                                "empirical_cost_uncertainty_fraction": (
+                                    sizing.get(
+                                        "empirical_cost_uncertainty_fraction"
+                                    )
+                                ),
+
+                                "cost_samples": (
+                                    sizing.get(
+                                        "cost_samples"
+                                    )
+                                ),
+
+                                "effective_edge_fraction": (
+                                    sizing.get(
+                                        "effective_edge_fraction"
+                                    )
+                                ),
+
+                                "cost_complete": (
+                                    sizing.get(
+                                        "cost_complete"
+                                    )
+                                ),
+                            },
 
                             "mathematical_plan": (
                                 mathematical_plan
@@ -2955,6 +3092,28 @@ class PipelineEngine:
                     "unified": unified.get("decision"),
                     "paper": paper.get("action"),
                     "reason": paper.get("reason"),
+                    "plan_blockers": (
+                        paper.get(
+                            "plan_blockers"
+                        )
+                        or []
+                    ),
+                    "sizing_blockers": (
+                        paper.get(
+                            "sizing_blockers"
+                        )
+                        or []
+                    ),
+                    "sizing_reason": (
+                        paper.get(
+                            "sizing_reason"
+                        )
+                    ),
+                    "entry_amount_usdt": (
+                        paper.get(
+                            "entry_amount_usdt"
+                        )
+                    ),
                     "hard_block": bool(
                         risk_gate.get("hard_block")
                     ),
@@ -2999,6 +3158,8 @@ class PipelineEngine:
                         "Candidate token=%s pool=%s "
                         "strategy=%s unified=%s "
                         "paper=%s reason=%s "
+                        "plan_blockers=%s sizing_blockers=%s "
+                        "sizing_reason=%s entry_amount_usdt=%s "
                         "hard_block=%s evidence_coverage=%s "
                         "coverage_confidence=%s sellability=%s"
                     ),
@@ -3008,6 +3169,10 @@ class PipelineEngine:
                     summary["unified"],
                     summary["paper"],
                     summary["reason"],
+                    summary["plan_blockers"],
+                    summary["sizing_blockers"],
+                    summary["sizing_reason"],
+                    summary["entry_amount_usdt"],
                     summary["hard_block"],
                     summary["score"],
                     summary["confidence"],

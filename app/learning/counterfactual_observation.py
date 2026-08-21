@@ -229,6 +229,22 @@ class CounterfactualObservationStore:
             ],
             classification=classification,
             context=row["context"],
+
+            # This observer knows only the
+            # later mark-price direction.
+            #
+            # It does NOT prove that a trade
+            # was net-profitable, executable,
+            # sellable at evaluation time,
+            # or realizable after costs.
+            outcome_scope=(
+                "PRICE_DIRECTION_ONLY"
+            ),
+            net_profit_verified=False,
+            realizable_profit_verified=False,
+            evaluation_sellability_verified=False,
+            evaluation_costs_verified=False,
+
             proposal_only=True,
             automatic_apply_allowed=False,
         )
@@ -307,6 +323,18 @@ class CounterfactualObservationStore:
             "db_write": False,
             "external_fetch": False,
             "provider_call": False,
+
+            "outcome_scope": (
+                "PRICE_DIRECTION_ONLY"
+            ),
+
+            "missed_opportunity_means_net_profit": (
+                False
+            ),
+
+            "net_profit_verified": False,
+            "realizable_profit_verified": False,
+
             "proposal_only": True,
             "automatic_apply_allowed": False,
             "decision_authority": False,

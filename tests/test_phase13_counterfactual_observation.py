@@ -75,6 +75,28 @@ def test_positive_downgrade_up_is_missed_opportunity():
 
     assert result["outcome_class"] == "MISSED_OPPORTUNITY"
 
+    # MISSED_OPPORTUNITY is a price-direction
+    # counterfactual label only. It must never be
+    # presented as verified net realizable profit.
+    assert result["outcome_scope"] == (
+        "PRICE_DIRECTION_ONLY"
+    )
+    assert result["net_profit_verified"] is False
+    assert (
+        result["realizable_profit_verified"]
+        is False
+    )
+    assert (
+        result[
+            "evaluation_sellability_verified"
+        ]
+        is False
+    )
+    assert (
+        result["evaluation_costs_verified"]
+        is False
+    )
+
 
 def test_store_is_pending_bounded_and_authority_free():
     store = _store()

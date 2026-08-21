@@ -1636,33 +1636,758 @@ button{
   }
 }
 
-@media(max-width:1250px){
+
+
+/* CANONICAL MOBILE RESPONSIVE */
+
+.candidate-token-live{
+  min-width:0;
+}
+
+.candidate-token-live b{
+  display:block;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+
+.candidate-token-live small{
+  display:block;
+  margin-top:2px;
+
+  color:#748a91;
+
+  font-size:5px;
+
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+
+@media (max-width:1300px), (hover:none) and (pointer:coarse){
+
+  html,
+  body{
+    width:100%;
+    height:auto;
+    min-height:100%;
+
+    overflow-x:hidden;
+    overflow-y:auto;
+  }
+
+  body{
+    touch-action:manipulation;
+  }
+
   .dashboard{
-    min-width:1180px;
+    width:100%;
+    height:auto;
+    min-height:100dvh;
+    min-width:0;
+
+    padding:8px;
+
+    display:flex;
+    flex-direction:column;
+
+    gap:8px;
+
+    overflow:visible;
+  }
+
+  .card{
+    width:100%;
+    min-width:0;
+
+    overflow:hidden;
+
+    border-radius:8px;
   }
 
   .header{
+    width:100%;
+    min-width:0;
+
+    display:grid;
+
     grid-template-columns:
-      220px
-      repeat(7,minmax(82px,1fr))
-      225px;
+      repeat(2,minmax(0,1fr));
+
+    gap:8px;
+  }
+
+  .brand-card,
+  .mode-card{
+    grid-column:1 / -1;
+  }
+
+  .brand-card{
+    min-height:76px;
+
+    padding:10px 14px;
+  }
+
+  .brand-piece{
+    width:44px;
+
+    font-size:44px;
+  }
+
+  .brand-title{
+    font-size:21px;
+  }
+
+  .brand-subtitle{
+    font-size:10px;
+  }
+
+  .metric-card{
+    min-width:0;
+    min-height:67px;
+
+    padding:9px 10px;
+  }
+
+  .metric-label{
+    font-size:8px;
+  }
+
+  .metric-value{
+    margin-top:8px;
+
+    font-size:14px;
+  }
+
+  .metric-sub{
+    margin-top:6px;
+
+    font-size:7px;
+  }
+
+  .metric-card.market-card{
+    display:none;
+  }
+
+  .mode-card{
+    min-height:75px;
+
+    padding:7px 10px;
+  }
+
+  .live-clock{
+    height:16px;
+
+    font-size:8px;
+  }
+
+  .mode-label{
+    font-size:8px;
+  }
+
+  .mode-button{
+    height:32px;
+
+    font-size:8px;
   }
 
   .hero{
+    width:100%;
+    min-width:0;
+    min-height:0;
+
+    display:flex;
+    flex-direction:column;
+
+    gap:8px;
+  }
+
+  .vezir-card,
+  .best-card,
+  .positions-card,
+  .control-card{
+    width:100%;
+
+    grid-column:auto;
+    grid-row:auto;
+  }
+
+  .vezir-card{
+    padding:12px;
+
+    display:grid;
+
+    grid-template-rows:
+      auto
+      180px
+      auto
+      auto
+      38px;
+
+    gap:8px;
+  }
+
+  .vezir-title{
+    font-size:21px;
+  }
+
+  .vezir-role,
+  .vezir-live{
+    font-size:9px;
+  }
+
+  .vezir-ring{
+    width:170px;
+    height:170px;
+  }
+
+  .vezir-image{
+    width:190px;
+    height:190px;
+  }
+
+  .vezir-quote{
+    padding:
+      10px
+      10px
+      10px
+      30px;
+
+    font-size:10px;
+    line-height:1.45;
+  }
+
+  .vezir-points{
+    gap:5px;
+
+    font-size:9px;
+    line-height:1.4;
+  }
+
+  .vezir-report{
+    height:38px;
+
+    font-size:9px;
+  }
+
+  .card-head{
+    height:42px;
+
+    padding:0 12px;
+
+    font-size:11px;
+  }
+
+  .card-link{
+    font-size:8px;
+  }
+
+  .best-content{
+    height:auto;
+
+    padding:12px;
+
+    display:block;
+  }
+
+  .best-main{
+    display:grid;
+
+    grid-template-columns:1fr;
+
+    gap:12px;
+  }
+
+  .asset-column{
     grid-template-columns:
-      228px
-      minmax(0,1fr)
-      390px;
+      72px
+      minmax(0,1fr);
+
+    gap:11px;
+  }
+
+  .asset-logo{
+    width:70px;
+    height:70px;
+
+    font-size:26px;
+  }
+
+  .asset-name{
+    font-size:20px;
+  }
+
+  .asset-pair{
+    font-size:11px;
+  }
+
+  .asset-chain{
+    font-size:8px;
+  }
+
+  .signal-box{
+    width:100%;
+
+    margin-top:10px;
+    padding:8px;
+  }
+
+  .signal-value{
+    font-size:24px;
+  }
+
+  .best-section{
+    padding:
+      10px
+      0
+      0;
+
+    border-left:0;
+
+    border-top:
+      1px solid
+      var(--line-soft);
+  }
+
+  .best-section-title{
+    margin-bottom:5px;
+
+    font-size:10px;
+  }
+
+  .check-row,
+  .plan-row{
+    height:29px;
+
+    font-size:9px;
+  }
+
+  .best-bottom{
+    margin-top:12px;
+
+    grid-template-columns:
+      repeat(2,minmax(0,1fr));
+
+    gap:8px;
+  }
+
+  .best-tag{
+    height:50px;
+
+    padding:8px;
+  }
+
+  .best-tag small{
+    font-size:7px;
+  }
+
+  .best-tag b{
+    margin-top:6px;
+
+    font-size:9px;
+  }
+
+  .best-action{
+    grid-column:1 / -1;
+
+    height:44px;
+
+    font-size:9px;
+  }
+
+  .positions-content{
+    height:auto;
+
+    padding:10px;
+
+    display:block;
+  }
+
+  .position-header{
+    display:none;
+  }
+
+  .position-list{
+    overflow:visible;
+  }
+
+  .position-row{
+    min-height:0;
+
+    padding:10px 0;
+
+    display:grid;
+
+    grid-template-columns:
+      1fr
+      1fr;
+
+    gap:8px;
+
+    font-size:9px;
+  }
+
+  .position-token{
+    grid-column:1 / -1;
+
+    font-size:11px;
+  }
+
+  .position-summary{
+    margin-top:10px;
+
+    grid-template-columns:
+      repeat(2,minmax(0,1fr));
+
+    gap:8px;
+  }
+
+  .summary-box{
+    min-height:58px;
+
+    padding:8px;
+  }
+
+  .summary-box small{
+    font-size:7px;
+  }
+
+  .summary-box b{
+    margin-top:8px;
+
+    font-size:10px;
+  }
+
+  .control-content{
+    height:auto;
+
+    padding:12px;
+
+    display:grid;
+
+    grid-template-columns:
+      1fr
+      1fr;
+
+    gap:8px;
+  }
+
+  .control-title,
+  .amount-box,
+  .authority-note{
+    grid-column:1 / -1;
+  }
+
+  .control-title{
+    font-size:13px;
+  }
+
+  .amount-box{
+    height:auto;
+    min-height:52px;
+
+    padding:8px;
+  }
+
+  .trade-action{
+    height:52px;
+
+    font-size:16px;
+  }
+
+  .authority-note{
+    font-size:8px;
+    line-height:1.4;
   }
 
   .lower-grid{
+    width:100%;
+    min-width:0;
+    min-height:0;
+
+    display:flex;
+    flex-direction:column;
+
+    gap:8px;
+  }
+
+  .lower-card{
+    width:100%;
+  }
+
+  .lower-content{
+    height:auto;
+    min-height:0;
+
+    padding:8px 10px;
+
+    overflow:visible;
+  }
+
+  .candidate-header{
+    display:none;
+  }
+
+  .candidate-row{
+    min-height:76px;
+
+    padding:10px 0;
+
+    display:grid;
+
     grid-template-columns:
-      350px
-      285px
-      340px
-      minmax(205px,1fr);
+      28px
+      minmax(0,1fr)
+      auto;
+
+    grid-template-rows:
+      auto
+      auto
+      auto;
+
+    gap:
+      5px
+      8px;
+
+    font-size:9px;
+  }
+
+  .live-candidate-index{
+    grid-column:1;
+    grid-row:1 / 4;
+
+    align-self:center;
+
+    color:#71868d;
+
+    font-size:10px;
+  }
+
+  .candidate-token-live{
+    grid-column:2 / 4;
+    grid-row:1;
+  }
+
+  .candidate-token-live b{
+    font-size:11px;
+  }
+
+  .candidate-token-live small{
+    margin-top:3px;
+
+    font-size:7px;
+  }
+
+  .live-action{
+    grid-column:2;
+    grid-row:2;
+  }
+
+  .live-sellability{
+    grid-column:3;
+    grid-row:2;
+
+    text-align:right;
+  }
+
+  .live-evidence{
+    grid-column:2;
+    grid-row:3;
+  }
+
+  .live-gate{
+    grid-column:3;
+    grid-row:3;
+
+    text-align:right;
+  }
+
+  .live-action:before{
+    content:"KARAR · ";
+
+    color:#6f858d;
+
+    font-size:7px;
+  }
+
+  .live-sellability:before{
+    content:"SATIŞ · ";
+
+    color:#6f858d;
+
+    font-size:7px;
+  }
+
+  .live-evidence:before{
+    content:"KANIT · ";
+
+    color:#6f858d;
+
+    font-size:7px;
+  }
+
+  .live-gate:before{
+    content:"GATE · ";
+
+    color:#6f858d;
+
+    font-size:7px;
+  }
+
+  .intel-row{
+    min-height:54px;
+  }
+
+  .intel-icon{
+    width:32px;
+    height:32px;
+
+    font-size:10px;
+  }
+
+  .intel-copy b{
+    font-size:9px;
+  }
+
+  .intel-copy small{
+    font-size:7px;
+  }
+
+  .intel-state{
+    font-size:8px;
+  }
+
+  .performance-layout{
+    min-height:250px;
+
+    grid-template-rows:
+      34px
+      minmax(140px,1fr)
+      auto;
+  }
+
+  .tab-button{
+    height:30px;
+
+    padding:0 12px;
+
+    font-size:7px;
+  }
+
+  .performance-stats{
+    grid-template-columns:
+      repeat(3,1fr);
+
+    row-gap:8px;
+  }
+
+  .performance-stat{
+    padding:6px;
+  }
+
+  .performance-stat small{
+    font-size:6px;
+  }
+
+  .performance-stat b{
+    font-size:9px;
+  }
+
+  .health-banner{
+    height:auto;
+    min-height:60px;
+
+    padding:9px;
+  }
+
+  .health-row{
+    height:30px;
+
+    font-size:8px;
+  }
+
+  .foot-grid{
+    width:100%;
+    min-width:0;
+
+    display:flex;
+    flex-direction:column;
+
+    gap:8px;
+  }
+
+  .signal-layout,
+  .quick-layout{
+    min-height:64px;
+
+    padding:9px;
+
+    align-items:flex-start;
+    flex-wrap:wrap;
+  }
+
+  .signal-heading,
+  .quick-heading{
+    width:100%;
+
+    font-size:9px;
+  }
+
+  .signal-list{
+    width:100%;
+
+    display:grid;
+    grid-template-columns:1fr;
+
+    gap:7px;
+
+    overflow:visible;
+  }
+
+  .signal-item{
+    width:100%;
+    min-width:0;
+
+    padding:
+      7px
+      0
+      7px
+      8px;
+  }
+
+  .signal-item b{
+    font-size:8px;
+  }
+
+  .signal-item small{
+    font-size:7px;
+    line-height:1.4;
+  }
+
+  .quick-button{
+    min-width:
+      calc(50% - 4px);
+
+    height:38px;
+
+    font-size:8px;
+  }
+
+  .modal{
+    padding:10px;
+  }
+
+  .modal-box{
+    width:96vw;
+    max-height:90dvh;
+  }
+
+  .modal-content{
+    font-size:9px;
   }
 }
+
+
 </style>
 </head>
 
@@ -3219,14 +3944,6 @@ function openPositionsModal(){
 }
 
 
-function openCandidatesModal(){
-  openJsonModal(
-    "TÜM ADAYLAR / PAPER KAYITLARI",
-    dashboard?.candidates || []
-  );
-}
-
-
 function openSignalsModal(){
   openJsonModal(
     "SON SİNYALLER",
@@ -3654,140 +4371,6 @@ function renderPositions(data){
 }
 
 
-function candidatePlaceholder(){
-  return Array.from(
-    {length:5},
-    (_,index)=>`
-      <div class="candidate-row placeholder-row">
-        <span>${index + 1}</span>
-        <b>${
-          index === 0
-            ? "VERİ BEKLENİYOR"
-            : "—"
-        }</b>
-        <span>—</span>
-        <span>—</span>
-        <span>—</span>
-        <span>—</span>
-      </div>
-    `
-  ).join("");
-}
-
-
-function renderCandidates(candidates){
-  const list =
-    candidates || [];
-
-  if(!list.length){
-    $("candidateList").innerHTML =
-      candidatePlaceholder();
-
-    return;
-  }
-
-  $("candidateList").innerHTML =
-    list
-      .slice(0,5)
-      .map((candidate,index)=>{
-
-        const evidence =
-          candidate.entry_evidence || {};
-
-        const hard =
-          evidence.hard_block;
-
-        const riskText =
-          hard === true
-            ? "YÜKSEK"
-            : hard === false
-              ? "DÜŞÜK"
-              : "—";
-
-        const riskClass =
-          hard === true
-            ? "red"
-            : hard === false
-              ? "green"
-              : "";
-
-        return `
-          <div
-            class="candidate-row"
-            onclick="selectCandidate(${index})">
-
-            <span>${index + 1}</span>
-
-            <b>
-              ${escapeHtml(
-                shortToken(candidate)
-              )}
-            </b>
-
-            <span>
-              ${escapeHtml(
-                candidate.dex ||
-                "PAPER"
-              )}
-            </span>
-
-            <b class="green">
-              ${
-                evidence.score === null ||
-                evidence.score === undefined
-                  ? "—"
-                  : escapeHtml(
-                      number(
-                        evidence.score
-                      ).toLocaleString(
-                        "tr-TR",
-                        {
-                          maximumFractionDigits:2
-                        }
-                      )
-                    )
-              }
-            </b>
-
-            <b class="${riskClass}">
-              ${riskText}
-            </b>
-
-            <span>
-              ${
-                evidence.confidence === null ||
-                evidence.confidence === undefined
-                  ? "—"
-                  : escapeHtml(
-                      number(
-                        evidence.confidence
-                      ).toLocaleString(
-                        "tr-TR",
-                        {
-                          maximumFractionDigits:2
-                        }
-                      )
-                    )
-              }
-            </span>
-
-          </div>
-        `;
-      })
-      .join("");
-}
-
-
-function selectCandidate(index){
-  const candidate =
-    dashboard?.candidates?.[index];
-
-  if(candidate){
-    renderBest(candidate);
-  }
-}
-
-
 function renderIntelligence(intelligence){
   const summary =
     intelligence?.summary || {};
@@ -4211,9 +4794,7 @@ function renderDashboard(data){
 
   renderPositions(data);
 
-  renderCandidates(
-    data.candidates || []
-  );
+
 
   renderIntelligence(
     data.intelligence || {}
@@ -4228,27 +4809,6 @@ function renderDashboard(data){
   renderSignals(
     data.signals || []
   );
-}
-
-
-async function refreshDashboard(){
-  try{
-    const data = await getJson(
-      "/api/dashboard"
-    );
-
-    renderDashboard(data);
-
-  }catch(error){
-    openModal(
-      "PANEL VERİ HATASI",
-      "<p>" +
-        escapeHtml(
-          error.message
-        ) +
-      "</p>"
-    );
-  }
 }
 
 
@@ -4593,6 +5153,296 @@ function prepareVezirImage(){
 }
 
 
+/* CANONICAL LIVE CANDIDATES */
+
+
+function markMarketCards(){
+  document
+    .querySelectorAll(
+      ".market-name"
+    )
+    .forEach(node=>{
+      const card =
+        node.closest(
+          ".metric-card"
+        );
+
+      if(card){
+        card.classList.add(
+          "market-card"
+        );
+      }
+    });
+}
+
+
+function runtimeCandidateShortToken(
+  candidate
+){
+  const token = String(
+    candidate?.token || "TOKEN"
+  );
+
+  return token.length > 17
+    ? (
+        token.slice(0,8) +
+        "…" +
+        token.slice(-5)
+      )
+    : token;
+}
+
+
+function runtimeCandidatePlaceholder(){
+  return `
+    <div class="candidate-row placeholder-row">
+      <span>1</span>
+      <b>CANLI ADAY BEKLENİYOR</b>
+      <span>—</span>
+      <span>—</span>
+      <span>—</span>
+      <span>—</span>
+    </div>
+  `;
+}
+
+
+function renderRuntimeCandidates(
+  candidates
+){
+  const list =
+    candidates || [];
+
+  if(!list.length){
+    $("candidateList").innerHTML =
+      runtimeCandidatePlaceholder();
+
+    return;
+  }
+
+  $("candidateList").innerHTML =
+    list
+      .slice(0,5)
+      .map((candidate,index)=>{
+
+        const action =
+          String(
+            candidate.paper_action ||
+            candidate.strategy ||
+            "—"
+          ).toUpperCase();
+
+        const actionClass =
+          action === "REJECT"
+            ? "red"
+            : action === "PAPER_BUY"
+              ? "green"
+              : action === "WATCH"
+                ? "yellow"
+                : "";
+
+        const rawSellability =
+          String(
+            candidate.sellability ||
+            "—"
+          ).toUpperCase();
+
+        const sellability =
+          rawSellability.replace(
+            "SELLABILITY_",
+            ""
+          );
+
+        const sellClass =
+          sellability === "OK"
+            ? "green"
+            : sellability === "FAIL"
+              ? "red"
+              : sellability === "UNKNOWN"
+                ? "yellow"
+                : "";
+
+        const evidence =
+          candidate.coverage_confidence ??
+          candidate.evidence_coverage;
+
+        const hard =
+          candidate.hard_block;
+
+        const gate =
+          hard === true
+            ? "BLOCK"
+            : hard === false
+              ? "TEMİZ"
+              : "—";
+
+        const gateClass =
+          hard === true
+            ? "red"
+            : hard === false
+              ? "green"
+              : "";
+
+        const pool =
+          String(
+            candidate.pool || ""
+          );
+
+        const shortPool =
+          !pool
+            ? "—"
+            : pool.length > 18
+              ? (
+                  pool.slice(0,8) +
+                  "…" +
+                  pool.slice(-5)
+                )
+              : pool;
+
+        return `
+          <div
+            class="candidate-row"
+            onclick="selectRuntimeCandidate(${index})">
+
+            <span class="live-candidate-index">
+              ${index + 1}
+            </span>
+
+            <div class="candidate-token-live">
+              <b>
+                ${escapeHtml(
+                  runtimeCandidateShortToken(
+                    candidate
+                  )
+                )}
+              </b>
+
+              <small>
+                ${escapeHtml(shortPool)}
+              </small>
+            </div>
+
+            <b class="live-action ${actionClass}">
+              ${escapeHtml(action)}
+            </b>
+
+            <b class="live-sellability ${sellClass}">
+              ${escapeHtml(sellability)}
+            </b>
+
+            <span class="live-evidence">
+              ${
+                evidence === null ||
+                evidence === undefined
+                  ? "—"
+                  : escapeHtml(
+                      number(
+                        evidence
+                      ).toLocaleString(
+                        "tr-TR",
+                        {
+                          maximumFractionDigits:2
+                        }
+                      ) + "%"
+                    )
+              }
+            </span>
+
+            <b class="live-gate ${gateClass}">
+              ${gate}
+            </b>
+
+          </div>
+        `;
+      })
+      .join("");
+}
+
+
+function selectRuntimeCandidate(
+  index
+){
+  const candidate =
+    dashboard
+      ?.runtime_candidates
+      ?.[index];
+
+  if(!candidate){
+    return;
+  }
+
+  openJsonModal(
+    runtimeCandidateShortToken(
+      candidate
+    ) +
+    " · CANLI ADAY",
+    candidate
+  );
+}
+
+
+function openCandidatesModal(){
+  const candidates =
+    dashboard
+      ?.runtime_candidates ||
+    [];
+
+  if(!candidates.length){
+    openModal(
+      "CANLI ADAYLAR",
+      "<p>Son scanner döngüsünde canlı aday bulunmuyor.</p>"
+    );
+
+    return;
+  }
+
+  openJsonModal(
+    "CANLI RUNTIME ADAYLARI",
+    candidates
+  );
+}
+
+
+async function refreshDashboard(){
+  try{
+    const [
+      data,
+      runtimeCandidates
+    ] = await Promise.all([
+      getJson(
+        "/api/dashboard"
+      ),
+      getJson(
+        "/api/runtime-candidates"
+      )
+    ]);
+
+    data.runtime_candidates =
+      runtimeCandidates;
+
+    renderDashboard(data);
+
+    renderRuntimeCandidates(
+      runtimeCandidates
+    );
+
+    markMarketCards();
+
+  }catch(error){
+    openModal(
+      "PANEL VERİ HATASI",
+      "<p>" +
+        escapeHtml(
+          error.message
+        ) +
+      "</p>"
+    );
+  }
+}
+
+
+/* CANONICAL PANEL INITIALIZATION */
+
 prepareVezirImage();
 
 updateClock();
@@ -4608,6 +5458,8 @@ setInterval(
   refreshDashboard,
   15000
 );
+
+
 </script>
 
 </body>

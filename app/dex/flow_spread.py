@@ -1,8 +1,33 @@
-def _num(v):
+import math
+
+
+def _num(value):
+    if value is None:
+        return None
+
     try:
-        return float(v)
+        value = float(value)
     except (TypeError, ValueError):
-        return 0.0
+        return None
+
+    if not math.isfinite(value):
+        return None
+
+    return value
+
+
+def _unknown():
+    return {
+        "state": "UNKNOWN",
+        "buy_flow": None,
+        "sell_flow": None,
+        "net_flow": None,
+        "spread": None,
+        "velocity": None,
+        "acceleration": None,
+        "decision_authority": False,
+        "execution_authority": False,
+    }
 
 
 def flow_spread(
@@ -13,29 +38,35 @@ def flow_spread(
     freshness="FRESH",
     coverage=1.0,
 ):
-    if freshness != "FRESH" or coverage < 1.0:
-        return {
-            "state": "UNKNOWN",
-            "net_flow": None,
-            "spread": None,
-            "velocity": None,
-            "acceleration": None,
-            "decision_authority": False,
-            "execution_authority": False,
-        }
+    coverage_value = _num(coverage)
+
+    if (
+        freshness != "FRESH"
+        or coverage_value is None
+        or coverage_value < 1.0
+    ):
+        return _unknown()
 
     buy = _num(buy_flow)
     sell = _num(sell_flow)
 
+    if buy is None or sell is None:
+        return _unknown()
+
     spread = buy - sell
+
+    previous_spread = _num(prev_spread)
     velocity = (
-        None if prev_spread is None
-        else spread - _num(prev_spread)
+        None
+        if previous_spread is None
+        else spread - previous_spread
     )
+
+    previous_velocity = _num(prev_velocity)
     acceleration = (
         None
-        if velocity is None or prev_velocity is None
-        else velocity - _num(prev_velocity)
+        if velocity is None or previous_velocity is None
+        else velocity - previous_velocity
     )
 
     return {

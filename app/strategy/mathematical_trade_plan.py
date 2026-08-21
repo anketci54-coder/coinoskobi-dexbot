@@ -213,6 +213,380 @@ def market_statistics(
     }
 
 
+
+def mathematical_vur_kac_state(
+    *,
+    prices,
+    token_amount,
+    remaining_cost_basis_usdt,
+    current_price,
+    cost_model,
+    signal_bundle=None,
+):
+    """
+    Mathematical short-horizon realization state.
+
+    No fixed ROI target.
+    No fixed close fraction.
+    No fixed clock window.
+
+    Uses:
+    - post-entry observed log returns
+    - measured price acceleration
+    - fresh/full native flow momentum
+    - fresh/full native flow acceleration
+    - measured RMS/drawdown risk distance
+    - current net exit value under the canonical cost model
+    """
+
+    series = _positive_series(
+        prices
+    )
+
+    current = _number(
+        current_price
+    )
+
+    tokens = max(
+        0.0,
+        _number(
+            token_amount
+        )
+        or 0.0,
+    )
+
+    basis = max(
+        0.0,
+        _number(
+            remaining_cost_basis_usdt
+        )
+        or 0.0,
+    )
+
+    signal = (
+        dict(signal_bundle)
+        if isinstance(
+            signal_bundle,
+            dict,
+        )
+        else {}
+    )
+
+    def unknown(reason):
+        return {
+            "ready": False,
+            "reason": reason,
+            "realize": False,
+            "continuation_positive": False,
+            "continuation_edge_usdt": None,
+            "remaining_net_profit_usdt": None,
+            "latest_log_return": None,
+            "previous_log_return": None,
+            "price_acceleration": None,
+            "risk_log_distance": None,
+            "flow_momentum": None,
+            "flow_acceleration": None,
+            "projected_conservative_price": None,
+            "current_net_exit_usdt": None,
+            "projected_net_exit_usdt": None,
+            "decision_authority": False,
+            "live_authority": False,
+            "wallet_authority": False,
+            "execution_authority": False,
+        }
+
+    if (
+        current is None
+        or current <= 0
+        or tokens <= 0
+    ):
+        return unknown(
+            "POSITION_VALUE_UNAVAILABLE"
+        )
+
+    # Two consecutive returns are the minimum
+    # mathematical requirement for an acceleration.
+    if len(series) < 3:
+        return unknown(
+            "POST_ENTRY_SERIES_INSUFFICIENT"
+        )
+
+    returns = [
+        math.log(
+            right / left
+        )
+        for left, right
+        in zip(
+            series,
+            series[1:],
+        )
+        if (
+            left > 0
+            and right > 0
+        )
+    ]
+
+    if len(returns) < 2:
+        return unknown(
+            "POST_ENTRY_RETURNS_INSUFFICIENT"
+        )
+
+    latest_return = (
+        returns[-1]
+    )
+
+    previous_return = (
+        returns[-2]
+    )
+
+    price_acceleration = (
+        latest_return
+        - previous_return
+    )
+
+    stats = market_statistics(
+        series
+    )
+
+    risk_log_distance = _number(
+        stats.get(
+            "risk_log_distance"
+        )
+    )
+
+    if (
+        risk_log_distance is None
+        or risk_log_distance < 0
+    ):
+        return unknown(
+            "POST_ENTRY_RISK_UNAVAILABLE"
+        )
+
+    freshness = str(
+        signal.get(
+            "freshness"
+        )
+        or "UNKNOWN"
+    ).upper()
+
+    coverage = _number(
+        signal.get(
+            "coverage"
+        )
+    )
+
+    flow_momentum = _number(
+        signal.get(
+            "flow_momentum"
+        )
+    )
+
+    flow_acceleration = _number(
+        signal.get(
+            "flow_acceleration"
+        )
+    )
+
+    # Missing/partial/stale flow remains UNKNOWN.
+    if (
+        freshness != "FRESH"
+        or coverage is None
+        or coverage < 1.0
+        or flow_momentum is None
+        or flow_acceleration is None
+        or not (
+            -1.0
+            <= flow_momentum
+            <= 1.0
+        )
+        or not (
+            -1.0
+            <= flow_acceleration
+            <= 1.0
+        )
+    ):
+        result = unknown(
+            "FLOW_EVIDENCE_NOT_READY"
+        )
+
+        result[
+            "latest_log_return"
+        ] = latest_return
+
+        result[
+            "previous_log_return"
+        ] = previous_return
+
+        result[
+            "price_acceleration"
+        ] = price_acceleration
+
+        result[
+            "risk_log_distance"
+        ] = risk_log_distance
+
+        return result
+
+    # One actual observation-step continuation:
+    #
+    # log(P_next/P_now)
+    #     = latest measured momentum
+    #       - measured adverse movement distance
+    #
+    # No fixed target or time horizon is invented.
+    conservative_log_move = (
+        latest_return
+        - risk_log_distance
+    )
+
+    try:
+        projected_price = (
+            current
+            * math.exp(
+                conservative_log_move
+            )
+        )
+    except OverflowError:
+        return unknown(
+            "CONTINUATION_PROJECTION_INVALID"
+        )
+
+    if (
+        not math.isfinite(
+            projected_price
+        )
+        or projected_price <= 0
+    ):
+        return unknown(
+            "CONTINUATION_PROJECTION_INVALID"
+        )
+
+    current_net_exit = (
+        exit_net_proceeds(
+            tokens,
+            current,
+            cost_model or {},
+        )
+    )
+
+    projected_net_exit = (
+        exit_net_proceeds(
+            tokens,
+            projected_price,
+            cost_model or {},
+        )
+    )
+
+    continuation_edge = (
+        projected_net_exit
+        - current_net_exit
+    )
+
+    remaining_net_profit = (
+        current_net_exit
+        - basis
+    )
+
+    price_weakening = (
+        latest_return <= 0
+        or price_acceleration < 0
+    )
+
+    flow_weakening = (
+        flow_momentum <= 0
+        or flow_acceleration < 0
+    )
+
+    continuation_positive = (
+        continuation_edge > 0
+        and latest_return > 0
+        and flow_momentum > 0
+        and flow_acceleration >= 0
+    )
+
+    realize = (
+        remaining_net_profit > 0
+        and continuation_edge <= 0
+        and price_weakening
+        and flow_weakening
+    )
+
+    if realize:
+        reason = (
+            "VUR_KAC_REALIZATION_READY"
+        )
+
+    elif remaining_net_profit <= 0:
+        reason = (
+            "NO_REALIZABLE_NET_PROFIT"
+        )
+
+    elif continuation_positive:
+        reason = (
+            "CONTINUATION_EDGE_POSITIVE"
+        )
+
+    elif not price_weakening:
+        reason = (
+            "PRICE_MOMENTUM_NOT_WEAKENING"
+        )
+
+    elif not flow_weakening:
+        reason = (
+            "FLOW_NOT_WEAKENING"
+        )
+
+    else:
+        reason = (
+            "CONTINUATION_NOT_CONFIRMED"
+        )
+
+    return {
+        "ready": True,
+        "reason": reason,
+        "realize": realize,
+        "continuation_positive": (
+            continuation_positive
+        ),
+        "continuation_edge_usdt": (
+            continuation_edge
+        ),
+        "remaining_net_profit_usdt": (
+            remaining_net_profit
+        ),
+        "latest_log_return": (
+            latest_return
+        ),
+        "previous_log_return": (
+            previous_return
+        ),
+        "price_acceleration": (
+            price_acceleration
+        ),
+        "risk_log_distance": (
+            risk_log_distance
+        ),
+        "flow_momentum": (
+            flow_momentum
+        ),
+        "flow_acceleration": (
+            flow_acceleration
+        ),
+        "projected_conservative_price": (
+            projected_price
+        ),
+        "current_net_exit_usdt": (
+            current_net_exit
+        ),
+        "projected_net_exit_usdt": (
+            projected_net_exit
+        ),
+        "decision_authority": False,
+        "live_authority": False,
+        "wallet_authority": False,
+        "execution_authority": False,
+    }
+
 def build_cost_model(
     sellability_data=None,
     exit_evidence=None,

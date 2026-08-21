@@ -377,3 +377,142 @@ def test_mature_diverse_evidence_is_not_blocked_by_admission_evidence():
         "SUSPICIOUS_VOLUME"
         not in blockers
     )
+
+
+
+def test_vur_kac_holds_positive_continuation_edge():
+    from app.strategy.mathematical_trade_plan import (
+        mathematical_vur_kac_state,
+    )
+
+    state = mathematical_vur_kac_state(
+        prices=[
+            1.00,
+            1.05,
+            1.12,
+        ],
+        token_amount=100.0,
+        remaining_cost_basis_usdt=100.0,
+        current_price=1.12,
+        cost_model={
+            "sell_retention_known": 1.0,
+            "sell_gas_usd": 0.0,
+        },
+        signal_bundle={
+            "freshness": "FRESH",
+            "coverage": 1.0,
+            "flow_momentum": 0.80,
+            "flow_acceleration": 0.20,
+        },
+    )
+
+    assert state["ready"] is True
+    assert state["continuation_edge_usdt"] > 0
+    assert state["continuation_positive"] is True
+    assert state["realize"] is False
+
+
+def test_vur_kac_realizes_when_price_and_flow_weaken():
+    from app.strategy.mathematical_trade_plan import (
+        mathematical_vur_kac_state,
+    )
+
+    state = mathematical_vur_kac_state(
+        prices=[
+            1.00,
+            1.10,
+            1.15,
+        ],
+        token_amount=100.0,
+        remaining_cost_basis_usdt=100.0,
+        current_price=1.15,
+        cost_model={
+            "sell_retention_known": 1.0,
+            "sell_gas_usd": 0.0,
+        },
+        signal_bundle={
+            "freshness": "FRESH",
+            "coverage": 1.0,
+            "flow_momentum": 0.20,
+            "flow_acceleration": -0.30,
+        },
+    )
+
+    assert state["ready"] is True
+    assert state["remaining_net_profit_usdt"] > 0
+    assert state["price_acceleration"] < 0
+    assert state["continuation_edge_usdt"] <= 0
+    assert state["realize"] is True
+    assert (
+        state["reason"]
+        == "VUR_KAC_REALIZATION_READY"
+    )
+
+
+def test_vur_kac_missing_flow_stays_unknown():
+    from app.strategy.mathematical_trade_plan import (
+        mathematical_vur_kac_state,
+    )
+
+    state = mathematical_vur_kac_state(
+        prices=[
+            1.00,
+            1.10,
+            1.15,
+        ],
+        token_amount=100.0,
+        remaining_cost_basis_usdt=100.0,
+        current_price=1.15,
+        cost_model={
+            "sell_retention_known": 1.0,
+            "sell_gas_usd": 0.0,
+        },
+        signal_bundle={
+            "freshness": "FRESH",
+            "coverage": 0.5,
+            "flow_momentum": 0.20,
+            "flow_acceleration": -0.30,
+        },
+    )
+
+    assert state["ready"] is False
+    assert state["realize"] is False
+    assert (
+        state["reason"]
+        == "FLOW_EVIDENCE_NOT_READY"
+    )
+
+
+def test_vur_kac_never_realizes_a_net_losing_position():
+    from app.strategy.mathematical_trade_plan import (
+        mathematical_vur_kac_state,
+    )
+
+    state = mathematical_vur_kac_state(
+        prices=[
+            1.00,
+            1.10,
+            1.15,
+        ],
+        token_amount=100.0,
+        remaining_cost_basis_usdt=120.0,
+        current_price=1.15,
+        cost_model={
+            "sell_retention_known": 1.0,
+            "sell_gas_usd": 0.0,
+        },
+        signal_bundle={
+            "freshness": "FRESH",
+            "coverage": 1.0,
+            "flow_momentum": 0.20,
+            "flow_acceleration": -0.30,
+        },
+    )
+
+    assert state["ready"] is True
+    assert state["remaining_net_profit_usdt"] < 0
+    assert state["realize"] is False
+    assert (
+        state["reason"]
+        == "NO_REALIZABLE_NET_PROFIT"
+    )

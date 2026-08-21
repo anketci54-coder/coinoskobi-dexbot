@@ -62,3 +62,37 @@ def test_no_fixed_tp_fraction_was_added():
         "TP3_CLOSE_FRACTION"
         not in source
     )
+
+
+
+def test_vur_kac_uses_existing_math_tp_and_runner_path():
+    source = Path(
+        "app/paper/manager.py"
+    ).read_text(
+        encoding="utf-8"
+    )
+
+    assert (
+        "mathematical_vur_kac_state("
+        in source
+    )
+
+    assert (
+        '"MATHEMATICAL_VUR_KAC_EXIT"'
+        in source
+    )
+
+    assert (
+        "persistent_vur_kac"
+        in source
+    )
+
+    assert (
+        "TP1_CLOSE_FRACTION"
+        not in source
+    )
+
+    assert (
+        "TP2_CLOSE_FRACTION"
+        not in source
+    )

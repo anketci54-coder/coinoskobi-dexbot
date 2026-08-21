@@ -23,6 +23,7 @@ from app.strategy.mathematical_trade_plan import (
     dynamic_stop_price,
     exit_net_proceeds,
     initial_net_risk_usdt,
+    mathematical_vur_kac_state,
     realization_values,
     tp1_required_fraction,
     tp2_required_fraction,
@@ -962,6 +963,12 @@ class PaperManager:
             current,
         )
 
+        post_entry_history = (
+            self.db.price_observations(
+                pos["id"]
+            )
+        )
+
         history = list(
             (
                 plan.get(
@@ -975,9 +982,7 @@ class PaperManager:
         )
 
         history.extend(
-            self.db.price_observations(
-                pos["id"]
-            )
+            post_entry_history
         )
 
         previous_stop = float(
@@ -1256,6 +1261,160 @@ class PaperManager:
             initial_risk
         )
 
+        signal_bundle = (
+            evidence.get(
+                "signal_bundle"
+            )
+            if isinstance(
+                evidence,
+                dict,
+            )
+            else {}
+        )
+
+        if not isinstance(
+            signal_bundle,
+            dict,
+        ):
+            signal_bundle = {}
+
+        vur_kac = (
+            mathematical_vur_kac_state(
+                prices=(
+                    post_entry_history
+                ),
+
+                token_amount=(
+                    tokens
+                ),
+
+                remaining_cost_basis_usdt=(
+                    basis
+                ),
+
+                current_price=(
+                    current
+                ),
+
+                cost_model=(
+                    cost_model
+                ),
+
+                signal_bundle=(
+                    signal_bundle
+                ),
+            )
+        )
+
+        current_ce = vur_kac.get(
+            "continuation_edge_usdt"
+        )
+
+        previous_ce = state.get(
+            "vur_kac_continuation_edge_usdt"
+        )
+
+        try:
+            previous_ce = (
+                float(previous_ce)
+                if previous_ce
+                is not None
+                else None
+            )
+        except (
+            TypeError,
+            ValueError,
+        ):
+            previous_ce = None
+
+        persistent_vur_kac = (
+            bool(
+                vur_kac.get(
+                    "realize"
+                )
+            )
+            and current_ce
+            is not None
+            and previous_ce
+            is not None
+            and float(current_ce)
+            <= float(previous_ce)
+        )
+
+        state[
+            "vur_kac_ready"
+        ] = bool(
+            vur_kac.get(
+                "ready"
+            )
+        )
+
+        state[
+            "vur_kac_reason"
+        ] = vur_kac.get(
+            "reason"
+        )
+
+        state[
+            "vur_kac_realize"
+        ] = bool(
+            vur_kac.get(
+                "realize"
+            )
+        )
+
+        state[
+            "vur_kac_persistent"
+        ] = bool(
+            persistent_vur_kac
+        )
+
+        state[
+            "vur_kac_continuation_edge_usdt"
+        ] = current_ce
+
+        state[
+            "vur_kac_remaining_net_profit_usdt"
+        ] = vur_kac.get(
+            "remaining_net_profit_usdt"
+        )
+
+        # Once TP2 has already recovered principal,
+        # the remaining inventory is the runner.
+        #
+        # If the mathematically negative continuation
+        # edge persists or worsens for another actual
+        # observation, close the remaining runner.
+        if (
+            int(
+                pos.get(
+                    "runner_active"
+                )
+                or 0
+            )
+            and persistent_vur_kac
+        ):
+            common_update[
+                "math_state_json"
+            ] = json.dumps(
+                state,
+                sort_keys=True,
+            )
+
+            self.db.update_position(
+                pos["id"],
+                common_update,
+            )
+
+            return self._close_math(
+                pos,
+                current,
+                highest,
+                lowest,
+                plan,
+                "MATHEMATICAL_VUR_KAC_EXIT",
+            )
+
         stage = None
         fraction = None
 
@@ -1291,22 +1450,18 @@ class PaperManager:
                 )
             )
 
-            previous = state.get(
-                "tp1_required_fraction"
-            )
-
             if (
                 fraction is not None
                 and 0 < fraction < 1
             ):
-                # Wait while the amount needed
-                # to neutralize risk is improving.
-                # Realize when that required
-                # fraction stops decreasing.
-                if (
-                    previous is not None
-                    and fraction
-                    >= float(previous)
+                # First confirmed exhaustion:
+                # sell only the minimum fraction
+                # needed to neutralize measured
+                # initial net risk.
+                if bool(
+                    vur_kac.get(
+                        "realize"
+                    )
                 ):
                     stage = "TP1"
 
@@ -1357,19 +1512,15 @@ class PaperManager:
                 )
 
             else:
-                previous = state.get(
-                    "tp2_required_fraction"
-                )
-
                 if (
                     fraction is not None
                     and 0 < fraction < 1
                 ):
-                    if (
-                        previous is not None
-                        and fraction
-                        >= float(previous)
-                    ):
+                    # Continued/worsening exhaustion
+                    # after TP1:
+                    # sell only the minimum fraction
+                    # needed to recover original entry.
+                    if persistent_vur_kac:
                         stage = "TP2"
 
                     state[

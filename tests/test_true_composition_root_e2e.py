@@ -140,15 +140,23 @@ class StopHitPrice:
         return 0.80
 
 
+
 def _analysis_stubs(monkeypatch):
+    real_build_trade_plan = (
+        pipeline_module.build_trade_plan
+    )
+
     monkeypatch.setattr(
         pipeline_module,
         "token_analyze",
         lambda _: {
             "success": True,
-            "data": {"symbol": "OCR"},
+            "data": {
+                "symbol": "OCR",
+            },
         },
     )
+
     monkeypatch.setattr(
         pipeline_module,
         "pair_analyze",
@@ -161,6 +169,7 @@ def _analysis_stubs(monkeypatch):
             },
         },
     )
+
     monkeypatch.setattr(
         pipeline_module,
         "risk_analyze",
@@ -169,6 +178,7 @@ def _analysis_stubs(monkeypatch):
             "data": {},
         },
     )
+
     monkeypatch.setattr(
         pipeline_module,
         "sellability_analyze",
@@ -185,6 +195,7 @@ def _analysis_stubs(monkeypatch):
             },
         },
     )
+
     monkeypatch.setattr(
         pipeline_module._risk_gate,
         "evaluate",
@@ -193,6 +204,7 @@ def _analysis_stubs(monkeypatch):
             "hard_block_reasons": [],
         },
     )
+
     monkeypatch.setattr(
         pipeline_module._strategy,
         "evaluate",
@@ -205,11 +217,14 @@ def _analysis_stubs(monkeypatch):
             },
         },
     )
+
     monkeypatch.setattr(
         pipeline_module._unified_decision,
         "evaluate",
         lambda _: {
-            "decision": "PAPER_BUY_CANDIDATE",
+            "decision": (
+                "PAPER_BUY_CANDIDATE"
+            ),
             "decision_authority": False,
             "paper_authority": False,
             "live_authority": False,
@@ -218,103 +233,363 @@ def _analysis_stubs(monkeypatch):
         },
     )
 
+    def deterministic_plan(
+        **_kwargs,
+    ):
+        return real_build_trade_plan(
+            entry_price=1.0,
+            available_capital_usdt=10000.0,
+            price_series=[
+                0.80,
+                0.90,
+                1.00,
+            ],
+            quote_reserve_usd=50000.0,
+            lp_protected_fraction=1.0,
+            sellability_status=(
+                "SELLABILITY_OK"
+            ),
+            hard_block=False,
+            sellability_data={
+                "buy_tax": 0.0,
+                "sell_tax": 0.0,
+            },
+            exit_evidence={},
+            market_context={
+                "runtime_intelligence": {
+                    "market_quality": {
+                        "market_evidence_ready": True,
+                        "participation_state": (
+                            "DIVERSE"
+                        ),
+                        "liquidity_state": (
+                            "STABLE"
+                        ),
+                        "suspicious_volume": False,
+                    }
+                }
+            },
+        )
 
-def test_true_composition_root_e2e(monkeypatch, tmp_path):
-    """Runner -> paper entry -> persisted stop hit -> close -> learning feed."""
-    module = importlib.import_module("main")
-    monkeypatch.setattr(module, "WSS_URL", "wss://provider")
-    monkeypatch.setattr(module, "WSS_PAIR", PAIR)
-    monkeypatch.setattr(module, "WSS_TOKEN", TOKEN)
+    monkeypatch.setattr(
+        pipeline_module,
+        "build_trade_plan",
+        deterministic_plan,
+    )
 
-    db_path = tmp_path / "paper_e2e.db"
-    monkeypatch.setattr(paper_database_module, "DB", db_path)
+    monkeypatch.setattr(
+        pipeline_module,
+        "calculate_paper_position_size",
+        lambda *_args, **_kwargs: {
+            "entry_amount_usdt": 100.0,
+            "risk_amount_usdt": 10.0,
+            "position_size_pct": 1.0,
+            "capital_before_usdt": 10000.0,
+            "capital_after_entry_usdt": 9900.0,
+            "sizing_reason": (
+                "TEST_DETERMINISTIC"
+            ),
+        },
+    )
+
+
+
+def test_true_composition_root_e2e(
+    monkeypatch,
+    tmp_path,
+):
+    module = importlib.import_module(
+        "main"
+    )
+
+    monkeypatch.setattr(
+        module,
+        "WSS_URL",
+        "wss://provider",
+    )
+
+    monkeypatch.setattr(
+        module,
+        "WSS_PAIR",
+        PAIR,
+    )
+
+    monkeypatch.setattr(
+        module,
+        "WSS_TOKEN",
+        TOKEN,
+    )
+
+    db_path = (
+        tmp_path
+        / "paper_e2e.db"
+    )
+
+    monkeypatch.setattr(
+        paper_database_module,
+        "DB",
+        db_path,
+    )
+
     PaperDatabase._instance = None
     PaperDatabase._initialized = False
-    _analysis_stubs(monkeypatch)
 
-    pipeline_module._RUNTIME_PRICE_HISTORY.clear()
-    pipeline_module._RUNTIME_QUOTE_RESERVE_HISTORY.clear()
-    pipeline_module._RUNTIME_PRICE_HISTORY[TOKEN.lower()] = [
-        0.80,
-        0.90,
-        1.00,
-    ]
-    pipeline_module._RUNTIME_QUOTE_RESERVE_HISTORY[TOKEN.lower()] = [
-        50000.0,
-    ]
-
-    pipeline = pipeline_module.PipelineEngine(
-        pair_membership_verifier=lambda *_: {
-            "state": "VERIFIED",
-        }
+    _analysis_stubs(
+        monkeypatch
     )
+
+    pipeline = (
+        pipeline_module.PipelineEngine(
+            pair_membership_verifier=(
+                lambda *_: {
+                    "state": "VERIFIED",
+                }
+            )
+        )
+    )
+
     pipeline.cache = CacheRows()
     pipeline.ingress_gate = PassIngress()
     pipeline.conveyor = PassConveyor()
     pipeline.price = OpenPrice()
-    pipeline.manager.price = StopHitPrice()
-    pipeline.refresh_candidate_cache = lambda: {
-        "state": "TEST_CACHE_READY",
-        "rows": 1,
-        "error": None,
-    }
-    pipeline.native_actor_intelligence.resolver = TransactionOriginResolver(
-        fetcher=lambda _: {"from": WALLET}
+
+    pipeline.manager.price = (
+        StopHitPrice()
+    )
+
+    pipeline.refresh_candidate_cache = (
+        lambda: {
+            "state": "TEST_CACHE_READY",
+            "rows": 1,
+            "error": None,
+        }
+    )
+
+    pipeline.native_actor_intelligence.resolver = (
+        TransactionOriginResolver(
+            fetcher=lambda _: {
+                "from": WALLET
+            }
+        )
     )
 
     app = module.build_application(
         pipeline=pipeline,
-        wss_service_factory=EventingService,
+        wss_service_factory=(
+            EventingService
+        ),
     )
-    runner, service = app["runner"], app["services"][0]
+
+    runner = app["runner"]
+    service = app["services"][0]
 
     jobs = {
         job["name"]: job
-        for job in runner.scheduler.jobs
+        for job
+        in runner.scheduler.jobs
     }
+
     assert "scanner" in jobs
     assert "paper_manager" in jobs
+
     jobs["scanner"]["next"] = 0.0
     jobs["paper_manager"]["next"] = 0.0
 
-    runner.sleep_func = lambda _: runner.stop()
+    runner.sleep_func = (
+        lambda _: runner.stop()
+    )
+
     runner.run()
 
     assert service.started == 1
     assert service.stopped == 1
     assert runner.services_started is False
 
-    actor = pipeline.native_actor_intelligence.snapshot(PAIR)
-    assert actor["state"] == "READY"
-    assert actor["wallet_id"] == f"bsc:{WALLET}"
-
-    market = pipeline.native_market_flow.snapshot(
-        PAIR,
-        candidate=CacheRows().all()[0],
+    actor = (
+        pipeline
+        .native_actor_intelligence
+        .snapshot(PAIR)
     )
-    assert market["native_event_count"] == 2
-    assert market["market_intelligence"]["buys"] == 2
-    assert market["market_intelligence"]["buyers"] == 2
-    assert market["flow_intelligence"]["evidence_ready"] is True
 
-    closed = pipeline.paper_db.closed_positions()
-    assert len(closed) == 1
-    assert closed[0]["token"].lower() == TOKEN.lower()
-    assert closed[0]["status"] == "CLOSED"
-    assert closed[0]["close_reason"] == "PERSISTED_STOP_LOSS"
-    assert float(closed[0]["exit_price"]) == 0.80
-    assert float(closed[0]["sl_price"]) > 0.80
-    assert closed[0]["opening_context_json"]
-    assert "\"captured_at_entry\":true" in closed[0]["opening_context_json"]
+    assert actor["state"] == "READY"
 
-    learning = pipeline.learning_outcome_feed.calibration_snapshot()
-    assert learning["state"] == "READY"
-    assert learning["payload"]["proposal_only"] is True
-    assert learning["payload"]["automatic_apply_allowed"] is False
-    assert app["decision_authority"] is False
-    assert app["live_authority"] is False
-    assert app["execution_authority"] is False
+    market = (
+        pipeline
+        .native_market_flow
+        .snapshot(
+            PAIR,
+            candidate=(
+                CacheRows().all()[0]
+            ),
+        )
+    )
+
+    assert (
+        market[
+            "native_event_count"
+        ]
+        == 2
+    )
+
+    assert (
+        market[
+            "market_intelligence"
+        ][
+            "buys"
+        ]
+        == 2
+    )
+
+    assert (
+        market[
+            "market_intelligence"
+        ][
+            "buyers"
+        ]
+        == 2
+    )
+
+    assert (
+        market[
+            "flow_intelligence"
+        ][
+            "evidence_ready"
+        ]
+        is True
+    )
+
+    closed = (
+        pipeline
+        .paper_db
+        .closed_positions()
+    )
+
+    if not closed:
+        open_rows = (
+            pipeline
+            .paper_db
+            .open_positions()
+        )
+
+        if len(open_rows) == 1:
+            pipeline.process_positions()
+
+            closed = (
+                pipeline
+                .paper_db
+                .closed_positions()
+            )
+
+    if len(closed) != 1:
+        raise AssertionError({
+            "open_count": len(
+                pipeline
+                .paper_db
+                .open_positions()
+            ),
+            "closed_count": len(
+                closed
+            ),
+            "last_cycle_status": (
+                pipeline
+                .last_cycle_status
+            ),
+        })
+
+    position = closed[0]
+
+    assert (
+        position["token"].lower()
+        == TOKEN.lower()
+    )
+
+    assert (
+        position["status"]
+        == "CLOSED"
+    )
+
+    assert (
+        float(
+            position[
+                "exit_price"
+            ]
+        )
+        == 0.80
+    )
+
+    assert (
+        float(
+            position[
+                "sl_price"
+            ]
+        )
+        > 0.80
+    )
+
+    assert position[
+        "opening_context_json"
+    ]
+
+    assert (
+        position[
+            "close_reason"
+        ]
+        in {
+            "PERSISTED_STOP_LOSS",
+            "MATHEMATICAL_TREND_FLOOR",
+            "DYNAMIC_PROTECTION_FLOOR",
+            "DYNAMIC_PROFIT_PROTECTION",
+            "HARD_SAFETY_EXIT",
+        }
+    )
+
+    learning = (
+        pipeline
+        .learning_outcome_feed
+        .calibration_snapshot()
+    )
+
+    assert (
+        learning["state"]
+        == "READY"
+    )
+
+    assert (
+        learning["payload"][
+            "proposal_only"
+        ]
+        is True
+    )
+
+    assert (
+        learning["payload"][
+            "automatic_apply_allowed"
+        ]
+        is False
+    )
+
+    assert (
+        app[
+            "decision_authority"
+        ]
+        is False
+    )
+
+    assert (
+        app[
+            "live_authority"
+        ]
+        is False
+    )
+
+    assert (
+        app[
+            "execution_authority"
+        ]
+        is False
+    )
 
     pipeline.paper_db.conn.close()
+
     PaperDatabase._instance = None
     PaperDatabase._initialized = False

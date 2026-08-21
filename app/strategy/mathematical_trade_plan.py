@@ -81,6 +81,7 @@ def _retention(
     )
 
 
+
 def market_statistics(
     prices,
 ):
@@ -91,14 +92,12 @@ def market_statistics(
     if len(prices) < 2:
         return {
             "ready": False,
-
             "reason": (
                 "PRICE_SERIES_INSUFFICIENT"
             ),
-
             "prices": prices,
-
             "log_returns": [],
+            "informative_return_count": 0,
         }
 
     returns = [
@@ -119,15 +118,19 @@ def market_statistics(
     if not returns:
         return {
             "ready": False,
-
             "reason": (
                 "RETURN_SERIES_EMPTY"
             ),
-
             "prices": prices,
-
             "log_returns": [],
+            "informative_return_count": 0,
         }
+
+    informative_returns = [
+        value
+        for value in returns
+        if value != 0.0
+    ]
 
     mean_return = fmean(
         returns
@@ -151,7 +154,6 @@ def market_statistics(
     )
 
     running_peak = prices[0]
-
     drawdowns = []
 
     for price in prices:
@@ -162,8 +164,7 @@ def market_statistics(
 
         drawdowns.append(
             math.log(
-                running_peak
-                / price
+                running_peak / price
             )
         )
 
@@ -186,7 +187,6 @@ def market_statistics(
         "ready": (
             risk_log_distance > 0
         ),
-
         "reason": (
             "READY"
             if risk_log_distance > 0
@@ -194,35 +194,19 @@ def market_statistics(
                 "RISK_DISTANCE_UNOBSERVABLE"
             )
         ),
-
         "prices": prices,
-
-        "log_returns": (
-            returns
+        "log_returns": returns,
+        "informative_return_count": (
+            len(informative_returns)
         ),
-
-        "mean_log_return": (
-            mean_return
-        ),
-
+        "mean_log_return": mean_return,
         "variance": variance,
-
-        "second_moment": (
-            second_moment
-        ),
-
-        "rms_log_move": (
-            rms_move
-        ),
-
-        "max_drawdown_log": (
-            max_drawdown
-        ),
-
+        "second_moment": second_moment,
+        "rms_log_move": rms_move,
+        "max_drawdown_log": max_drawdown,
         "risk_log_distance": (
             risk_log_distance
         ),
-
         "horizon_log_move": (
             horizon_log_move
         ),
@@ -585,6 +569,142 @@ def _score_from_edge_and_risk(
     )
 
 
+
+def _runtime_admission_evidence_blockers(
+    *,
+    stats,
+    market_context,
+):
+    context = (
+        market_context
+        if isinstance(
+            market_context,
+            dict,
+        )
+        else {}
+    )
+
+    runtime = (
+        context.get(
+            "runtime_intelligence"
+        )
+        or {}
+    )
+
+    quality = context.get(
+        "market_quality"
+    )
+
+    if not isinstance(
+        quality,
+        dict,
+    ):
+        quality = (
+            runtime.get(
+                "market_quality"
+            )
+            if isinstance(
+                runtime,
+                dict,
+            )
+            else None
+        )
+
+    if not isinstance(
+        quality,
+        dict,
+    ):
+        return []
+
+    blockers = []
+
+    informative_count = (
+        stats.get(
+            "informative_return_count"
+        )
+    )
+
+    if informative_count is None:
+        informative_count = sum(
+            1
+            for value in (
+                stats.get(
+                    "log_returns"
+                )
+                or ()
+            )
+            if value != 0.0
+        )
+
+    if informative_count < 2:
+        blockers.append(
+            "EMPIRICAL_MOVEMENT_INSUFFICIENT"
+        )
+
+    if (
+        quality.get(
+            "market_evidence_ready"
+        )
+        is False
+    ):
+        blockers.append(
+            "MARKET_QUALITY_EVIDENCE_NOT_READY"
+        )
+
+    if (
+        quality.get(
+            "suspicious_volume"
+        )
+        is True
+    ):
+        blockers.append(
+            "SUSPICIOUS_VOLUME"
+        )
+
+    participation = str(
+        quality.get(
+            "participation_state"
+        )
+        or "UNKNOWN"
+    ).upper()
+
+    if participation == "UNKNOWN":
+        blockers.append(
+            "PARTICIPATION_EVIDENCE_UNKNOWN"
+        )
+
+    elif participation == "CONCENTRATED":
+        blockers.append(
+            "PARTICIPATION_CONCENTRATED"
+        )
+
+    liquidity = str(
+        quality.get(
+            "liquidity_state"
+        )
+        or "UNKNOWN"
+    ).upper()
+
+    if liquidity == "NO_LIQUIDITY":
+        blockers.append(
+            "MARKET_QUALITY_NO_LIQUIDITY"
+        )
+
+    elif (
+        liquidity
+        == "DETERIORATING_FAST"
+    ):
+        blockers.append(
+            "MARKET_QUALITY_LIQUIDITY_DETERIORATING_FAST"
+        )
+
+    return list(
+        dict.fromkeys(
+            blockers
+        )
+    )
+
+
 def build_trade_plan(
     *,
     entry_price,
@@ -641,6 +761,13 @@ def build_trade_plan(
     )
 
     blockers = []
+
+    blockers.extend(
+        _runtime_admission_evidence_blockers(
+            stats=stats,
+            market_context=market_context,
+        )
+    )
 
     unknowns = list(
         costs[

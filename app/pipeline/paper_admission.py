@@ -2,65 +2,58 @@ def paper_admission_decision(
     strategy,
     unified_decision,
     risk_gate,
-    sellability_status=None,
+    *,
+    sellability_status,
 ):
-    """Final conservative PAPER admission boundary.
-
-    PAPER_BUY requires:
-    - legacy PAPER_BUY
-    - unified PAPER_BUY_CANDIDATE
-    - no hard block
-    - explicitly verified sellability
-
-    Missing / skipped sellability evidence can remain observable
-    as WATCH but cannot create a new paper position.
-    """
-
-    legacy = (strategy or {}).get(
-        "decision",
-        "REJECT",
-    )
-
-    if (risk_gate or {}).get("hard_block"):
-        return "REJECT"
-
-    if legacy != "PAPER_BUY":
-        return legacy
-
-    unified = (unified_decision or {}).get(
-        "decision",
-        "REJECT",
-    )
-
-    if unified == "REQUIRE_MORE_EVIDENCE":
-        return "REQUIRE_MORE_EVIDENCE"
-
-    if unified == "WATCH":
-        return "WATCH"
-
-    if unified != "PAPER_BUY_CANDIDATE":
-        return "REJECT"
+    strategy = strategy or {}
+    unified = unified_decision or {}
+    gate = risk_gate or {}
 
     status = str(
-        sellability_status or ""
-    ).strip().upper()
+        sellability_status
+        or "SELLABILITY_SKIPPED"
+    )
 
-    blocked = {
-        "SELLABILITY_FAIL",
-        "SELLABILITY_BLOCK",
-        "UNSELLABLE",
-    }
-
-    verified = {
-        "SELLABILITY_OK",
-        "SELLABLE",
-        "PASS",
-    }
-
-    if status in blocked:
+    if gate.get(
+        "hard_block"
+    ):
         return "REJECT"
 
-    if status not in verified:
+    if (
+        status
+        == "SELLABILITY_FAIL"
+    ):
+        return "REJECT"
+
+    if (
+        strategy.get(
+            "decision"
+        )
+        != "PAPER_BUY"
+    ):
+        return (
+            "REJECT"
+            if (
+                strategy.get(
+                    "decision"
+                )
+                == "REJECT"
+            )
+            else "WATCH"
+        )
+
+    if (
+        unified.get(
+            "decision"
+        )
+        != "PAPER_BUY_CANDIDATE"
+    ):
         return "WATCH"
 
-    return "PAPER_BUY"
+    if (
+        status
+        == "SELLABILITY_OK"
+    ):
+        return "PAPER_BUY"
+
+    return "WATCH"

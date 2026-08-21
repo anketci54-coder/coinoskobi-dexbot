@@ -83,36 +83,28 @@ class RuntimeIntelligenceComposition:
         market_quality = (
             analyze_market_quality(
                 volume_usd=market_input.get(
-                    "volume_usd",
-                    0,
+                    "volume_usd"
                 ),
                 buy_volume_usd=market_input.get(
-                    "buy_volume_usd",
-                    0,
+                    "buy_volume_usd"
                 ),
                 sell_volume_usd=market_input.get(
-                    "sell_volume_usd",
-                    0,
+                    "sell_volume_usd"
                 ),
                 buyers=market_input.get(
-                    "buyers",
-                    0,
+                    "buyers"
                 ),
                 sellers=market_input.get(
-                    "sellers",
-                    0,
+                    "sellers"
                 ),
                 buys=market_input.get(
-                    "buys",
-                    0,
+                    "buys"
                 ),
                 sells=market_input.get(
-                    "sells",
-                    0,
+                    "sells"
                 ),
                 liquidity_usd=market_input.get(
-                    "liquidity_usd",
-                    0,
+                    "liquidity_usd"
                 ),
                 previous_liquidity_usd=(
                     market_input.get(
@@ -124,12 +116,10 @@ class RuntimeIntelligenceComposition:
 
         spread = flow_spread(
             flow_input.get(
-                "buy_flow",
-                0,
+                "buy_flow"
             ),
             flow_input.get(
-                "sell_flow",
-                0,
+                "sell_flow"
             ),
             prev_spread=flow_input.get(
                 "prev_spread"
@@ -139,11 +129,10 @@ class RuntimeIntelligenceComposition:
             ),
             freshness=flow_input.get(
                 "freshness",
-                "FRESH",
+                "UNKNOWN",
             ),
             coverage=flow_input.get(
-                "coverage",
-                1.0,
+                "coverage"
             ),
         )
 

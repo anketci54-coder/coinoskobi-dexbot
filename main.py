@@ -140,6 +140,7 @@ def build_application(
             return {
                 "state": "NO_SERVICE",
                 "address_count": 0,
+                "addresses": [],
             }
 
         target_loader = getattr(
@@ -152,6 +153,7 @@ def build_application(
             return {
                 "state": "NO_TARGET_LOADER",
                 "address_count": 0,
+                "addresses": [],
             }
 
         refreshed_targets = target_loader()
@@ -160,6 +162,7 @@ def build_application(
             return {
                 "state": "NO_TARGETS",
                 "address_count": 0,
+                "addresses": [],
             }
 
         configure = getattr(
@@ -222,6 +225,7 @@ def build_application(
             return {
                 "state": "NO_VERIFIED_TARGETS",
                 "address_count": 0,
+                "addresses": [],
             }
 
         pair_filter = (
@@ -242,6 +246,90 @@ def build_application(
             "address_count": len(
                 verified_addresses
             ),
+            "addresses": list(
+                verified_addresses
+            ),
+        }
+
+    def prepare_native_market_evidence(
+        candidates=None,
+    ):
+        binding = (
+            refresh_native_wss_targets()
+        )
+
+        verified = {
+            str(pair).strip().lower()
+            for pair in (
+                binding.get("addresses")
+                or []
+            )
+            if pair
+        }
+
+        candidate_pools = list(
+            dict.fromkeys(
+                str(
+                    row.get("pool")
+                    or ""
+                ).strip().lower()
+                for row in (
+                    candidates
+                    or []
+                )
+                if row.get("pool")
+            )
+        )
+
+        wait_pools = [
+            pair
+            for pair in candidate_pools
+            if pair in verified
+        ]
+
+        waiter = getattr(
+            pipeline,
+            "wait_for_native_market_evidence",
+            None,
+        )
+
+        if (
+            waiter is None
+            or not wait_pools
+        ):
+            warmup = {
+                "state": "NO_WAIT_TARGETS",
+                "requested": len(
+                    wait_pools
+                ),
+                "ready": 0,
+                "pending": len(
+                    wait_pools
+                ),
+            }
+        else:
+            warmup = waiter(
+                wait_pools,
+                timeout=10.0,
+            )
+
+        logging.getLogger(
+            __name__
+        ).info(
+            (
+                "Native evidence warm-up "
+                "state=%s requested=%s "
+                "ready=%s pending=%s"
+            ),
+            warmup.get("state"),
+            warmup.get("requested"),
+            warmup.get("ready"),
+            warmup.get("pending"),
+        )
+
+        return {
+            "binding": binding,
+            "warmup": warmup,
         }
 
     def application_scan_job():
@@ -250,7 +338,7 @@ def build_application(
 
         return pipeline.run_cycle(
             pre_analysis_hook=(
-                refresh_native_wss_targets
+                prepare_native_market_evidence
             ),
         )
 

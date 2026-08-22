@@ -340,3 +340,61 @@ def test_direction_requires_confirmed_pair_membership():
         "BULL",
         "BEAR",
     }
+
+def test_market_evidence_wait_requires_real_buy_and_sell_actors():
+    store = RuntimeMarketFlowStore(
+        require_membership_confirmation=True
+    )
+
+    store.register_pair(
+        PAIR,
+        TOKEN,
+        QUOTE,
+    )
+
+    store.confirm_pair_membership(
+        PAIR,
+        TOKEN,
+        QUOTE,
+    )
+
+    store.observe_event(
+        swap_event(
+            "0xwarmbuy:0x1",
+            amount1_in=10,
+            amount0_out=5,
+        )
+    )
+
+    partial = (
+        store.wait_for_market_evidence(
+            [PAIR],
+            timeout=0.0,
+        )
+    )
+
+    assert partial["state"] == "TIMEOUT"
+    assert partial["ready"] == 0
+    assert partial["pending"] == 1
+
+    store.observe_event(
+        swap_event(
+            "0xwarmsell:0x2",
+            amount0_in=5,
+            amount1_out=10,
+        )
+    )
+
+    ready = (
+        store.wait_for_market_evidence(
+            [PAIR],
+            timeout=0.0,
+        )
+    )
+
+    assert ready["state"] == "READY"
+    assert ready["requested"] == 1
+    assert ready["ready"] == 1
+    assert ready["pending"] == 0
+    assert ready["decision_authority"] is False
+    assert ready["execution_authority"] is False

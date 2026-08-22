@@ -37,6 +37,20 @@ class Pipeline:
         self.sequence.append("confirm")
         return {"state": "VERIFIED"}
 
+    def wait_for_native_market_evidence(
+        self,
+        pairs,
+        *,
+        timeout=10.0,
+    ):
+        self.sequence.append("wait")
+        return {
+            "state": "READY",
+            "requested": len(pairs),
+            "ready": len(pairs),
+            "pending": 0,
+        }
+
     async def on_native_event(self, event):
         return True
 
@@ -51,7 +65,10 @@ class Pipeline:
         self.sequence.append("refresh")
 
         if pre_analysis_hook is not None:
-            pre_analysis_hook()
+            pre_analysis_hook([
+                {"pool": PAIR2},
+                {"pool": PAIR3},
+            ])
 
         self.sequence.append("analyze")
 
@@ -117,7 +134,9 @@ def test_scanner_refresh_rebinds_verified_wss_pairs(monkeypatch):
 
     assert (
         pipeline.sequence.index("confirm")
+        < pipeline.sequence.index("wait")
         < pipeline.sequence.index("analyze")
     )
+
     assert app["services"][0].pair == [PAIR2, PAIR3]
     assert app["services"][0].replacements == [[PAIR2, PAIR3]]

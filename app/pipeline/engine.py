@@ -590,6 +590,39 @@ class PipelineEngine:
 
         return True
 
+    def wait_for_native_market_evidence(
+        self,
+        pairs,
+        *,
+        timeout=10.0,
+    ):
+        runtime = getattr(
+            self,
+            "native_market_flow",
+            None,
+        )
+
+        waiter = getattr(
+            runtime,
+            "wait_for_market_evidence",
+            None,
+        )
+
+        if waiter is None:
+            return {
+                "state": "UNAVAILABLE",
+                "requested": 0,
+                "ready": 0,
+                "pending": 0,
+                "decision_authority": False,
+                "execution_authority": False,
+            }
+
+        return waiter(
+            pairs,
+            timeout=timeout,
+        )
+
     def refresh_open_position_prices(self, max_positions=30):
         positions = self.manager.db.open_positions()
         selected = positions[:max(1, int(max_positions))]
@@ -2897,19 +2930,6 @@ class PipelineEngine:
                 self.last_scanner_refresh["error"],
             )
 
-        # Scanner data is now current. Allow application-owned
-        # observation infrastructure to bind those exact pools
-        # before any candidate from this cache is analysed.
-        if pre_analysis_hook is not None:
-            try:
-                pre_analysis_hook()
-            except Exception as exc:
-                logger.warning(
-                    "Pre-analysis observation binding failed: %s",
-                    f"{type(exc).__name__}: {exc}",
-                )
-
-
         rows = self.cache.all()
 
         normalized_result = normalize_source_rows(
@@ -2957,6 +2977,20 @@ class PipelineEngine:
                     - len(candidates)
                 ),
             }
+
+        # Candidate identities are now known but none has
+        # entered analysis yet. Bind current pools and allow
+        # real native BUY/SELL evidence to arrive first.
+        if pre_analysis_hook is not None:
+            try:
+                pre_analysis_hook(
+                    candidates
+                )
+            except Exception as exc:
+                logger.warning(
+                    "Pre-analysis observation binding failed: %s",
+                    f"{type(exc).__name__}: {exc}",
+                )
 
         if not hasattr(self, "candidate_queue"):
             self.candidate_queue = CandidateAdmissionQueue(

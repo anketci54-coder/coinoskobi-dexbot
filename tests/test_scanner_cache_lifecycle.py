@@ -102,7 +102,7 @@ def test_scanner_failure_uses_existing_cache():
     assert engine.manager.calls == 1
 
 
-def test_native_wss_targets_are_active_v2_and_bounded(monkeypatch):
+def test_native_wss_targets_observe_all_v2_and_are_bounded(monkeypatch):
     engine = PipelineEngine(
         pair_membership_verifier=lambda *args: {
             "state": "VERIFIED",
@@ -122,6 +122,9 @@ def test_native_wss_targets_are_active_v2_and_bounded(monkeypatch):
         }
         for i in range(1, 5)
     ]
+
+    # Observation must not depend on ingress admission.
+    engine.ingress_gate = None
 
     monkeypatch.setattr(engine.cache, "all", lambda: rows)
 

@@ -39,109 +39,62 @@ def test_position_contract_is_preserved():
     assert result["static_sl_price"] == 0.90
 
 
-def test_categories_are_normalized():
-    result = build_hybrid_exit_runtime_input(
-        position_state=position(),
-        signal_bundle=signal(
-            liquidity_health="DETERIORATING",
-            price_impact_health="CRITICAL",
-        ),
-        trend_health="WEAKENING",
-        exit_pressure="HIGH",
-    )
 
-    assert result["liquidity_health"] == 0.30
-    assert result["trend_health"] == 0.35
-    assert result["exit_pressure"] == 1.0
-    assert result["price_impact_health"] == 0.0
+def test_semantic_categories_are_not_numeric_scores():
+    r = build_hybrid_exit_runtime_input(position_state=position(),signal_bundle=signal(liquidity_health="DETERIORATING",price_impact_health="CRITICAL"),trend_health="WEAKENING",exit_pressure="HIGH")
+    assert r["liquidity_health"] is None
+    assert r["trend_health"] is None
+    assert r["exit_pressure"] is None
+    assert r["price_impact_health"] is None
+    assert r["source_liquidity_health"] == "DETERIORATING"
 
 
-def test_dict_category_producers_are_supported():
-    result = build_hybrid_exit_runtime_input(
-        position_state=position(),
-        signal_bundle=signal(),
-        trend_health={
-            "trend_health": "STRONG",
-        },
-        exit_pressure={
-            "exit_pressure": "BUILDING",
-        },
-    )
-
-    assert result["trend_health"] == 1.0
-    assert result["exit_pressure"] == 0.50
 
 
-def test_signed_flow_is_preserved_and_clamped():
-    result = build_hybrid_exit_runtime_input(
-        position_state=position(),
-        signal_bundle=signal(
-            flow_momentum=-4.0,
-            flow_acceleration=3.0,
-        ),
-        trend_health="HEALTHY",
-        exit_pressure="NONE",
-    )
-
-    assert result["flow_momentum"] == -1.0
-    assert result["flow_acceleration"] == 1.0
+def test_dict_categories_remain_source_evidence():
+    r = build_hybrid_exit_runtime_input(position_state=position(),signal_bundle=signal(),trend_health={"trend_health":"STRONG"},exit_pressure={"exit_pressure":"BUILDING"})
+    assert r["trend_health"] is None
+    assert r["exit_pressure"] is None
+    assert r["source_trend_health"] == "STRONG"
+    assert r["source_exit_pressure"] == "BUILDING"
 
 
-def test_unknown_categories_are_neutral():
-    result = build_hybrid_exit_runtime_input(
-        position_state=position(),
-        signal_bundle=signal(
-            liquidity_health="SOMETHING_NEW",
-            price_impact_health="SOMETHING_NEW",
-        ),
-        trend_health="SOMETHING_NEW",
-        exit_pressure="SOMETHING_NEW",
-    )
-
-    assert result["liquidity_health"] == 0.50
-    assert result["trend_health"] == 0.50
-    assert result["exit_pressure"] == 0.0
-    assert result["price_impact_health"] == 0.50
 
 
-def test_stale_signal_forces_neutral_runtime_evidence():
-    result = build_hybrid_exit_runtime_input(
-        position_state=position(),
-        signal_bundle=signal(
-            freshness="STALE",
-            flow_momentum=-1.0,
-            flow_acceleration=-1.0,
-            liquidity_health="CRITICAL",
-            price_impact_health="CRITICAL",
-        ),
-        trend_health="BREAK",
-        exit_pressure="HIGH",
-    )
-
-    assert result["evidence_ready"] is False
-    assert result["liquidity_health"] == 0.50
-    assert result["flow_momentum"] == 0.0
-    assert result["flow_acceleration"] == 0.0
-    assert result["trend_health"] == 0.50
-    assert result["exit_pressure"] == 0.0
-    assert result["price_impact_health"] == 0.50
+def test_out_of_domain_flow_is_unknown():
+    r = build_hybrid_exit_runtime_input(position_state=position(),signal_bundle=signal(flow_momentum=-4.0,flow_acceleration=3.0),trend_health="HEALTHY",exit_pressure="NONE")
+    assert r["flow_momentum"] is None
+    assert r["flow_acceleration"] is None
 
 
-def test_partial_coverage_forces_neutral_runtime_evidence():
-    result = build_hybrid_exit_runtime_input(
-        position_state=position(),
-        signal_bundle=signal(
-            coverage=0.80,
-            liquidity_health="CRITICAL",
-        ),
-        trend_health="BREAK",
-        exit_pressure="HIGH",
-    )
 
-    assert result["evidence_ready"] is False
-    assert result["liquidity_health"] == 0.50
-    assert result["trend_health"] == 0.50
-    assert result["exit_pressure"] == 0.0
+
+def test_unknown_categories_remain_unknown():
+    r = build_hybrid_exit_runtime_input(position_state=position(),signal_bundle=signal(liquidity_health="SOMETHING_NEW",price_impact_health="SOMETHING_NEW"),trend_health="SOMETHING_NEW",exit_pressure="SOMETHING_NEW")
+    assert r["liquidity_health"] is None
+    assert r["trend_health"] is None
+    assert r["exit_pressure"] is None
+    assert r["price_impact_health"] is None
+
+
+
+
+def test_stale_signal_forces_unknown_evidence():
+    r = build_hybrid_exit_runtime_input(position_state=position(),signal_bundle=signal(freshness="STALE",flow_momentum=-1.0,flow_acceleration=-1.0,liquidity_health="CRITICAL",price_impact_health="CRITICAL"),trend_health="BREAK",exit_pressure="HIGH")
+    assert r["evidence_ready"] is False
+    assert r["liquidity_health"] is None
+    assert r["flow_momentum"] is None
+    assert r["flow_acceleration"] is None
+
+
+
+
+def test_partial_coverage_forces_unknown_evidence():
+    r = build_hybrid_exit_runtime_input(position_state=position(),signal_bundle=signal(coverage=0.80,liquidity_health="CRITICAL"),trend_health="BREAK",exit_pressure="HIGH")
+    assert r["evidence_ready"] is False
+    assert r["liquidity_health"] is None
+    assert r["trend_health"] is None
+
 
 
 def test_hard_block_and_sellability_are_not_normalized_away():

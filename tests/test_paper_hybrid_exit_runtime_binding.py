@@ -126,69 +126,24 @@ def manager(
     return m
 
 
-def test_no_evidence_preserves_legacy_take_profit():
-    m = manager(
-        price=1.30,
-        runtime_evidence=None,
-    )
 
-    result = m.process()
-
-    assert len(m.db.closed) == 1
-
-    assert (
-        m.db.closed[0][1][
-            "close_reason"
-        ]
-        == "TAKE_PROFIT"
-    )
-
-    assert (
-        result[0]["data"][
-            "hybrid_exit"
-        ]["bound"]
-        is False
-    )
-
-
-def test_hybrid_runner_replaces_fixed_take_profit_when_bound():
-    m = manager(
-        price=1.30,
-        pos=position(
-            highest=1.30,
-        ),
-        runtime_evidence=evidence(),
-    )
-
-    result = m.process()
-
+def test_no_evidence_does_not_invent_protection():
+    m = manager(price=1.30,runtime_evidence=None)
+    data = m.process()[0]["data"]
     assert m.db.closed == []
-
-    data = result[0]["data"]
-
     assert data["action"] == "HOLD"
+    assert data["hybrid_exit"]["protection_price"] == 0.90
 
-    assert (
-        data["reason"]
-        == "POSITIVE_EDGE_HEALTHY"
-    )
 
-    assert (
-        data["hybrid_exit"]["bound"]
-        is True
-    )
 
-    assert (
-        data["hybrid_exit"]["action"]
-        == "RUNNER"
-    )
 
-    assert (
-        data["hybrid_exit"][
-            "runner_active"
-        ]
-        is True
-    )
+def test_math_floor_runner_replaces_fixed_take_profit():
+    m = manager(price=1.30,pos=position(highest=1.30),runtime_evidence=evidence())
+    data = m.process()[0]["data"]
+    assert m.db.closed == []
+    assert data["reason"] == "MATHEMATICAL_FLOOR_RUNNER"
+    assert data["hybrid_exit"]["action"] == "RUNNER"
+
 
 
 def test_hybrid_static_sl_still_closes():
@@ -209,14 +164,21 @@ def test_hybrid_static_sl_still_closes():
         m.db.closed[0][1][
             "close_reason"
         ]
-        == "STATIC_SAFETY_FLOOR"
+        == "PERSISTED_STOP_LOSS"
+    )
+
+    assert (
+        result[0]["data"][
+            "reason"
+        ]
+        == "PERSISTED_STOP_LOSS"
     )
 
     assert (
         result[0]["data"][
             "hybrid_exit"
-        ]["exit_now"]
-        is True
+        ]["bound"]
+        is False
     )
 
 

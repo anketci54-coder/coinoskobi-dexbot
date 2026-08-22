@@ -1,13 +1,10 @@
 class RiskGate:
     """
-    Strategy skorundan bagimsiz kritik risk kapisi.
+    Confirmed hard facts block.
 
-    Doktrin:
-    - UNKNOWN != RISK
-    - Suphe != HARD_BLOCK
-    - Yalniz acikca dogrulanmis kritik risk bloklar
-    - Gozlem / scoring devam eder
-    - Hard block yalniz trade/paper entry'yi durdurur
+    Missing evidence remains UNKNOWN.
+    Mathematical opportunity cannot override
+    a hard safety fact.
     """
 
     def evaluate(self, risk):
@@ -16,12 +13,13 @@ class RiskGate:
         hard_block_reasons = []
         warning_reasons = []
 
-        honeypot = risk.get("honeypot")
-        sellable = risk.get("sellable")
+        honeypot = risk.get(
+            "honeypot"
+        )
 
-        # --------------------------------------------------------
-        # HARD BLOCKS
-        # --------------------------------------------------------
+        sellable = risk.get(
+            "sellable"
+        )
 
         if honeypot is True:
             hard_block_reasons.append(
@@ -33,42 +31,51 @@ class RiskGate:
                 "SELL_NOT_POSSIBLE"
             )
 
-        # --------------------------------------------------------
-        # NON-BLOCKING RISK / TRAP SIGNALS
-        #
-        # Bunlar tek basina entry bloklamaz.
-        # Daha sonra risk score tarafinda kullanilir.
-        # --------------------------------------------------------
+        for key, label in (
+            (
+                "mint",
+                "MINT_CAPABILITY",
+            ),
+            (
+                "pause",
+                "PAUSE_CAPABILITY",
+            ),
+            (
+                "blacklist",
+                "BLACKLIST_CAPABILITY",
+            ),
+            (
+                "set_blacklist",
+                "BLACKLIST_CONTROL",
+            ),
+            (
+                "max_tx",
+                "MAX_TX_CONTROL",
+            ),
+            (
+                "max_wallet",
+                "MAX_WALLET_CONTROL",
+            ),
+        ):
+            if risk.get(key) is True:
+                warning_reasons.append(
+                    label
+                )
 
-        if risk.get("mint") is True:
-            warning_reasons.append(
-                "MINT_CAPABILITY"
-            )
+        local = risk.get(
+            "local_evidence"
+        )
 
-        if risk.get("pause") is True:
-            warning_reasons.append(
-                "PAUSE_CAPABILITY"
+        local_complete = bool(
+            isinstance(
+                local,
+                dict,
             )
-
-        if risk.get("blacklist") is True:
-            warning_reasons.append(
-                "BLACKLIST_CAPABILITY"
+            and local.get(
+                "completed"
             )
-
-        if risk.get("set_blacklist") is True:
-            warning_reasons.append(
-                "BLACKLIST_CONTROL"
-            )
-
-        if risk.get("max_tx") is True:
-            warning_reasons.append(
-                "MAX_TX_CONTROL"
-            )
-
-        if risk.get("max_wallet") is True:
-            warning_reasons.append(
-                "MAX_WALLET_CONTROL"
-            )
+            is True
+        )
 
         hard_block = bool(
             hard_block_reasons
@@ -84,14 +91,20 @@ class RiskGate:
             status = "PASS"
 
         return {
-            "hard_block": hard_block,
+            "hard_block": (
+                hard_block
+            ),
+
             "status": status,
+
             "hard_block_reasons": (
                 hard_block_reasons
             ),
+
             "warning_reasons": (
                 warning_reasons
             ),
+
             "sellability": (
                 "SELLABLE"
                 if sellable is True
@@ -101,6 +114,7 @@ class RiskGate:
                     else "UNKNOWN"
                 )
             ),
+
             "honeypot": (
                 "YES"
                 if honeypot is True
@@ -110,4 +124,17 @@ class RiskGate:
                     else "UNKNOWN"
                 )
             ),
+
+            "local_evidence": local,
+
+            "local_evidence_complete": (
+                local_complete
+            ),
+
+            "decision_authority": False,
+            "paper_authority": False,
+            "trade_authority": False,
+            "live_authority": False,
+            "wallet_authority": False,
+            "execution_authority": False,
         }

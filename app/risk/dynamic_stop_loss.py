@@ -1,16 +1,23 @@
-def _clamp(v, lo, hi):
-    return max(lo, min(hi, v))
+import math
 
 
-def _num(v, default=0.0):
+def _number(value):
     try:
-        return float(v)
+        value = float(value)
     except (TypeError, ValueError):
-        return default
+        return None
+
+    if not math.isfinite(value):
+        return None
+
+    return value
 
 
 def calculate_dynamic_sl(
     *,
+    measured_sl_distance_pct=None,
+    entry_price=None,
+    stop_price=None,
     flow_momentum=None,
     flow_acceleration=None,
     liquidity_health=None,
@@ -18,53 +25,69 @@ def calculate_dynamic_sl(
     trend_health=None,
     exit_pressure=None,
 ):
-    # Neutral baseline: 10%, but NOT a fixed SL.
-    distance = 0.10
+    """
+    Compatibility-only measured SL adapter.
 
-    m = _clamp(_num(flow_momentum), -1.0, 1.0)
-    a = _clamp(_num(flow_acceleration), -1.0, 1.0)
+    This module does not create a stop from:
+    - fixed percentages
+    - semantic labels
+    - scores
+    - hand-tuned coefficients
 
-    # Strong flow permits more breathing room;
-    # weak flow tightens initial risk.
-    distance += 0.025 * m
-    distance += 0.015 * a
+    The mathematical stop must already exist.
+    """
 
-    liquidity = str(liquidity_health or "UNKNOWN").upper()
-    impact = str(price_impact_health or "UNKNOWN").upper()
-    trend = str(trend_health or "UNKNOWN").upper()
-    pressure = str(exit_pressure or "UNKNOWN").upper()
+    distance = _number(
+        measured_sl_distance_pct
+    )
+    source = None
 
-    if liquidity in {"IMPROVING", "STABLE", "STABLE_OR_UNKNOWN"}:
-        distance += 0.015
-    elif liquidity in {"DETERIORATING", "DETERIORATING_FAST", "CRITICAL"}:
-        distance -= 0.025
+    if distance is not None:
+        if 0 < distance < 1:
+            source = "MEASURED_DISTANCE"
+        else:
+            distance = None
 
-    if impact in {"HEALTHY", "LOW"}:
-        distance += 0.010
-    elif impact in {"HIGH", "UNHEALTHY", "CRITICAL"}:
-        distance -= 0.020
+    if distance is None:
+        entry = _number(entry_price)
+        stop = _number(stop_price)
 
-    if trend == "STRONG":
-        distance += 0.020
-    elif trend == "HEALTHY":
-        distance += 0.010
-    elif trend == "WEAKENING":
-        distance -= 0.020
-    elif trend == "BREAK":
-        distance -= 0.035
+        if (
+            entry is not None
+            and stop is not None
+            and entry > 0
+            and 0 < stop < entry
+        ):
+            distance = (
+                entry - stop
+            ) / entry
+            source = "MEASURED_PRICES"
 
-    if pressure == "BUILDING":
-        distance -= 0.015
-    elif pressure == "HIGH":
-        distance -= 0.035
-
-    # Risk envelope, not fixed stop.
-    distance = _clamp(distance, 0.04, 0.18)
+    if distance is None:
+        return {
+            "state": "UNKNOWN",
+            "sl_distance_pct": None,
+            "sl_multiplier": None,
+            "source": None,
+            "model": "MEASURED_SL_ONLY_V1",
+            "semantic_inputs_used": False,
+            "decision_authority": False,
+            "paper_authority": False,
+            "live_authority": False,
+            "wallet_authority": False,
+            "execution_authority": False,
+        }
 
     return {
-        "sl_distance_pct": round(distance, 6),
-        "sl_multiplier": round(1.0 - distance, 6),
-        "model": "DYNAMIC_SL_V1",
+        "state": "MEASURED",
+        "sl_distance_pct": distance,
+        "sl_multiplier": 1.0 - distance,
+        "source": source,
+        "model": "MEASURED_SL_ONLY_V1",
+        "semantic_inputs_used": False,
         "decision_authority": False,
+        "paper_authority": False,
         "live_authority": False,
+        "wallet_authority": False,
+        "execution_authority": False,
     }

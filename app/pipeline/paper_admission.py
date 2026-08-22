@@ -1,21 +1,59 @@
-def paper_admission_decision(strategy, unified_decision, risk_gate):
-    """Bind unified intelligence to paper admission conservatively.
+def paper_admission_decision(
+    strategy,
+    unified_decision,
+    risk_gate,
+    *,
+    sellability_status,
+):
+    strategy = strategy or {}
+    unified = unified_decision or {}
+    gate = risk_gate or {}
 
-    The unified layer has no authority to create a paper buy. It may
-    only confirm or downgrade an existing legacy PAPER_BUY. Hard risk
-    always dominates.
-    """
-    legacy = (strategy or {}).get("decision", "REJECT")
-    if (risk_gate or {}).get("hard_block"):
+    status = str(
+        sellability_status
+        or "SELLABILITY_SKIPPED"
+    )
+
+    if gate.get(
+        "hard_block"
+    ):
         return "REJECT"
-    if legacy != "PAPER_BUY":
-        return legacy
 
-    unified = (unified_decision or {}).get("decision", "REJECT")
-    if unified == "PAPER_BUY_CANDIDATE":
-        return "PAPER_BUY"
-    if unified == "REQUIRE_MORE_EVIDENCE":
-        return "REQUIRE_MORE_EVIDENCE"
-    if unified == "WATCH":
+    if (
+        status
+        == "SELLABILITY_FAIL"
+    ):
+        return "REJECT"
+
+    if (
+        strategy.get(
+            "decision"
+        )
+        != "PAPER_BUY"
+    ):
+        return (
+            "REJECT"
+            if (
+                strategy.get(
+                    "decision"
+                )
+                == "REJECT"
+            )
+            else "WATCH"
+        )
+
+    if (
+        unified.get(
+            "decision"
+        )
+        != "PAPER_BUY_CANDIDATE"
+    ):
         return "WATCH"
-    return "REJECT"
+
+    if (
+        status
+        == "SELLABILITY_OK"
+    ):
+        return "PAPER_BUY"
+
+    return "WATCH"

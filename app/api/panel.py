@@ -1,427 +1,350 @@
-from pathlib import Path
-import json
-import sqlite3
+from __future__ import annotations
 
-from fastapi import FastAPI
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
+import json
+import shutil
+import sqlite3
+import subprocess
+
+from fastapi import FastAPI, HTTPException
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
 
 BASE_DIR = Path(__file__).resolve().parents[2]
 PAPER_DB = BASE_DIR / "data" / "paper_trades.db"
+STATIC_DIR = BASE_DIR / "app" / "api" / "static"
+INDEX_FILE = STATIC_DIR / "index.html"
+
+PAPER_STARTING_CAPITAL_USDT = 10_000.0
+
+# Active dashboard epoch. Historical trades remain in DB for empirical memory/calibration.
+PANEL_ACTIVE_PERIOD_MIN_TRADE_ID = 16
+PANEL_ACTIVE_PERIOD_LABEL = "PAPER_ACTIVE_ID_16_PLUS"
+
 
 app = FastAPI(
-    title="Coinoskobi Panel API",
+    title="Coinoskobi İşlem Merkezi",
     version="1.0",
 )
 
-
-# SINGLE_PAGE_PANEL_V2
-from fastapi.responses import HTMLResponse
-
-
-@app.get("/", response_class=HTMLResponse)
-def panel_home():
-    return """<!doctype html>
-<html lang="tr">
-<head>
-<meta charset="utf-8">
-<meta name="viewport"
-      content="width=device-width,initial-scale=1">
-<title>Coinoskobi</title>
-<style>
-:root{
-  color-scheme:dark;
-  --bg:#081019;
-  --card:#101b27;
-  --line:#26384a;
-  --text:#edf4fb;
-  --muted:#91a4b7;
-  --good:#72e69a;
-  --warn:#ffd16a;
-  --bad:#ff7b86;
-}
-*{box-sizing:border-box}
-body{
-  margin:0;
-  background:var(--bg);
-  color:var(--text);
-  font-family:system-ui,-apple-system,sans-serif;
-}
-main{
-  max-width:1180px;
-  margin:auto;
-  padding:20px;
-}
-h1{margin:0 0 4px}
-.sub{color:var(--muted);margin-bottom:20px}
-.grid{
-  display:grid;
-  grid-template-columns:repeat(4,1fr);
-  gap:12px;
-}
-.card{
-  background:var(--card);
-  border:1px solid var(--line);
-  border-radius:14px;
-  padding:16px;
-}
-.big{
-  font-size:25px;
-  font-weight:800;
-  margin-top:6px;
-}
-.good{color:var(--good)}
-.warn{color:var(--warn)}
-.bad{color:var(--bad)}
-.muted{color:var(--muted)}
-table{
-  width:100%;
-  border-collapse:collapse;
-  margin-top:8px;
-}
-th,td{
-  text-align:left;
-  padding:10px 8px;
-  border-bottom:1px solid var(--line);
-  font-size:14px;
-}
-th{color:var(--muted)}
-.section{margin-top:14px}
-.tag{
-  display:inline-block;
-  border:1px solid var(--line);
-  border-radius:999px;
-  padding:5px 9px;
-  margin:2px;
-  font-size:12px;
-}
-@media(max-width:800px){
-  .grid{grid-template-columns:repeat(2,1fr)}
-}
-@media(max-width:520px){
-  .grid{grid-template-columns:1fr}
-  main{padding:12px}
-}
-</style>
-</head>
-<body>
-<main>
-<h1>Coinoskobi</h1>
-<div class="sub">
-Yeni Paper Dönemi · 10.000 USDT · PAPER_10K_V2
-</div>
-
-<div class="grid">
-  <div class="card">
-    <div class="muted">Başlangıç</div>
-    <div class="big">10.000 USDT</div>
-  </div>
-  <div class="card">
-    <div class="muted">Açık İşlem</div>
-    <div id="open" class="big">—</div>
-  </div>
-  <div class="card">
-    <div class="muted">Başarı Oranı</div>
-    <div id="winrate" class="big">—</div>
-  </div>
-  <div class="card">
-    <div class="muted">Net Sonuç</div>
-    <div id="net" class="big">—</div>
-  </div>
-</div>
-
-<div class="card section">
-  <b>Yeni Strateji</b>
-  <div style="margin-top:10px">
-    <span class="tag">Yerel risk önce</span>
-    <span class="tag">İki aşamalı giriş</span>
-    <span class="tag">Sellability doğrulaması</span>
-    <span class="tag">Unified karar</span>
-    <span class="tag">Hard risk üstün</span>
-  </div>
-</div>
-
-<div class="card section">
-  <b>İşlemler</b>
-  <div style="overflow:auto">
-    <table>
-      <thead>
-        <tr>
-          <th>Token</th>
-          <th>Durum</th>
-          <th>Giriş</th>
-          <th>SL</th>
-          <th>TP</th>
-          <th>ROI</th>
-          <th>Sonuç</th>
-        </tr>
-      </thead>
-      <tbody id="positions">
-        <tr>
-          <td colspan="7" class="muted">
-            Veri bekleniyor…
-          </td>
-        </tr>
-      </tbody>
-    </table>
-  </div>
-</div>
-
-<div class="card section">
-  <b>Güvenlik</b>
-  <div style="margin-top:10px">
-    <span class="tag good">Paper only</span>
-    <span class="tag">Live kapalı</span>
-    <span class="tag">Wallet yetkisi yok</span>
-    <span class="tag">Signing yok</span>
-  </div>
-</div>
-</main>
-
-<script>
-const fmt = v =>
-  (v === null || v === undefined)
-    ? "—"
-    : Number(v).toLocaleString(
-        "tr-TR",
-        {maximumFractionDigits:4}
-      );
-
-async function load(){
-  try{
-    const [s,p,r] = await Promise.all([
-      fetch("/api/status").then(x=>x.json()),
-      fetch("/api/performance").then(x=>x.json()),
-      fetch("/api/positions-v2").then(x=>x.json())
-    ]);
-
-    document.getElementById("open").textContent =
-      s.open_positions ?? 0;
-
-    document.getElementById("winrate").textContent =
-      (p.win_rate_pct ?? 0) + "%";
-
-    const net = Number(p.net_total ?? 0);
-    const netEl = document.getElementById("net");
-    netEl.textContent = fmt(net) + " USDT";
-    netEl.className =
-      "big " + (net > 0 ? "good" : net < 0 ? "bad" : "");
-
-    const body = document.getElementById("positions");
-
-    if(!Array.isArray(r) || !r.length){
-      body.innerHTML =
-        '<tr><td colspan="7" class="muted">' +
-        'Yeni dönemde henüz işlem yok.' +
-        '</td></tr>';
-      return;
-    }
-
-    body.innerHTML = r.slice(0,30).map(x => `
-      <tr>
-        <td>${x.symbol || x.token || "—"}</td>
-        <td>${x.status || "—"}</td>
-        <td>${fmt(x.entry_price)}</td>
-        <td>${fmt(x.sl_price)}</td>
-        <td>${fmt(x.tp_price)}</td>
-        <td>${fmt(
-          x.roi == null ? null : Number(x.roi)*100
-        )}%</td>
-        <td>${x.close_reason || "—"}</td>
-      </tr>
-    `).join("");
-  }catch(e){
-    document.getElementById("positions").innerHTML =
-      '<tr><td colspan="7" class="bad">' +
-      'Panel verisi alınamadı.' +
-      '</td></tr>';
-  }
-}
-
-load();
-setInterval(load,5000);
-</script>
-</body>
-</html>"""
+app.mount(
+    "/static",
+    StaticFiles(directory=str(STATIC_DIR)),
+    name="static",
+)
 
 
-def query(sql, params=()):
-    # Read-only SQLite connection: panel cannot write.
+def connect_readonly() -> sqlite3.Connection:
     uri = f"file:{PAPER_DB}?mode=ro"
-    conn = sqlite3.connect(uri, uri=True, timeout=5)
-    conn.row_factory = sqlite3.Row
+
+    connection = sqlite3.connect(
+        uri,
+        uri=True,
+        timeout=5,
+    )
+    connection.row_factory = sqlite3.Row
+
+    return connection
+
+
+def query(
+    sql: str,
+    params: tuple[Any, ...] = (),
+) -> list[dict[str, Any]]:
+    connection = connect_readonly()
+
     try:
         return [
             dict(row)
-            for row in conn.execute(sql, params).fetchall()
+            for row in connection.execute(
+                sql,
+                params,
+            ).fetchall()
         ]
     finally:
-        conn.close()
+        connection.close()
 
 
-@app.get("/healthz")
-def health():
-    rows = query("SELECT 1 AS ok")
+def query_one(
+    sql: str,
+    params: tuple[Any, ...] = (),
+) -> dict[str, Any]:
+    rows = query(sql, params)
+    return rows[0] if rows else {}
+
+
+def table_exists(table_name: str) -> bool:
+    row = query_one(
+        """
+        SELECT COUNT(*) AS count
+        FROM sqlite_master
+        WHERE type IN ('table', 'view')
+          AND name = ?
+        """,
+        (table_name,),
+    )
+
+    return bool(row.get("count"))
+
+
+def table_count(table_name: str) -> int:
+    allowed = {
+        "wallet_discovery_registry",
+        "wallet_success_score",
+        "wallet_outcome_evidence",
+        "whale_activity_snapshot",
+        "wallet_activity_bucket",
+        "intelligence_summary_readmodel",
+    }
+
+    if table_name not in allowed:
+        return 0
+
+    if not table_exists(table_name):
+        return 0
+
+    row = query_one(
+        f'SELECT COUNT(*) AS count FROM "{table_name}"'
+    )
+
+    return int(row.get("count") or 0)
+
+
+def parse_json_object(value: Any) -> dict[str, Any]:
+    if isinstance(value, dict):
+        return dict(value)
+
+    if not value:
+        return {}
+
+    try:
+        parsed = json.loads(value)
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return {}
+
+    return dict(parsed) if isinstance(parsed, dict) else {}
+
+
+def first_value(
+    sources: list[dict[str, Any]],
+    *keys: str,
+) -> Any:
+    for source in sources:
+        if not isinstance(source, dict):
+            continue
+
+        for key in keys:
+            value = source.get(key)
+
+            if value is not None:
+                return value
+
+    return None
+
+
+def number(value: Any, default: float = 0.0) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return float(default)
+
+
+def service_state(service_name: str) -> str:
+    try:
+        result = subprocess.run(
+            [
+                "systemctl",
+                "is-active",
+                service_name,
+            ],
+            capture_output=True,
+            text=True,
+            timeout=2,
+            check=False,
+        )
+
+        state = result.stdout.strip()
+
+        return state or "unknown"
+
+    except Exception:
+        return "unknown"
+
+
+def extract_entry_evidence(
+    opening_context_json: Any,
+) -> dict[str, Any]:
+    context = parse_json_object(opening_context_json)
+
+    raw_signals = parse_json_object(
+        context.get("raw_signals")
+    )
+    attribution = parse_json_object(
+        context.get("signal_attribution")
+    )
+    baseline = parse_json_object(
+        context.get("exit_baseline")
+    )
+    market_context = parse_json_object(
+        raw_signals.get("market_context")
+        or context.get("market_context")
+    )
+
+    sources = [
+        raw_signals,
+        attribution,
+        market_context,
+        baseline,
+        context,
+    ]
+
+    hard_block_value = first_value(
+        sources,
+        "hard_block",
+    )
+
     return {
-        "status": "ok",
-        "database": rows[0]["ok"] == 1,
-        "mode": "READ_ONLY",
+        "captured_at_entry": bool(
+            context.get("captured_at_entry")
+        ),
+        "hindsight_reconstructed": bool(
+            context.get("hindsight_reconstructed")
+        ),
+        "strategy_decision": first_value(
+            sources,
+            "strategy_decision",
+            "historical_action",
+        ),
+        "unified_decision": first_value(
+            sources,
+            "unified_decision",
+            "paper_admission_decision",
+        ),
+        "score": first_value(
+            sources,
+            "unified_score",
+            "score",
+        ),
+        "confidence": first_value(
+            sources,
+            "unified_confidence",
+            "confidence",
+        ),
+        "coverage": first_value(
+            sources,
+            "unified_coverage",
+            "coverage",
+        ),
+        "hard_block": (
+            bool(hard_block_value)
+            if hard_block_value is not None
+            else None
+        ),
+        "sellability": first_value(
+            sources,
+            "sellability_status",
+            "sellability",
+        ),
+        "liquidity": first_value(
+            sources,
+            "liquidity_health",
+            "liquidity_state",
+            "liquidity",
+        ),
+        "range_state": first_value(
+            sources,
+            "shooting_range",
+            "atis_poligonu",
+            "range_state",
+            "simulation_state",
+        ),
+        "trend": first_value(
+            sources,
+            "trend",
+            "trend_health",
+            "reserve_trend",
+        ),
+        "timing": first_value(
+            sources,
+            "timing",
+            "entry_timing",
+            "timing_state",
+        ),
+        "market_state": first_value(
+            sources,
+            "market_state",
+            "market_structure",
+            "market_regime",
+        ),
+        "entry_price": baseline.get("entry_price"),
+        "stop_loss_price": baseline.get(
+            "stop_loss_price"
+        ),
+        "take_profit_price": baseline.get(
+            "take_profit_price"
+        ),
+        "signal_attribution": attribution,
     }
 
 
-@app.get("/api/status")
-def status():
-    rows = query(
-        """
-        SELECT
-            COUNT(*) AS total,
-            COUNT(*) AS new_generation,
-            SUM(
-                CASE
-                    WHEN status='OPEN'
-                    THEN 1 ELSE 0
-                END
-            ) AS open_positions,
-            SUM(
-                CASE
-                    WHEN status='CLOSED'
-                    THEN 1 ELSE 0
-                END
-            ) AS closed_positions
-        FROM paper_trades
-        WHERE paper_account_version='PAPER_10K_V2'
-        """
+
+def paper_rows(
+    limit: int = 100,
+    *,
+    active_only: bool = False,
+) -> list[dict[str, Any]]:
+    where_clause = (
+        "WHERE paper_account_version = "
+        "'PAPER_10K_V2'"
     )
-    return rows[0]
 
+    params: list[Any] = []
 
-@app.get("/api/positions")
-def positions():
-    return query(
-        """
+    if active_only:
+        where_clause += (
+            " AND id >= ?"
+        )
+        params.append(
+            PANEL_ACTIVE_PERIOD_MIN_TRADE_ID
+        )
+
+    params.append(limit)
+
+    rows = query(
+        f"""
         SELECT
             id,
-            symbol,
-            token,
-            pool,
-            status,
-            entry_price,
-            current_price,
-            highest_price,
-            tp_price,
-            sl_price,
-            gross_pnl,
-            net_pnl,
-            roi,
-            close_reason,
-            created_at,
-            closed_at
-        FROM paper_trades
-        WHERE id > 250
-          AND pool IS NOT NULL
-          AND trim(pool) <> ''
-        ORDER BY id DESC
-        LIMIT 100
-        """
-    )
-
-
-@app.get("/api/performance")
-def performance():
-    rows = query(
-        """
-        SELECT
-            COUNT(*) AS closed,
-            SUM(
-                CASE
-                    WHEN net_pnl_usdt > 0
-                    THEN 1 ELSE 0
-                END
-            ) AS wins,
-            SUM(
-                CASE
-                    WHEN net_pnl_usdt <= 0
-                    THEN 1 ELSE 0
-                END
-            ) AS losses,
-            ROUND(
-                100.0 *
-                SUM(
-                    CASE
-                        WHEN net_pnl_usdt > 0
-                        THEN 1 ELSE 0
-                    END
-                )
-                / NULLIF(COUNT(*), 0),
-                2
-            ) AS win_rate_pct,
-            ROUND(
-                AVG(roi) * 100,
-                2
-            ) AS avg_roi_pct,
-            ROUND(
-                COALESCE(
-                    SUM(net_pnl_usdt),
-                    0
-                ),
-                8
-            ) AS net_total
-        FROM paper_trades
-        WHERE paper_account_version='PAPER_10K_V2'
-          AND status='CLOSED'
-        """
-    )
-    return rows[0]
-
-
-@app.get("/api/exits")
-def exits():
-    return query(
-        """
-        SELECT
-            close_reason,
-            COUNT(*) AS trades,
-            ROUND(
-                AVG(roi) * 100,
-                2
-            ) AS avg_roi_pct,
-            ROUND(
-                COALESCE(
-                    SUM(net_pnl_usdt),
-                    0
-                ),
-                8
-            ) AS net_total
-        FROM paper_trades
-        WHERE paper_account_version='PAPER_10K_V2'
-          AND status='CLOSED'
-        GROUP BY close_reason
-        ORDER BY trades DESC
-        """
-    )
-
-
-@app.get("/api/positions-v2")
-def positions_v2():
-    rows = query(
-        """
-        SELECT
-            id,
-            symbol,
-            token,
-            pool,
-            status,
-            entry_price,
-            current_price,
-            highest_price,
-            tp_price,
-            sl_price,
-            gross_pnl,
-            net_pnl,
-            roi,
-            close_reason,
             created_at,
             closed_at,
-
+            token,
+            symbol,
+            entry_price,
+            current_price,
+            exit_price,
+            highest_price,
+            lowest_price,
+            tp_price,
+            sl_price,
+            amount_bnb,
+            gross_pnl,
+            net_pnl,
+            roi,
+            gas_buy,
+            gas_sell,
+            swap_fee,
+            buy_tax,
+            sell_tax,
+            slippage,
+            mev,
+            close_reason,
+            status,
+            token_amount,
+            pool,
+            dex,
+            opening_context_json,
             paper_account_version,
             entry_amount_usdt,
             risk_amount_usdt,
@@ -430,81 +353,1029 @@ def positions_v2():
             position_size_pct,
             sizing_reason,
             gross_pnl_usdt,
-            net_pnl_usdt,
-
-            opening_context_json
+            net_pnl_usdt
         FROM paper_trades
-        WHERE paper_account_version='PAPER_10K_V2'
-            AND pool IS NOT NULL
-            AND trim(pool) <> ''
+        {where_clause}
         ORDER BY id DESC
-        LIMIT 100
-        """
+        LIMIT ?
+        """,
+        tuple(params),
     )
 
-    result = []
+    result: list[dict[str, Any]] = []
 
     for row in rows:
         item = dict(row)
-        raw = item.pop("opening_context_json", None)
 
-        try:
-            context = json.loads(raw) if raw else {}
-        except (TypeError, ValueError, json.JSONDecodeError):
-            context = {}
-
-        signals = dict(context.get("raw_signals") or {})
-        attribution = dict(
-            context.get("signal_attribution") or {}
+        roi = number(
+            item.get("roi")
         )
-        baseline = dict(context.get("exit_baseline") or {})
 
-        item["entry_evidence"] = {
-            "captured_at_entry": bool(
-                context.get("captured_at_entry")
-            ),
-            "hindsight_reconstructed": bool(
-                context.get("hindsight_reconstructed")
-            ),
-            "strategy_decision": signals.get(
-                "strategy_decision"
-            ),
-            "unified_decision": signals.get(
-                "unified_decision"
-            ),
-            "score": signals.get("unified_score"),
-            "confidence": signals.get(
-                "unified_confidence"
-            ),
-            "hard_block": bool(
-                signals.get("hard_block")
-            ),
-            "sellability": signals.get(
-                "sellability_status"
-            ),
-            "coverage": signals.get(
-                "unified_coverage"
-            ),
-            "signal_attribution": attribution,
-            "entry_price": baseline.get(
-                "entry_price"
-            ),
-            "stop_loss_price": baseline.get(
-                "stop_loss_price"
-            ),
-            "take_profit_price": baseline.get(
-                "take_profit_price"
-            ),
-        }
+        item["roi_pct"] = (
+            roi * 100.0
+        )
 
-        item["authority"] = {
-            "decision": False,
-            "execution": False,
-            "live": False,
-            "wallet": False,
-            "read_only": True,
-        }
+        item["entry_evidence"] = (
+            extract_entry_evidence(
+                item.pop(
+                    "opening_context_json",
+                    None,
+                )
+            )
+        )
 
         result.append(item)
 
     return result
+
+
+
+
+def performance_payload(
+    *,
+    active_only: bool = False,
+) -> dict[str, Any]:
+    active_filter = ""
+    params: tuple[Any, ...] = ()
+
+    if active_only:
+        active_filter = (
+            " AND id >= ?"
+        )
+        params = (
+            PANEL_ACTIVE_PERIOD_MIN_TRADE_ID,
+        )
+
+    row = query_one(
+        f"""
+        SELECT
+            COUNT(*) AS closed,
+            SUM(
+                CASE
+                WHEN COALESCE(
+                    net_pnl_usdt,
+                    net_pnl,
+                    0
+                ) > 0
+                THEN 1 ELSE 0
+                END
+            ) AS wins,
+            SUM(
+                CASE
+                WHEN COALESCE(
+                    net_pnl_usdt,
+                    net_pnl,
+                    0
+                ) < 0
+                THEN 1 ELSE 0
+                END
+            ) AS losses,
+            AVG(roi) AS avg_roi,
+            COALESCE(
+                SUM(
+                    COALESCE(
+                        net_pnl_usdt,
+                        net_pnl,
+                        0
+                    )
+                ),
+                0
+            ) AS realized_net,
+            COALESCE(
+                SUM(
+                    CASE
+                    WHEN COALESCE(
+                        net_pnl_usdt,
+                        net_pnl,
+                        0
+                    ) > 0
+                    THEN COALESCE(
+                        net_pnl_usdt,
+                        net_pnl,
+                        0
+                    )
+                    ELSE 0
+                    END
+                ),
+                0
+            ) AS gross_profit,
+            COALESCE(
+                SUM(
+                    CASE
+                    WHEN COALESCE(
+                        net_pnl_usdt,
+                        net_pnl,
+                        0
+                    ) < 0
+                    THEN ABS(
+                        COALESCE(
+                            net_pnl_usdt,
+                            net_pnl,
+                            0
+                        )
+                    )
+                    ELSE 0
+                    END
+                ),
+                0
+            ) AS gross_loss
+        FROM paper_trades
+        WHERE paper_account_version = 'PAPER_10K_V2'
+          AND UPPER(
+                COALESCE(
+                    status,
+                    ''
+                )
+              ) = 'CLOSED'
+          {active_filter}
+        """,
+        params,
+    )
+
+    closed = int(
+        row.get("closed") or 0
+    )
+
+    wins = int(
+        row.get("wins") or 0
+    )
+
+    losses = int(
+        row.get("losses") or 0
+    )
+
+    avg_roi = row.get(
+        "avg_roi"
+    )
+
+    avg_roi_pct = (
+        number(avg_roi) * 100.0
+        if avg_roi is not None
+        else None
+    )
+
+    gross_profit = number(
+        row.get("gross_profit")
+    )
+
+    gross_loss = number(
+        row.get("gross_loss")
+    )
+
+    profit_factor = (
+        gross_profit / gross_loss
+        if gross_loss > 0
+        else None
+    )
+
+    return {
+        "closed": closed,
+        "wins": (
+            wins
+            if closed
+            else None
+        ),
+        "losses": (
+            losses
+            if closed
+            else None
+        ),
+        "win_rate_pct": (
+            wins / closed * 100.0
+            if closed
+            else None
+        ),
+        "avg_roi_pct": avg_roi_pct,
+        "net_total": number(
+            row.get("realized_net")
+        ),
+        "gross_profit": gross_profit,
+        "gross_loss": gross_loss,
+        "profit_factor": profit_factor,
+    }
+
+
+
+
+def performance_series(
+    *,
+    active_only: bool = False,
+) -> list[dict[str, Any]]:
+    active_filter = ""
+    params: tuple[Any, ...] = ()
+
+    if active_only:
+        active_filter = (
+            " AND id >= ?"
+        )
+        params = (
+            PANEL_ACTIVE_PERIOD_MIN_TRADE_ID,
+        )
+
+    rows = query(
+        f"""
+        SELECT
+            id,
+            COALESCE(
+                closed_at,
+                created_at
+            ) AS timestamp,
+            COALESCE(
+                net_pnl_usdt,
+                net_pnl,
+                0
+            ) AS pnl
+        FROM paper_trades
+        WHERE paper_account_version = 'PAPER_10K_V2'
+          AND UPPER(
+                COALESCE(
+                    status,
+                    ''
+                )
+              ) = 'CLOSED'
+          {active_filter}
+        ORDER BY
+            COALESCE(
+                closed_at,
+                created_at
+            ) ASC,
+            id ASC
+        LIMIT 500
+        """,
+        params,
+    )
+
+    cumulative = 0.0
+    result = []
+
+    for row in rows:
+        cumulative += number(
+            row.get("pnl")
+        )
+
+        result.append({
+            "id": row.get("id"),
+            "timestamp": row.get(
+                "timestamp"
+            ),
+            "pnl": number(
+                row.get("pnl")
+            ),
+            "cumulative": cumulative,
+        })
+
+    return result
+
+
+
+def intelligence_payload() -> dict[str, Any]:
+    latest_summary: dict[str, Any] = {}
+
+    if table_exists("intelligence_summary_readmodel"):
+        latest_summary = query_one(
+            """
+            SELECT *
+            FROM intelligence_summary_readmodel
+            ORDER BY generated_at DESC
+            LIMIT 1
+            """
+        )
+
+    return {
+        "summary": latest_summary,
+        "tracked_wallets": table_count(
+            "wallet_discovery_registry"
+        ),
+        "successful_wallets": table_count(
+            "wallet_success_score"
+        ),
+        "outcome_evidence": table_count(
+            "wallet_outcome_evidence"
+        ),
+        "active_whales": table_count(
+            "whale_activity_snapshot"
+        ),
+        "activity_buckets": table_count(
+            "wallet_activity_bucket"
+        ),
+    }
+
+
+
+# PANEL_MOBILE_LIVE_BACKEND_V2
+
+
+def _runtime_number(value: Any) -> float | None:
+    if value is None:
+        return None
+
+    try:
+        return float(value)
+
+    except (TypeError, ValueError):
+        return None
+
+
+def _runtime_bool(value: Any) -> bool | None:
+    normalized = str(
+        value or ""
+    ).strip().lower()
+
+    if normalized == "true":
+        return True
+
+    if normalized == "false":
+        return False
+
+    return None
+
+
+def runtime_candidate_rows(
+    limit: int = 20,
+) -> list[dict[str, Any]]:
+    """
+    Latest scanner candidates from runtime journal.
+
+    Read-only panel projection only.
+    No trade / DB / wallet / execution authority.
+    """
+
+    try:
+        result = subprocess.run(
+            [
+                "journalctl",
+                "-u",
+                "coinoskobi-paper-runtime.service",
+                "--since",
+                "-20 minutes",
+                "-n",
+                "400",
+                "--no-pager",
+                "-o",
+                "short-iso",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=4,
+            check=False,
+        )
+
+    except Exception:
+        return []
+
+    if result.returncode != 0:
+        return []
+
+    lines = result.stdout.splitlines()
+
+    scanner_index = None
+
+    for index, line in enumerate(lines):
+        if "[JOB] scanner" in line:
+            scanner_index = index
+
+    if scanner_index is not None:
+        lines = lines[
+            scanner_index + 1:
+        ]
+
+    rows = []
+    seen = set()
+
+    for line in reversed(lines):
+
+        marker = "Candidate token="
+
+        if marker not in line:
+            continue
+
+        prefix, payload = line.split(
+            marker,
+            1,
+        )
+
+        parts = payload.split()
+
+        if not parts:
+            continue
+
+        fields = {
+            "token": parts[0],
+        }
+
+        for part in parts[1:]:
+            if "=" not in part:
+                continue
+
+            key, value = part.split(
+                "=",
+                1,
+            )
+
+            fields[key] = value
+
+        token = str(
+            fields.get("token") or ""
+        ).strip()
+
+        pool = str(
+            fields.get("pool") or ""
+        ).strip()
+
+        if not token:
+            continue
+
+        identity = (
+            token.lower(),
+            pool.lower(),
+        )
+
+        if identity in seen:
+            continue
+
+        seen.add(identity)
+
+        timestamp = None
+
+        prefix_parts = prefix.strip().split()
+
+        if prefix_parts:
+            timestamp = prefix_parts[0]
+
+        reason = fields.get("reason")
+
+        if reason in {
+            "",
+            "None",
+            "null",
+        }:
+            reason = None
+
+        rows.append({
+            "token": token,
+            "pool": pool or None,
+            "observed_at": timestamp,
+            "strategy": fields.get(
+                "strategy"
+            ),
+            "unified": fields.get(
+                "unified"
+            ),
+            "paper_action": fields.get(
+                "paper"
+            ),
+            "reason": reason,
+            "hard_block": (
+                _runtime_bool(
+                    fields.get(
+                        "hard_block"
+                    )
+                )
+            ),
+            "evidence_coverage": (
+                _runtime_number(
+                    fields.get(
+                        "evidence_coverage"
+                    )
+                )
+            ),
+            "coverage_confidence": (
+                _runtime_number(
+                    fields.get(
+                        "coverage_confidence"
+                    )
+                )
+            ),
+            "sellability": fields.get(
+                "sellability"
+            ),
+            "source": (
+                "PAPER_RUNTIME_JOURNAL"
+            ),
+            "panel_display_only": True,
+            "decision_authority": False,
+            "paper_authority": False,
+            "live_authority": False,
+            "wallet_authority": False,
+            "execution_authority": False,
+        })
+
+        if len(rows) >= max(
+            1,
+            int(limit),
+        ):
+            break
+
+    return rows
+
+
+@app.middleware("http")
+async def panel_no_cache(
+    request,
+    call_next,
+):
+    response = await call_next(
+        request
+    )
+
+    if (
+        request.url.path == "/"
+        or request.url.path.startswith(
+            "/static/"
+        )
+    ):
+        response.headers[
+            "Cache-Control"
+        ] = (
+            "no-store, no-cache, "
+            "must-revalidate, max-age=0"
+        )
+
+        response.headers[
+            "Pragma"
+        ] = "no-cache"
+
+        response.headers[
+            "Expires"
+        ] = "0"
+
+    return response
+
+
+@app.get("/api/runtime-candidates")
+def api_runtime_candidates() -> list[dict[str, Any]]:
+    return runtime_candidate_rows()
+
+
+def health_payload() -> dict[str, Any]:
+    database_ok = False
+
+    try:
+        row = query_one(
+            "PRAGMA quick_check"
+        )
+
+        database_ok = (
+            "ok" in {
+                str(value).lower()
+                for value in row.values()
+            }
+        )
+
+    except Exception:
+        database_ok = False
+
+    disk = shutil.disk_usage(BASE_DIR)
+
+    return {
+        "status": (
+            "ok"
+            if database_ok
+            else "error"
+        ),
+        "database": database_ok,
+        "mode": "READ_ONLY",
+        "paper_runtime": service_state(
+            "coinoskobi-paper-runtime.service"
+        ),
+        "panel_api": service_state(
+            "coinoskobi-panel-api.service"
+        ),
+        "disk_usage_pct": (
+            disk.used / disk.total * 100.0
+            if disk.total
+            else 0.0
+        ),
+        "live_execution": False,
+        "wallet_authority": False,
+    }
+
+
+def authority_payload() -> dict[str, Any]:
+    return {
+        "panel_mode": "READ_ONLY",
+        "paper_runtime": True,
+        "manual_order_authority": False,
+        "autopilot_authority": False,
+        "live_execution_authority": False,
+        "wallet_authority": False,
+        "signing_authority": False,
+        "message": (
+            "Panel read-only çalışıyor. Manuel emir, "
+            "otomatik pilot, live execution, wallet ve "
+            "signing authority açık değil."
+        ),
+    }
+
+
+def recent_signals(
+    rows: list[dict[str, Any]],
+    intelligence: dict[str, Any],
+) -> list[dict[str, Any]]:
+    signals: list[dict[str, Any]] = []
+
+    for row in rows[:15]:
+        status = str(
+            row.get("status") or "OPEN"
+        ).upper()
+
+        timestamp = (
+            row.get("closed_at")
+            if status == "CLOSED"
+            else row.get("created_at")
+        )
+
+        token = (
+            row.get("symbol")
+            or str(row.get("token") or "TOKEN")[:12]
+        )
+
+        if status == "CLOSED":
+            message = (
+                f"{token} kapandı · "
+                f"{row.get('close_reason') or 'CLOSED'}"
+            )
+        else:
+            message = f"{token} paper pozisyonu açık"
+
+        signals.append({
+            "timestamp": timestamp,
+            "source": "PAPER",
+            "message": message,
+            "state": status,
+            "pnl": number(
+                row.get("net_pnl_usdt")
+                if row.get("net_pnl_usdt") is not None
+                else row.get("net_pnl")
+            ),
+        })
+
+    summary = intelligence.get("summary") or {}
+    vezir_summary = summary.get("vezir_summary")
+
+    if vezir_summary:
+        signals.append({
+            "timestamp": summary.get("generated_at"),
+            "source": "VEZIR",
+            "message": vezir_summary,
+            "state": "INTELLIGENCE",
+            "pnl": None,
+        })
+
+    signals.sort(
+        key=lambda item: str(
+            item.get("timestamp") or ""
+        ),
+        reverse=True,
+    )
+
+    return signals[:10]
+
+
+def status() -> dict[str, Any]:
+    rows = paper_rows()
+
+    open_count = sum(
+        1
+        for row in rows
+        if str(
+            row.get("status") or "OPEN"
+        ).upper() != "CLOSED"
+    )
+
+    closed_count = sum(
+        1
+        for row in rows
+        if str(
+            row.get("status") or ""
+        ).upper() == "CLOSED"
+    )
+
+    return {
+        "total": len(rows),
+        "new_generation": len(rows),
+        "open_positions": open_count,
+        "closed_positions": closed_count,
+    }
+
+
+def performance() -> dict[str, Any]:
+    return performance_payload()
+
+
+def exits() -> list[dict[str, Any]]:
+    return query(
+        """
+        SELECT
+            close_reason,
+            COUNT(*) AS trades,
+            AVG(roi) * 100.0 AS avg_roi_pct,
+            COALESCE(
+                SUM(net_pnl_usdt),
+                0
+            ) AS net_total
+        FROM paper_trades
+        WHERE paper_account_version = 'PAPER_10K_V2'
+          AND UPPER(
+                COALESCE(status, '')
+              ) = 'CLOSED'
+        GROUP BY close_reason
+        ORDER BY trades DESC
+        """
+    )
+
+
+@app.get("/", include_in_schema=False)
+def panel_home() -> FileResponse:
+    return FileResponse(INDEX_FILE)
+
+
+@app.get("/healthz")
+def healthz() -> dict[str, Any]:
+    return health_payload()
+
+
+@app.get("/api/status")
+def api_status() -> dict[str, Any]:
+    rows = paper_rows(active_only=True)
+
+    open_count = sum(
+        1
+        for row in rows
+        if str(
+            row.get("status") or "OPEN"
+        ).upper() != "CLOSED"
+    )
+
+    closed_count = sum(
+        1
+        for row in rows
+        if str(
+            row.get("status") or ""
+        ).upper() == "CLOSED"
+    )
+
+    return {
+        "total": len(rows),
+        "new_generation": len(rows),
+        "open_positions": open_count,
+        "closed_positions": closed_count,
+    }
+
+
+@app.get("/api/positions")
+def api_positions() -> list[dict[str, Any]]:
+    return paper_rows(active_only=True)
+
+
+@app.get("/api/positions-v2")
+def api_positions_v2() -> list[dict[str, Any]]:
+    return paper_rows(active_only=True)
+
+
+@app.get("/api/performance")
+def api_performance() -> dict[str, Any]:
+    return performance_payload(active_only=True)
+
+
+@app.get("/api/performance-series")
+def api_performance_series() -> list[dict[str, Any]]:
+    return performance_series(active_only=True)
+
+
+@app.get("/api/exits")
+def api_exits() -> list[dict[str, Any]]:
+    return [
+        row
+        for row in paper_rows(active_only=True)
+        if str(
+            row.get("status") or ""
+        ).upper() == "CLOSED"
+    ][:20]
+
+
+@app.get("/api/intelligence")
+def api_intelligence() -> dict[str, Any]:
+    return intelligence_payload()
+
+
+@app.get("/api/authority")
+def api_authority() -> dict[str, Any]:
+    return authority_payload()
+
+
+@app.get("/api/position/{position_id}/evidence")
+def api_position_evidence(
+    position_id: int,
+) -> dict[str, Any]:
+    row = query_one(
+        """
+        SELECT
+            id,
+            token,
+            symbol,
+            status,
+            opening_context_json
+        FROM paper_trades
+        WHERE id = ?
+        LIMIT 1
+        """,
+        (position_id,),
+    )
+
+    if not row:
+        raise HTTPException(
+            status_code=404,
+            detail="Position not found",
+        )
+
+    context = parse_json_object(
+        row.get("opening_context_json")
+    )
+
+    return {
+        "id": row.get("id"),
+        "token": row.get("token"),
+        "symbol": row.get("symbol"),
+        "status": row.get("status"),
+        "entry_evidence": extract_entry_evidence(
+            row.get("opening_context_json")
+        ),
+        "opening_context": context,
+    }
+
+
+@app.get("/api/dashboard")
+def api_dashboard() -> dict[str, Any]:
+    rows = paper_rows(active_only=True)
+    performance = performance_payload(active_only=True)
+    intelligence = intelligence_payload()
+    health = health_payload()
+    authority = authority_payload()
+
+    open_positions = [
+        row
+        for row in rows
+        if str(
+            row.get("status") or "OPEN"
+        ).upper() != "CLOSED"
+    ]
+
+    closed_positions = [
+        row
+        for row in rows
+        if str(
+            row.get("status") or ""
+        ).upper() == "CLOSED"
+    ]
+
+    open_investment = sum(
+        number(row.get("entry_amount_usdt"))
+        for row in open_positions
+    )
+
+    open_pnl = sum(
+        number(
+            row.get("net_pnl_usdt")
+            if row.get("net_pnl_usdt") is not None
+            else row.get("net_pnl")
+        )
+        for row in open_positions
+    )
+
+    open_risk = sum(
+        number(row.get("risk_amount_usdt"))
+        for row in open_positions
+    )
+
+    realized_net = number(
+        performance.get("net_total")
+    )
+
+    total_pnl = realized_net + open_pnl
+    equity = PAPER_STARTING_CAPITAL_USDT + total_pnl
+
+    today = datetime.now(
+        timezone.utc
+    ).date().isoformat()
+
+    daily_row = query_one(
+        """
+        SELECT
+            COALESCE(
+                SUM(
+                    COALESCE(
+                        net_pnl_usdt,
+                        net_pnl,
+                        0
+                    )
+                ),
+                0
+            ) AS daily_net
+        FROM paper_trades
+        WHERE paper_account_version = 'PAPER_10K_V2'
+          AND UPPER(COALESCE(status, '')) = 'CLOSED'
+          AND id >= ?
+          AND SUBSTR(
+                COALESCE(closed_at, created_at),
+                1,
+                10
+              ) = ?
+        """,
+        (
+            PANEL_ACTIVE_PERIOD_MIN_TRADE_ID,
+            today,
+        ),
+    )
+
+    daily_pnl = (
+        number(daily_row.get("daily_net"))
+        + open_pnl
+    )
+
+    risk_used_pct = (
+        open_risk / equity * 100.0
+        if equity > 0
+        else 0.0
+    )
+
+    open_roi_pct = (
+        open_pnl / open_investment * 100.0
+        if open_investment > 0
+        else None
+    )
+
+    def best_key(row: dict[str, Any]) -> tuple[float, float]:
+        evidence = row.get("entry_evidence") or {}
+
+        score = number(
+            evidence.get("score"),
+            default=-1.0,
+        )
+        roi_pct = number(
+            row.get("roi_pct"),
+            default=-999.0,
+        )
+
+        return score, roi_pct
+
+    best = (
+        max(open_positions, key=best_key)
+        if open_positions
+        else None
+    )
+
+    candidates = sorted(
+        rows,
+        key=best_key,
+        reverse=True,
+    )[:5]
+
+    return {
+        "generated_at": datetime.now(
+            timezone.utc
+        ).isoformat(),
+        "summary": {
+            "starting_capital": PAPER_STARTING_CAPITAL_USDT,
+            "equity": equity,
+            "daily_pnl": daily_pnl,
+            "total_pnl": total_pnl,
+            "realized_net": realized_net,
+            "open_pnl": open_pnl,
+            "open_count": len(open_positions),
+            "closed_count": len(closed_positions),
+            "open_investment": open_investment,
+            "open_risk": open_risk,
+            "risk_used_pct": risk_used_pct,
+            "open_roi_pct": open_roi_pct,
+            "win_rate_pct": performance.get(
+                "win_rate_pct"
+            ),
+            "wins": performance.get("wins"),
+            "losses": performance.get("losses"),
+            "avg_roi_pct": performance.get(
+                "avg_roi_pct"
+            ),
+            "profit_factor": performance.get(
+                "profit_factor"
+            ),
+        },
+        "market": {
+            "btc": None,
+            "eth": None,
+            "source": "UNBOUND",
+        },
+        "best": best,
+        "positions": open_positions,
+        "candidates": candidates,
+        "exits": closed_positions[:10],
+        "series": performance_series(active_only=True),
+        "performance": performance,
+        "intelligence": intelligence,
+        "signals": recent_signals(
+            rows,
+            intelligence,
+        ),
+        "health": health,
+        "authority": authority,
+    }

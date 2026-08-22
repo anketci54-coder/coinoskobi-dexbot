@@ -1,4 +1,6 @@
 from collections import Counter, OrderedDict
+import threading
+import time
 
 from app.dex.native_ingestion import SWAP_TOPIC
 
@@ -179,6 +181,7 @@ class RuntimeMarketFlowStore:
         self._pairs = OrderedDict()
         self._events = {}
         self._snapshot_state = {}
+        self._event_condition = threading.Condition()
 
         self.accepted_events = 0
         self.retracted_events = 0
@@ -395,37 +398,159 @@ class RuntimeMarketFlowStore:
             ),
         }
 
-        events = self._events[
-            pair
-        ]
+        with self._event_condition:
+            events = self._events[
+                pair
+            ]
 
-        if identity in events:
-            events.pop(
-                identity,
-                None,
-            )
+            if identity in events:
+                events.pop(
+                    identity,
+                    None,
+                )
 
-        events[
-            identity
-        ] = row
+            events[
+                identity
+            ] = row
 
-        while (
-            len(events)
-            > self.max_events_per_pair
-        ):
-            events.popitem(
-                last=False
-            )
+            while (
+                len(events)
+                > self.max_events_per_pair
+            ):
+                events.popitem(
+                    last=False
+                )
 
-            self.dropped_events += 1
+                self.dropped_events += 1
 
-        self.accepted_events += 1
+            self.accepted_events += 1
+            self._event_condition.notify_all()
 
         return {
             "state": "OBSERVED",
             "pair": pair,
             "direction": direction,
             "event_identity": identity,
+            "decision_authority": False,
+            "execution_authority": False,
+        }
+
+    def wait_for_market_evidence(
+        self,
+        pairs,
+        *,
+        timeout=10.0,
+    ):
+        if isinstance(pairs, str):
+            requested = [
+                _address(pairs)
+            ]
+        else:
+            requested = [
+                _address(pair)
+                for pair in (pairs or [])
+            ]
+
+        requested = [
+            pair
+            for pair in dict.fromkeys(
+                requested
+            )
+            if pair
+        ]
+
+        timeout = max(
+            0.0,
+            float(timeout),
+        )
+
+        if not requested:
+            return {
+                "state": "NO_TARGETS",
+                "requested": 0,
+                "ready": 0,
+                "pending": 0,
+                "timeout": timeout,
+                "decision_authority": False,
+                "execution_authority": False,
+            }
+
+        def ready_pairs():
+            ready = []
+
+            for pair in requested:
+                events = self._events.get(
+                    pair,
+                    OrderedDict(),
+                )
+
+                bull_actors = {
+                    row.get("sender")
+                    for row in events.values()
+                    if (
+                        row.get("direction")
+                        == "BULL"
+                        and row.get("sender")
+                    )
+                }
+
+                bear_actors = {
+                    row.get("sender")
+                    for row in events.values()
+                    if (
+                        row.get("direction")
+                        == "BEAR"
+                        and row.get("sender")
+                    )
+                }
+
+                if bull_actors and bear_actors:
+                    ready.append(pair)
+
+            return ready
+
+        deadline = (
+            time.monotonic()
+            + timeout
+        )
+
+        with self._event_condition:
+            while True:
+                ready = ready_pairs()
+
+                if len(ready) == len(
+                    requested
+                ):
+                    state = "READY"
+                    break
+
+                remaining = (
+                    deadline
+                    - time.monotonic()
+                )
+
+                if remaining <= 0:
+                    state = (
+                        "PARTIAL"
+                        if ready
+                        else "TIMEOUT"
+                    )
+                    break
+
+                self._event_condition.wait(
+                    timeout=remaining
+                )
+
+        return {
+            "state": state,
+            "requested": len(requested),
+            "ready": len(ready),
+            "pending": (
+                len(requested)
+                - len(ready)
+            ),
+            "ready_pairs": list(ready),
+            "timeout": timeout,
             "decision_authority": False,
             "execution_authority": False,
         }

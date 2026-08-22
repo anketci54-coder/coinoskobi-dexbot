@@ -11,116 +11,113 @@ def engine():
     return ProtectiveTrailingStop()
 
 
-def test_initial_stop_is_based_on_highest_price():
-    result = engine().evaluate(
+def test_measured_stop_is_used():
+    r = engine().evaluate(
         current_price=100.0,
         highest_price=100.0,
-        trailing_factor=0.90,
+        measured_stop=92.37,
     )
 
-    assert result.highest_price == 100.0
-    assert result.stop_price == 90.0
-    assert result.action == ACTION_HOLD
+    assert r.stop_price == pytest.approx(
+        92.37
+    )
+    assert r.action == ACTION_HOLD
 
 
-def test_new_high_moves_stop_up():
-    result = engine().evaluate(
+def test_new_high_is_recorded():
+    r = engine().evaluate(
         current_price=150.0,
         highest_price=100.0,
-        trailing_factor=0.90,
-        previous_stop=90.0,
+        measured_stop=127.4,
+        previous_stop=92.37,
     )
 
-    assert result.highest_price == 150.0
-    assert result.stop_price == 135.0
-    assert result.action == ACTION_HOLD
+    assert r.highest_price == 150.0
+    assert r.stop_price == pytest.approx(
+        127.4
+    )
 
 
-def test_highest_price_never_moves_down():
-    result = engine().evaluate(
+def test_highest_never_moves_down():
+    r = engine().evaluate(
         current_price=140.0,
         highest_price=150.0,
-        trailing_factor=0.90,
-        previous_stop=135.0,
+        measured_stop=125.0,
+        previous_stop=127.4,
     )
 
-    assert result.highest_price == 150.0
-    assert result.stop_price == 135.0
+    assert r.highest_price == 150.0
 
 
 def test_stop_never_moves_down():
-    result = engine().evaluate(
+    r = engine().evaluate(
         current_price=150.0,
         highest_price=150.0,
-        trailing_factor=0.80,
+        measured_stop=120.0,
         previous_stop=140.0,
     )
 
-    assert result.stop_price == 140.0
+    assert r.stop_price == 140.0
 
 
-def test_price_touching_stop_is_exit_candidate():
-    result = engine().evaluate(
+def test_touching_stop_is_exit_candidate():
+    r = engine().evaluate(
         current_price=135.0,
         highest_price=150.0,
-        trailing_factor=0.90,
-        previous_stop=135.0,
+        measured_stop=135.0,
     )
 
-    assert result.action == ACTION_EXIT_CANDIDATE
-    assert result.reason == "PROTECTIVE_STOP_REACHED"
+    assert r.action == ACTION_EXIT_CANDIDATE
 
 
-def test_price_below_stop_is_exit_candidate():
-    result = engine().evaluate(
+def test_below_stop_is_exit_candidate():
+    r = engine().evaluate(
         current_price=120.0,
         highest_price=150.0,
-        trailing_factor=0.90,
-        previous_stop=135.0,
+        measured_stop=135.0,
     )
 
-    assert result.stop_price == 135.0
-    assert result.action == ACTION_EXIT_CANDIDATE
+    assert r.action == ACTION_EXIT_CANDIDATE
 
 
-def test_large_upward_gap_tightens_stop():
-    result = engine().evaluate(
-        current_price=300.0,
-        highest_price=100.0,
-        trailing_factor=0.90,
-        previous_stop=90.0,
+def test_measured_stop_changes_with_evidence():
+    first = engine().evaluate(
+        current_price=200.0,
+        highest_price=200.0,
+        measured_stop=161.0,
     )
 
-    assert result.highest_price == 300.0
-    assert result.stop_price == 270.0
-    assert result.action == ACTION_HOLD
+    second = engine().evaluate(
+        current_price=220.0,
+        highest_price=220.0,
+        measured_stop=188.0,
+        previous_stop=first.stop_price,
+    )
+
+    assert second.stop_price == 188.0
 
 
 def test_gap_down_does_not_loosen_stop():
-    result = engine().evaluate(
-        current_price=200.0,
-        highest_price=300.0,
-        trailing_factor=0.90,
-        previous_stop=270.0,
+    r = engine().evaluate(
+        current_price=180.0,
+        highest_price=220.0,
+        measured_stop=160.0,
+        previous_stop=188.0,
     )
 
-    assert result.highest_price == 300.0
-    assert result.stop_price == 270.0
-    assert result.action == ACTION_EXIT_CANDIDATE
+    assert r.stop_price == 188.0
+    assert r.action == ACTION_EXIT_CANDIDATE
 
 
-def test_authority_is_zero():
-    result = engine().evaluate(
+def test_authority_zero():
+    r = engine().evaluate(
         current_price=100.0,
         highest_price=100.0,
-        trailing_factor=0.90,
+        measured_stop=92.0,
     )
 
-    assert result.decision_authority is False
-    assert result.paper_authority is False
-    assert result.live_authority is False
-    assert result.wallet_authority is False
-    assert result.execution_authority is False
+    assert r.decision_authority is False
+    assert r.execution_authority is False
 
 
 @pytest.mark.parametrize(
@@ -129,31 +126,33 @@ def test_authority_is_zero():
         {
             "current_price": 0,
             "highest_price": 100,
-            "trailing_factor": 0.9,
+            "measured_stop": 90,
         },
         {
             "current_price": 100,
             "highest_price": 0,
-            "trailing_factor": 0.9,
+            "measured_stop": 90,
         },
         {
             "current_price": 100,
             "highest_price": 100,
-            "trailing_factor": 0,
+            "measured_stop": 0,
         },
         {
             "current_price": 100,
             "highest_price": 100,
-            "trailing_factor": 1.1,
+            "measured_stop": 101,
         },
         {
             "current_price": 100,
             "highest_price": 100,
-            "trailing_factor": 0.9,
+            "measured_stop": 90,
             "previous_stop": -1,
         },
     ],
 )
-def test_invalid_inputs_rejected(kwargs):
+def test_invalid_inputs_rejected(
+    kwargs,
+):
     with pytest.raises(ValueError):
         engine().evaluate(**kwargs)

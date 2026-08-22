@@ -1,7 +1,8 @@
 from dataclasses import dataclass
 
-from app.config.trading import RUNNER_FRACTION
-from app.strategy.position_state import STATE_RUNNER_ACTIVE
+from app.strategy.position_state import (
+    STATE_RUNNER_ACTIVE,
+)
 from app.strategy.trailing_stop import (
     ACTION_EXIT_CANDIDATE,
     ProtectiveTrailingStop,
@@ -9,7 +10,9 @@ from app.strategy.trailing_stop import (
 
 
 RUNNER_HOLD = "RUNNER_HOLD"
-RUNNER_EXIT_CANDIDATE = "RUNNER_EXIT_CANDIDATE"
+RUNNER_EXIT_CANDIDATE = (
+    "RUNNER_EXIT_CANDIDATE"
+)
 
 
 @dataclass(frozen=True)
@@ -30,19 +33,18 @@ class RunnerResult:
 
 class RunnerEngine:
     """
-    Phase 4 pure-local runner mechanics.
+    Compatibility-only runner mechanics.
 
-    Rules:
-    - runner exists only in RUNNER_ACTIVE state
-    - runner fraction comes from config
-    - no fixed final TP
-    - protective trailing stop only
-    - no market intelligence
-    - no DB / paper / live execution authority
+    The remaining position is the runner.
+    No fixed runner fraction.
+    No fixed final TP.
+    No fixed trailing percentage.
     """
 
     def __init__(self):
-        self.trailing = ProtectiveTrailingStop()
+        self.trailing = (
+            ProtectiveTrailingStop()
+        )
 
     def evaluate(
         self,
@@ -51,45 +53,58 @@ class RunnerEngine:
         remaining_fraction,
         current_price,
         highest_price,
-        trailing_factor,
+        measured_stop,
         previous_stop=None,
     ):
-        if position_state != STATE_RUNNER_ACTIVE:
+        if (
+            position_state
+            != STATE_RUNNER_ACTIVE
+        ):
             raise ValueError(
                 "runner requires RUNNER_ACTIVE state"
             )
 
-        if remaining_fraction < 0:
+        if not (
+            0 < float(
+                remaining_fraction
+            ) <= 1
+        ):
             raise ValueError(
-                "remaining_fraction cannot be negative"
-            )
-
-        if abs(
-            remaining_fraction - RUNNER_FRACTION
-        ) > 1e-9:
-            raise ValueError(
-                "runner fraction does not match configured allocation"
+                "remaining_fraction must be > 0 and <= 1"
             )
 
         trailing = self.trailing.evaluate(
             current_price=current_price,
             highest_price=highest_price,
-            trailing_factor=trailing_factor,
+            measured_stop=measured_stop,
             previous_stop=previous_stop,
         )
 
-        if trailing.action == ACTION_EXIT_CANDIDATE:
-            action = RUNNER_EXIT_CANDIDATE
-            reason = "RUNNER_PROTECTIVE_STOP_REACHED"
+        if (
+            trailing.action
+            == ACTION_EXIT_CANDIDATE
+        ):
+            action = (
+                RUNNER_EXIT_CANDIDATE
+            )
+            reason = (
+                "RUNNER_PROTECTIVE_STOP_REACHED"
+            )
         else:
             action = RUNNER_HOLD
-            reason = "RUNNER_ABOVE_PROTECTIVE_STOP"
+            reason = (
+                "RUNNER_ABOVE_PROTECTIVE_STOP"
+            )
 
         return RunnerResult(
             state=STATE_RUNNER_ACTIVE,
-            runner_fraction=remaining_fraction,
+            runner_fraction=float(
+                remaining_fraction
+            ),
             stop_price=trailing.stop_price,
-            highest_price=trailing.highest_price,
+            highest_price=(
+                trailing.highest_price
+            ),
             action=action,
             reason=reason,
         )

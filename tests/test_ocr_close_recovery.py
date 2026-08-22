@@ -20,14 +20,17 @@ def test_unified_admission_helper_contract():
         {"decision": "PAPER_BUY"},
         {"decision": "PAPER_BUY_CANDIDATE"},
         safe,
+        sellability_status="SELLABILITY_OK",
     ) == "PAPER_BUY"
     assert paper_admission_decision(
         {"decision": "REJECT"},
         {"decision": "PAPER_BUY_CANDIDATE"},
         safe,
+        sellability_status="SELLABILITY_OK",
     ) == "REJECT"
     assert paper_admission_decision(
         {"decision": "PAPER_BUY"},
         {"decision": "PAPER_BUY_CANDIDATE"},
         {"hard_block": True},
+        sellability_status="SELLABILITY_OK",
     ) == "REJECT"

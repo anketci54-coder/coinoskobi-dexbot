@@ -99,7 +99,18 @@ def test_pipeline_strategy_does_not_treat_failed_risk_as_safe(monkeypatch):
     )["data"]
 
     assert risk_result["success"] is False
-    assert strategy["score"] == 0
+
+    assert strategy["score"] == pytest.approx(
+        100.0 * 2 / 11
+    )
+
+    assert (
+        strategy["score_meaning"]
+        == "EVIDENCE_COVERAGE_PERCENT"
+    )
+
+    assert strategy["score_authority"] is False
+    assert strategy["paper_trade"] is False
     assert strategy["decision"] == "REJECT"
 
 

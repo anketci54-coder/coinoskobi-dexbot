@@ -1,180 +1,218 @@
-from app.config.strategy import (
-    CONTRACT_SIZE_LARGE,
-    CONTRACT_SIZE_OK,
-    CONTRACT_SIZE_SMALL,
-    PAPER_BUY_SCORE,
-    PENALTY_BLACKLIST_ENABLED,
-    PENALTY_MINT_ENABLED,
-    PENALTY_PAUSE_ENABLED,
-    SCORE_BLACKLIST_NONE,
-    SCORE_CONTRACT_LARGE,
-    SCORE_CONTRACT_OK,
-    SCORE_CONTRACT_SMALL,
-    SCORE_ERC20_OK,
-    SCORE_MAX_TX_NONE,
-    SCORE_MAX_WALLET_NONE,
-    SCORE_MINT_NONE,
-    SCORE_OWNER_NONE,
-    SCORE_OWNER_RENOUNCED,
-    SCORE_PAIR_EXISTS,
-    SCORE_PAUSE_NONE,
-    SCORE_QUOTE_OK,
-    WATCH_SCORE,
-)
-
-
 class StrategyEngine:
+    """
+    Structural prequalification.
 
-    def evaluate(self, token, pair, risk):
+    score is evidence coverage only.
 
-        score = 0
-        reasons = []
+    It is NOT:
+    - opportunity probability
+    - trade permission
+    - additive manual points
+    - a threshold authority
+    """
 
-        # ERC20
+    FACTS = (
+        (
+            "token_name",
+            lambda token, pair, risk:
+            bool(
+                token.get("name")
+            ),
+        ),
+        (
+            "token_symbol",
+            lambda token, pair, risk:
+            bool(
+                token.get("symbol")
+            ),
+        ),
+        (
+            "token_decimals",
+            lambda token, pair, risk:
+            token.get("decimals")
+            is not None,
+        ),
+        (
+            "pair_exists",
+            lambda token, pair, risk:
+            pair.get("exists")
+            is not None,
+        ),
+        (
+            "quote_status",
+            lambda token, pair, risk:
+            pair.get("quote_ok")
+            is not None,
+        ),
+        (
+            "owner_capability",
+            lambda token, pair, risk:
+            risk.get("owner")
+            is not None,
+        ),
+        (
+            "mint_capability",
+            lambda token, pair, risk:
+            risk.get("mint")
+            is not None,
+        ),
+        (
+            "pause_capability",
+            lambda token, pair, risk:
+            risk.get("pause")
+            is not None,
+        ),
+        (
+            "blacklist_capability",
+            lambda token, pair, risk:
+            risk.get("blacklist")
+            is not None,
+        ),
+        (
+            "max_tx_capability",
+            lambda token, pair, risk:
+            risk.get("max_tx")
+            is not None,
+        ),
+        (
+            "max_wallet_capability",
+            lambda token, pair, risk:
+            risk.get("max_wallet")
+            is not None,
+        ),
+    )
 
-        token_name = token.get("name")
+    def evaluate(
+        self,
+        token,
+        pair,
+        risk,
+    ):
+        token = token or {}
+        pair = pair or {}
+        risk = risk or {}
 
-        if token_name not in (
-            None,
-            "",
-            "?",
-        ):
-            score += SCORE_ERC20_OK
-            reasons.append("ERC20 OK")
+        coverage = {
+            name: bool(
+                check(
+                    token,
+                    pair,
+                    risk,
+                )
+            )
+            for name, check
+            in self.FACTS
+        }
 
-        # Pair
-
-        if pair.get("exists"):
-            score += SCORE_PAIR_EXISTS
-            reasons.append("Pair bulundu")
-
-        if pair.get("quote_ok"):
-            score += SCORE_QUOTE_OK
-            reasons.append("Quote alınabiliyor")
-
-        # Bytecode
-
-        code_size = risk.get(
-            "code_size",
-            0,
+        known = sum(
+            1
+            for value
+            in coverage.values()
+            if value
         )
 
-        if code_size >= CONTRACT_SIZE_LARGE:
-            score += SCORE_CONTRACT_LARGE
-            reasons.append("Büyük kontrat")
-
-        elif code_size >= CONTRACT_SIZE_OK:
-            score += SCORE_CONTRACT_OK
-            reasons.append("Kontrat yeterli")
-
-        elif code_size >= CONTRACT_SIZE_SMALL:
-            score += SCORE_CONTRACT_SMALL
-            reasons.append("Kontrat küçük")
-
-        else:
-            reasons.append("Kontrat çok küçük")
-
-        # Owner
-
-        owner = risk.get("owner")
-
-        if owner is False:
-            score += SCORE_OWNER_NONE
-            reasons.append("Owner yok")
-
-        elif (
-            owner is True
-            and risk.get(
-                "renounce_owner"
-            ) is True
-        ):
-            score += SCORE_OWNER_RENOUNCED
-            reasons.append("Owner renounce")
-
-        # Mint
-
-        mint = risk.get("mint")
-
-        if mint is False:
-            score += SCORE_MINT_NONE
-            reasons.append("Mint yok")
-
-        elif mint is True:
-            score -= PENALTY_MINT_ENABLED
-            reasons.append("Mint var")
-
-        # Pause
-
-        pause = risk.get("pause")
-
-        if pause is False:
-            score += SCORE_PAUSE_NONE
-            reasons.append("Pause yok")
-
-        elif pause is True:
-            score -= PENALTY_PAUSE_ENABLED
-            reasons.append("Pause var")
-
-        # Blacklist
-
-        blacklist = risk.get(
-            "blacklist"
+        score = (
+            100.0
+            * known
+            / len(coverage)
         )
 
-        if blacklist is False:
-            score += SCORE_BLACKLIST_NONE
-            reasons.append("Blacklist yok")
+        structural_ready = bool(
+            token.get("name")
+            and token.get(
+                "decimals"
+            )
+            is not None
+            and pair.get(
+                "exists"
+            )
+            is True
+            and pair.get(
+                "quote_ok"
+            )
+            is True
+        )
 
-        elif blacklist is True:
-            score -= PENALTY_BLACKLIST_ENABLED
-            reasons.append("Blacklist var")
-
-        # MaxTx
-
-        if risk.get("max_tx") is False:
-            score += SCORE_MAX_TX_NONE
-            reasons.append("MaxTx yok")
-
-        # MaxWallet
-
-        if risk.get("max_wallet") is False:
-            score += SCORE_MAX_WALLET_NONE
-            reasons.append("MaxWallet yok")
-
-        # Decision
-
-        if score >= PAPER_BUY_SCORE:
+        if structural_ready:
             decision = "PAPER_BUY"
 
-        elif score >= WATCH_SCORE:
-            decision = "WATCH"
-
-        else:
+        elif pair.get(
+            "exists"
+        ) is False:
             decision = "REJECT"
 
-        # Risk level
-
-        if score >= PAPER_BUY_SCORE:
-            risk_level = "LOW"
-
-        elif score >= WATCH_SCORE:
-            risk_level = "MEDIUM"
-
         else:
-            risk_level = "HIGH"
+            decision = "WATCH"
 
-        paper_trade = (
-            decision == "PAPER_BUY"
-        )
+        warnings = []
+
+        for key, label in (
+            (
+                "mint",
+                "MINT_CAPABILITY",
+            ),
+            (
+                "pause",
+                "PAUSE_CAPABILITY",
+            ),
+            (
+                "blacklist",
+                "BLACKLIST_CAPABILITY",
+            ),
+            (
+                "set_blacklist",
+                "BLACKLIST_CONTROL",
+            ),
+            (
+                "max_tx",
+                "MAX_TX_CONTROL",
+            ),
+            (
+                "max_wallet",
+                "MAX_WALLET_CONTROL",
+            ),
+        ):
+            if risk.get(key) is True:
+                warnings.append(label)
 
         return {
             "success": True,
             "source": "strategy",
+
             "data": {
-                "decision": decision,
                 "score": score,
-                "reasons": reasons,
-                "risk": risk_level,
-                "paper_trade": paper_trade,
+
+                "score_meaning": (
+                    "EVIDENCE_COVERAGE_PERCENT"
+                ),
+
+                "score_formula": (
+                    "100*known_evidence_fields"
+                    "/declared_evidence_fields"
+                ),
+
+                "score_authority": False,
+
+                "coverage": coverage,
+
+                "structural_ready": (
+                    structural_ready
+                ),
+
+                "decision": decision,
+
+                "risk": (
+                    "HARD_GATE_OWNS_RISK"
+                ),
+
+                "paper_trade": False,
+
+                "reasons": warnings,
+
+                "decision_authority": False,
+                "paper_authority": False,
+                "live_authority": False,
+                "wallet_authority": False,
+                "execution_authority": False,
             },
         }

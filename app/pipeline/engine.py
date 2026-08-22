@@ -471,18 +471,22 @@ class PipelineEngine:
         targets = []
         seen = set()
 
-        classified = (
-            self.ingress_gate.classify(
-                candidate.to_dict()
-            )
-            for candidate in normalized["candidates"]
-        )
-
+        # Native WSS belongs to the observation plane.
+        #
+        # Do not wait for ingress/admission to mark a pool ACTIVE
+        # before collecting its real market-flow evidence. Decision
+        # admission remains unchanged later in run_cycle().
+        #
+        # The scanner/cache universe is already bounded, and the
+        # membership verifier below still validates every WSS target.
         rows = [
-            item["row"]
-            for item in classified
-            if item["lane"] == "ACTIVE"
-            and item["row"].get("dex") == "pancakeswap_v2"
+            row
+            for row in (
+                candidate.to_dict()
+                for candidate
+                in normalized["candidates"]
+            )
+            if row.get("dex") == "pancakeswap_v2"
         ]
 
         rows.sort(

@@ -399,6 +399,100 @@ def test_service_cancels_stuck_runtime_task():
     assert status["forced_stop_count"] == 1
 
 
+
+class ExitThenRunRuntime:
+    instances = 0
+
+    def __init__(
+        self,
+        url,
+        pair,
+        **kwargs,
+    ):
+        type(self).instances += 1
+
+        self.instance_number = (
+            type(self).instances
+        )
+
+        self.stop_requested = False
+
+    async def run(self):
+        if self.instance_number == 1:
+            return self.status()
+
+        while not self.stop_requested:
+            await asyncio.sleep(
+                0.001
+            )
+
+        return self.status()
+
+    def request_stop(self):
+        self.stop_requested = True
+
+    def status(self):
+        return {
+            "state": (
+                "STOPPED"
+                if self.instance_number == 1
+                else "RUNNING"
+            ),
+        }
+
+
+def test_replace_pairs_restarts_previously_started_dead_service():
+    ExitThenRunRuntime.instances = 0
+
+    service = NativeWSSService(
+        "wss://provider",
+        "0xpair",
+        runtime_factory=ExitThenRunRuntime,
+    )
+
+    assert service.start() is True
+
+    assert wait_for(
+        lambda: (
+            service.status()[
+                "thread_alive"
+            ]
+            is False
+        )
+    )
+
+    assert service.start_count == 1
+
+    result = service.replace_pairs(
+        "0xpair"
+    )
+
+    assert result["state"] == (
+        "RESTARTED"
+    )
+
+    assert result[
+        "restarted"
+    ] is True
+
+    assert service.start_count == 2
+
+    assert wait_for(
+        lambda: (
+            service.status()[
+                "thread_alive"
+            ]
+            is True
+            and service.status()[
+                "runtime_present"
+            ]
+            is True
+        )
+    )
+
+    assert service.stop() is True
+
+
 def test_replace_pairs_updates_stopped_service():
     service = NativeWSSService(
         "wss://provider",

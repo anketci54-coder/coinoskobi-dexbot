@@ -308,6 +308,47 @@ def test_out_of_order_not_accepted():
     ] == 2
 
 
+
+def test_receive_timeout_is_idle_not_disconnect():
+    ws = FakeWebSocket([
+        ack(),
+        asyncio.TimeoutError(),
+        event(
+            "0xaaa",
+            "0x1",
+            "0x10",
+        ),
+    ])
+
+    factory = FakeFactory([
+        ws
+    ])
+
+    runtime = NativeWSSRuntime(
+        "wss://example",
+        "0xpair",
+        connect_factory=factory,
+        receive_timeout=0.01,
+        max_reconnects=0,
+    )
+
+    result = run(
+        runtime.run(
+            max_events=1
+        )
+    )
+
+    assert factory.calls == 1
+
+    assert result[
+        "accepted_count"
+    ] == 1
+
+    assert result[
+        "reconnect_count"
+    ] == 0
+
+
 def test_reconnect_after_disconnect():
     first = FakeWebSocket([
         ack(),

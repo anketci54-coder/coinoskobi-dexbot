@@ -122,6 +122,51 @@ It does NOT prove:
 
 Never use the count alone to loosen admission.
 
+## CURRENT LOCAL WSS LIFECYCLE CORRECTION
+
+Root cause found from real runtime observation:
+
+- scanner/runtime continued for 134 cycles
+- candidate analysis continued
+- runtime process had no established TCP connection at audit time
+- repeated candidates successfully accumulated price history
+- repeated candidates successfully accumulated LP persistence
+- market-quality evidence remained not ready
+- participation evidence remained unknown
+
+The canonical local correction therefore changes only WSS lifecycle:
+
+1. An idle websocket receive window is no longer treated as a transport failure.
+2. Websocket ping/pong remains responsible for connection liveness.
+3. A previously-started WSS service whose worker thread has died is restarted by the normal pair refresh path.
+4. An unchanged pair list also self-heals a dead previously-started service.
+5. Admission thresholds, mathematical trade planning, sizing, Vur-Kac, wallet authority and live authority are unchanged.
+
+This correction is not considered sealed until:
+
+- targeted tests pass
+- full test suite passes
+- paper runtime is restarted once
+- panel PID remains unchanged
+- persistent WSS/TCP connectivity is observed
+- runtime fatal scan passes
+
+WSS lifecycle and broad native observation scope were validated together against the real Alchemy BNB WebSocket runtime.
+
+## NATIVE WSS OBSERVATION SCOPE
+
+Canonical behavior:
+
+- Alchemy BNB is the active WSS provider.
+- Native WSS observation is independent from ingress admission.
+- Current verified Pancake V2 scanner pools are observed before they
+  become decision-eligible.
+- Pair membership verification remains mandatory.
+- WSS target count remains bounded to 256.
+- Admission, mathematical planning, position sizing, Vur-Kac and all
+  authority locks remain unchanged.
+- Missing market evidence remains UNKNOWN and cannot authorize entry.
+
 ## CURRENT OPEN WORK
 
 One cause -> one correction -> one closure.

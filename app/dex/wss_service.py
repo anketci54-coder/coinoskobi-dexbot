@@ -143,11 +143,47 @@ class NativeWSSService:
                 and self._thread.is_alive()
             )
 
+            previously_started = bool(
+                self._started
+            )
+
+            stopping = bool(
+                self._stopping
+            )
+
+        should_be_running = (
+            running
+            or (
+                previously_started
+                and not stopping
+            )
+        )
+
         if current == addresses:
+            if (
+                not running
+                and should_be_running
+            ):
+                restarted = self.start()
+
+                return {
+                    "state": (
+                        "RESTARTED"
+                        if restarted
+                        else "UNCHANGED"
+                    ),
+                    "address_count": len(addresses),
+                    "restarted": restarted,
+                    "decision_authority": False,
+                    "execution_authority": False,
+                }
+
             return {
                 "state": "UNCHANGED",
                 "address_count": len(addresses),
                 "restarted": False,
+                "decision_authority": False,
+                "execution_authority": False,
             }
 
         if running and not self.stop():
@@ -160,7 +196,11 @@ class NativeWSSService:
         with self._lock:
             self.pair = replacement
 
-        restarted = self.start() if running else False
+        restarted = (
+            self.start()
+            if should_be_running
+            else False
+        )
 
         return {
             "state": (

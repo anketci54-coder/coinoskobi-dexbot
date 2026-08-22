@@ -270,10 +270,21 @@ class NativeWSSRuntime:
                     ):
                         break
 
-                    raw = await asyncio.wait_for(
-                        ws.recv(),
-                        timeout=self.receive_timeout,
-                    )
+                    try:
+                        raw = await asyncio.wait_for(
+                            ws.recv(),
+                            timeout=self.receive_timeout,
+                        )
+
+                    except asyncio.TimeoutError:
+                        # A quiet subscribed pair is not a
+                        # transport failure.
+                        #
+                        # websockets ping/pong owns transport
+                        # liveness. Do not consume reconnect
+                        # budget merely because no Swap log
+                        # arrived during this receive window.
+                        continue
 
                     self.message_count += 1
 

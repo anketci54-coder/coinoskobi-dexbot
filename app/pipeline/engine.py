@@ -2875,7 +2875,11 @@ class PipelineEngine:
         self.last_scanner_refresh = result
         return result
 
-    def run_cycle(self):
+    def run_cycle(
+        self,
+        *,
+        pre_analysis_hook=None,
+    ):
 
         try:
             self.refresh_candidate_cache()
@@ -2892,6 +2896,19 @@ class PipelineEngine:
                 "Scanner refresh failed; using cache: %s",
                 self.last_scanner_refresh["error"],
             )
+
+        # Scanner data is now current. Allow application-owned
+        # observation infrastructure to bind those exact pools
+        # before any candidate from this cache is analysed.
+        if pre_analysis_hook is not None:
+            try:
+                pre_analysis_hook()
+            except Exception as exc:
+                logger.warning(
+                    "Pre-analysis observation binding failed: %s",
+                    f"{type(exc).__name__}: {exc}",
+                )
+
 
         rows = self.cache.all()
 

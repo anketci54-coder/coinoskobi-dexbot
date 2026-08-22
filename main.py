@@ -135,11 +135,12 @@ def build_application(
 
         services.append(service)
 
-    def application_scan_job():
-        result = pipeline.run_cycle()
-
+    def refresh_native_wss_targets():
         if not services:
-            return result
+            return {
+                "state": "NO_SERVICE",
+                "address_count": 0,
+            }
 
         target_loader = getattr(
             pipeline,
@@ -148,12 +149,18 @@ def build_application(
         )
 
         if target_loader is None:
-            return result
+            return {
+                "state": "NO_TARGET_LOADER",
+                "address_count": 0,
+            }
 
         refreshed_targets = target_loader()
 
         if not refreshed_targets:
-            return result
+            return {
+                "state": "NO_TARGETS",
+                "address_count": 0,
+            }
 
         configure = getattr(
             pipeline,
@@ -179,7 +186,10 @@ def build_application(
                 target["quote_token"],
             )
 
-            if registered.get("state") != "REGISTERED":
+            if (
+                registered.get("state")
+                != "REGISTERED"
+            ):
                 continue
 
             if confirm is not None:
@@ -189,7 +199,10 @@ def build_application(
                     target["quote_token"],
                 )
 
-                if confirmation.get("state") != "VERIFIED":
+                if (
+                    confirmation.get("state")
+                    != "VERIFIED"
+                ):
                     continue
 
             verified_addresses.append(
@@ -202,16 +215,44 @@ def build_application(
             None,
         )
 
-        if verified_addresses and replace_pairs is not None:
-            pair_filter = (
-                verified_addresses[0]
-                if len(verified_addresses) == 1
-                else verified_addresses
-            )
+        if (
+            not verified_addresses
+            or replace_pairs is None
+        ):
+            return {
+                "state": "NO_VERIFIED_TARGETS",
+                "address_count": 0,
+            }
 
-            replace_pairs(pair_filter)
+        pair_filter = (
+            verified_addresses[0]
+            if len(verified_addresses) == 1
+            else verified_addresses
+        )
 
-        return result
+        result = replace_pairs(
+            pair_filter
+        )
+
+        return {
+            "state": result.get(
+                "state",
+                "UPDATED",
+            ),
+            "address_count": len(
+                verified_addresses
+            ),
+        }
+
+    def application_scan_job():
+        if not services:
+            return pipeline.run_cycle()
+
+        return pipeline.run_cycle(
+            pre_analysis_hook=(
+                refresh_native_wss_targets
+            ),
+        )
 
     position_job = getattr(
         pipeline,

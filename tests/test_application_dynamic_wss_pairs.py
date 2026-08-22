@@ -12,8 +12,10 @@ class Pipeline:
     def __init__(self):
         self.calls = 0
         self.configured = []
+        self.sequence = []
 
     def native_wss_targets(self):
+        self.sequence.append("targets")
         self.calls += 1
         pairs = [PAIR1] if self.calls == 1 else [PAIR2, PAIR3]
         return [
@@ -27,10 +29,12 @@ class Pipeline:
         ]
 
     def configure_native_market_flow(self, pair, token, quote):
+        self.sequence.append("configure")
         self.configured.append(pair)
         return {"state": "REGISTERED"}
 
     def confirm_native_market_flow(self, pair, token, quote):
+        self.sequence.append("confirm")
         return {"state": "VERIFIED"}
 
     async def on_native_event(self, event):
@@ -39,7 +43,18 @@ class Pipeline:
     async def on_native_retraction(self, event):
         return True
 
-    def run_cycle(self):
+    def run_cycle(
+        self,
+        *,
+        pre_analysis_hook=None,
+    ):
+        self.sequence.append("refresh")
+
+        if pre_analysis_hook is not None:
+            pre_analysis_hook()
+
+        self.sequence.append("analyze")
+
         return {"state": "RAN"}
 
     def process_positions(self):
@@ -88,6 +103,21 @@ def test_scanner_refresh_rebinds_verified_wss_pairs(monkeypatch):
         if job["name"] == "scanner"
     )
 
+    pipeline.sequence.clear()
+
     assert scanner["func"]() == {"state": "RAN"}
+
+    assert pipeline.sequence[0] == "refresh"
+    assert pipeline.sequence[-1] == "analyze"
+
+    assert (
+        pipeline.sequence.index("targets")
+        < pipeline.sequence.index("analyze")
+    )
+
+    assert (
+        pipeline.sequence.index("confirm")
+        < pipeline.sequence.index("analyze")
+    )
     assert app["services"][0].pair == [PAIR2, PAIR3]
     assert app["services"][0].replacements == [[PAIR2, PAIR3]]

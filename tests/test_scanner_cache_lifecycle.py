@@ -1,4 +1,8 @@
-from app.pipeline.engine import PipelineEngine
+from app.pipeline.engine import (
+    PipelineEngine,
+    _runtime_observation_watch_snapshot,
+    _runtime_watch_candidate,
+)
 
 
 class FakeScanner:
@@ -134,3 +138,117 @@ def test_native_wss_targets_observe_all_v2_and_are_bounded(monkeypatch):
     assert len({row["pair"] for row in targets}) == 3
     assert all(row["token"] for row in targets)
     assert all(row["quote_token"] for row in targets)
+
+
+def test_movement_only_candidate_is_retained_for_real_price_refresh():
+    class ObservationScanner:
+        def __init__(self):
+            self.price_calls = []
+
+        def scan(self):
+            return [{
+                "pool": "0xcurrentpool",
+                "base_token": "bsc_0xcurrent",
+                "quote_token": "bsc_0xquote",
+            }]
+
+        def pool_prices(self, pools):
+            self.price_calls.append(
+                list(pools)
+            )
+
+            return {
+                "0xwatchpool": 1.25,
+            }
+
+    class ObservationCache:
+        def __init__(self):
+            self.replaced = []
+            self.updated = []
+            self.pruned = []
+
+        def replace(self, row):
+            self.replaced.append(
+                dict(row)
+            )
+
+        def update_pool_price(
+            self,
+            pool,
+            price,
+        ):
+            self.updated.append(
+                (pool, price)
+            )
+
+            return 1
+
+        def prune_except(
+            self,
+            pools,
+            preserve_tokens=None,
+        ):
+            self.pruned.append({
+                "pools": list(pools),
+                "preserve_tokens": list(
+                    preserve_tokens or []
+                ),
+            })
+
+            return 0
+
+    engine = PipelineEngine.__new__(
+        PipelineEngine
+    )
+
+    engine.scanner = ObservationScanner()
+    engine.cache = ObservationCache()
+
+    _runtime_watch_candidate(
+        "0xwatch",
+        "0xwatchpool",
+        enabled=True,
+    )
+
+    try:
+        result = (
+            engine.refresh_candidate_cache()
+        )
+
+        snapshot = (
+            _runtime_observation_watch_snapshot()
+        )
+
+        assert result == {
+            "state": "REFRESHED",
+            "rows": 1,
+            "error": None,
+        }
+
+        assert snapshot == {
+            "0xwatch": "0xwatchpool",
+        }
+
+        assert (
+            engine.scanner.price_calls
+            == [["0xwatchpool"]]
+        )
+
+        assert engine.cache.updated == [
+            ("0xwatchpool", 1.25)
+        ]
+
+        assert len(engine.cache.pruned) == 1
+
+        assert "0xwatch" in (
+            engine.cache.pruned[0][
+                "preserve_tokens"
+            ]
+        )
+
+    finally:
+        _runtime_watch_candidate(
+            "0xwatch",
+            "0xwatchpool",
+            enabled=False,
+        )

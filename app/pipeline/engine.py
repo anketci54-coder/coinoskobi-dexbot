@@ -93,6 +93,75 @@ from app.learning.unified_outcome_readmodel import (
 _RUNTIME_PRICE_HISTORY = {}
 _RUNTIME_QUOTE_RESERVE_HISTORY = {}
 
+# Candidates that have already passed empirical sizing but still need
+# additional real price movement observations are retained separately
+# from scanner discovery. This does not grant admission authority.
+_RUNTIME_OBSERVATION_WATCH = {}
+_RUNTIME_OBSERVATION_WATCH_MAX = 30
+_RUNTIME_OBSERVATION_WATCH_LOCK = threading.Lock()
+
+
+def _runtime_watch_candidate(
+    token_address,
+    pool,
+    *,
+    enabled,
+):
+    token_key = str(
+        token_address or ""
+    ).strip().lower()
+
+    pool_key = str(
+        pool or ""
+    ).strip().lower()
+
+    with _RUNTIME_OBSERVATION_WATCH_LOCK:
+        if (
+            not enabled
+            or not token_key
+            or not pool_key
+        ):
+            if token_key:
+                _RUNTIME_OBSERVATION_WATCH.pop(
+                    token_key,
+                    None,
+                )
+
+            return False
+
+        # Reinsert so the dict also behaves as a simple
+        # bounded least-recently-qualified watch set.
+        _RUNTIME_OBSERVATION_WATCH.pop(
+            token_key,
+            None,
+        )
+
+        while (
+            len(_RUNTIME_OBSERVATION_WATCH)
+            >= _RUNTIME_OBSERVATION_WATCH_MAX
+        ):
+            oldest = next(
+                iter(_RUNTIME_OBSERVATION_WATCH)
+            )
+
+            _RUNTIME_OBSERVATION_WATCH.pop(
+                oldest,
+                None,
+            )
+
+        _RUNTIME_OBSERVATION_WATCH[
+            token_key
+        ] = pool_key
+
+    return True
+
+
+def _runtime_observation_watch_snapshot():
+    with _RUNTIME_OBSERVATION_WATCH_LOCK:
+        return dict(
+            _RUNTIME_OBSERVATION_WATCH
+        )
+
 
 def _runtime_positive_number(value):
     import math
@@ -1750,6 +1819,29 @@ class PipelineEngine:
                     else:
                         block_reason = None
 
+                    # Retain only candidates whose admission math is
+                    # otherwise ready: sizing succeeded and the sole
+                    # remaining blocker is insufficient observed
+                    # movement. No blocker or threshold is relaxed.
+                    watch_for_movement = (
+                        block_reason
+                        == "PLAN_BLOCKED"
+                        and plan_blockers
+                        == [
+                            "EMPIRICAL_MOVEMENT_INSUFFICIENT"
+                        ]
+                        and not sizing_blockers
+                        and entry_amount_usdt > 0
+                    )
+
+                    _runtime_watch_candidate(
+                        token_address,
+                        market_context.get(
+                            "candidate_pool"
+                        ),
+                        enabled=watch_for_movement,
+                    )
+
                     if block_reason is not None:
                         combined_blockers = sorted(
                             set(
@@ -2867,6 +2959,72 @@ class PipelineEngine:
         for row in rows:
             self.cache.replace(row)
 
+        # A scanner discovery feed may rotate a promising pool out
+        # before mathematical admission has accumulated enough real
+        # price movement. Refresh only explicitly watched pools using
+        # the bounded multi-pool endpoint already used by the runtime.
+        watch_snapshot = (
+            _runtime_observation_watch_snapshot()
+        )
+
+        current_pools = {
+            str(
+                row.get("pool")
+                or ""
+            ).strip().lower()
+            for row in rows
+            if row.get("pool")
+        }
+
+        watch_pools = [
+            pool
+            for pool in watch_snapshot.values()
+            if pool not in current_pools
+        ]
+
+        if watch_pools:
+            pool_prices = getattr(
+                self.scanner,
+                "pool_prices",
+                None,
+            )
+
+            update_pool_price = getattr(
+                self.cache,
+                "update_pool_price",
+                None,
+            )
+
+            if (
+                pool_prices is not None
+                and update_pool_price is not None
+            ):
+                try:
+                    watched_prices = pool_prices(
+                        watch_pools
+                    )
+
+                    for (
+                        watched_pool,
+                        watched_price,
+                    ) in watched_prices.items():
+                        update_pool_price(
+                            watched_pool,
+                            watched_price,
+                        )
+
+                except Exception as exc:
+                    logger.warning(
+                        (
+                            "Candidate observation price "
+                            "refresh failed: %s"
+                        ),
+                        (
+                            f"{type(exc).__name__}: "
+                            f"{exc}"
+                        ),
+                    )
+
         self.last_cache_pruned = 0
         prune = getattr(
             self.cache,
@@ -2889,6 +3047,10 @@ class PipelineEngine:
                     position["token"]
                     for position in open_reader()
                 ]
+
+            preserve_tokens.extend(
+                watch_snapshot.keys()
+            )
 
             self.last_cache_pruned = prune(
                 [

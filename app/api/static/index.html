@@ -2465,6 +2465,113 @@ button{
 }
 
 
+
+/* =========================================================
+   PANEL VISUAL TRUTH
+   Candidate state must never look more executable than it is.
+   ========================================================= */
+
+.check-value,
+.plan-value{
+  max-width:58%;
+
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+
+.signal-box{
+  transition:
+    border-color .15s ease,
+    background .15s ease;
+}
+
+.signal-box.state-ready{
+  border-color:#087c3e;
+  background:rgba(0,233,120,.035);
+}
+
+.signal-box.state-ready .signal-value,
+.signal-box.state-ready .signal-state{
+  color:var(--green);
+}
+
+.signal-box.state-watch{
+  border-color:#8c6b00;
+  background:rgba(255,208,42,.035);
+}
+
+.signal-box.state-watch .signal-value,
+.signal-box.state-watch .signal-state{
+  color:var(--yellow);
+}
+
+.signal-box.state-reject{
+  border-color:#8c2635;
+  background:rgba(255,48,73,.035);
+}
+
+.signal-box.state-reject .signal-value,
+.signal-box.state-reject .signal-state{
+  color:var(--red);
+}
+
+.best-action.watch-action{
+  border-color:#26424b;
+  background:#07151c;
+  color:#9eb0b5;
+}
+
+.best-action.watch-action.state-ready{
+  border-color:#087c3e;
+  background:#07562f;
+  color:white;
+}
+
+.best-action.watch-action.state-watch{
+  border-color:#806200;
+  background:#211b02;
+  color:var(--yellow);
+}
+
+.best-action.watch-action.state-reject{
+  border-color:#8c2635;
+  background:#271017;
+  color:var(--red);
+}
+
+.trade-action.authority-only{
+  border-color:#29434c;
+
+  background:
+    linear-gradient(
+      180deg,
+      #0a171d,
+      #071116
+    );
+
+  color:#a9b8bc;
+
+  box-shadow:none;
+}
+
+.trade-action.authority-only small{
+  color:#778d94;
+}
+
+.policy-pill.cost-incomplete{
+  border-color:rgba(255,208,42,.48);
+  color:#d9c069;
+}
+
+.policy-pill.cost-complete{
+  border-color:rgba(0,233,120,.42);
+}
+
+.placeholder-row b{
+  letter-spacing:.02em;
+}
+
+
 </style>
 </head>
 
@@ -2776,7 +2883,7 @@ button{
               Yeni paper pozisyon bekleniyor
             </div>
 
-            <div class="signal-box">
+            <div class="signal-box" id="bestSignalBox">
 
               <div class="signal-label">
                 KANIT GÜVENİ
@@ -2803,7 +2910,7 @@ button{
         <div class="best-section">
 
           <div class="best-section-title">
-            NEDEN UYGUN?
+            ADAY DURUMU
           </div>
 
           <div class="check-row">
@@ -2868,7 +2975,7 @@ button{
 
           <div class="check-row">
             <span class="check-name">
-              Piyasa Koşulları
+              Boyutlandırma
             </span>
 
             <b
@@ -2991,6 +3098,7 @@ button{
 
         <button
           class="best-action watch-action"
+          id="bestWatchButton"
           onclick="openBestEvidence()">
           ★ İZLE / KANIT
         </button>
@@ -3094,32 +3202,32 @@ button{
     <div class="control-content">
 
       <div class="control-title">
-        İŞLEM KONTROL
-        <span>(PAPER MOD)</span>
+        İŞLEM YETKİSİ
+        <span>(READ-ONLY PANEL)</span>
       </div>
 
       <div class="amount-box">
-        <small>MİKTAR (USDT)</small>
+        <small>ADAY PLAN TUTARI</small>
         <b id="controlAmount">—</b>
       </div>
 
       <button
-        class="trade-action buy-action"
+        class="trade-action buy-action authority-only"
         onclick="openAuthority('AL')">
         AL
-        <small>Authority kontrolü</small>
+        <small>PANEL YETKİSİ YOK</small>
       </button>
 
       <button
-        class="trade-action sell-action"
+        class="trade-action sell-action authority-only"
         onclick="openAuthority('SAT')">
         SAT
-        <small>Authority kontrolü</small>
+        <small>PANEL YETKİSİ YOK</small>
       </button>
 
       <div class="authority-note">
-        Kontroller gerçek backend authority durumuna bağlıdır.
-        Yetkisiz trade, wallet veya signing işlemi gönderilmez.
+        Paper runtime otomatik çalışır.
+        Bu panel emir, wallet veya signing işlemi göndermez.
       </div>
 
     </div>
@@ -3673,6 +3781,31 @@ function formatMoney(value){
       maximumFractionDigits:2
     }
   ) + " USDT";
+}
+
+
+function formatUsd(value){
+  if(
+    value === null ||
+    value === undefined ||
+    value === ""
+  ){
+    return "—";
+  }
+
+  const parsed = Number(value);
+
+  if(!Number.isFinite(parsed)){
+    return "—";
+  }
+
+  return parsed.toLocaleString(
+    "tr-TR",
+    {
+      minimumFractionDigits:2,
+      maximumFractionDigits:2
+    }
+  ) + " USD";
 }
 
 
@@ -4297,6 +4430,111 @@ function runtimeCandidateToBest(candidate){
 
 
 
+function applyRuntimeCandidateState(candidate){
+  const signalBox =
+    $("bestSignalBox");
+
+  const watchButton =
+    $("bestWatchButton");
+
+  if(signalBox){
+    signalBox.classList.remove(
+      "state-ready",
+      "state-watch",
+      "state-reject"
+    );
+  }
+
+  if(watchButton){
+    watchButton.classList.remove(
+      "state-ready",
+      "state-watch",
+      "state-reject"
+    );
+  }
+
+  if(!candidate){
+    if(watchButton){
+      watchButton.textContent =
+        "★ İZLE / KANIT";
+    }
+
+    return;
+  }
+
+  const action = String(
+    candidate.paper_action ||
+    candidate.unified ||
+    candidate.strategy ||
+    ""
+  ).toUpperCase();
+
+  const reason = String(
+    candidate.reason || ""
+  ).toUpperCase();
+
+  const amountKnown =
+    candidate.entry_amount_usdt !== null &&
+    candidate.entry_amount_usdt !== undefined;
+
+  const zeroAmount =
+    amountKnown &&
+    Number(
+      candidate.entry_amount_usdt
+    ) <= 0;
+
+  const rejected =
+    action === "REJECT" ||
+    candidate.hard_block === true;
+
+  const blocked =
+    rejected ||
+    reason === "PLAN_BLOCKED" ||
+    zeroAmount;
+
+  let state = "state-watch";
+
+  if(rejected){
+    state = "state-reject";
+  }else if(
+    action === "PAPER_BUY" &&
+    !blocked
+  ){
+    state = "state-ready";
+  }
+
+  if(signalBox){
+    signalBox.classList.add(state);
+  }
+
+  if(watchButton){
+    watchButton.classList.add(state);
+
+    watchButton.textContent =
+      state === "state-ready"
+        ? "✓ PAPER BUY ADAYI"
+        : state === "state-reject"
+          ? "× RED / BLOCK"
+          : blocked
+            ? "◉ İZLE · PLAN BLOKLU"
+            : "◉ İZLE / KANIT";
+  }
+
+  $("bestScoreState").textContent =
+    blocked
+      ? textValue(
+          candidate.reason ||
+          candidate.sizing_reason ||
+          action
+        )
+      : textValue(
+          candidate.paper_action ||
+          candidate.unified ||
+          candidate.strategy
+        );
+}
+
+
 function renderRuntimeBestDetails(best){
   if(!best?.runtime_candidate){
     return;
@@ -4310,10 +4548,14 @@ function renderRuntimeBestDetails(best){
     candidate.evidence_coverage;
 
   $("bestToken").textContent =
-    candidate.name ||
     runtimeCandidateShortToken(
       candidate
     );
+
+  $("bestPair").textContent =
+    candidate.name
+      ? " / " + candidate.name
+      : " / CANLI ADAY";
 
   $("bestScore").textContent =
     formatConfidence(
@@ -4324,7 +4566,7 @@ function renderRuntimeBestDetails(best){
     candidate.liquidity === null ||
     candidate.liquidity === undefined
       ? "—"
-      : formatMoney(
+      : formatUsd(
           candidate.liquidity
         );
 
@@ -4337,15 +4579,21 @@ function renderRuntimeBestDetails(best){
     candidate.entry_amount_usdt === null ||
     candidate.entry_amount_usdt === undefined
       ? "—"
-      : formatMoney(
-          candidate.entry_amount_usdt
+      : (
+          Number(
+            candidate.entry_amount_usdt
+          ) <= 0
+            ? "0,00 USDT · BLOKLU"
+            : formatMoney(
+                candidate.entry_amount_usdt
+              )
         );
 
   $("trend").textContent =
     candidate.volume_24h === null ||
     candidate.volume_24h === undefined
       ? "—"
-      : formatMoney(
+      : formatUsd(
           candidate.volume_24h
         );
 
@@ -4368,7 +4616,7 @@ function renderRuntimeBestDetails(best){
     candidate.fdv === null ||
     candidate.fdv === undefined
       ? "—"
-      : formatMoney(
+      : formatUsd(
           candidate.fdv
         );
 
@@ -4376,8 +4624,14 @@ function renderRuntimeBestDetails(best){
     candidate.entry_amount_usdt === null ||
     candidate.entry_amount_usdt === undefined
       ? "—"
-      : formatMoney(
-          candidate.entry_amount_usdt
+      : (
+          Number(
+            candidate.entry_amount_usdt
+          ) <= 0
+            ? "0,00 USDT · BLOKLU"
+            : formatMoney(
+                candidate.entry_amount_usdt
+              )
         );
 
   $("bestNet").classList.remove(
@@ -4394,8 +4648,14 @@ function renderRuntimeBestDetails(best){
     candidate.entry_amount_usdt === null ||
     candidate.entry_amount_usdt === undefined
       ? "—"
-      : formatMoney(
-          candidate.entry_amount_usdt
+      : (
+          Number(
+            candidate.entry_amount_usdt
+          ) <= 0
+            ? "0,00 USDT · BLOKLU"
+            : formatMoney(
+                candidate.entry_amount_usdt
+              )
         );
 
   $("bestChain").textContent =
@@ -4418,6 +4678,10 @@ function renderRuntimeBestDetails(best){
         candidate.sizing_reason
       );
   }
+
+  applyRuntimeCandidateState(
+    candidate
+  );
 }
 
 
@@ -4467,6 +4731,10 @@ function renderBest(best){
 
     $("controlAmount").textContent =
       "—";
+
+    applyRuntimeCandidateState(
+      null
+    );
 
     return;
   }
@@ -4639,18 +4907,10 @@ function renderBest(best){
 function positionPlaceholder(){
   return `
     <div class="position-row placeholder-row">
-      <b>VERİ BEKLENİYOR</b>
+      <b>AÇIK POZİSYON YOK</b>
       <span>—</span>
       <span>—</span>
-      <span>—</span>
-      <span>—</span>
-    </div>
-
-    <div class="position-row placeholder-row">
-      <b>—</b>
-      <span>—</span>
-      <span>—</span>
-      <span>—</span>
+      <span>0,00 USDT</span>
       <span>—</span>
     </div>
   `;
@@ -5091,7 +5351,12 @@ function renderPolicyPerformance(rows){
           );
 
         return `
-          <span class="policy-pill">
+          <span class="policy-pill ${
+            closed > 0 &&
+            complete === closed
+              ? "cost-complete"
+              : "cost-incomplete"
+          }">
             <b>
               ${escapeHtml(
                 textValue(

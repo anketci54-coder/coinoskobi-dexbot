@@ -2,30 +2,31 @@
 <html lang="tr">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta
+  name="viewport"
+  content="width=device-width,initial-scale=1">
 <title>Coinoskobi İşlem Merkezi</title>
 
 <style>
 :root{
-  --page:#01070b;
-  --panel:#06131b;
-  --panel-alt:#071821;
-  --panel-deep:#041018;
+  --bg:#02080d;
+  --panel:#06121a;
+  --panel2:#081822;
+  --panel3:#041018;
 
-  --line:#15343f;
-  --line-soft:#102b34;
-  --line-bright:#1c4d59;
+  --line:#153642;
+  --line2:#1b4b59;
 
-  --text:#f2f6f7;
-  --soft:#c1cdd1;
-  --muted:#7f959c;
+  --text:#f2f7f8;
+  --soft:#bdcdd1;
+  --muted:#829aa1;
 
-  --green:#00e978;
-  --green-dark:#06763b;
-  --cyan:#0bd7ea;
-  --yellow:#ffd02a;
-  --red:#ff3049;
-  --gold:#efbd25;
+  --green:#13e77b;
+  --yellow:#ffcb33;
+  --red:#ff4a5f;
+  --cyan:#20d5ef;
+
+  --radius:8px;
 }
 
 *{
@@ -37,17 +38,16 @@ body{
   width:100%;
   height:100%;
   margin:0;
-  overflow:hidden;
-
-  color:var(--text);
 
   background:
     radial-gradient(
-      circle at 50% -170px,
-      #092630 0,
-      transparent 35%
+      circle at 50% -150px,
+      #0b2a35 0,
+      transparent 34%
     ),
-    var(--page);
+    var(--bg);
+
+  color:var(--text);
 
   font-family:
     "Segoe UI",
@@ -55,9 +55,12 @@ body{
     Helvetica,
     sans-serif;
 
-  text-rendering:optimizeLegibility;
   -webkit-font-smoothing:antialiased;
-  -moz-osx-font-smoothing:grayscale;
+  text-rendering:optimizeLegibility;
+}
+
+body{
+  overflow:hidden;
 }
 
 button,
@@ -69,84 +72,74 @@ button{
   cursor:pointer;
 }
 
-/* =========================================================
-   MASTER NATIVE VIEWPORT
-
-   No transform, no global scale, no compressed design stage.
-   Target: browser viewport around 1330 x 590 at 100% zoom.
-   ========================================================= */
-
-.dashboard{
+.shell{
   width:100vw;
   height:100dvh;
-  min-width:1190px;
 
-  padding:8px;
+  min-width:1180px;
+
+  padding:9px;
 
   display:grid;
+
   grid-template-rows:
-    56px
-    277px
-    minmax(160px,1fr)
-    42px;
+    72px
+    minmax(0,1fr)
+    68px;
 
-  gap:8px;
-
-  overflow:hidden;
+  gap:9px;
 }
-
-/* =========================================================
-   COMMON
-   ========================================================= */
 
 .card{
   min-width:0;
   min-height:0;
 
-  overflow:hidden;
+  border:
+    1px solid
+    var(--line);
 
-  border:1px solid var(--line);
-  border-radius:6px;
+  border-radius:var(--radius);
 
   background:
     linear-gradient(
       180deg,
-      rgba(7,22,31,.995),
-      rgba(3,13,19,.995)
+      rgba(8,24,34,.98),
+      rgba(3,13,19,.99)
     );
 
   box-shadow:
-    inset 0 0 22px rgba(0,180,205,.02),
-    0 4px 14px rgba(0,0,0,.17);
+    inset 0 0 26px rgba(19,180,210,.025),
+    0 6px 20px rgba(0,0,0,.16);
+
+  overflow:hidden;
 }
 
 .card-head{
-  height:28px;
+  height:42px;
+
+  padding:0 13px;
 
   display:flex;
   align-items:center;
   justify-content:space-between;
 
-  padding:0 10px;
+  border-bottom:
+    1px solid
+    var(--line);
 
-  border-bottom:1px solid var(--line-soft);
-
-  color:#f5f8f9;
-
-  font-size:10px;
-  font-weight:900;
+  font-size:13px;
+  font-weight:800;
 }
 
-.card-link{
-  padding:0;
-
-  border:0;
-  background:transparent;
-
+.card-head small{
   color:var(--cyan);
 
-  font-size:7px;
+  font-size:10px;
   font-weight:800;
+}
+
+.muted{
+  color:var(--muted);
 }
 
 .green{
@@ -157,110 +150,78 @@ button{
   color:var(--red)!important;
 }
 
-.cyan{
-  color:var(--cyan)!important;
-}
-
 .yellow{
   color:var(--yellow)!important;
 }
 
-.muted{
-  color:var(--muted)!important;
+.cyan{
+  color:var(--cyan)!important;
 }
 
-.placeholder{
-  display:flex;
-  align-items:center;
-  justify-content:center;
+/* ======================================================
+   TOP
+   ====================================================== */
 
-  color:#657d85;
-
-  text-align:center;
-  font-size:8px;
-  line-height:1.45;
-}
-
-/* =========================================================
-   HEADER
-   ========================================================= */
-
-.header{
+.topbar{
   min-width:0;
 
   display:grid;
-  grid-template-columns:
-    236px
-    repeat(7,minmax(91px,1fr))
-    250px;
 
-  gap:6px;
+  grid-template-columns:
+    215px
+    repeat(5,minmax(90px,1fr))
+    118px
+    118px
+    245px;
+
+  gap:7px;
 }
 
-.brand-card{
+.brand{
   display:flex;
   align-items:center;
 
   gap:11px;
-  padding:7px 12px;
+
+  padding:9px 13px;
 }
 
-.brand-piece{
-  width:35px;
+.brand-rook{
+  color:#f0c85b;
 
-  color:var(--gold);
-
-  font-family:
-    Georgia,
-    "Times New Roman",
-    serif;
-
-  font-size:36px;
+  font-size:40px;
   line-height:1;
-
-  text-shadow:
-    0 0 8px rgba(239,189,37,.55),
-    0 0 18px rgba(239,189,37,.16);
 }
 
 .brand-title{
-  color:#f8fafb;
-
-  font-size:16px;
+  font-size:17px;
   font-weight:900;
-
-  white-space:nowrap;
 }
 
-.brand-subtitle{
-  margin-top:5px;
+.brand-sub{
+  margin-top:4px;
 
   color:var(--cyan);
 
   font-size:10px;
-  font-weight:900;
+  font-weight:800;
 }
 
-.metric-card{
-  padding:6px 8px;
+.metric{
+  padding:10px 9px;
 }
 
 .metric-label{
-  color:#9badb2;
+  color:#9cb0b6;
 
-  font-size:7px;
-  font-weight:700;
-
-  white-space:nowrap;
+  font-size:9px;
+  font-weight:750;
 }
 
 .metric-value{
-  margin-top:7px;
+  margin-top:8px;
 
-  color:#f7f9fa;
-
-  font-size:12px;
-  line-height:1;
+  font-size:13px;
   font-weight:900;
 
   white-space:nowrap;
@@ -271,3751 +232,1712 @@ button{
 .metric-sub{
   margin-top:5px;
 
-  color:#70868e;
+  color:#789097;
 
-  font-size:6px;
+  font-size:8px;
 
   white-space:nowrap;
   overflow:hidden;
   text-overflow:ellipsis;
+}
+
+.market{
+  padding:8px 10px;
 }
 
 .market-name{
   display:flex;
   align-items:center;
 
-  gap:5px;
-
-  color:#eaf0f2;
-
-  font-size:7px;
-  font-weight:900;
-}
-
-.coin-icon{
-  width:18px;
-  height:18px;
-
-  display:grid;
-  place-items:center;
-
-  border-radius:50%;
-
-  background:#e98b00;
-  color:white;
-
-  font-size:10px;
-}
-
-.coin-icon.eth{
-  background:#536bd2;
-}
-
-.mode-card{
-  padding:3px 7px;
-}
-
-.live-clock{
-  height:12px;
-
-  display:flex;
-  justify-content:flex-end;
-
-  gap:5px;
-
-  color:#b7c4c8;
-
-  font-size:6px;
-}
-
-.live-clock b{
-  color:var(--green);
-}
-
-.mode-label{
-  margin:0 0 3px;
-
-  color:#879ba2;
-
-  text-align:center;
-  font-size:6px;
-}
-
-.mode-buttons{
-  display:grid;
-  grid-template-columns:1fr 1fr;
-
-  gap:4px;
-}
-
-.mode-button{
-  height:25px;
-
-  border:1px solid #17404c;
-  border-radius:3px;
-
-  background:#07141c;
-  color:#edf3f4;
-
-  font-size:7px;
-  font-weight:900;
-}
-
-.mode-button.paper{
-  border-color:#08763d;
-
-  background:
-    linear-gradient(
-      180deg,
-      #07572e,
-      #06331e
-    );
-}
-
-.mode-foot{
-  margin-top:2px;
-
-  color:#6f858d;
-
-  text-align:center;
-  font-size:5px;
-}
-
-/* =========================================================
-   HERO AREA
-   ========================================================= */
-
-.hero{
-  min-width:0;
-  min-height:0;
-
-  display:grid;
-  grid-template-columns:
-    242px
-    minmax(0,1fr)
-    420px;
-
-  grid-template-rows:
-    215px
-    54px;
-
-  gap:8px;
-}
-
-/* =========================================================
-   VEZIR
-   ========================================================= */
-
-.vezir-card{
-  grid-column:1;
-  grid-row:1 / 3;
-
-  padding:6px 10px;
-
-  display:grid;
-  grid-template-rows:
-    22px
-    108px
-    50px
-    36px
-    23px;
-
-  gap:4px;
-}
-
-.vezir-header{
-  display:flex;
-  align-items:flex-start;
-  justify-content:space-between;
-}
-
-.vezir-title{
-  color:#f5f8f9;
-
-  font-size:15px;
-  line-height:1;
-  font-weight:900;
-}
-
-.vezir-role{
-  margin-top:3px;
-
-  color:var(--green);
-
-  font-size:7px;
-  font-weight:700;
-}
-
-.vezir-live{
-  color:var(--green);
-
-  font-size:7px;
-  font-weight:900;
-}
-
-.vezir-art{
-  position:relative;
-
-  display:flex;
-  align-items:center;
-  justify-content:center;
-
-  overflow:hidden;
-}
-
-.vezir-ring{
-  position:absolute;
-
-  width:115px;
-  height:115px;
-
-  border:1px solid rgba(0,233,120,.6);
-  border-radius:50%;
-
-  box-shadow:
-    0 0 22px rgba(0,233,120,.12),
-    inset 0 0 25px rgba(11,215,234,.06);
-}
-
-.vezir-image{
-  position:relative;
-
-  width:132px;
-  height:132px;
-
-  opacity:0;
-
-  object-fit:contain;
-  object-position:center bottom;
-
-  background:transparent;
-
-  filter:
-    contrast(1.12)
-    saturate(1.1)
-    brightness(.97);
-}
-
-.vezir-image.is-ready{
-  opacity:1;
-}
-
-.vezir-quote{
-  position:relative;
-
-  overflow:hidden;
-
-  padding:6px 7px 5px 21px;
-
-  border:1px solid #143944;
-  border-radius:4px;
-
-  background:#04121a;
-  color:#edf3f4;
-
-  font-size:7px;
-  font-weight:600;
-  line-height:1.35;
-}
-
-.quote-mark{
-  position:absolute;
-
-  left:6px;
-  top:0;
-
-  color:var(--green);
-
-  font-size:17px;
-  font-weight:900;
-}
-
-.vezir-points{
-  display:grid;
-  grid-template-rows:repeat(3,1fr);
-
-  color:#b8c5c9;
-
-  font-size:6px;
-  font-weight:600;
-}
-
-.vezir-point{
-  display:flex;
-  align-items:center;
-}
-
-.vezir-point:before{
-  content:"●";
-
-  margin-right:5px;
-
-  color:#b8ff00;
-}
-
-.vezir-report{
-  width:100%;
-  height:23px;
-
-  border:1px solid #006fab;
-  border-radius:3px;
-
-  background:
-    linear-gradient(
-      180deg,
-      #07528d,
-      #043a64
-    );
-
-  color:white;
-
-  font-size:7px;
-  font-weight:900;
-}
-
-/* =========================================================
-   BEST OPPORTUNITY
-   ========================================================= */
-
-.best-card{
-  grid-column:2;
-  grid-row:1;
-}
-
-.best-content{
-  height:calc(100% - 28px);
-
-  padding:7px 9px 5px;
-
-  display:grid;
-  grid-template-rows:
-    minmax(0,1fr)
-    35px;
-
-  gap:5px;
-}
-
-.best-main{
-  min-height:0;
-
-  display:grid;
-  grid-template-columns:
-    244px
-    minmax(155px,1fr)
-    178px;
-
-  gap:9px;
-}
-
-.asset-column{
-  min-width:0;
-
-  display:grid;
-  grid-template-columns:
-    61px
-    1fr;
-
-  gap:8px;
-}
-
-.asset-logo{
-  width:59px;
-  height:59px;
-
-  display:grid;
-  place-items:center;
-
-  border:1px solid #078fc6;
-  border-radius:50%;
-
-  background:#031019;
-  color:var(--cyan);
-
-  font-size:22px;
-}
-
-.asset-name{
-  margin-top:1px;
-
-  color:#f7f9fa;
-
-  font-size:17px;
-  font-weight:900;
-}
-
-.asset-pair{
-  color:#c1ccd0;
-
-  font-size:11px;
-  font-weight:500;
-}
-
-.asset-chain{
-  margin-top:3px;
-
-  color:#8ca0a6;
-
-  font-size:7px;
-
-  white-space:nowrap;
-  overflow:hidden;
-  text-overflow:ellipsis;
-}
-
-.signal-box{
-  width:108px;
-
-  margin-top:7px;
-  padding:5px;
-
-  border:1px solid #075f39;
-  border-radius:4px;
-
-  text-align:center;
-}
-
-.signal-label{
-  color:#c5d0d3;
-
-  font-size:6px;
-  font-weight:700;
-}
-
-.signal-value{
-  margin-top:2px;
-
-  color:var(--green);
-
-  font-size:21px;
-  font-weight:900;
-}
-
-.signal-state{
-  margin-top:2px;
-
-  color:var(--green);
-
-  font-size:7px;
-  font-weight:900;
-}
-
-.best-section{
-  min-width:0;
-
-  padding-left:9px;
-
-  border-left:1px solid var(--line-soft);
-}
-
-.best-section-title{
-  margin-bottom:3px;
-
-  color:#f5f8f9;
-
-  font-size:8px;
-  font-weight:900;
-}
-
-.check-row,
-.plan-row{
-  height:19px;
-
-  display:flex;
-  align-items:center;
-  justify-content:space-between;
-
   gap:6px;
 
-  color:#dce5e7;
-
-  font-size:7px;
-  font-weight:600;
+  font-size:9px;
+  font-weight:850;
 }
 
-.check-name:before{
-  content:"✓";
-
-  margin-right:4px;
-
-  color:white;
-
-  font-size:8px;
-}
-
-.check-value{
-  color:var(--green);
-
-  font-weight:900;
-
-  white-space:nowrap;
-}
-
-.plan-name{
-  color:#afbdc1;
-}
-
-.plan-value{
-  color:#f7f9fa;
-
-  font-weight:900;
-
-  white-space:nowrap;
-}
-
-.best-bottom{
-  display:grid;
-  grid-template-columns:
-    repeat(5,minmax(42px,1fr))
-    100px
-    132px;
-
-  gap:4px;
-}
-
-.best-tag{
-  min-width:0;
-
-  height:35px;
-  padding:4px;
-
-  border:1px solid #12323d;
-  border-radius:4px;
-}
-
-.best-tag small{
-  display:block;
-
-  color:#879ca3;
-
-  font-size:5px;
-  font-weight:700;
-}
-
-.best-tag b{
-  display:block;
-
-  margin-top:3px;
-
-  color:#f4f7f8;
-
-  font-size:7px;
-  font-weight:900;
-
-  white-space:nowrap;
-  overflow:hidden;
-  text-overflow:ellipsis;
-}
-
-.best-action{
-  height:35px;
-
-  border-radius:4px;
-
-  color:white;
-
-  font-size:7px;
-  font-weight:900;
-}
-
-.watch-action{
-  border:1px solid #087b41;
-
-  background:#07562f;
-}
-
-.range-action{
-  border:1px solid #806200;
-
-  background:#211b02;
-  color:var(--yellow);
-}
-
-/* =========================================================
-   OPEN POSITIONS
-   ========================================================= */
-
-.positions-card{
-  grid-column:3;
-  grid-row:1;
-}
-
-.positions-content{
-  height:calc(100% - 28px);
-
-  padding:5px 9px;
-
-  display:grid;
-  grid-template-rows:
-    22px
-    minmax(0,1fr)
-    47px;
-
-  gap:5px;
-}
-
-.position-header,
-.position-row{
-  display:grid;
-  grid-template-columns:
-    1.35fr
-    .68fr
-    .68fr
-    .78fr
-    .65fr;
-
-  gap:6px;
-  align-items:center;
-}
-
-.position-header{
-  color:#97a9ae;
-
-  font-size:6px;
-  font-weight:700;
-
-  border-bottom:1px solid var(--line-soft);
-}
-
-.position-list{
-  min-height:0;
-
-  overflow:hidden;
-}
-
-.position-row{
-  min-height:36px;
-
-  color:#edf3f4;
-
-  font-size:7px;
-  font-weight:600;
-
-  border-bottom:1px solid var(--line-soft);
-}
-
-.position-token{
-  font-weight:900;
-}
-
-.position-token small{
-  display:block;
-
-  margin-top:2px;
-
-  color:#82969d;
-
-  font-size:6px;
-  font-weight:400;
-}
-
-.position-summary{
-  display:grid;
-  grid-template-columns:repeat(4,1fr);
-
-  gap:4px;
-}
-
-.summary-box{
-  min-width:0;
-
-  padding:5px;
-
-  border:1px solid #12323d;
-  border-radius:4px;
-}
-
-.summary-box small{
-  display:block;
-
-  color:#81969d;
-
-  font-size:5px;
-  font-weight:700;
-}
-
-.summary-box b{
-  display:block;
-
-  margin-top:7px;
-
-  color:#f5f8f9;
-
-  font-size:8px;
-  font-weight:900;
-
-  white-space:nowrap;
-  overflow:hidden;
-  text-overflow:ellipsis;
-}
-
-/* =========================================================
-   CONTROL STRIP
-   ========================================================= */
-
-.control-card{
-  grid-column:2 / 4;
-  grid-row:2;
-}
-
-.control-content{
-  height:100%;
-
-  display:grid;
-  grid-template-columns:
-    180px
-    160px
-    140px
-    140px
-    1fr;
-
-  gap:6px;
-  align-items:center;
-
-  padding:5px 9px;
-}
-
-.control-title{
-  color:#f5f8f9;
-
-  font-size:10px;
-  font-weight:900;
-}
-
-.control-title span{
-  color:#8da1a7;
-}
-
-.amount-box{
-  height:40px;
-
-  padding:4px 6px;
-
-  border:1px solid #12323d;
-  border-radius:4px;
-}
-
-.amount-box small{
-  color:#81969d;
-
-  font-size:5px;
-}
-
-.amount-box b{
-  display:block;
-
-  margin-top:4px;
-
-  color:#f4f7f8;
-
-  font-size:8px;
-  font-weight:900;
-}
-
-.trade-action{
-  height:44px;
-
-  display:flex;
-  flex-direction:column;
-  align-items:center;
-  justify-content:center;
-
-  border-radius:4px;
-
-  color:white;
-
-  font-size:15px;
-  font-weight:900;
-}
-
-.trade-action small{
-  margin-top:3px;
-
-  color:#e5ecee;
-
-  font-size:5px;
-  font-weight:600;
-}
-
-.buy-action{
-  border:1px solid #0b8243;
-
-  background:
-    linear-gradient(
-      135deg,
-      #075d31,
-      #07351e
-    );
-}
-
-.sell-action{
-  border:1px solid #a51d30;
-
-  background:
-    linear-gradient(
-      135deg,
-      #67101d,
-      #351018
-    );
-}
-
-.authority-note{
-  color:#91a4aa;
-
-  font-size:6px;
-  font-weight:500;
-  line-height:1.3;
-}
-
-/* =========================================================
-   LOWER GRID
-   ========================================================= */
-
-.lower-grid{
-  min-width:0;
-  min-height:0;
-
-  display:grid;
-  grid-template-columns:
-    370px
-    300px
-    360px
-    minmax(230px,1fr);
-
-  gap:8px;
-}
-
-.lower-card{
-  min-width:0;
-  min-height:0;
-}
-
-.lower-content{
-  height:calc(100% - 28px);
-
-  padding:5px 9px 6px;
-
-  overflow:hidden;
-}
-
-/* candidates */
-
-.candidate-header,
-.candidate-row{
-  display:grid;
-  grid-template-columns:
-    22px
-    1.35fr
-    .72fr
-    .64fr
-    .64fr
-    .82fr;
-
-  gap:5px;
-  align-items:center;
-}
-
-.candidate-header{
-  height:17px;
-
-  color:#82979e;
-
-  font-size:5px;
-  font-weight:700;
-
-  border-bottom:1px solid var(--line-soft);
-}
-
-.candidate-row{
-  min-height:23px;
-
-  color:#edf3f4;
-
-  font-size:7px;
-  font-weight:600;
-
-  border-bottom:1px solid var(--line-soft);
-}
-
-.candidate-row b{
-  font-weight:900;
-}
-
-/* intelligence */
-
-.intel-row{
-  min-height:25px;
-
-  display:grid;
-  grid-template-columns:
-    22px
-    1fr
-    auto;
-
-  gap:6px;
-  align-items:center;
-
-  border-bottom:1px solid var(--line-soft);
-}
-
-.intel-icon{
+.coin{
   width:20px;
   height:20px;
 
   display:grid;
   place-items:center;
 
-  border:1px solid #08709a;
   border-radius:50%;
 
-  color:var(--cyan);
+  background:#d97c00;
 
-  font-size:7px;
+  color:white;
+
+  font-size:10px;
 }
 
-.intel-copy b{
-  display:block;
+.coin.eth{
+  background:#496bd4;
+}
 
-  color:#f2f6f7;
+.market-price{
+  margin-top:6px;
 
-  font-size:7px;
+  font-size:12px;
   font-weight:900;
 }
 
-.intel-copy small{
-  display:block;
+.market-change{
+  margin-top:3px;
 
-  margin-top:2px;
-
-  color:#80959c;
-
-  font-size:5px;
-  font-weight:500;
-}
-
-.intel-state{
-  color:#9aabb0;
-
-  font-size:6px;
+  font-size:8px;
   font-weight:800;
 }
 
-/* performance */
-
-.performance-layout{
-  height:100%;
+.top-actions{
+  padding:7px;
 
   display:grid;
+
+  grid-template-columns:
+    86px
+    minmax(0,1fr);
+
   grid-template-rows:
-    21px
-    minmax(65px,1fr)
-    34px;
+    1fr
+    18px;
+
+  gap:5px;
+}
+
+.accounting-button{
+  grid-row:1;
+
+  border:
+    1px solid
+    var(--line2);
+
+  border-radius:5px;
+
+  background:#07151d;
+  color:#d8e3e6;
+
+  font-size:9px;
+  font-weight:850;
+}
+
+.mode-switch{
+  display:grid;
+
+  grid-template-columns:
+    1fr
+    1fr;
 
   gap:4px;
 }
 
-.tabs{
-  display:flex;
+.mode-button{
+  border:
+    1px solid
+    #21414b;
 
-  gap:3px;
+  border-radius:5px;
+
+  background:#07141b;
+  color:#8fa4aa;
+
+  font-size:8px;
+  font-weight:850;
 }
 
-.tab-button{
-  height:20px;
+.mode-button.active{
+  border-color:#1085ae;
 
-  padding:0 9px;
-
-  border:1px solid #14343f;
-  border-radius:3px;
-
-  background:#06131b;
-  color:#91a4aa;
-
-  font-size:5px;
-  font-weight:800;
+  background:#083247;
+  color:#eafcff;
 }
 
-.tab-button.active{
-  border-color:#087c3e;
-
-  background:#07572e;
-  color:white;
-}
-
-.chart{
-  position:relative;
-
-  min-height:0;
-
-  border-bottom:1px solid var(--line-soft);
-
-  background:
-    linear-gradient(
-      to bottom,
-      transparent 24%,
-      #0a2028 25%,
-      transparent 26%
-    ),
-    linear-gradient(
-      to bottom,
-      transparent 49%,
-      #0a2028 50%,
-      transparent 51%
-    ),
-    linear-gradient(
-      to bottom,
-      transparent 74%,
-      #0a2028 75%,
-      transparent 76%
-    );
-}
-
-.chart svg{
-  width:100%;
-  height:100%;
-}
-
-.chart-placeholder{
-  position:absolute;
-
-  inset:0;
+.live-line{
+  grid-column:1 / 3;
 
   display:flex;
   align-items:center;
-  justify-content:center;
-
-  color:#748a91;
-
-  font-size:6px;
-  font-weight:600;
-}
-
-.performance-stats{
-  display:grid;
-  grid-template-columns:repeat(6,1fr);
-}
-
-.performance-stat{
-  min-width:0;
-
-  padding:2px 3px;
-
-  border-right:1px solid var(--line-soft);
-}
-
-.performance-stat:last-child{
-  border-right:0;
-}
-
-.performance-stat small{
-  display:block;
-
-  color:#71878f;
-
-  font-size:4px;
-  font-weight:700;
-}
-
-.performance-stat b{
-  display:block;
-
-  margin-top:4px;
-
-  color:#f4f7f8;
-
-  font-size:7px;
-  font-weight:900;
-}
-
-/* health */
-
-.health-banner{
-  height:38px;
-
-  display:flex;
-  align-items:center;
-
-  gap:7px;
-  padding:5px;
-
-  border:1px solid #12333e;
-  border-radius:4px;
-}
-
-.shield{
-  color:var(--green);
-
-  font-size:20px;
-}
-
-.health-banner b{
-  color:var(--green);
-
-  font-size:9px;
-  font-weight:900;
-}
-
-.health-banner small{
-  display:block;
-
-  margin-top:1px;
-
-  color:#80959c;
-
-  font-size:6px;
-}
-
-.health-row{
-  height:20px;
-
-  display:flex;
-  align-items:center;
-  justify-content:space-between;
-
-  color:#e7edef;
-
-  font-size:6px;
-  font-weight:600;
-
-  border-bottom:1px solid var(--line-soft);
-}
-
-.health-row span:first-child:before{
-  content:"•";
-
-  margin-right:6px;
-
-  color:var(--green);
-}
-
-.health-row b{
-  font-weight:900;
-}
-
-/* =========================================================
-   FOOT GRID
-   ========================================================= */
-
-.foot-grid{
-  min-width:0;
-
-  display:grid;
-  grid-template-columns:
-    minmax(0,2fr)
-    minmax(390px,1fr);
-
-  gap:8px;
-}
-
-.foot-card{
-  min-width:0;
-}
-
-.signal-layout,
-.quick-layout{
-  height:100%;
-
-  display:flex;
-  align-items:center;
+  justify-content:flex-end;
 
   gap:6px;
-  padding:5px 9px;
-}
 
-.signal-heading,
-.quick-heading{
-  color:#f5f8f9;
+  color:var(--green);
 
   font-size:8px;
   font-weight:900;
-
-  white-space:nowrap;
 }
 
-.signal-list{
-  flex:1;
+.live-dot{
+  width:7px;
+  height:7px;
 
-  display:flex;
+  border-radius:50%;
 
+  background:var(--green);
+
+  box-shadow:
+    0 0 9px
+    rgba(19,231,123,.7);
+}
+
+/* ======================================================
+   MAIN
+   ====================================================== */
+
+.main{
   min-width:0;
+  min-height:0;
 
-  gap:6px;
+  display:grid;
 
-  overflow:hidden;
+  grid-template-columns:
+    minmax(345px,1.05fr)
+    minmax(385px,1.08fr)
+    minmax(330px,.88fr);
+
+  gap:9px;
 }
 
-.signal-item{
-  min-width:104px;
+/* ======================================================
+   COMMON TABLE/LIST
+   ====================================================== */
 
-  padding-left:6px;
+.column-labels{
+  display:grid;
+  align-items:center;
 
-  border-left:1px solid var(--line-soft);
-}
+  min-height:27px;
 
-.signal-item b{
-  display:block;
+  padding:0 9px;
 
-  color:#edf3f4;
+  border-bottom:
+    1px solid
+    var(--line);
 
-  font-size:6px;
-  font-weight:900;
-}
+  color:#839ba2;
 
-.signal-item small{
-  display:block;
-
-  margin-top:2px;
-
-  color:#81969d;
-
-  font-size:5px;
-}
-
-.quick-button{
-  flex:1;
-
-  height:24px;
-
-  border:1px solid #14343f;
-  border-radius:3px;
-
-  background:#06141b;
-  color:#91a4aa;
-
-  font-size:6px;
+  font-size:8px;
   font-weight:800;
 }
 
-/* =========================================================
-   EMPTY PLACEHOLDERS
-   ========================================================= */
+.empty{
+  min-height:74px;
 
-.placeholder-row{
-  color:#6d858d!important;
-}
-
-.placeholder-row span,
-.placeholder-row b{
-  color:#6d858d!important;
-}
-
-.placeholder-note{
-  padding-top:5px;
-
-  color:#708890;
-
-  text-align:center;
-  font-size:6px;
-}
-
-/* =========================================================
-   MODAL
-   ========================================================= */
-
-.modal{
-  position:fixed;
-  inset:0;
-
-  z-index:100;
-
-  display:none;
+  display:flex;
   align-items:center;
   justify-content:center;
 
-  padding:20px;
+  padding:15px;
 
-  background:rgba(0,5,8,.82);
+  color:#81969c;
+
+  text-align:center;
+
+  font-size:12px;
+  font-weight:650;
 }
 
-.modal.open{
-  display:flex;
-}
-
-.modal-box{
-  width:min(760px,92vw);
-  max-height:84vh;
-
-  overflow:auto;
-
-  border:1px solid #1a5967;
-  border-radius:7px;
-
-  background:#06131b;
-
-  box-shadow:
-    0 0 45px rgba(0,0,0,.7);
-}
-
-.modal-head{
-  height:42px;
-
-  display:flex;
+.badge{
+  display:inline-flex;
   align-items:center;
-  justify-content:space-between;
+  justify-content:center;
 
-  padding:0 14px;
+  min-height:22px;
 
-  border-bottom:1px solid var(--line-soft);
+  padding:3px 7px;
+
+  border-radius:4px;
+
+  font-size:8px;
+  font-weight:900;
+}
+
+.badge.normal{
+  border:1px solid #167947;
+  background:rgba(19,231,123,.08);
+  color:var(--green);
+}
+
+.badge.vurkac{
+  border:1px solid #87651d;
+  background:rgba(255,203,51,.08);
+  color:var(--yellow);
+}
+
+.badge.legacy{
+  border:1px solid #405b64;
+  background:#09171d;
+  color:#a7b8bc;
+}
+
+.badge.watch{
+  border:1px solid #87651d;
+  background:rgba(255,203,51,.08);
+  color:var(--yellow);
+}
+
+.badge.buy{
+  border:1px solid #187b48;
+  background:rgba(19,231,123,.08);
+  color:var(--green);
+}
+
+.badge.block{
+  border:1px solid #873140;
+  background:rgba(255,74,95,.07);
+  color:var(--red);
+}
+
+.badge.unknown{
+  border:1px solid #405b64;
+  background:#09171d;
+  color:#a7b8bc;
+}
+
+/* ======================================================
+   POSITIONS
+   ====================================================== */
+
+.positions{
+  display:grid;
+
+  grid-template-rows:
+    42px
+    minmax(92px,.7fr)
+    minmax(210px,1.3fr);
+
+  min-height:0;
+}
+
+.position-list{
+  min-height:0;
+  overflow:auto;
+}
+
+.position-cols{
+  grid-template-columns:
+    minmax(105px,1.4fr)
+    72px
+    82px
+    82px
+    82px
+    62px;
+}
+
+.position-row{
+  width:100%;
+
+  min-height:53px;
+
+  display:grid;
+
+  grid-template-columns:
+    minmax(105px,1.4fr)
+    72px
+    82px
+    82px
+    82px
+    62px;
+
+  gap:6px;
+
+  align-items:center;
+
+  padding:6px 9px;
+
+  border:0;
+  border-bottom:
+    1px solid
+    var(--line);
+
+  background:transparent;
+  color:var(--text);
+
+  text-align:left;
+}
+
+.position-row:hover,
+.position-row.selected{
+  background:
+    rgba(25,140,175,.07);
+}
+
+.position-token{
+  min-width:0;
 
   font-size:11px;
   font-weight:900;
 }
 
-.modal-close{
-  width:27px;
-  height:27px;
+.position-token small{
+  display:block;
 
-  border:1px solid #17414c;
-  border-radius:4px;
+  margin-top:3px;
 
-  background:#071821;
-  color:white;
+  color:#849ba1;
+
+  font-size:8px;
+
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
 }
 
-.modal-content{
-  padding:14px;
-
-  color:#bdc9cd;
-
-  font-size:10px;
-  line-height:1.55;
-}
-
-.modal-content pre{
-  white-space:pre-wrap;
-  overflow-wrap:anywhere;
-
-  padding:11px;
-
-  border:1px solid #12313b;
-  border-radius:5px;
-
-  background:#041018;
-  color:#a9c4ca;
-
-  font-family:
-    Consolas,
-    monospace;
+.position-cell{
+  min-width:0;
 
   font-size:9px;
+  font-weight:700;
+
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
 }
 
-.modal-content table{
-  width:100%;
+.detail{
+  min-height:0;
 
-  border-collapse:collapse;
+  padding:10px;
+
+  overflow:auto;
+
+  border-top:
+    1px solid
+    var(--line);
 }
 
-.modal-content th,
-.modal-content td{
-  padding:7px;
+.detail-title{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
 
-  border-bottom:1px solid var(--line-soft);
+  gap:8px;
 
-  text-align:left;
+  margin-bottom:9px;
+
+  font-size:12px;
+  font-weight:900;
 }
 
-/* =========================================================
-   CURRENT USER VIEWPORT TUNING
-   ========================================================= */
+.detail-grid{
+  display:grid;
 
-@media(max-height:600px){
-  .dashboard{
-    grid-template-rows:
-      54px
-      272px
-      minmax(154px,1fr)
-      40px;
-  }
+  grid-template-columns:
+    1fr
+    1fr;
 
-  .hero{
-    grid-template-rows:
-      211px
-      53px;
-  }
-
-  .brand-title{
-    font-size:15px;
-  }
-
-  .metric-value{
-    font-size:11px;
-  }
+  gap:6px;
 }
 
-
-
-/* CANONICAL MOBILE RESPONSIVE */
-
-.candidate-token-live{
+.detail-item{
   min-width:0;
+
+  min-height:39px;
+
+  padding:7px 8px;
+
+  border:
+    1px solid
+    #11303a;
+
+  border-radius:5px;
+
+  background:#041017;
 }
 
-.candidate-token-live b{
+.detail-item small{
   display:block;
+
+  color:#829aa1;
+
+  font-size:8px;
+  font-weight:750;
+}
+
+.detail-item b{
+  display:block;
+
+  margin-top:5px;
+
+  color:#e9f0f2;
+
+  font-size:10px;
+  font-weight:850;
+
   overflow:hidden;
   text-overflow:ellipsis;
   white-space:nowrap;
 }
 
-.candidate-token-live small{
-  display:block;
-  margin-top:2px;
+.action-row{
+  display:grid;
 
-  color:#748a91;
+  grid-template-columns:
+    1fr
+    1fr;
 
-  font-size:5px;
+  gap:7px;
 
-  overflow:hidden;
-  text-overflow:ellipsis;
-  white-space:nowrap;
+  margin-top:9px;
 }
 
-@media (max-width:1300px), (hover:none) and (pointer:coarse){
+.action{
+  min-height:38px;
 
-  html,
-  body{
-    width:100%;
-    height:auto;
-    min-height:100%;
+  border-radius:5px;
 
-    overflow-x:hidden;
-    overflow-y:auto;
-  }
-
-  body{
-    touch-action:manipulation;
-  }
-
-  .dashboard{
-    width:100%;
-    height:auto;
-    min-height:100dvh;
-    min-width:0;
-
-    padding:8px;
-
-    display:flex;
-    flex-direction:column;
-
-    gap:8px;
-
-    overflow:visible;
-  }
-
-  .card{
-    width:100%;
-    min-width:0;
-
-    overflow:hidden;
-
-    border-radius:8px;
-  }
-
-  .header{
-    width:100%;
-    min-width:0;
-
-    display:grid;
-
-    grid-template-columns:
-      repeat(2,minmax(0,1fr));
-
-    gap:8px;
-  }
-
-  .brand-card,
-  .mode-card{
-    grid-column:1 / -1;
-  }
-
-  .brand-card{
-    min-height:76px;
-
-    padding:10px 14px;
-  }
-
-  .brand-piece{
-    width:44px;
-
-    font-size:44px;
-  }
-
-  .brand-title{
-    font-size:21px;
-  }
-
-  .brand-subtitle{
-    font-size:10px;
-  }
-
-  .metric-card{
-    min-width:0;
-    min-height:67px;
-
-    padding:9px 10px;
-  }
-
-  .metric-label{
-    font-size:8px;
-  }
-
-  .metric-value{
-    margin-top:8px;
-
-    font-size:14px;
-  }
-
-  .metric-sub{
-    margin-top:6px;
-
-    font-size:7px;
-  }
-
-  .metric-card.market-card{
-    display:none;
-  }
-
-  .mode-card{
-    min-height:75px;
-
-    padding:7px 10px;
-  }
-
-  .live-clock{
-    height:16px;
-
-    font-size:8px;
-  }
-
-  .mode-label{
-    font-size:8px;
-  }
-
-  .mode-button{
-    height:32px;
-
-    font-size:8px;
-  }
-
-  .hero{
-    width:100%;
-    min-width:0;
-    min-height:0;
-
-    display:flex;
-    flex-direction:column;
-
-    gap:8px;
-  }
-
-  .vezir-card,
-  .best-card,
-  .positions-card,
-  .control-card{
-    width:100%;
-
-    grid-column:auto;
-    grid-row:auto;
-  }
-
-  .vezir-card{
-    padding:12px;
-
-    display:grid;
-
-    grid-template-rows:
-      auto
-      180px
-      auto
-      auto
-      38px;
-
-    gap:8px;
-  }
-
-  .vezir-title{
-    font-size:21px;
-  }
-
-  .vezir-role,
-  .vezir-live{
-    font-size:9px;
-  }
-
-  .vezir-ring{
-    width:170px;
-    height:170px;
-  }
-
-  .vezir-image{
-    width:190px;
-    height:190px;
-  }
-
-  .vezir-quote{
-    padding:
-      10px
-      10px
-      10px
-      30px;
-
-    font-size:10px;
-    line-height:1.45;
-  }
-
-  .vezir-points{
-    gap:5px;
-
-    font-size:9px;
-    line-height:1.4;
-  }
-
-  .vezir-report{
-    height:38px;
-
-    font-size:9px;
-  }
-
-  .card-head{
-    height:42px;
-
-    padding:0 12px;
-
-    font-size:11px;
-  }
-
-  .card-link{
-    font-size:8px;
-  }
-
-  .best-content{
-    height:auto;
-
-    padding:12px;
-
-    display:block;
-  }
-
-  .best-main{
-    display:grid;
-
-    grid-template-columns:1fr;
-
-    gap:12px;
-  }
-
-  .asset-column{
-    grid-template-columns:
-      72px
-      minmax(0,1fr);
-
-    gap:11px;
-  }
-
-  .asset-logo{
-    width:70px;
-    height:70px;
-
-    font-size:26px;
-  }
-
-  .asset-name{
-    font-size:20px;
-  }
-
-  .asset-pair{
-    font-size:11px;
-  }
-
-  .asset-chain{
-    font-size:8px;
-  }
-
-  .signal-box{
-    width:100%;
-
-    margin-top:10px;
-    padding:8px;
-  }
-
-  .signal-value{
-    font-size:24px;
-  }
-
-  .best-section{
-    padding:
-      10px
-      0
-      0;
-
-    border-left:0;
-
-    border-top:
-      1px solid
-      var(--line-soft);
-  }
-
-  .best-section-title{
-    margin-bottom:5px;
-
-    font-size:10px;
-  }
-
-  .check-row,
-  .plan-row{
-    height:29px;
-
-    font-size:9px;
-  }
-
-  .best-bottom{
-    margin-top:12px;
-
-    grid-template-columns:
-      repeat(2,minmax(0,1fr));
-
-    gap:8px;
-  }
-
-  .best-tag{
-    height:50px;
-
-    padding:8px;
-  }
-
-  .best-tag small{
-    font-size:7px;
-  }
-
-  .best-tag b{
-    margin-top:6px;
-
-    font-size:9px;
-  }
-
-  .best-action{
-    grid-column:1 / -1;
-
-    height:44px;
-
-    font-size:9px;
-  }
-
-  .positions-content{
-    height:auto;
-
-    padding:10px;
-
-    display:block;
-  }
-
-  .position-header{
-    display:none;
-  }
-
-  .position-list{
-    overflow:visible;
-  }
-
-  .position-row{
-    min-height:0;
-
-    padding:10px 0;
-
-    display:grid;
-
-    grid-template-columns:
-      1fr
-      1fr;
-
-    gap:8px;
-
-    font-size:9px;
-  }
-
-  .position-token{
-    grid-column:1 / -1;
-
-    font-size:11px;
-  }
-
-  .position-summary{
-    margin-top:10px;
-
-    grid-template-columns:
-      repeat(2,minmax(0,1fr));
-
-    gap:8px;
-  }
-
-  .summary-box{
-    min-height:58px;
-
-    padding:8px;
-  }
-
-  .summary-box small{
-    font-size:7px;
-  }
-
-  .summary-box b{
-    margin-top:8px;
-
-    font-size:10px;
-  }
-
-  .control-content{
-    height:auto;
-
-    padding:12px;
-
-    display:grid;
-
-    grid-template-columns:
-      1fr
-      1fr;
-
-    gap:8px;
-  }
-
-  .control-title,
-  .amount-box,
-  .authority-note{
-    grid-column:1 / -1;
-  }
-
-  .control-title{
-    font-size:13px;
-  }
-
-  .amount-box{
-    height:auto;
-    min-height:52px;
-
-    padding:8px;
-  }
-
-  .trade-action{
-    height:52px;
-
-    font-size:16px;
-  }
-
-  .authority-note{
-    font-size:8px;
-    line-height:1.4;
-  }
-
-  .lower-grid{
-    width:100%;
-    min-width:0;
-    min-height:0;
-
-    display:flex;
-    flex-direction:column;
-
-    gap:8px;
-  }
-
-  .lower-card{
-    width:100%;
-  }
-
-  .lower-content{
-    height:auto;
-    min-height:0;
-
-    padding:8px 10px;
-
-    overflow:visible;
-  }
-
-  .candidate-header{
-    display:none;
-  }
-
-  .candidate-row{
-    min-height:76px;
-
-    padding:10px 0;
-
-    display:grid;
-
-    grid-template-columns:
-      28px
-      minmax(0,1fr)
-      auto;
-
-    grid-template-rows:
-      auto
-      auto
-      auto;
-
-    gap:
-      5px
-      8px;
-
-    font-size:9px;
-  }
-
-  .live-candidate-index{
-    grid-column:1;
-    grid-row:1 / 4;
-
-    align-self:center;
-
-    color:#71868d;
-
-    font-size:10px;
-  }
-
-  .candidate-token-live{
-    grid-column:2 / 4;
-    grid-row:1;
-  }
-
-  .candidate-token-live b{
-    font-size:11px;
-  }
-
-  .candidate-token-live small{
-    margin-top:3px;
-
-    font-size:7px;
-  }
-
-  .live-action{
-    grid-column:2;
-    grid-row:2;
-  }
-
-  .live-sellability{
-    grid-column:3;
-    grid-row:2;
-
-    text-align:right;
-  }
-
-  .live-evidence{
-    grid-column:2;
-    grid-row:3;
-  }
-
-  .live-gate{
-    grid-column:3;
-    grid-row:3;
-
-    text-align:right;
-  }
-
-  .live-action:before{
-    content:"KARAR · ";
-
-    color:#6f858d;
-
-    font-size:7px;
-  }
-
-  .live-sellability:before{
-    content:"SATIŞ · ";
-
-    color:#6f858d;
-
-    font-size:7px;
-  }
-
-  .live-evidence:before{
-    content:"KANIT · ";
-
-    color:#6f858d;
-
-    font-size:7px;
-  }
-
-  .live-gate:before{
-    content:"GATE · ";
-
-    color:#6f858d;
-
-    font-size:7px;
-  }
-
-  .intel-row{
-    min-height:54px;
-  }
-
-  .intel-icon{
-    width:32px;
-    height:32px;
-
-    font-size:10px;
-  }
-
-  .intel-copy b{
-    font-size:9px;
-  }
-
-  .intel-copy small{
-    font-size:7px;
-  }
-
-  .intel-state{
-    font-size:8px;
-  }
-
-  .performance-layout{
-    min-height:250px;
-
-    grid-template-rows:
-      34px
-      minmax(140px,1fr)
-      auto;
-  }
-
-  .tab-button{
-    height:30px;
-
-    padding:0 12px;
-
-    font-size:7px;
-  }
-
-  .performance-stats{
-    grid-template-columns:
-      repeat(3,1fr);
-
-    row-gap:8px;
-  }
-
-  .performance-stat{
-    padding:6px;
-  }
-
-  .performance-stat small{
-    font-size:6px;
-  }
-
-  .performance-stat b{
-    font-size:9px;
-  }
-
-  .health-banner{
-    height:auto;
-    min-height:60px;
-
-    padding:9px;
-  }
-
-  .health-row{
-    height:30px;
-
-    font-size:8px;
-  }
-
-  .foot-grid{
-    width:100%;
-    min-width:0;
-
-    display:flex;
-    flex-direction:column;
-
-    gap:8px;
-  }
-
-  .signal-layout,
-  .quick-layout{
-    min-height:64px;
-
-    padding:9px;
-
-    align-items:flex-start;
-    flex-wrap:wrap;
-  }
-
-  .signal-heading,
-  .quick-heading{
-    width:100%;
-
-    font-size:9px;
-  }
-
-  .signal-list{
-    width:100%;
-
-    display:grid;
-    grid-template-columns:1fr;
-
-    gap:7px;
-
-    overflow:visible;
-  }
-
-  .signal-item{
-    width:100%;
-    min-width:0;
-
-    padding:
-      7px
-      0
-      7px
-      8px;
-  }
-
-  .signal-item b{
-    font-size:8px;
-  }
-
-  .signal-item small{
-    font-size:7px;
-    line-height:1.4;
-  }
-
-  .quick-button{
-    min-width:
-      calc(50% - 4px);
-
-    height:38px;
-
-    font-size:8px;
-  }
-
-  .modal{
-    padding:10px;
-  }
-
-  .modal-box{
-    width:96vw;
-    max-height:90dvh;
-  }
-
-  .modal-content{
-    font-size:9px;
-  }
+  font-size:10px;
+  font-weight:900;
 }
 
+.action.buy{
+  border:1px solid #137748;
 
+  background:#083521;
+  color:var(--green);
+}
 
-/* CANONICAL POLICY / COST PERFORMANCE */
+.action.sell{
+  border:1px solid #8a3040;
 
-.performance-layout{
+  background:#301019;
+  color:#ff7a88;
+}
+
+.action.secondary{
+  border:1px solid #29444d;
+
+  background:#08161d;
+  color:#afc0c4;
+}
+
+.action:disabled{
+  border-color:#273941;
+
+  background:#091218;
+  color:#5f7379;
+
+  cursor:not-allowed;
+}
+
+/* ======================================================
+   CANDIDATES
+   ====================================================== */
+
+.candidates{
+  min-height:0;
+
+  display:grid;
+
   grid-template-rows:
-    21px
-    minmax(52px,1fr)
-    34px
-    19px;
+    42px
+    38px
+    minmax(128px,.72fr)
+    minmax(214px,1.28fr);
 }
 
-.policy-performance{
-  min-width:0;
-
+.filters{
   display:flex;
   align-items:center;
 
   gap:5px;
 
+  padding:6px 9px;
+
+  border-bottom:
+    1px solid
+    var(--line);
+}
+
+.filter{
+  height:25px;
+
+  padding:0 10px;
+
+  border:
+    1px solid
+    #183943;
+
+  border-radius:4px;
+
+  background:#06141b;
+  color:#829aa0;
+
+  font-size:8px;
+  font-weight:850;
+}
+
+.filter.active{
+  border-color:#167ba0;
+
+  background:#082b3b;
+  color:#ddf9ff;
+}
+
+.candidate-list{
+  min-height:0;
+  overflow:auto;
+}
+
+.candidate-cols{
+  grid-template-columns:
+    minmax(100px,1.25fr)
+    61px
+    48px
+    67px
+    67px
+    61px
+    minmax(78px,.9fr);
+}
+
+.candidate-row{
+  width:100%;
+
+  min-height:44px;
+
+  padding:5px 8px;
+
+  display:grid;
+
+  grid-template-columns:
+    minmax(100px,1.25fr)
+    61px
+    48px
+    67px
+    67px
+    61px
+    minmax(78px,.9fr);
+
+  gap:5px;
+
+  align-items:center;
+
+  border:0;
+  border-bottom:
+    1px solid
+    var(--line);
+
+  background:transparent;
+  color:var(--text);
+
+  text-align:left;
+}
+
+.candidate-row:hover,
+.candidate-row.selected{
+  background:
+    rgba(25,140,175,.07);
+}
+
+.candidate-row.blocked{
+  box-shadow:
+    inset 2px 0
+    var(--red);
+}
+
+.candidate-main{
+  min-width:0;
+
+  font-size:10px;
+  font-weight:900;
+
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+
+.candidate-main small{
+  display:block;
+
+  margin-top:3px;
+
+  color:#789096;
+
+  font-size:7px;
+
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+
+.candidate-cell{
+  min-width:0;
+
+  color:#bdc9cc;
+
+  font-size:8px;
+  font-weight:700;
+
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+
+.candidate-detail{
+  min-height:0;
+
+  padding:9px;
+
+  overflow:auto;
+
+  border-top:
+    1px solid
+    var(--line);
+}
+
+.candidate-detail-grid{
+  display:grid;
+
+  grid-template-columns:
+    1fr
+    1fr;
+
+  gap:6px;
+}
+
+/* ======================================================
+   RIGHT
+   ====================================================== */
+
+.right-stack{
+  min-width:0;
+  min-height:0;
+
+  display:grid;
+
+  grid-template-rows:
+    minmax(260px,1.18fr)
+    minmax(185px,.82fr);
+
+  gap:9px;
+}
+
+/* VEZIR */
+
+.vezir{
+  min-height:0;
+
+  display:grid;
+
+  grid-template-rows:
+    62px
+    48px
+    minmax(0,1fr)
+    45px;
+}
+
+.vezir-head{
+  padding:7px 10px;
+
+  display:grid;
+
+  grid-template-columns:
+    1fr
+    60px;
+
+  gap:8px;
+
+  align-items:center;
+
+  border-bottom:
+    1px solid
+    var(--line);
+}
+
+.vezir-title{
+  font-size:16px;
+  font-weight:900;
+}
+
+.vezir-sub{
+  margin-top:4px;
+
+  color:var(--cyan);
+
+  font-size:8px;
+  font-weight:800;
+}
+
+.vezir-avatar{
+  width:58px;
+  height:58px;
+
+  object-fit:contain;
+  object-position:center;
+
+  justify-self:end;
+
+  filter:
+    contrast(1.1)
+    saturate(1.08);
+}
+
+.quick-prompts{
+  display:grid;
+
+  grid-template-columns:
+    1fr
+    1fr;
+
+  gap:5px;
+
+  padding:6px 9px;
+
+  border-bottom:
+    1px solid
+    var(--line);
+}
+
+.quick-prompt{
+  border:
+    1px solid
+    #183943;
+
+  border-radius:4px;
+
+  background:#06141b;
+  color:#9eb0b5;
+
+  font-size:8px;
+  font-weight:800;
+}
+
+.chat{
+  min-height:0;
+
+  padding:8px;
+
+  overflow:auto;
+}
+
+.chat-message{
+  margin-bottom:7px;
+
+  padding:7px 9px;
+
+  border:
+    1px solid
+    #12323c;
+
+  border-radius:6px;
+
+  background:#06141b;
+
+  color:#b9c8cc;
+
+  font-size:9px;
+  line-height:1.4;
+}
+
+.chat-message.user{
+  margin-left:28px;
+
+  border-color:#17475a;
+
+  background:#08202b;
+}
+
+.chat-message.vezir{
+  margin-right:18px;
+}
+
+.chat-name{
+  margin-bottom:4px;
+
+  color:#7f989f;
+
+  font-size:7px;
+  font-weight:850;
+}
+
+.chat-input-row{
+  display:grid;
+
+  grid-template-columns:
+    minmax(0,1fr)
+    72px;
+
+  gap:6px;
+
+  padding:6px 8px;
+
+  border-top:
+    1px solid
+    var(--line);
+}
+
+.chat-input{
+  width:100%;
+
+  border:
+    1px solid
+    #1a3b46;
+
+  border-radius:5px;
+
+  outline:none;
+
+  background:#041017;
+  color:#e8eff1;
+
+  padding:0 9px;
+
+  font-size:10px;
+}
+
+.send{
+  border:
+    1px solid
+    #127ba1;
+
+  border-radius:5px;
+
+  background:#082b3b;
+  color:#c9f7ff;
+
+  font-size:9px;
+  font-weight:900;
+}
+
+/* INTEL */
+
+.intel{
+  display:grid;
+
+  grid-template-rows:
+    42px
+    minmax(0,1fr);
+}
+
+.intel-list{
+  min-height:0;
+
+  padding:4px 9px;
+
+  overflow:auto;
+}
+
+.intel-row{
+  min-height:31px;
+
+  display:grid;
+
+  grid-template-columns:
+    48px
+    110px
+    minmax(0,1fr);
+
+  gap:7px;
+
+  align-items:center;
+
+  border-bottom:
+    1px solid
+    #102b34;
+
+  color:#b9c8cc;
+
+  font-size:8px;
+}
+
+.intel-time{
+  color:#80969c;
+}
+
+.intel-kind{
+  font-weight:850;
+}
+
+.intel-copy{
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+
+/* ======================================================
+   FOOTER
+   ====================================================== */
+
+.footer{
+  min-width:0;
+
+  display:grid;
+
+  grid-template-columns:
+    minmax(520px,1fr)
+    minmax(470px,.9fr);
+
+  gap:9px;
+}
+
+.health,
+.signals{
+  display:flex;
+  align-items:center;
+
+  min-width:0;
+
+  padding:9px 12px;
+}
+
+.footer-title{
+  flex:none;
+
+  margin-right:14px;
+
+  font-size:11px;
+  font-weight:900;
+}
+
+.health-items{
+  display:flex;
+  align-items:center;
+
+  min-width:0;
+
+  gap:13px;
+}
+
+.health-item{
+  white-space:nowrap;
+
+  color:#9fb0b5;
+
+  font-size:8px;
+  font-weight:750;
+}
+
+.signal-strip{
+  flex:1;
+
+  min-width:0;
+
+  display:flex;
+
+  gap:13px;
+
   overflow:hidden;
 }
 
-.policy-pill{
+.signal{
   min-width:0;
 
-  padding:3px 6px;
+  padding-left:10px;
 
-  border:1px solid var(--line-soft);
-  border-radius:3px;
-
-  background:#041018;
-  color:#8fa4aa;
-
-  font-size:5px;
-  font-weight:700;
+  border-left:
+    1px solid
+    #183943;
 
   white-space:nowrap;
+}
+
+.signal b{
+  display:block;
+
+  font-size:8px;
+  font-weight:900;
+}
+
+.signal small{
+  display:block;
+
+  margin-top:3px;
+
+  color:#82999f;
+
+  font-size:7px;
+
   overflow:hidden;
   text-overflow:ellipsis;
 }
 
-.policy-pill b{
-  color:#f3f7f8;
+/* ======================================================
+   ACCOUNTING DRAWER
+   ====================================================== */
+
+.drawer-backdrop{
+  position:fixed;
+
+  inset:0;
+
+  z-index:50;
+
+  display:none;
+
+  background:
+    rgba(0,5,8,.68);
 }
 
-.policy-pill strong{
+.drawer-backdrop.open{
+  display:block;
+}
+
+.drawer{
+  position:absolute;
+
+  top:0;
+  right:0;
+
+  width:min(520px,92vw);
+  height:100%;
+
+  padding:13px;
+
+  overflow:auto;
+
+  border-left:
+    1px solid
+    var(--line2);
+
+  background:#041018;
+
+  box-shadow:
+    -20px 0 55px
+    rgba(0,0,0,.4);
+}
+
+.drawer-head{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+
+  margin-bottom:12px;
+}
+
+.drawer-title{
+  font-size:17px;
   font-weight:900;
 }
 
-@media (max-width:1300px), (hover:none) and (pointer:coarse){
-  .performance-layout{
+.drawer-close{
+  width:32px;
+  height:32px;
+
+  border:
+    1px solid
+    #254650;
+
+  border-radius:5px;
+
+  background:#07161d;
+  color:white;
+}
+
+.account-grid{
+  display:grid;
+
+  grid-template-columns:
+    1fr
+    1fr;
+
+  gap:7px;
+}
+
+.account-box{
+  padding:10px;
+
+  border:
+    1px solid
+    #14333d;
+
+  border-radius:6px;
+
+  background:#06141b;
+}
+
+.account-box small{
+  display:block;
+
+  color:#80979e;
+
+  font-size:8px;
+  font-weight:800;
+}
+
+.account-box b{
+  display:block;
+
+  margin-top:7px;
+
+  font-size:13px;
+}
+
+.section-title{
+  margin:
+    18px 0
+    8px;
+
+  color:#dce7e9;
+
+  font-size:11px;
+  font-weight:900;
+}
+
+.account-row{
+  min-height:35px;
+
+  display:grid;
+
+  grid-template-columns:
+    1fr
+    auto;
+
+  gap:8px;
+
+  align-items:center;
+
+  border-bottom:
+    1px solid
+    #12303a;
+
+  color:#aebfc3;
+
+  font-size:9px;
+}
+
+.account-row b{
+  color:#edf3f4;
+}
+
+/* ======================================================
+   LOW HEIGHT
+   ====================================================== */
+
+@media(max-height:720px){
+  .shell{
+    padding:7px;
+
     grid-template-rows:
+      66px
+      minmax(0,1fr)
+      61px;
+
+    gap:7px;
+  }
+
+  .topbar,
+  .main,
+  .right-stack,
+  .footer{
+    gap:7px;
+  }
+
+  .card-head{
+    height:38px;
+  }
+
+  .positions{
+    grid-template-rows:
+      38px
+      minmax(78px,.65fr)
+      minmax(190px,1.35fr);
+  }
+
+  .candidates{
+    grid-template-rows:
+      38px
       34px
-      minmax(140px,1fr)
+      minmax(115px,.68fr)
+      minmax(195px,1.32fr);
+  }
+
+  .right-stack{
+    grid-template-rows:
+      minmax(235px,1.15fr)
+      minmax(165px,.85fr);
+  }
+
+  .vezir{
+    grid-template-rows:
+      56px
+      43px
+      minmax(0,1fr)
+      41px;
+  }
+
+  .metric{
+    padding-top:8px;
+  }
+}
+
+/* ======================================================
+   RESPONSIVE FALLBACK
+   ====================================================== */
+
+@media(max-width:1179px){
+  html,
+  body{
+    height:auto;
+  }
+
+  body{
+    overflow:auto;
+  }
+
+  .shell{
+    min-width:0;
+    height:auto;
+
+    grid-template-rows:
+      auto
       auto
       auto;
   }
 
-  .policy-performance{
-    padding-top:7px;
-
-    flex-wrap:wrap;
-    overflow:visible;
+  .topbar{
+    grid-template-columns:
+      repeat(2,minmax(0,1fr));
   }
 
-  .policy-pill{
-    font-size:7px;
+  .brand,
+  .top-actions{
+    grid-column:1 / -1;
+  }
+
+  .main{
+    grid-template-columns:1fr;
+  }
+
+  .right-stack{
+    grid-template-rows:
+      500px
+      320px;
+  }
+
+  .positions,
+  .candidates{
+    min-height:620px;
+  }
+
+  .footer{
+    grid-template-columns:1fr;
   }
 }
-
-
-
-/* =========================================================
-   PANEL VISUAL TRUTH
-   Candidate state must never look more executable than it is.
-   ========================================================= */
-
-.check-value,
-.plan-value{
-  max-width:58%;
-
-  overflow:hidden;
-  text-overflow:ellipsis;
-}
-
-.signal-box{
-  transition:
-    border-color .15s ease,
-    background .15s ease;
-}
-
-.signal-box.state-ready{
-  border-color:#087c3e;
-  background:rgba(0,233,120,.035);
-}
-
-.signal-box.state-ready .signal-value,
-.signal-box.state-ready .signal-state{
-  color:var(--green);
-}
-
-.signal-box.state-watch{
-  border-color:#8c6b00;
-  background:rgba(255,208,42,.035);
-}
-
-.signal-box.state-watch .signal-value,
-.signal-box.state-watch .signal-state{
-  color:var(--yellow);
-}
-
-.signal-box.state-reject{
-  border-color:#8c2635;
-  background:rgba(255,48,73,.035);
-}
-
-.signal-box.state-reject .signal-value,
-.signal-box.state-reject .signal-state{
-  color:var(--red);
-}
-
-.best-action.watch-action{
-  border-color:#26424b;
-  background:#07151c;
-  color:#9eb0b5;
-}
-
-.best-action.watch-action.state-ready{
-  border-color:#087c3e;
-  background:#07562f;
-  color:white;
-}
-
-.best-action.watch-action.state-watch{
-  border-color:#806200;
-  background:#211b02;
-  color:var(--yellow);
-}
-
-.best-action.watch-action.state-reject{
-  border-color:#8c2635;
-  background:#271017;
-  color:var(--red);
-}
-
-.trade-action.authority-only{
-  border-color:#29434c;
-
-  background:
-    linear-gradient(
-      180deg,
-      #0a171d,
-      #071116
-    );
-
-  color:#a9b8bc;
-
-  box-shadow:none;
-}
-
-.trade-action.authority-only small{
-  color:#778d94;
-}
-
-.policy-pill.cost-incomplete{
-  border-color:rgba(255,208,42,.48);
-  color:#d9c069;
-}
-
-.policy-pill.cost-complete{
-  border-color:rgba(0,233,120,.42);
-}
-
-.placeholder-row b{
-  letter-spacing:.02em;
-}
-
-
-
-/* =========================================================
-   DESKTOP READABILITY PASS
-   Geometry/grid/card structure intentionally unchanged.
-   ========================================================= */
-
-:root{
-  --muted:#99adb3;
-  --soft:#d0dadd;
-}
-
-.card-head{
-  font-size:11px;
-  font-weight:900;
-}
-
-.card-link{
-  font-size:8px;
-  font-weight:900;
-}
-
-.metric-label{
-  color:#b3c2c6;
-  font-size:8px;
-  font-weight:800;
-}
-
-.metric-value{
-  font-size:13px;
-}
-
-.metric-sub{
-  color:#92a5ab;
-  font-size:7px;
-  font-weight:600;
-}
-
-.market-name{
-  font-size:8px;
-}
-
-.live-clock,
-.mode-label{
-  font-size:7px;
-}
-
-.mode-button{
-  font-size:8px;
-}
-
-.mode-foot{
-  color:#91a4aa;
-  font-size:6px;
-}
-
-.vezir-role,
-.vezir-live{
-  font-size:8px;
-}
-
-.vezir-quote{
-  color:#f0f5f6;
-  font-size:8px;
-  font-weight:650;
-}
-
-.vezir-points{
-  color:#cad5d8;
-  font-size:7px;
-  font-weight:650;
-}
-
-.vezir-report{
-  font-size:8px;
-}
-
-.asset-chain{
-  color:#a5b5ba;
-  font-size:8px;
-}
-
-.signal-label{
-  color:#d1dadd;
-  font-size:7px;
-  font-weight:800;
-}
-
-.signal-state{
-  font-size:8px;
-}
-
-.best-section-title{
-  font-size:9px;
-}
-
-.check-row,
-.plan-row{
-  font-size:8px;
-  font-weight:650;
-}
-
-.check-name,
-.plan-name{
-  color:#c2ced1;
-}
-
-.check-value,
-.plan-value{
-  font-size:8px;
-}
-
-.best-tag small{
-  color:#a4b5ba;
-  font-size:6px;
-  font-weight:800;
-}
-
-.best-tag b{
-  font-size:8px;
-}
-
-.best-action{
-  font-size:8px;
-}
-
-.position-header{
-  color:#aebdc1;
-  font-size:7px;
-  font-weight:800;
-}
-
-.position-row{
-  font-size:8px;
-}
-
-.position-token small{
-  color:#9cabb0;
-  font-size:7px;
-  font-weight:600;
-}
-
-.summary-box small{
-  color:#9badb2;
-  font-size:6px;
-}
-
-.summary-box b{
-  font-size:9px;
-}
-
-.control-title{
-  font-size:11px;
-}
-
-.amount-box small{
-  color:#9badb2;
-  font-size:6px;
-  font-weight:800;
-}
-
-.amount-box b{
-  font-size:9px;
-}
-
-.trade-action small{
-  font-size:6px;
-}
-
-.authority-note{
-  color:#a9b8bc;
-  font-size:7px;
-  font-weight:600;
-}
-
-.candidate-header{
-  color:#a2b3b8;
-  font-size:6px;
-  font-weight:800;
-}
-
-.candidate-row{
-  font-size:8px;
-  font-weight:650;
-}
-
-.candidate-token-live small{
-  color:#93a6ac;
-  font-size:6px;
-}
-
-.intel-copy b{
-  font-size:8px;
-}
-
-.intel-copy small{
-  color:#9aacb1;
-  font-size:6px;
-  font-weight:600;
-}
-
-.intel-state{
-  font-size:7px;
-}
-
-.tab-button{
-  font-size:6px;
-}
-
-.performance-stat small{
-  color:#91a5ab;
-  font-size:5.5px;
-  font-weight:800;
-}
-
-.performance-stat b{
-  font-size:8px;
-}
-
-.policy-pill{
-  color:#a9b8bc;
-  font-size:6px;
-  font-weight:750;
-}
-
-.health-banner small{
-  color:#9badb2;
-  font-size:7px;
-}
-
-.health-row{
-  font-size:7px;
-  font-weight:650;
-}
-
-.signal-heading,
-.quick-heading{
-  font-size:9px;
-}
-
-.signal-item b{
-  font-size:7px;
-}
-
-.signal-item small{
-  color:#9badb2;
-  font-size:6px;
-  font-weight:600;
-}
-
-.quick-button{
-  color:#aab9bd;
-  font-size:7px;
-}
-
-.placeholder-row,
-.placeholder-row span,
-.placeholder-row b{
-  color:#94a7ad!important;
-}
-
-/*
-  Avoid thin/fuzzy-looking secondary text.
-  No scaling or transform is used.
-*/
-small,
-.metric-sub,
-.asset-chain,
-.intel-copy small,
-.signal-item small,
-.authority-note{
-  text-shadow:none;
-}
-
-
 </style>
 </head>
 
 <body>
 
-<div class="dashboard">
+<div class="shell">
 
-<!-- ======================================================
-     HEADER
-     ====================================================== -->
+  <!-- TOP ================================================= -->
 
-<header class="header">
+  <header class="topbar">
 
-  <article class="card brand-card">
-
-    <div class="brand-piece">♜</div>
-
-    <div>
-      <div class="brand-title">
-        İŞLEM MERKEZİ
-      </div>
-
-      <div class="brand-subtitle">
-        PAPER_10K
-      </div>
-    </div>
-
-  </article>
-
-  <article class="card metric-card">
-    <div class="metric-label">
-      BAKİYE
-    </div>
-
-    <div
-      class="metric-value"
-      id="balance">
-      10.000,00 USDT
-    </div>
-
-    <div
-      class="metric-sub"
-      id="balanceSub">
-      Paper sermaye
-    </div>
-  </article>
-
-  <article class="card metric-card">
-    <div class="metric-label">
-      GÜNLÜK P&L
-    </div>
-
-    <div
-      class="metric-value"
-      id="dailyPnl">
-      0,00 USDT
-    </div>
-
-    <div
-      class="metric-sub"
-      id="dailyPnlSub">
-      Yeni dönem
-    </div>
-  </article>
-
-  <article class="card metric-card">
-    <div class="metric-label">
-      TOPLAM P&L
-    </div>
-
-    <div
-      class="metric-value"
-      id="totalPnl">
-      0,00 USDT
-    </div>
-
-    <div
-      class="metric-sub"
-      id="totalPnlSub">
-      %0,00
-    </div>
-  </article>
-
-  <article class="card metric-card">
-    <div class="metric-label">
-      AÇIK POZİSYON
-    </div>
-
-    <div
-      class="metric-value"
-      id="openCount">
-      0
-    </div>
-
-    <div
-      class="metric-sub"
-      id="openInvestment">
-      0,00 USDT
-    </div>
-  </article>
-
-  <article class="card metric-card">
-    <div class="metric-label">
-      KULLANILAN RİSK
-    </div>
-
-    <div
-      class="metric-value"
-      id="riskUsed">
-      %0,00
-    </div>
-
-    <div
-      class="metric-sub"
-      id="riskAmountTop">
-      0,00 USDT
-    </div>
-  </article>
-
-  <article class="card metric-card market-card">
-    <div class="market-name">
-      <span class="coin-icon">₿</span>
-      BTC / USDT
-    </div>
-
-    <div class="metric-value">
-      —
-    </div>
-
-    <div class="metric-sub">
-      Market feed bağlı değil
-    </div>
-  </article>
-
-  <article class="card metric-card market-card">
-    <div class="market-name">
-      <span class="coin-icon eth">♦</span>
-      ETH / USDT
-    </div>
-
-    <div class="metric-value">
-      —
-    </div>
-
-    <div class="metric-sub">
-      Market feed bağlı değil
-    </div>
-  </article>
-
-  <article class="card mode-card">
-
-    <div class="live-clock">
-      <span id="clock">--:--:--</span>
-      <b>● CANLI</b>
-    </div>
-
-    <div class="mode-label">
-      ÇALIŞMA MODU
-    </div>
-
-    <div class="mode-buttons">
-
-      <button
-        class="mode-button paper"
-        onclick="openAuthority('OTOMATİK PİLOT')">
-        🤖 OTOMATİK PİLOT
-      </button>
-
-      <button
-        class="mode-button"
-        onclick="openAuthority('MANUEL')">
-        ☝ MANUEL
-      </button>
-
-    </div>
-
-    <div class="mode-foot">
-      PAPER aktif · Authority kontrollü
-    </div>
-
-  </article>
-
-</header>
-
-<!-- ======================================================
-     HERO AREA
-     ====================================================== -->
-
-<section class="hero">
-
-  <!-- VEZIR -->
-
-  <article class="card vezir-card">
-
-    <div class="vezir-header">
+    <section class="card brand">
+      <div class="brand-rook">♜</div>
 
       <div>
-        <div class="vezir-title">
-          VEZİR
+        <div class="brand-title">
+          İŞLEM MERKEZİ
         </div>
 
-        <div class="vezir-role">
-          Sistem Asistanı
+        <div class="brand-sub">
+          PAPER_10K
         </div>
       </div>
+    </section>
 
-      <div class="vezir-live">
-        ● ─╱╲─
-      </div>
-
-    </div>
-
-    <div class="vezir-art">
-
-      <div class="vezir-ring"></div>
-
-      <img
-        id="vezirImage"
-        class="vezir-image"
-        alt="Vezir">
-
-    </div>
-
-    <div class="vezir-quote">
-
-      <span class="quote-mark">“</span>
-
-      <span id="vezirText">
-        Yeni temiz paper dönemi aktif.
-        Gerçek işlem verileri geldikçe fırsat,
-        risk ve performans yorumu burada oluşacak.
-      </span>
-
-    </div>
-
-    <div class="vezir-points">
-
-      <div
-        class="vezir-point"
-        id="vezirPoint1">
-        Paper runtime izleniyor.
+    <section class="card metric">
+      <div class="metric-label">
+        BAKİYE
       </div>
 
       <div
-        class="vezir-point"
-        id="vezirPoint2">
-        Yeni dönem işlemleri bekleniyor.
+        class="metric-value"
+        id="balance">
+        —
+      </div>
+
+      <div class="metric-sub">
+        Paper equity
+      </div>
+    </section>
+
+    <section class="card metric">
+      <div class="metric-label">
+        GÜNLÜK PNL
       </div>
 
       <div
-        class="vezir-point"
-        id="vezirPoint3">
-        Live execution kapalı.
+        class="metric-value"
+        id="dailyPnl">
+        —
       </div>
 
-    </div>
+      <div
+        class="metric-sub"
+        id="localDate">
+        —
+      </div>
+    </section>
 
-    <button
-      class="vezir-report"
-      onclick="openIntelligence()">
-      ☆ VEZİR DETAY RAPORU
-    </button>
+    <section class="card metric">
+      <div class="metric-label">
+        TOPLAM PNL
+      </div>
 
-  </article>
+      <div
+        class="metric-value"
+        id="totalPnl">
+        —
+      </div>
 
-  <!-- BEST OPPORTUNITY -->
+      <div
+        class="metric-sub"
+        id="totalPnlPct">
+        —
+      </div>
+    </section>
 
-  <article class="card best-card">
+    <section class="card metric">
+      <div class="metric-label">
+        AÇIK POZİSYON
+      </div>
 
-    <div class="card-head">
+      <div
+        class="metric-value"
+        id="openCount">
+        —
+      </div>
 
-      <span>★ ÖNCELİKLİ CANLI ADAY</span>
+      <div
+        class="metric-sub"
+        id="openInvestment">
+        —
+      </div>
+    </section>
+
+    <section class="card metric">
+      <div class="metric-label">
+        KULLANILAN RİSK
+      </div>
+
+      <div
+        class="metric-value"
+        id="riskPct">
+        —
+      </div>
+
+      <div
+        class="metric-sub"
+        id="riskAmount">
+        —
+      </div>
+    </section>
+
+    <section class="card market">
+      <div class="market-name">
+        <span class="coin">₿</span>
+        BTC/USDT
+      </div>
+
+      <div
+        class="market-price"
+        id="btcPrice">
+        —
+      </div>
+
+      <div
+        class="market-change"
+        id="btcChange">
+        Veri bekleniyor
+      </div>
+    </section>
+
+    <section class="card market">
+      <div class="market-name">
+        <span class="coin eth">♦</span>
+        ETH/USDT
+      </div>
+
+      <div
+        class="market-price"
+        id="ethPrice">
+        —
+      </div>
+
+      <div
+        class="market-change"
+        id="ethChange">
+        Veri bekleniyor
+      </div>
+    </section>
+
+    <section class="card top-actions">
 
       <button
-        class="card-link"
-        id="bestDetailButton"
-        onclick="openBestEvidence()">
-        VERİ BEKLENİYOR
+        class="accounting-button"
+        onclick="openAccounting()">
+       ▣ MUHASEBE
       </button>
 
-    </div>
-
-    <div class="best-content">
-
-      <div class="best-main">
-
-        <div class="asset-column">
-
-          <div class="asset-logo">
-            ◎
-          </div>
-
-          <div>
-
-            <div class="asset-name">
-              <span id="bestToken">
-                BEKLENİYOR
-              </span>
-
-              <span
-                class="asset-pair"
-                id="bestPair">
-              </span>
-            </div>
-
-            <div
-              class="asset-chain"
-              id="bestChain">
-              Yeni paper pozisyon bekleniyor
-            </div>
-
-            <div class="signal-box" id="bestSignalBox">
-
-              <div class="signal-label">
-                KANIT GÜVENİ
-              </div>
-
-              <div
-                class="signal-value"
-                id="bestScore">
-                —
-              </div>
-
-              <div
-                class="signal-state"
-                id="bestScoreState">
-                VERİ BEKLENİYOR
-              </div>
-
-            </div>
-
-          </div>
-
-        </div>
-
-        <div class="best-section">
-
-          <div class="best-section-title">
-            ADAY DURUMU
-          </div>
-
-          <div class="check-row">
-            <span class="check-name">
-              Likidite
-            </span>
-
-            <b
-              class="check-value"
-              id="liquidity">
-              —
-            </b>
-          </div>
-
-          <div class="check-row">
-            <span class="check-name">
-              Sellability
-            </span>
-
-            <b
-              class="check-value"
-              id="sellability">
-              —
-            </b>
-          </div>
-
-          <div class="check-row">
-            <span class="check-name">
-              Güvenlik Taraması
-            </span>
-
-            <b
-              class="check-value"
-              id="security">
-              —
-            </b>
-          </div>
-
-          <div class="check-row">
-            <span class="check-name">
-              Risk Skoru
-            </span>
-
-            <b
-              class="check-value"
-              id="riskState">
-              —
-            </b>
-          </div>
-
-          <div class="check-row">
-            <span class="check-name">
-              Atış Poligonu
-            </span>
-
-            <b
-              class="check-value"
-              id="rangeState">
-              —
-            </b>
-          </div>
-
-          <div class="check-row">
-            <span class="check-name">
-              Boyutlandırma
-            </span>
-
-            <b
-              class="check-value"
-              id="marketState">
-              —
-            </b>
-          </div>
-
-        </div>
-
-        <div class="best-section">
-
-          <div class="best-section-title">
-            İŞLEM PLANI
-          </div>
-
-          <div class="plan-row">
-            <span class="plan-name">
-              Giriş
-            </span>
-
-            <b
-              class="plan-value"
-              id="entryPrice">
-              —
-            </b>
-          </div>
-
-          <div class="plan-row">
-            <span class="plan-name">
-              Mevcut
-            </span>
-
-            <b
-              class="plan-value"
-              id="currentPrice">
-              —
-            </b>
-          </div>
-
-          <div class="plan-row">
-            <span class="plan-name">
-              Hedef (TP)
-            </span>
-
-            <b
-              class="plan-value"
-              id="tpPrice">
-              —
-            </b>
-          </div>
-
-          <div class="plan-row">
-            <span class="plan-name">
-              Stop Loss (SL)
-            </span>
-
-            <b
-              class="plan-value"
-              id="slPrice">
-              —
-            </b>
-          </div>
-
-          <div class="plan-row">
-            <span class="plan-name">
-              Pozisyon Büyüklüğü
-            </span>
-
-            <b
-              class="plan-value"
-              id="positionSize">
-              —
-            </b>
-          </div>
-
-          <div class="plan-row">
-            <span class="plan-name">
-              Risk Tutarı
-            </span>
-
-            <b
-              class="plan-value"
-              id="riskAmount">
-              —
-            </b>
-          </div>
-
-        </div>
-
-      </div>
-
-      <div class="best-bottom">
-
-        <div class="best-tag">
-          <small>VOLUME 24H</small>
-          <b id="trend">—</b>
-        </div>
-
-        <div class="best-tag">
-          <small>ALIM 24H</small>
-          <b id="timing">—</b>
-        </div>
-
-        <div class="best-tag">
-          <small>GÜNCELLEME</small>
-          <b id="confidence">—</b>
-        </div>
-
-        <div class="best-tag">
-          <small>FDV</small>
-          <b id="bestRoi">—</b>
-        </div>
-
-        <div class="best-tag">
-          <small>PLAN TUTARI</small>
-          <b id="bestNet">—</b>
-        </div>
-
+      <div class="mode-switch">
         <button
-          class="best-action watch-action"
-          id="bestWatchButton"
-          onclick="openBestEvidence()">
-          ★ İZLE / KANIT
+          class="mode-button active"
+          id="autoModeButton"
+          onclick="setPanelMode('auto')">
+          OTOMATİK
         </button>
 
         <button
-          class="best-action range-action"
-          onclick="openBestEvidence()">
-          ◎ ATIŞ POLİGONU RAPORU
+          class="mode-button"
+          id="manualModeButton"
+          onclick="setPanelMode('manual')">
+          MANUEL
         </button>
-
       </div>
 
-    </div>
+      <div class="live-line">
+        <span class="live-dot"></span>
+        CANLI
+      </div>
 
-  </article>
+    </section>
 
-  <!-- OPEN POSITIONS -->
+  </header>
 
-  <article class="card positions-card">
+  <!-- MAIN ================================================= -->
 
-    <div class="card-head">
+  <main class="main">
 
-      <span>AÇIK POZİSYONLAR</span>
+    <!-- OPEN POSITIONS ====================================== -->
 
-      <button
-        class="card-link"
-        onclick="openPositionsModal()">
-        TÜMÜNÜ GÖR →
-      </button>
+    <section class="card positions">
 
-    </div>
+      <div class="card-head">
+        <span>▣ AÇIK POZİSYONLAR</span>
 
-    <div class="positions-content">
-
-      <div class="position-header">
-        <span>TOKEN / PAIR</span>
-        <span>GİRİŞ</span>
-        <span>GÜNCEL</span>
-        <span>P&L (USDT)</span>
-        <span>P&L %</span>
+        <small id="positionHeadState">
+          —
+        </small>
       </div>
 
       <div
         class="position-list"
         id="positionList">
-
-        <div class="position-row placeholder-row">
-          <b>VERİ BEKLENİYOR</b>
-          <span>—</span>
-          <span>—</span>
-          <span>—</span>
-          <span>—</span>
-        </div>
-
-        <div class="position-row placeholder-row">
-          <b>—</b>
-          <span>—</span>
-          <span>—</span>
-          <span>—</span>
-          <span>—</span>
-        </div>
-
-      </div>
-
-      <div class="position-summary">
-
-        <div class="summary-box">
-          <small>TOPLAM POZİSYON</small>
-          <b id="summaryPositions">0</b>
-        </div>
-
-        <div class="summary-box">
-          <small>TOPLAM YATIRIM</small>
-          <b id="summaryInvestment">
-            0,00 USDT
-          </b>
-        </div>
-
-        <div class="summary-box">
-          <small>TOPLAM P&L</small>
-          <b id="summaryPnl">
-            0,00 USDT
-          </b>
-        </div>
-
-        <div class="summary-box">
-          <small>TOPLAM P&L %</small>
-          <b id="summaryRoi">—</b>
-        </div>
-
-      </div>
-
-    </div>
-
-  </article>
-
-  <!-- CONTROL -->
-
-  <article class="card control-card">
-
-    <div class="control-content">
-
-      <div class="control-title">
-        İŞLEM YETKİSİ
-        <span>(READ-ONLY PANEL)</span>
-      </div>
-
-      <div class="amount-box">
-        <small>SEÇİLİ ADAY</small>
-        <b id="controlAmount">—</b>
-      </div>
-
-      <button
-        class="trade-action buy-action authority-only"
-        onclick="openAuthority('AL')">
-        AL
-        <small>PANEL YETKİSİ YOK</small>
-      </button>
-
-      <button
-        class="trade-action sell-action authority-only"
-        onclick="openAuthority('SAT')">
-        SAT
-        <small>PANEL YETKİSİ YOK</small>
-      </button>
-
-      <div class="authority-note">
-        Paper runtime otomatik çalışır.
-        Bu panel emir, wallet veya signing işlemi göndermez.
-      </div>
-
-    </div>
-
-  </article>
-
-</section>
-
-<!-- ======================================================
-     LOWER GRID
-     ====================================================== -->
-
-<section class="lower-grid">
-
-  <!-- CANDIDATES -->
-
-  <article class="card lower-card">
-
-    <div class="card-head">
-
-      <span>HIZLI ADAY LİSTESİ</span>
-
-      <button
-        class="card-link"
-        onclick="openCandidatesModal()">
-        TÜM ADAYLARI GÖR →
-      </button>
-
-    </div>
-
-    <div class="lower-content">
-
-      <div class="candidate-header">
-        <span>#</span>
-        <span>TOKEN / PAIR</span>
-        <span>KARAR</span>
-        <span>SATIŞ</span>
-        <span>KANIT</span>
-        <span>GATE</span>
-      </div>
-
-      <div id="candidateList">
-
-        <div class="candidate-row placeholder-row">
-          <span>1</span>
-          <b>VERİ BEKLENİYOR</b>
-          <span>—</span>
-          <span>—</span>
-          <span>—</span>
-          <span>—</span>
-        </div>
-
-        <div class="candidate-row placeholder-row">
-          <span>2</span>
-          <b>—</b>
-          <span>—</span>
-          <span>—</span>
-          <span>—</span>
-          <span>—</span>
-        </div>
-
-        <div class="candidate-row placeholder-row">
-          <span>3</span>
-          <b>—</b>
-          <span>—</span>
-          <span>—</span>
-          <span>—</span>
-          <span>—</span>
-        </div>
-
-        <div class="candidate-row placeholder-row">
-          <span>4</span>
-          <b>—</b>
-          <span>—</span>
-          <span>—</span>
-          <span>—</span>
-          <span>—</span>
-        </div>
-
-        <div class="candidate-row placeholder-row">
-          <span>5</span>
-          <b>—</b>
-          <span>—</span>
-          <span>—</span>
-          <span>—</span>
-          <span>—</span>
-        </div>
-
-      </div>
-
-    </div>
-
-  </article>
-
-  <!-- INTELLIGENCE -->
-
-  <article class="card lower-card">
-
-    <div class="card-head">
-
-      <span>İSTİHBARAT MERKEZİ</span>
-
-      <button
-        class="card-link"
-        onclick="openIntelligence()">
-        TÜM RAPOR →
-      </button>
-
-    </div>
-
-    <div class="lower-content">
-
-      <div class="intel-row">
-        <div class="intel-icon">◉</div>
-
-        <div class="intel-copy">
-          <b>BALİNA HAREKETLERİ</b>
-          <small id="whaleText">
-            Veri bekleniyor.
-          </small>
-        </div>
-
-        <div
-          class="intel-state"
-          id="whaleState">
-          —
-        </div>
-      </div>
-
-      <div class="intel-row">
-        <div class="intel-icon">♜</div>
-
-        <div class="intel-copy">
-          <b>BAŞARILI CÜZDANLAR</b>
-          <small id="walletText">
-            Veri bekleniyor.
-          </small>
-        </div>
-
-        <div
-          class="intel-state"
-          id="walletState">
-          —
-        </div>
-      </div>
-
-      <div class="intel-row">
-        <div class="intel-icon">▤</div>
-
-        <div class="intel-copy">
-          <b>OUTCOME / ÖĞRENME</b>
-          <small id="outcomeText">
-            Veri bekleniyor.
-          </small>
-        </div>
-
-        <div
-          class="intel-state"
-          id="outcomeState">
-          —
-        </div>
-      </div>
-
-      <div class="intel-row">
-        <div class="intel-icon">⌁</div>
-
-        <div class="intel-copy">
-          <b>WALLET REGISTRY</b>
-          <small id="registryText">
-            Veri bekleniyor.
-          </small>
-        </div>
-
-        <div
-          class="intel-state"
-          id="registryState">
-          —
-        </div>
-      </div>
-
-      <div class="intel-row">
-        <div class="intel-icon">♟</div>
-
-        <div class="intel-copy">
-          <b>VEZİR YORUMU</b>
-          <small id="intelVezirText">
-            Yeni dönem izleniyor.
-          </small>
-        </div>
-
-        <div class="intel-state green">
-          FIRSAT
-        </div>
-      </div>
-
-    </div>
-
-  </article>
-
-  <!-- PERFORMANCE -->
-
-  <article class="card lower-card">
-
-    <div class="card-head">
-      <span>PERFORMANS ÖZETİ</span>
-      <span class="card-link">PAPER</span>
-    </div>
-
-    <div class="lower-content performance-layout">
-
-      <div class="tabs">
-
-        <button
-          class="tab-button active"
-          onclick="setChartRange('day',this)">
-          GÜNLÜK
-        </button>
-
-        <button
-          class="tab-button"
-          onclick="setChartRange('week',this)">
-          HAFTALIK
-        </button>
-
-        <button
-          class="tab-button"
-          onclick="setChartRange('month',this)">
-          AYLIK
-        </button>
-
-        <button
-          class="tab-button"
-          onclick="setChartRange('all',this)">
-          TÜM ZAMAN
-        </button>
-
-      </div>
-
-      <div class="chart">
-
-        <svg
-          id="chartSvg"
-          viewBox="0 0 600 170"
-          preserveAspectRatio="none">
-
-          <defs>
-            <linearGradient
-              id="chartGradient"
-              x1="0"
-              y1="0"
-              x2="0"
-              y2="1">
-
-              <stop
-                offset="0%"
-                stop-color="#00e978"
-                stop-opacity=".25">
-              </stop>
-
-              <stop
-                offset="100%"
-                stop-color="#00e978"
-                stop-opacity="0">
-              </stop>
-
-            </linearGradient>
-          </defs>
-
-          <path
-            id="chartFill"
-            fill="url(#chartGradient)"
-            stroke="none">
-          </path>
-
-          <path
-            id="chartLine"
-            fill="none"
-            stroke="#00e978"
-            stroke-width="2">
-          </path>
-
-        </svg>
-
-        <div
-          class="chart-placeholder"
-          id="chartPlaceholder">
-          Kapanmış işlem verisi bekleniyor.
-        </div>
-
-      </div>
-
-      <div class="performance-stats">
-
-        <div class="performance-stat">
-          <small>TOPLAM İŞLEM</small>
-          <b id="perfTotal">0</b>
-        </div>
-
-        <div class="performance-stat">
-          <small>KÂRLI</small>
-          <b id="perfWins">—</b>
-        </div>
-
-        <div class="performance-stat">
-          <small>ZARARLI</small>
-          <b id="perfLosses">—</b>
-        </div>
-
-        <div class="performance-stat">
-          <small>WIN RATE</small>
-          <b id="perfWinRate">—</b>
-        </div>
-
-        <div class="performance-stat">
-          <small>ORT. P&L</small>
-          <b id="perfAverage">—</b>
-        </div>
-
-        <div class="performance-stat">
-          <small>PROFIT FACTOR</small>
-          <b id="profitFactor">—</b>
-        </div>
-
       </div>
 
       <div
-        class="policy-performance"
-        id="policyPerformance">
-        <span class="policy-pill">
-          POLICY VERİSİ BEKLENİYOR
-        </span>
+        class="detail"
+        id="positionDetail">
       </div>
 
-    </div>
+    </section>
 
-  </article>
+    <!-- WATCHLIST =========================================== -->
 
-  <!-- SYSTEM HEALTH -->
+    <section class="card candidates">
 
-  <article class="card lower-card">
+      <div class="card-head">
+        <span>◉ TAKİPTEKİLER</span>
 
-    <div class="card-head">
-      <span>SİSTEM SAĞLIĞI</span>
-      <span class="card-link">CANLI</span>
-    </div>
-
-    <div class="lower-content">
-
-      <div class="health-banner">
-
-        <div class="shield">♢</div>
-
-        <div>
-          <b id="healthTitle">
-            SİSTEM SAĞLIKLI
-          </b>
-
-          <small id="healthSubtitle">
-            Sistem kontrol ediliyor.
-          </small>
-        </div>
-
+        <small id="candidateCount">
+          —
+        </small>
       </div>
 
-      <div class="health-row">
-        <span>Panel API</span>
-        <b id="panelHealth">—</b>
-      </div>
+      <div class="filters">
+        <button
+          class="filter active"
+          data-filter="all"
+          onclick="setCandidateFilter('all',this)">
+          HEPSİ
+        </button>
 
-      <div class="health-row">
-        <span>Veritabanı</span>
-        <b id="databaseHealth">—</b>
-      </div>
+        <button
+          class="filter"
+          data-filter="watch"
+          onclick="setCandidateFilter('watch',this)">
+          İZLENENLER
+        </button>
 
-      <div class="health-row">
-        <span>Paper Runtime</span>
-        <b id="runtimeHealth">—</b>
-      </div>
+        <button
+          class="filter"
+          data-filter="buy"
+          onclick="setCandidateFilter('buy',this)">
+          UYGUNLAR
+        </button>
 
-      <div class="health-row">
-        <span>Disk Kullanımı</span>
-        <b id="diskHealth">—</b>
-      </div>
-
-      <div class="health-row">
-        <span>Live Execution</span>
-        <b class="red">KAPALI</b>
-      </div>
-
-      <div class="health-row">
-        <span>Wallet Authority</span>
-        <b class="red">YOK</b>
-      </div>
-
-    </div>
-
-  </article>
-
-</section>
-
-<!-- ======================================================
-     FOOT GRID
-     ====================================================== -->
-
-<section class="foot-grid">
-
-  <article class="card foot-card">
-
-    <div class="signal-layout">
-
-      <div class="signal-heading">
-        SON SİNYALLER
+        <button
+          class="filter"
+          data-filter="block"
+          onclick="setCandidateFilter('block',this)">
+          BLOKLANANLAR
+        </button>
       </div>
 
       <div
-        class="signal-list"
-        id="signalList">
+        class="candidate-list"
+        id="candidateList">
+      </div>
 
-        <div class="signal-item">
-          <b>SYSTEM</b>
-          <small>
-            Yeni temiz paper dönemi izleniyor.
-          </small>
+      <div
+        class="candidate-detail"
+        id="candidateDetail">
+      </div>
+
+    </section>
+
+    <!-- RIGHT =============================================== -->
+
+    <div class="right-stack">
+
+      <!-- VEZIR -->
+
+      <section class="card vezir">
+
+        <div class="vezir-head">
+
+          <div>
+            <div class="vezir-title">
+              ♜ VEZİR
+            </div>
+
+            <div class="vezir-sub">
+              PANEL OPERASYON ASİSTANI
+            </div>
+          </div>
+
+          <img
+            class="vezir-avatar"
+            src="/static/vezir.png"
+            alt="Vezir">
+
         </div>
 
-      </div>
+        <div class="quick-prompts">
 
-      <button
-        class="card-link"
-        onclick="openSignalsModal()">
-        TÜMÜ →
-      </button>
+          <button
+            class="quick-prompt"
+            onclick="askVezir('Açık pozisyonları özetle')">
+            AÇIK POZİSYONLAR
+          </button>
+
+          <button
+            class="quick-prompt"
+            onclick="askVezir('Bugünkü PNL')">
+            BUGÜNKÜ PNL
+          </button>
+
+          <button
+            class="quick-prompt"
+            onclick="askVezir('En riskli adayı göster')">
+            EN RİSKLİ ADAY
+          </button>
+
+          <button
+            class="quick-prompt"
+            onclick="openAccounting()">
+            MUHASEBE
+          </button>
+
+        </div>
+
+        <div
+          class="chat"
+          id="chat">
+        </div>
+
+        <div class="chat-input-row">
+
+          <input
+            class="chat-input"
+            id="chatInput"
+            autocomplete="off"
+            placeholder="Vezir'e yaz..."
+            onkeydown="chatKey(event)">
+
+          <button
+            class="send"
+            onclick="sendChat()">
+            GÖNDER
+          </button>
+
+        </div>
+
+      </section>
+
+      <!-- INTELLIGENCE -->
+
+      <section class="card intel">
+
+        <div class="card-head">
+          <span>◈ İSTİHBARAT MERKEZİ</span>
+
+          <small>CANLI ADAYLAR</small>
+        </div>
+
+        <div
+          class="intel-list"
+          id="intelList">
+        </div>
+
+      </section>
 
     </div>
 
-  </article>
+  </main>
 
-  <article class="card foot-card">
+  <!-- FOOTER =============================================== -->
 
-    <div class="quick-layout">
+  <footer class="footer">
 
-      <div class="quick-heading">
-        HIZLI KONTROLLER
+    <section class="card health">
+
+      <div class="footer-title">
+        〽 SİSTEM SAĞLIĞI
       </div>
 
-      <button
-        class="quick-button"
-        onclick="refreshDashboard()">
-        YENİLE
-      </button>
+      <div
+        class="health-items"
+        id="healthItems">
+      </div>
 
-      <button
-        class="quick-button"
-        onclick="openPositionsModal()">
-        POZİSYONLAR
-      </button>
+    </section>
 
-      <button
-        class="quick-button"
-        onclick="openIntelligence()">
-        VEZİR
-      </button>
+    <section class="card signals">
 
-      <button
-        class="quick-button"
-        onclick="focusPerformance()">
-        PERFORMANS
-      </button>
+      <div class="footer-title">
+        ◉ SON SİNYALLER
+      </div>
 
-      <button
-        class="quick-button"
-        onclick="openAuthority('YETKİ')">
-        YETKİ
-      </button>
+      <div
+        class="signal-strip"
+        id="signalStrip">
+      </div>
 
-    </div>
+    </section>
 
-  </article>
-
-</section>
+  </footer>
 
 </div>
 
-<!-- ======================================================
-     MODAL
-     ====================================================== -->
+<!-- ACCOUNTING DRAWER ===================================== -->
 
 <div
-  class="modal"
-  id="modal"
-  onclick="modalBackdrop(event)">
+  class="drawer-backdrop"
+  id="accountingBackdrop"
+  onclick="drawerBackdrop(event)">
 
-  <div class="modal-box">
+  <aside class="drawer">
 
-    <div class="modal-head">
-
-      <span id="modalTitle">
-        DETAY
-      </span>
+    <div class="drawer-head">
+      <div class="drawer-title">
+        MUHASEBE
+      </div>
 
       <button
-        class="modal-close"
-        onclick="closeModal()">
+        class="drawer-close"
+        onclick="closeAccounting()">
         ×
       </button>
-
     </div>
 
-    <div
-      class="modal-content"
-      id="modalContent">
+    <div id="accountingContent">
     </div>
 
-  </div>
+  </aside>
 
 </div>
 
@@ -4024,9 +1946,20 @@ const $ = id =>
   document.getElementById(id);
 
 let dashboard = null;
-let selectedBest = null;
-let chartRange = "day";
+let runtimeCandidates = [];
+let panelAuthority = {};
 
+let selectedPositionId = null;
+let selectedCandidateKey = null;
+
+let candidateFilter = "all";
+let panelMode = "auto";
+
+let chatStarted = false;
+
+/* ========================================================
+   FORMATTING
+   ======================================================== */
 
 function escapeHtml(value){
   return String(value ?? "")
@@ -4037,8 +1970,7 @@ function escapeHtml(value){
     .replaceAll("'","&#039;");
 }
 
-
-function number(value,fallback=0){
+function num(value,fallback=0){
   const parsed = Number(value);
 
   return Number.isFinite(parsed)
@@ -4046,9 +1978,19 @@ function number(value,fallback=0){
     : fallback;
 }
 
+function money(value,dash=false){
+  if(
+    dash &&
+    (
+      value === null ||
+      value === undefined ||
+      value === ""
+    )
+  ){
+    return "—";
+  }
 
-function formatMoney(value){
-  return number(value).toLocaleString(
+  return num(value).toLocaleString(
     "tr-TR",
     {
       minimumFractionDigits:2,
@@ -4057,8 +1999,7 @@ function formatMoney(value){
   ) + " USDT";
 }
 
-
-function formatUsd(value){
+function usd(value){
   if(
     value === null ||
     value === undefined ||
@@ -4076,20 +2017,20 @@ function formatUsd(value){
   return parsed.toLocaleString(
     "tr-TR",
     {
-      minimumFractionDigits:2,
       maximumFractionDigits:2
     }
   ) + " USD";
 }
 
-
-function formatPercent(value){
+function percent(value,dash=true){
   if(
     value === null ||
     value === undefined ||
     value === ""
   ){
-    return "—";
+    return dash
+      ? "—"
+      : "%0,00";
   }
 
   const parsed = Number(value);
@@ -4107,8 +2048,7 @@ function formatPercent(value){
   );
 }
 
-
-function formatPrice(value){
+function price(value){
   if(
     value === null ||
     value === undefined ||
@@ -4126,44 +2066,30 @@ function formatPrice(value){
     return "—";
   }
 
-  /*
-    Token price display rule:
-    preserve leading decimal zeros, then show
-    four meaningful digits with mathematical
-    rounding.
+  let digits = 6;
 
-    Examples:
-    0.0000067527 -> 0,000006753
-    0.0000685517 -> 0,00006855
-    0.00123467   -> 0,001235
-    0.0456789    -> 0,04568
-    0.567891     -> 0,5679
-
-    Prices >= 1 keep four decimal places.
-    Internal numeric precision is untouched.
-  */
-  const decimals =
-    parsed < 1
-      ? Math.max(
-          4,
-          3 - Math.floor(
-            Math.log10(parsed)
-          )
-        )
-      : 4;
+  if(parsed < .000001){
+    digits = 12;
+  }else if(parsed < .0001){
+    digits = 10;
+  }else if(parsed < .01){
+    digits = 8;
+  }else if(parsed < 1){
+    digits = 6;
+  }else{
+    digits = 4;
+  }
 
   return parsed.toLocaleString(
     "tr-TR",
     {
-      minimumFractionDigits:decimals,
-      maximumFractionDigits:decimals
+      minimumFractionDigits:0,
+      maximumFractionDigits:digits
     }
   );
 }
 
-
-
-function formatConfidence(value){
+function confidence(value){
   if(
     value === null ||
     value === undefined ||
@@ -4188,19 +2114,40 @@ function formatConfidence(value){
   return "%" + parsed.toLocaleString(
     "tr-TR",
     {
-      minimumFractionDigits:2,
-      maximumFractionDigits:2
+      minimumFractionDigits:1,
+      maximumFractionDigits:1
     }
   );
 }
 
+function shortAddress(value){
+  const text = String(
+    value || ""
+  );
 
-function formatRuntimeTime(value){
-  if(
-    value === null ||
-    value === undefined ||
-    value === ""
-  ){
+  if(text.length <= 17){
+    return text || "TOKEN";
+  }
+
+  return (
+    text.slice(0,8) +
+    "…" +
+    text.slice(-5)
+  );
+}
+
+function tokenName(row){
+  return (
+    row?.symbol ||
+    row?.name ||
+    shortAddress(
+      row?.token
+    )
+  );
+}
+
+function displayTime(value){
+  if(!value){
     return "—";
   }
 
@@ -4218,93 +2165,49 @@ function formatRuntimeTime(value){
       ) + "Z";
   }
 
-  const parsed =
+  const date =
     new Date(source);
 
   if(
     Number.isNaN(
-      parsed.getTime()
+      date.getTime()
     )
   ){
-    return "—";
+    return String(value);
   }
 
-  return parsed.toLocaleTimeString(
+  return date.toLocaleString(
     "tr-TR",
     {
+      month:"2-digit",
+      day:"2-digit",
       hour:"2-digit",
-      minute:"2-digit",
-      timeZone:"Asia/Nicosia"
+      minute:"2-digit"
     }
   );
 }
 
-
-function paint(node,value){
-  if(!node){
-    return;
-  }
-
-  node.classList.remove(
-    "green",
-    "red"
-  );
-
-  const parsed = number(value);
+function pnlClass(value){
+  const parsed =
+    num(value);
 
   if(parsed > 0){
-    node.classList.add("green");
+    return "green";
   }
 
   if(parsed < 0){
-    node.classList.add("red");
+    return "red";
   }
+
+  return "";
 }
-
-
-function textValue(value){
-  if(
-    value === null ||
-    value === undefined ||
-    value === ""
-  ){
-    return "—";
-  }
-
-  if(typeof value === "boolean"){
-    return value
-      ? "EVET"
-      : "HAYIR";
-  }
-
-  return String(value)
-    .replaceAll("_"," ")
-    .toUpperCase();
-}
-
-
-function shortToken(row){
-  if(row?.symbol){
-    return row.symbol;
-  }
-
-  const token = String(
-    row?.token || "TOKEN"
-  );
-
-  return token.length > 15
-    ? token.slice(0,8) +
-      "…" +
-      token.slice(-5)
-    : token;
-}
-
 
 async function getJson(path){
-  const response = await fetch(
-    path,
-    {cache:"no-store"}
-  );
+  const response =
+    await fetch(
+      path,
+      {cache:"no-store"}
+    );
 
   if(!response.ok){
     throw new Error(
@@ -4317,2216 +2220,2106 @@ async function getJson(path){
   return response.json();
 }
 
+/* ========================================================
+   HEADER
+   ======================================================== */
 
-function openModal(title,html){
-  $("modalTitle").textContent = title;
-  $("modalContent").innerHTML = html;
-  $("modal").classList.add("open");
-}
+function renderSummary(){
+  const summary =
+    dashboard?.summary || {};
 
-
-function closeModal(){
-  $("modal").classList.remove("open");
-}
-
-
-function modalBackdrop(event){
-  if(event.target === $("modal")){
-    closeModal();
-  }
-}
-
-
-function openJsonModal(title,value){
-  openModal(
-    title,
-    "<pre>" +
-      escapeHtml(
-        JSON.stringify(
-          value,
-          null,
-          2
-        )
-      ) +
-    "</pre>"
-  );
-}
-
-
-async function openAuthority(action){
-  try{
-    const authority = await getJson(
-      "/api/authority"
-    );
-
-    openModal(
-      action + " · YETKİ DURUMU",
-      `
-        <p>
-          ${escapeHtml(authority.message)}
-        </p>
-
-        <pre>
-${escapeHtml(
-  JSON.stringify(
-    authority,
-    null,
-    2
-  )
-)}
-        </pre>
-      `
-    );
-
-  }catch(error){
-    openModal(
-      "YETKİ HATASI",
-      "<p>" +
-        escapeHtml(error.message) +
-      "</p>"
-    );
-  }
-}
-
-
-async function openIntelligence(){
-  try{
-    const intelligence = await getJson(
-      "/api/intelligence"
-    );
-
-    openJsonModal(
-      "VEZİR · İSTİHBARAT RAPORU",
-      intelligence
-    );
-
-  }catch(error){
-    openModal(
-      "İSTİHBARAT HATASI",
-      "<p>" +
-        escapeHtml(error.message) +
-      "</p>"
-    );
-  }
-}
-
-
-async function openBestEvidence(){
-  if(selectedBest?.runtime_candidate){
-    openJsonModal(
-      runtimeCandidateShortToken(
-        selectedBest.runtime_raw ||
-        selectedBest
-      ) +
-      " · CANLI ADAY KANITI",
-      selectedBest.runtime_raw ||
-      selectedBest
-    );
-    return;
-  }
-
-  if(!selectedBest?.id){
-    openModal(
-      "ATIŞ POLİGONU",
-      "<p>Seçili gerçek paper pozisyonu bulunmuyor.</p>"
-    );
-    return;
-  }
-
-  try{
-    const evidence = await getJson(
-      "/api/position/" +
-      selectedBest.id +
-      "/evidence"
-    );
-
-    openJsonModal(
-      shortToken(selectedBest) +
-      " · GİRİŞ KANITI",
-      evidence
-    );
-
-  }catch(error){
-    openModal(
-      "KANIT HATASI",
-      "<p>" +
-        escapeHtml(error.message) +
-      "</p>"
-    );
-  }
-}
-
-
-function openPositionsModal(){
-  const positions =
-    dashboard?.positions || [];
-
-  if(!positions.length){
-    openModal(
-      "AÇIK POZİSYONLAR",
-      "<p>Açık paper pozisyon yok.</p>"
-    );
-    return;
-  }
-
-  const rows = positions.map(position=>`
-    <tr>
-      <td>
-        ${escapeHtml(shortToken(position))}
-      </td>
-
-      <td>
-        ${escapeHtml(
-          textValue(
-            position.trade_policy ||
-            "LEGACY"
-          )
-        )}
-      </td>
-
-      <td>
-        ${escapeHtml(
-          formatPrice(position.entry_price)
-        )}
-      </td>
-
-      <td>
-        ${escapeHtml(
-          formatPrice(position.current_price)
-        )}
-      </td>
-
-      <td>
-        ${escapeHtml(
-          formatPrice(position.sl_price)
-        )}
-      </td>
-
-      <td>
-        ${escapeHtml(
-          formatPercent(position.roi_pct)
-        )}
-      </td>
-
-      <td>
-        ${escapeHtml(
-          formatMoney(
-            position.net_pnl_usdt ??
-            position.net_pnl
-          )
-        )}
-      </td>
-    </tr>
-  `).join("");
-
-  openModal(
-    "TÜM AÇIK POZİSYONLAR",
-    `
-      <table>
-
-        <thead>
-          <tr>
-            <th>Token</th>
-            <th>Policy</th>
-            <th>Giriş</th>
-            <th>Güncel</th>
-            <th>SL</th>
-            <th>ROI</th>
-            <th>Net</th>
-          </tr>
-        </thead>
-
-        <tbody>
-          ${rows}
-        </tbody>
-
-      </table>
-    `
-  );
-}
-
-
-function openSignalsModal(){
-  openJsonModal(
-    "SON SİNYALLER",
-    dashboard?.signals || []
-  );
-}
-
-
-function focusPerformance(){
-  openJsonModal(
-    "PERFORMANS DETAYI",
-    {
-      summary:
-        dashboard?.summary,
-      performance:
-        dashboard?.performance,
-      series:
-        dashboard?.series
-    }
-  );
-}
-
-
-function renderSummary(summary){
   $("balance").textContent =
-    formatMoney(summary.equity);
+    money(summary.equity);
 
   $("dailyPnl").textContent =
-    formatMoney(summary.daily_pnl);
+    money(summary.daily_pnl);
+
+  $("dailyPnl").className =
+    "metric-value " +
+    pnlClass(
+      summary.daily_pnl
+    );
 
   $("totalPnl").textContent =
-    formatMoney(summary.total_pnl);
+    money(summary.total_pnl);
+
+  $("totalPnl").className =
+    "metric-value " +
+    pnlClass(
+      summary.total_pnl
+    );
+
+  $("localDate").textContent =
+    summary.local_date
+      ? "Bugün · " +
+        summary.local_date
+      : "Yerel gün";
+
+  const starting =
+    num(
+      summary.starting_capital
+    );
+
+  $("totalPnlPct").textContent =
+    starting > 0
+      ? percent(
+          num(
+            summary.total_pnl
+          ) /
+          starting *
+          100
+        )
+      : "—";
 
   $("openCount").textContent =
     summary.open_count ?? 0;
 
   $("openInvestment").textContent =
-    formatMoney(summary.open_investment);
-
-  $("riskUsed").textContent =
-    formatPercent(summary.risk_used_pct);
-
-  $("riskAmountTop").textContent =
-    formatMoney(summary.open_risk);
-
-  $("dailyPnlSub").textContent =
-    summary.local_date
-      ? (
-          "Bugün · " +
-          summary.local_date
-        )
-      : "Yeni dönem";
-
-  $("totalPnlSub").textContent =
-    formatPercent(
-      summary.starting_capital > 0
-        ? (
-            summary.total_pnl /
-            summary.starting_capital *
-            100
-          )
-        : 0
+    money(
+      summary.open_investment
     );
 
-  paint(
-    $("dailyPnl"),
-    summary.daily_pnl
-  );
-
-  paint(
-    $("totalPnl"),
-    summary.total_pnl
-  );
-}
-
-
-function renderVezir(data){
-  const intelligence =
-    data.intelligence || {};
-
-  const summary =
-    intelligence.summary || {};
-
-  if(summary.vezir_summary){
-    $("vezirText").textContent =
-      summary.vezir_summary;
-  }
-
-  $("vezirPoint1").textContent =
-    (data.summary.open_count || 0) +
-    " açık paper pozisyon izleniyor.";
-
-  $("vezirPoint2").textContent =
-    (intelligence.tracked_wallets || 0) +
-    " wallet registry kaydı mevcut.";
-
-  $("vezirPoint3").textContent =
-    "Live execution kapalı · Panel read-only.";
-}
-
-
-function runtimeCandidateRank(candidate){
-  const action = String(
-    candidate?.paper_action ||
-    candidate?.unified ||
-    candidate?.strategy ||
-    ""
-  ).toUpperCase();
-
-  const actionRank = {
-    PAPER_BUY: 3,
-    WATCH: 2,
-    REJECT: 0
-  }[action] ?? 1;
-
-  const hardRank =
-    candidate?.hard_block === false
-      ? 2
-      : candidate?.hard_block === true
-        ? 0
-        : 1;
-
-  const sellability = String(
-    candidate?.sellability || ""
-  )
-    .toUpperCase()
-    .replace(
-      "SELLABILITY_",
-      ""
+  $("riskPct").textContent =
+    percent(
+      summary.risk_used_pct,
+      false
     );
-
-  const sellRank = {
-    OK: 2,
-    UNKNOWN: 1,
-    FAIL: 0
-  }[sellability] ?? 1;
-
-  const confidence = number(
-    candidate?.coverage_confidence ??
-    candidate?.evidence_coverage ??
-    0
-  );
-
-  return (
-    actionRank * 100000 +
-    hardRank * 10000 +
-    sellRank * 1000 +
-    confidence
-  );
-}
-
-
-function selectBestRuntimeCandidate(candidates){
-  const list = [
-    ...(candidates || [])
-  ];
-
-  list.sort(
-    (a,b)=>
-      runtimeCandidateRank(b) -
-      runtimeCandidateRank(a)
-  );
-
-  return list[0] || null;
-}
-
-
-function runtimeCandidateToBest(candidate){
-  if(!candidate){
-    return null;
-  }
-
-  return {
-    runtime_candidate: true,
-    runtime_raw: candidate,
-
-    token: candidate.token,
-    pool: candidate.pool,
-    dex: "BSC · RUNTIME",
-
-    entry_evidence: {
-      unified_decision:
-        candidate.paper_action ||
-        candidate.unified ||
-        candidate.strategy ||
-        null,
-
-      confidence:
-        candidate.coverage_confidence ??
-        candidate.evidence_coverage ??
-        null,
-
-      hard_block:
-        candidate.hard_block,
-
-      sellability:
-        candidate.sellability
-    }
-  };
-}
-
-
-
-function applyRuntimeCandidateState(candidate){
-  const signalBox =
-    $("bestSignalBox");
-
-  const watchButton =
-    $("bestWatchButton");
-
-  if(signalBox){
-    signalBox.classList.remove(
-      "state-ready",
-      "state-watch",
-      "state-reject"
-    );
-  }
-
-  if(watchButton){
-    watchButton.classList.remove(
-      "state-ready",
-      "state-watch",
-      "state-reject"
-    );
-  }
-
-  if(!candidate){
-    if(watchButton){
-      watchButton.textContent =
-        "★ İZLE / KANIT";
-    }
-
-    return;
-  }
-
-  const action = String(
-    candidate.paper_action ||
-    candidate.unified ||
-    candidate.strategy ||
-    ""
-  ).toUpperCase();
-
-  const reason = String(
-    candidate.reason || ""
-  ).toUpperCase();
-
-  const amountKnown =
-    candidate.entry_amount_usdt !== null &&
-    candidate.entry_amount_usdt !== undefined;
-
-  const zeroAmount =
-    amountKnown &&
-    Number(
-      candidate.entry_amount_usdt
-    ) <= 0;
-
-  const rejected =
-    action === "REJECT" ||
-    candidate.hard_block === true;
-
-  const blocked =
-    rejected ||
-    reason === "PLAN_BLOCKED" ||
-    zeroAmount;
-
-  let state = "state-watch";
-
-  if(rejected){
-    state = "state-reject";
-  }else if(
-    action === "PAPER_BUY" &&
-    !blocked
-  ){
-    state = "state-ready";
-  }
-
-  if(signalBox){
-    signalBox.classList.add(state);
-  }
-
-  if(watchButton){
-    watchButton.classList.add(state);
-
-    watchButton.textContent =
-      state === "state-ready"
-        ? "✓ PAPER BUY ADAYI"
-        : state === "state-reject"
-          ? "× RED / BLOCK"
-          : blocked
-            ? "◉ İZLE · PLAN BLOKLU"
-            : "◉ İZLE / KANIT";
-  }
-
-  $("bestScoreState").textContent =
-    textValue(
-      candidate.paper_action ||
-      candidate.unified ||
-      candidate.strategy ||
-      action
-    );
-}
-
-
-function renderRuntimeBestDetails(best){
-  if(!best?.runtime_candidate){
-    return;
-  }
-
-  const candidate =
-    best.runtime_raw || {};
-
-  const confidence =
-    candidate.coverage_confidence ??
-    candidate.evidence_coverage;
-
-  $("bestToken").textContent =
-    runtimeCandidateShortToken(
-      candidate
-    );
-
-  $("bestPair").textContent =
-    candidate.name
-      ? " / " + candidate.name
-      : " / CANLI ADAY";
-
-  $("bestScore").textContent =
-    formatConfidence(
-      confidence
-    );
-
-  $("liquidity").textContent =
-    candidate.liquidity === null ||
-    candidate.liquidity === undefined
-      ? "—"
-      : formatUsd(
-          candidate.liquidity
-        );
-
-  $("currentPrice").textContent =
-    formatPrice(
-      candidate.price_usd
-    );
-
-  $("positionSize").textContent =
-    candidate.entry_amount_usdt === null ||
-    candidate.entry_amount_usdt === undefined
-      ? "—"
-      : (
-          Number(
-            candidate.entry_amount_usdt
-          ) <= 0
-            ? "0,00 USDT · BLOKLU"
-            : formatMoney(
-                candidate.entry_amount_usdt
-              )
-        );
-
-  $("trend").textContent =
-    candidate.volume_24h === null ||
-    candidate.volume_24h === undefined
-      ? "—"
-      : formatUsd(
-          candidate.volume_24h
-        );
-
-  $("timing").textContent =
-    candidate.buys_24h === null ||
-    candidate.buys_24h === undefined
-      ? "—"
-      : Number(
-          candidate.buys_24h
-        ).toLocaleString(
-          "tr-TR"
-        );
-
-  $("confidence").textContent =
-    formatRuntimeTime(
-      candidate.cache_updated_at ||
-      candidate.observed_at
-    );
-
-  $("bestRoi").textContent =
-    candidate.fdv === null ||
-    candidate.fdv === undefined
-      ? "—"
-      : formatUsd(
-          candidate.fdv
-        );
-
-  $("bestNet").textContent =
-    candidate.entry_amount_usdt === null ||
-    candidate.entry_amount_usdt === undefined
-      ? "—"
-      : (
-          Number(
-            candidate.entry_amount_usdt
-          ) <= 0
-            ? "0,00 USDT · BLOKLU"
-            : formatMoney(
-                candidate.entry_amount_usdt
-              )
-        );
-
-  $("bestNet").classList.remove(
-    "green",
-    "red"
-  );
-
-  $("bestRoi").classList.remove(
-    "green",
-    "red"
-  );
-
-  $("controlAmount").textContent =
-    runtimeCandidateShortToken(
-      candidate
-    );
-
-  $("bestChain").textContent =
-    [
-      candidate.dex ||
-      "BSC RUNTIME",
-
-      candidate.pool
-        ? String(
-            candidate.pool
-          ).slice(0,14)
-        : null
-    ]
-      .filter(Boolean)
-      .join(" · ");
-
-  if(candidate.sizing_reason){
-    $("marketState").textContent =
-      textValue(
-        candidate.sizing_reason
-      );
-  }
-
-  applyRuntimeCandidateState(
-    candidate
-  );
-}
-
-
-function renderBest(best){
-  selectedBest = best || null;
-
-  if(!best){
-    $("bestToken").textContent =
-      "BEKLENİYOR";
-
-    $("bestPair").textContent =
-      "";
-
-    $("bestChain").textContent =
-      "Yeni paper pozisyon bekleniyor";
-
-    $("bestScore").textContent =
-      "—";
-
-    $("bestScoreState").textContent =
-      "VERİ BEKLENİYOR";
-
-    $("bestDetailButton").textContent =
-      "VERİ BEKLENİYOR";
-
-    [
-      "liquidity",
-      "sellability",
-      "security",
-      "riskState",
-      "rangeState",
-      "marketState",
-      "entryPrice",
-      "currentPrice",
-      "tpPrice",
-      "slPrice",
-      "positionSize",
-      "riskAmount",
-      "trend",
-      "timing",
-      "confidence",
-      "bestRoi",
-      "bestNet"
-    ].forEach(id=>{
-      $(id).textContent = "—";
-    });
-
-    $("controlAmount").textContent =
-      "—";
-
-    applyRuntimeCandidateState(
-      null
-    );
-
-    return;
-  }
-
-  const evidence =
-    best.entry_evidence || {};
-
-  $("bestToken").textContent =
-    shortToken(best);
-
-  $("bestPair").textContent =
-    best.runtime_candidate
-      ? " / CANLI ADAY"
-      : " / " + textValue(
-          best.trade_policy ||
-          "PAPER"
-        );
-
-  $("bestChain").textContent =
-    [
-      best.dex,
-      best.pool
-        ? String(best.pool).slice(0,14)
-        : null
-    ]
-    .filter(Boolean)
-    .join(" · ") ||
-    "PAPER";
-
-  $("bestScore").textContent =
-    evidence.score === null ||
-    evidence.score === undefined
-      ? "—"
-      : number(evidence.score)
-          .toLocaleString(
-            "tr-TR",
-            {
-              minimumFractionDigits:2,
-              maximumFractionDigits:2
-            }
-          ) +
-        " /100";
-
-  $("bestScoreState").textContent =
-    evidence.unified_decision
-      ? textValue(
-          evidence.unified_decision
-        )
-      : (
-          best.roi_pct > 0
-            ? "POZİTİF"
-            : "İZLENİYOR"
-        );
-
-  $("bestDetailButton").textContent =
-    best.runtime_candidate
-      ? "CANLI KANITI GÖR"
-      : "KANITI GÖR";
-
-  $("liquidity").textContent =
-    textValue(evidence.liquidity);
-
-  $("sellability").textContent =
-    textValue(evidence.sellability);
-
-  $("security").textContent =
-    evidence.hard_block === true
-      ? "BLOCK"
-      : evidence.hard_block === false
-        ? "TEMİZ"
-        : "—";
-
-  $("riskState").textContent =
-    evidence.hard_block === true
-      ? "YÜKSEK"
-      : evidence.hard_block === false
-        ? "DÜŞÜK"
-        : "—";
-
-  $("rangeState").textContent =
-    textValue(evidence.range_state);
-
-  $("marketState").textContent =
-    textValue(evidence.market_state);
-
-  $("entryPrice").textContent =
-    formatPrice(best.entry_price);
-
-  $("currentPrice").textContent =
-    formatPrice(best.current_price);
-
-  $("tpPrice").textContent =
-    formatPrice(best.tp_price);
-
-  $("slPrice").textContent =
-    formatPrice(best.sl_price);
-
-  $("positionSize").textContent =
-    best.entry_amount_usdt === null ||
-    best.entry_amount_usdt === undefined
-      ? "—"
-      : formatMoney(
-          best.entry_amount_usdt
-        );
 
   $("riskAmount").textContent =
-    best.risk_amount_usdt === null ||
-    best.risk_amount_usdt === undefined
-      ? "—"
-      : formatMoney(
-          best.risk_amount_usdt
-        );
-
-  $("trend").textContent =
-    textValue(evidence.trend);
-
-  $("timing").textContent =
-    textValue(evidence.timing);
-
-  $("confidence").textContent =
-    formatPercent(
-      evidence.confidence
+    money(
+      summary.open_risk
     );
-
-  $("bestRoi").textContent =
-    formatPercent(best.roi_pct);
-
-  const hasNet =
-    best.net_pnl_usdt !== null &&
-    best.net_pnl_usdt !== undefined ||
-    best.net_pnl !== null &&
-    best.net_pnl !== undefined;
-
-  const net =
-    best.net_pnl_usdt ??
-    best.net_pnl;
-
-  $("bestNet").textContent =
-    hasNet
-      ? formatMoney(net)
-      : "—";
-
-  paint(
-    $("bestRoi"),
-    best.roi_pct
-  );
-
-  if(hasNet){
-    paint(
-      $("bestNet"),
-      net
-    );
-  }else{
-    $("bestNet").classList.remove(
-      "green",
-      "red"
-    );
-  }
-
-  $("controlAmount").textContent =
-    best.entry_amount_usdt === null ||
-    best.entry_amount_usdt === undefined
-      ? "—"
-      : formatMoney(
-          best.entry_amount_usdt
-        );
 }
 
+/* ========================================================
+   MARKET
+   ======================================================== */
 
-function positionPlaceholder(){
+async function fetchMarketTicker(
+  symbol,
+  priceNode,
+  changeNode
+){
+  try{
+    const response =
+      await fetch(
+        "https://api.binance.com/api/v3/ticker/24hr?symbol=" +
+        symbol,
+        {
+          cache:"no-store"
+        }
+      );
+
+    if(!response.ok){
+      throw new Error(
+        "market " +
+        response.status
+      );
+    }
+
+    const data =
+      await response.json();
+
+    const current =
+      Number(
+        data.lastPrice
+      );
+
+    const change =
+      Number(
+        data.priceChangePercent
+      );
+
+    priceNode.textContent =
+      current.toLocaleString(
+        "en-US",
+        {
+          minimumFractionDigits:2,
+          maximumFractionDigits:2
+        }
+      );
+
+    changeNode.textContent =
+      (
+        change >= 0
+          ? "+"
+          : ""
+      ) +
+      change.toFixed(2) +
+      "% · BINANCE";
+
+    changeNode.className =
+      "market-change " +
+      pnlClass(change);
+
+  }catch(error){
+    priceNode.textContent =
+      "—";
+
+    changeNode.textContent =
+      "Market feed yok";
+
+    changeNode.className =
+      "market-change muted";
+  }
+}
+
+function refreshMarket(){
+  fetchMarketTicker(
+    "BTCUSDT",
+    $("btcPrice"),
+    $("btcChange")
+  );
+
+  fetchMarketTicker(
+    "ETHUSDT",
+    $("ethPrice"),
+    $("ethChange")
+  );
+}
+
+/* ========================================================
+   MODE / AUTHORITY
+   ======================================================== */
+
+function setPanelMode(mode){
+  panelMode =
+    mode === "manual"
+      ? "manual"
+      : "auto";
+
+  sessionStorage.setItem(
+    "coinoskobi-panel-mode",
+    panelMode
+  );
+
+  $("autoModeButton")
+    .classList.toggle(
+      "active",
+      panelMode === "auto"
+    );
+
+  $("manualModeButton")
+    .classList.toggle(
+      "active",
+      panelMode === "manual"
+    );
+
+  renderPositionDetail();
+  renderCandidateDetail();
+
+  if(panelMode === "manual"){
+    const allowed =
+      Boolean(
+        panelAuthority
+          ?.manual_order_authority
+      );
+
+    if(!allowed){
+      addChatMessage(
+        "vezir",
+        (
+          "Manuel görünüm seçildi. " +
+          "Backend manual order authority kapalı olduğu için " +
+          "AL/SAT işlemleri aktif edilmedi."
+        )
+      );
+    }
+  }
+}
+
+function manualActionAllowed(){
+  return (
+    panelMode === "manual" &&
+    Boolean(
+      panelAuthority
+        ?.manual_order_authority
+    )
+  );
+}
+
+function manualActionMessage(){
+  addChatMessage(
+    "vezir",
+    (
+      "Bu panelde gerçek emir endpoint'i açık değil. " +
+      "Mevcut authority sınırı korunuyor."
+    )
+  );
+}
+
+/* ========================================================
+   POSITIONS
+   ======================================================== */
+
+function policyBadge(policy){
+  const normalized =
+    String(
+      policy || "LEGACY"
+    ).toUpperCase();
+
+  let cls = "legacy";
+
+  if(normalized === "NORMAL"){
+    cls = "normal";
+  }
+
+  if(normalized === "VUR_KAC"){
+    cls = "vurkac";
+  }
+
+  return (
+    '<span class="badge ' +
+    cls +
+    '">' +
+    escapeHtml(
+      normalized.replaceAll(
+        "_",
+        "-"
+      )
+    ) +
+    "</span>"
+  );
+}
+
+function renderPositions(){
+  const positions =
+    dashboard?.positions || [];
+
+  $("positionHeadState")
+    .textContent =
+      positions.length +
+      " açık";
+
+  if(!positions.length){
+    selectedPositionId =
+      null;
+
+    $("positionList")
+      .innerHTML =
+        '<div class="empty">' +
+        "Açık pozisyon yok" +
+        "</div>";
+
+    renderPositionDetail();
+
+    return;
+  }
+
+  if(
+    selectedPositionId === null ||
+    !positions.some(
+      row =>
+        Number(row.id) ===
+        Number(
+          selectedPositionId
+        )
+    )
+  ){
+    selectedPositionId =
+      positions[0].id;
+  }
+
+  $("positionList")
+    .innerHTML =
+      positions.map(
+        row => {
+          const pnl =
+            row.net_pnl_usdt ??
+            row.net_pnl ??
+            0;
+
+          const selected =
+            Number(row.id) ===
+            Number(
+              selectedPositionId
+            );
+
+          return `
+            <button
+              class="position-row ${
+                selected
+                  ? "selected"
+                  : ""
+              }"
+              onclick="selectPosition(${
+                Number(row.id)
+              })">
+
+              <div class="position-token">
+                ${escapeHtml(
+                  tokenName(row)
+                )}
+
+                <small>
+                  ${escapeHtml(
+                    shortAddress(
+                      row.token
+                    )
+                  )}
+                </small>
+              </div>
+
+              <div>
+                ${policyBadge(
+                  row.trade_policy
+                )}
+              </div>
+
+              <div class="position-cell">
+                ${escapeHtml(
+                  price(
+                    row.entry_price
+                  )
+                )}
+              </div>
+
+              <div class="position-cell">
+                ${escapeHtml(
+                  price(
+                    row.current_price
+                  )
+                )}
+              </div>
+
+              <div
+                class="position-cell ${
+                  pnlClass(pnl)
+                }">
+                ${escapeHtml(
+                  money(pnl)
+                )}
+              </div>
+
+              <div
+                class="position-cell ${
+                  pnlClass(
+                    row.roi_pct
+                  )
+                }">
+                ${escapeHtml(
+                  percent(
+                    row.roi_pct
+                  )
+                )}
+              </div>
+
+            </button>
+          `;
+        }
+      ).join("");
+
+  renderPositionDetail();
+}
+
+function selectPosition(id){
+  selectedPositionId =
+    Number(id);
+
+  renderPositions();
+}
+
+function positionDetailItem(
+  label,
+  value,
+  cls=""
+){
   return `
-    <div class="position-row placeholder-row">
-      <b>AÇIK POZİSYON YOK</b>
-      <span>—</span>
-      <span>—</span>
-      <span>0,00 USDT</span>
-      <span>—</span>
+    <div class="detail-item">
+      <small>
+        ${escapeHtml(label)}
+      </small>
+
+      <b class="${cls}">
+        ${escapeHtml(value)}
+      </b>
     </div>
   `;
 }
 
-
-function renderPositions(data){
+function renderPositionDetail(){
   const positions =
-    data.positions || [];
+    dashboard?.positions || [];
 
-  const summary =
-    data.summary || {};
+  const row =
+    positions.find(
+      item =>
+        Number(item.id) ===
+        Number(
+          selectedPositionId
+        )
+    );
 
-  $("summaryPositions").textContent =
-    positions.length;
-
-  $("summaryInvestment").textContent =
-    formatMoney(summary.open_investment);
-
-  $("summaryPnl").textContent =
-    formatMoney(summary.open_pnl);
-
-  $("summaryRoi").textContent =
-    formatPercent(summary.open_roi_pct);
-
-  paint(
-    $("summaryPnl"),
-    summary.open_pnl
-  );
-
-  paint(
-    $("summaryRoi"),
-    summary.open_roi_pct
-  );
-
-  if(!positions.length){
-    $("positionList").innerHTML =
-      positionPlaceholder();
+  if(!row){
+    $("positionDetail")
+      .innerHTML = `
+        <div class="empty">
+          Açık pozisyon olduğunda detayları burada göreceksin.
+        </div>
+      `;
 
     return;
   }
 
-  $("positionList").innerHTML =
-    positions
-      .slice(0,2)
-      .map((position,index)=>{
+  const pnl =
+    row.net_pnl_usdt ??
+    row.net_pnl ??
+    0;
 
-        const pnl =
-          position.net_pnl_usdt ??
-          position.net_pnl ??
-          0;
+  const costComplete =
+    Number(
+      row.cost_model_complete ||
+      0
+    ) === 1;
 
-        return `
-          <div class="position-row">
+  const allowed =
+    manualActionAllowed();
 
-            <div class="position-token">
-              ${index + 1}.
-              ${escapeHtml(
-                shortToken(position)
-              )}
+  $("positionDetail")
+    .innerHTML = `
+      <div class="detail-title">
+        <span>
+          ${escapeHtml(
+            tokenName(row)
+          )}
+        </span>
 
-              <small>
-                ${escapeHtml(
-                  [
-                    position.trade_policy ||
-                    "LEGACY",
+        ${policyBadge(
+          row.trade_policy
+        )}
+      </div>
 
-                    position.dex ||
-                    "PAPER",
+      <div class="detail-grid">
 
-                    Number(
-                      position.cost_model_complete ||
-                      0
-                    ) === 1
-                      ? "COST TAMAM"
-                      : "COST EKSİK"
-                  ].join(" · ")
-                )}
-              </small>
-            </div>
+        ${positionDetailItem(
+          "Giriş zamanı",
+          displayTime(
+            row.created_at
+          )
+        )}
 
-            <span>
-              ${escapeHtml(
-                formatPrice(
-                  position.entry_price
-                )
-              )}
-            </span>
+        ${positionDetailItem(
+          "PNL",
+          money(pnl),
+          pnlClass(pnl)
+        )}
 
-            <span>
-              ${escapeHtml(
-                formatPrice(
-                  position.current_price
-                )
-              )}
-            </span>
+        ${positionDetailItem(
+          "Giriş fiyatı",
+          price(
+            row.entry_price
+          )
+        )}
 
-            <b class="${
-              number(pnl) >= 0
-                ? "green"
-                : "red"
-            }">
-              ${escapeHtml(
-                formatMoney(pnl)
-              )}
-            </b>
+        ${positionDetailItem(
+          "Güncel fiyat",
+          price(
+            row.current_price
+          )
+        )}
 
-            <b class="${
-              number(position.roi_pct) >= 0
-                ? "green"
-                : "red"
-            }">
-              ${escapeHtml(
-                formatPercent(
-                  position.roi_pct
-                )
-              )}
-            </b>
+        ${positionDetailItem(
+          "En yüksek",
+          price(
+            row.highest_price
+          )
+        )}
 
-          </div>
-        `;
-      })
-      .join("");
+        ${positionDetailItem(
+          "En düşük",
+          price(
+            row.lowest_price
+          )
+        )}
+
+        ${positionDetailItem(
+          "TP",
+          price(
+            row.tp_price
+          )
+        )}
+
+        ${positionDetailItem(
+          "SL",
+          price(
+            row.sl_price
+          )
+        )}
+
+        ${positionDetailItem(
+          "Risk tutarı",
+          money(
+            row.risk_amount_usdt,
+            true
+          )
+        )}
+
+        ${positionDetailItem(
+          "Pozisyon",
+          money(
+            row.entry_amount_usdt,
+            true
+          )
+        )}
+
+        ${positionDetailItem(
+          "Cost model",
+          costComplete
+            ? "TAMAM"
+            : "EKSİK",
+          costComplete
+            ? "green"
+            : "yellow"
+        )}
+
+        ${positionDetailItem(
+          "Sizing",
+          String(
+            row.sizing_reason ||
+            "—"
+          ).replaceAll(
+            "_",
+            " "
+          )
+        )}
+
+      </div>
+
+      <div class="action-row">
+
+        <button
+          class="action sell"
+          ${
+            allowed
+              ? ""
+              : "disabled"
+          }
+          onclick="manualActionMessage()">
+          KAPAT
+          ${
+            allowed
+              ? ""
+              : " · YETKİ YOK"
+          }
+        </button>
+
+        <button
+          class="action secondary"
+          ${
+            allowed
+              ? ""
+              : "disabled"
+          }
+          onclick="manualActionMessage()">
+          KISMİ SAT
+          ${
+            allowed
+              ? ""
+              : " · YETKİ YOK"
+          }
+        </button>
+
+      </div>
+    `;
 }
 
+/* ========================================================
+   CANDIDATES
+   ======================================================== */
 
-function renderIntelligence(intelligence){
-  const summary =
-    intelligence?.summary || {};
+function candidateKey(row){
+  return (
+    String(
+      row?.token || ""
+    ).toLowerCase() +
+    "|" +
+    String(
+      row?.pool || ""
+    ).toLowerCase()
+  );
+}
 
-  $("whaleText").textContent =
-    (intelligence.active_whales || 0) +
-    " whale snapshot kaydı.";
+function candidateState(row){
+  const action =
+    String(
+      row?.paper_action ||
+      row?.unified ||
+      row?.strategy ||
+      ""
+    ).toUpperCase();
 
-  $("whaleState").textContent =
-    intelligence.active_whales || "—";
-
-  $("walletText").textContent =
-    (intelligence.successful_wallets || 0) +
-    " wallet success kaydı.";
-
-  $("walletState").textContent =
-    intelligence.successful_wallets ||
-    "—";
-
-  $("outcomeText").textContent =
-    (intelligence.outcome_evidence || 0) +
-    " outcome evidence kaydı.";
-
-  $("outcomeState").textContent =
-    intelligence.outcome_evidence ||
-    "—";
-
-  $("registryText").textContent =
-    (intelligence.tracked_wallets || 0) +
-    " wallet registry kaydı.";
-
-  $("registryState").textContent =
-    intelligence.tracked_wallets ||
-    "—";
-
-  if(summary.vezir_summary){
-    $("intelVezirText").textContent =
-      summary.vezir_summary;
+  if(
+    row?.hard_block === true ||
+    action === "REJECT"
+  ){
+    return "block";
   }
-}
 
-
-function renderHealth(health){
-  const databaseOk =
-    Boolean(health.database);
-
-  $("panelHealth").textContent =
-    textValue(
-      health.panel_api ||
-      "unknown"
-    );
-
-  $("databaseHealth").textContent =
-    databaseOk
-      ? "AKTİF"
-      : "HATA";
-
-  $("runtimeHealth").textContent =
-    textValue(
-      health.paper_runtime ||
-      "unknown"
-    );
-
-  $("diskHealth").textContent =
-    formatPercent(
-      health.disk_usage_pct
-    );
-
-  $("healthTitle").textContent =
-    databaseOk
-      ? "SİSTEM SAĞLIKLI"
-      : "VERİTABANI KONTROL";
-
-  $("healthSubtitle").textContent =
-    databaseOk
-      ? "Panel API ve paper DB erişilebilir."
-      : "Paper DB erişimi kontrol edilmeli.";
-
-  $("databaseHealth").className =
-    databaseOk
-      ? "green"
-      : "red";
-}
-
-
-function filterSeries(series,range){
-  if(range === "all"){
-    return series;
+  if(action === "PAPER_BUY"){
+    return "buy";
   }
 
-  const now = Date.now();
+  return "watch";
+}
 
-  const duration = {
-    day:
-      24 *
-      60 *
-      60 *
-      1000,
+function candidateBadge(row){
+  const state =
+    candidateState(row);
 
-    week:
-      7 *
-      24 *
-      60 *
-      60 *
-      1000,
+  let text = "WATCH";
 
-    month:
-      30 *
-      24 *
-      60 *
-      60 *
-      1000
-  }[range];
+  if(state === "buy"){
+    text = "PAPER_BUY";
+  }
 
-  return series.filter(point=>{
-    const timestamp =
-      Date.parse(
-        point.timestamp || ""
+  if(state === "block"){
+    text = "BLOCKED";
+  }
+
+  return `
+    <span class="badge ${state}">
+      ${text}
+    </span>
+  `;
+}
+
+function candidateReason(row){
+  return (
+    row?.reason ||
+    row?.sizing_reason ||
+    "—"
+  );
+}
+
+function candidateRank(row){
+  const state =
+    candidateState(row);
+
+  const stateRank = {
+    buy:3,
+    watch:2,
+    block:1
+  }[state] || 0;
+
+  const hard =
+    row?.hard_block === false
+      ? 2
+      : row?.hard_block === true
+        ? 0
+        : 1;
+
+  const conf =
+    num(
+      row?.coverage_confidence ??
+      row?.evidence_coverage
+    );
+
+  return (
+    stateRank * 100000 +
+    hard * 10000 +
+    conf
+  );
+}
+
+function filteredCandidates(){
+  const rows =
+    [...runtimeCandidates]
+      .sort(
+        (a,b) =>
+          candidateRank(b) -
+          candidateRank(a)
       );
 
-    return (
-      Number.isFinite(timestamp) &&
-      now - timestamp <= duration
-    );
-  });
-}
-
-
-function drawChart(){
-  const series =
-    filterSeries(
-      dashboard?.series || [],
-      chartRange
-    );
-
-  const line =
-    $("chartLine");
-
-  const fill =
-    $("chartFill");
-
-  const placeholder =
-    $("chartPlaceholder");
-
-  if(!series.length){
-    line.setAttribute("d","");
-    fill.setAttribute("d","");
-
-    placeholder.style.display =
-      "flex";
-
-    return;
+  if(candidateFilter === "all"){
+    return rows;
   }
 
-  placeholder.style.display =
-    "none";
-
-  const values =
-    series.map(point=>
-      number(point.cumulative)
-    );
-
-  let minimum =
-    Math.min(...values);
-
-  let maximum =
-    Math.max(...values);
-
-  if(minimum === maximum){
-    minimum -= 1;
-    maximum += 1;
-  }
-
-  const width = 600;
-  const height = 170;
-  const padding = 8;
-
-  const points =
-    values.map((value,index)=>{
-
-      const x =
-        padding +
-        (
-          index /
-          Math.max(
-            values.length - 1,
-            1
-          )
-        ) *
-        (
-          width -
-          padding * 2
-        );
-
-      const y =
-        height -
-        padding -
-        (
-          (value - minimum) /
-          (maximum - minimum)
-        ) *
-        (
-          height -
-          padding * 2
-        );
-
-      return [x,y];
-    });
-
-  const path =
-    points
-      .map((point,index)=>
-        (
-          index === 0
-            ? "M"
-            : "L"
-        ) +
-        point[0].toFixed(2) +
-        " " +
-        point[1].toFixed(2)
-      )
-      .join(" ");
-
-  const fillPath =
-    path +
-    " L " +
-    points[
-      points.length - 1
-    ][0].toFixed(2) +
-    " " +
-    (
-      height -
-      padding
-    ) +
-    " L " +
-    points[0][0].toFixed(2) +
-    " " +
-    (
-      height -
-      padding
-    ) +
-    " Z";
-
-  line.setAttribute(
-    "d",
-    path
-  );
-
-  fill.setAttribute(
-    "d",
-    fillPath
+  return rows.filter(
+    row =>
+      candidateState(row) ===
+      candidateFilter
   );
 }
 
-
-function setChartRange(range,button){
-  chartRange = range;
+function setCandidateFilter(
+  filter,
+  button
+){
+  candidateFilter =
+    filter;
 
   document
     .querySelectorAll(
-      ".tab-button"
+      ".filter"
     )
-    .forEach(item=>
-      item.classList.remove(
-        "active"
-      )
+    .forEach(
+      node =>
+        node.classList.remove(
+          "active"
+        )
     );
 
   button.classList.add(
     "active"
   );
 
-  drawChart();
+  selectedCandidateKey =
+    null;
+
+  renderCandidates();
 }
 
+function renderCandidates(){
+  const rows =
+    filteredCandidates();
 
+  $("candidateCount")
+    .textContent =
+      runtimeCandidates.length +
+      " canlı aday";
 
-function renderPolicyPerformance(rows){
-  const node =
-    $("policyPerformance");
+  if(!rows.length){
+    selectedCandidateKey =
+      null;
 
-  if(!node){
-    return;
-  }
+    $("candidateList")
+      .innerHTML = `
+        <div class="empty">
+          Bu filtrede aday yok.
+        </div>
+      `;
 
-  const list =
-    rows || [];
-
-  if(!list.length){
-    node.innerHTML =
-      "<span class=\"policy-pill\">POLICY VERİSİ BEKLENİYOR</span>";
-
-    return;
-  }
-
-  node.innerHTML =
-    list
-      .map(row=>{
-        const net =
-          Number(
-            row.net_total || 0
-          );
-
-        const closed =
-          Number(
-            row.closed || 0
-          );
-
-        const complete =
-          Number(
-            row.cost_complete || 0
-          );
-
-        return `
-          <span class="policy-pill ${
-            closed > 0 &&
-            complete === closed
-              ? "cost-complete"
-              : "cost-incomplete"
-          }">
-            <b>
-              ${escapeHtml(
-                textValue(
-                  row.trade_policy
-                )
-              )}
-            </b>
-
-            ${closed} işlem ·
-
-            <strong class="${
-              net >= 0
-                ? "green"
-                : "red"
-            }">
-              ${escapeHtml(
-                formatMoney(net)
-              )}
-            </strong>
-
-            · COST ${complete}/${closed}
-          </span>
-        `;
-      })
-      .join("");
-}
-
-
-function renderPerformance(data){
-  const performance =
-    data.performance || {};
-
-  $("perfTotal").textContent =
-    performance.closed ?? 0;
-
-  $("perfWins").textContent =
-    performance.wins ?? "—";
-
-  $("perfLosses").textContent =
-    performance.losses ?? "—";
-
-  $("perfWinRate").textContent =
-    formatPercent(
-      performance.win_rate_pct
-    );
-
-  $("perfAverage").textContent =
-    formatPercent(
-      performance.avg_roi_pct
-    );
-
-  $("profitFactor").textContent =
-    performance.profit_factor === null ||
-    performance.profit_factor === undefined
-      ? "—"
-      : number(
-          performance.profit_factor
-        ).toLocaleString(
-          "tr-TR",
-          {
-            minimumFractionDigits:2,
-            maximumFractionDigits:2
-          }
-        );
-
-  drawChart();
-}
-
-
-function signalPlaceholder(){
-  return `
-    <div class="signal-item">
-      <b>SYSTEM</b>
-      <small>
-        Yeni temiz paper dönemi izleniyor.
-      </small>
-    </div>
-
-    <div class="signal-item">
-      <b>PAPER</b>
-      <small>
-        Yeni işlem bekleniyor.
-      </small>
-    </div>
-
-    <div class="signal-item">
-      <b>VEZİR</b>
-      <small>
-        İstihbarat verisi bekleniyor.
-      </small>
-    </div>
-  `;
-}
-
-
-function renderSignals(signals){
-  const list =
-    signals || [];
-
-  if(!list.length){
-    $("signalList").innerHTML =
-      signalPlaceholder();
+    renderCandidateDetail();
 
     return;
   }
 
-  $("signalList").innerHTML =
-    list
-      .slice(0,5)
-      .map(signal=>{
+  if(
+    !selectedCandidateKey ||
+    !rows.some(
+      row =>
+        candidateKey(row) ===
+        selectedCandidateKey
+    )
+  ){
+    selectedCandidateKey =
+      candidateKey(
+        rows[0]
+      );
+  }
 
-        const timestamp =
-          signal.timestamp
-            ? new Date(
-                signal.timestamp
-              ).toLocaleTimeString(
-                "tr-TR",
-                {
-                  hour:"2-digit",
-                  minute:"2-digit"
-                }
-              )
-            : "--:--";
+  $("candidateList")
+    .innerHTML =
+      rows.slice(0,8)
+        .map(
+          row => {
+            const key =
+              candidateKey(row);
 
-        return `
-          <div class="signal-item">
+            const state =
+              candidateState(row);
 
-            <b>
-              ${escapeHtml(timestamp)}
-              ${escapeHtml(signal.source)}
-            </b>
+            const selected =
+              key ===
+              selectedCandidateKey;
 
-            <small>
-              ${escapeHtml(signal.message)}
-            </small>
+            const safeKey =
+              encodeURIComponent(
+                key
+              );
 
-            ${
-              signal.pnl === null ||
-              signal.pnl === undefined
-                ? ""
-                : `
-                  <small class="${
-                    number(signal.pnl) >= 0
-                      ? "green"
-                      : "red"
-                  }">
+            return `
+              <button
+                class="candidate-row ${
+                  selected
+                    ? "selected"
+                    : ""
+                } ${
+                  state === "block"
+                    ? "blocked"
+                    : ""
+                }"
+                onclick="selectCandidate(
+                  decodeURIComponent(
+                    '${safeKey}'
+                  )
+                )">
+
+                <div class="candidate-main">
+                  ${escapeHtml(
+                    row.name ||
+                    shortAddress(
+                      row.token
+                    )
+                  )}
+
+                  <small>
                     ${escapeHtml(
-                      formatMoney(
-                        signal.pnl
+                      shortAddress(
+                        row.token
                       )
                     )}
                   </small>
-                `
-            }
+                </div>
 
-          </div>
-        `;
-      })
-      .join("");
-}
+                <div>
+                  ${candidateBadge(
+                    row
+                  )}
+                </div>
 
+                <div class="candidate-cell">
+                  ${escapeHtml(
+                    confidence(
+                      row.coverage_confidence ??
+                      row.evidence_coverage
+                    )
+                  )}
+                </div>
 
-function renderDashboard(data){
-  dashboard = data;
+                <div class="candidate-cell">
+                  ${escapeHtml(
+                    usd(
+                      row.liquidity
+                    )
+                  )}
+                </div>
 
-  renderSummary(
-    data.summary || {}
-  );
+                <div class="candidate-cell">
+                  ${escapeHtml(
+                    usd(
+                      row.volume_24h
+                    )
+                  )}
+                </div>
 
-  renderVezir(data);
+                <div class="candidate-cell">
+                  ${escapeHtml(
+                    usd(
+                      row.fdv
+                    )
+                  )}
+                </div>
 
-  const runtimeBest =
-    selectBestRuntimeCandidate(
-      data.runtime_candidates || []
-    );
+                <div class="candidate-cell">
+                  ${escapeHtml(
+                    String(
+                      candidateReason(
+                        row
+                      )
+                    ).replaceAll(
+                      "_",
+                      " "
+                    )
+                  )}
+                </div>
 
-  const runtimeBestView =
-    runtimeCandidateToBest(
-      runtimeBest
-    );
-
-  renderBest(
-    runtimeBestView
-  );
-
-  renderRuntimeBestDetails(
-    runtimeBestView
-  );
-
-  renderPositions(data);
-
-
-
-  renderIntelligence(
-    data.intelligence || {}
-  );
-
-  renderHealth(
-    data.health || {}
-  );
-
-  renderPerformance(data);
-
-  renderPolicyPerformance(
-    data.policy_performance || []
-  );
-
-  renderSignals(
-    data.signals || []
-  );
-}
-
-
-function updateClock(){
-  $("clock").textContent =
-    new Date().toLocaleTimeString(
-      "tr-TR"
-    );
-}
-
-
-/* ========================================================
-   VEZIR BACKGROUND CLEANUP
-   ======================================================== */
-
-function prepareVezirImage(){
-  const target =
-    $("vezirImage");
-
-  if(!target){
-    return;
-  }
-
-  target.onload = function(){
-    target.classList.add(
-      "is-ready"
-    );
-  };
-
-  const source =
-    new Image();
-
-  source.onload = function(){
-    try{
-      const width =
-        source.naturalWidth;
-
-      const height =
-        source.naturalHeight;
-
-      if(!width || !height){
-        return;
-      }
-
-      const canvas =
-        document.createElement(
-          "canvas"
-        );
-
-      canvas.width = width;
-      canvas.height = height;
-
-      const context =
-        canvas.getContext(
-          "2d",
-          {
-            willReadFrequently:true
+              </button>
+            `;
           }
-        );
+        ).join("");
 
-      context.drawImage(
-        source,
-        0,
-        0,
-        width,
-        height
-      );
-
-      const image =
-        context.getImageData(
-          0,
-          0,
-          width,
-          height
-        );
-
-      const pixels =
-        image.data;
-
-      const total =
-        width * height;
-
-      const visited =
-        new Uint8Array(total);
-
-      const queue =
-        new Int32Array(total);
-
-      let head = 0;
-      let tail = 0;
-
-      function enqueue(index){
-        if(
-          index < 0 ||
-          index >= total ||
-          visited[index]
-        ){
-          return;
-        }
-
-        visited[index] = 1;
-        queue[tail++] = index;
-      }
-
-      function isBackground(index){
-        const offset =
-          index * 4;
-
-        const red =
-          pixels[offset];
-
-        const green =
-          pixels[offset + 1];
-
-        const blue =
-          pixels[offset + 2];
-
-        const alpha =
-          pixels[offset + 3];
-
-        if(alpha === 0){
-          return true;
-        }
-
-        const maximum =
-          Math.max(
-            red,
-            green,
-            blue
-          );
-
-        const minimum =
-          Math.min(
-            red,
-            green,
-            blue
-          );
-
-        const brightness =
-          (
-            red +
-            green +
-            blue
-          ) / 3;
-
-        return (
-          maximum - minimum <= 90 &&
-          brightness >= 132
-        );
-      }
-
-      for(
-        let x=0;
-        x<width;
-        x++
-      ){
-        enqueue(x);
-
-        enqueue(
-          (height - 1) *
-          width +
-          x
-        );
-      }
-
-      for(
-        let y=0;
-        y<height;
-        y++
-      ){
-        enqueue(
-          y * width
-        );
-
-        enqueue(
-          y * width +
-          width -
-          1
-        );
-      }
-
-      while(head < tail){
-        const index =
-          queue[head++];
-
-        if(!isBackground(index)){
-          continue;
-        }
-
-        pixels[
-          index * 4 + 3
-        ] = 0;
-
-        const x =
-          index % width;
-
-        const y =
-          Math.floor(
-            index / width
-          );
-
-        if(x > 0){
-          enqueue(index - 1);
-        }
-
-        if(x + 1 < width){
-          enqueue(index + 1);
-        }
-
-        if(y > 0){
-          enqueue(
-            index - width
-          );
-        }
-
-        if(y + 1 < height){
-          enqueue(
-            index + width
-          );
-        }
-      }
-
-      context.putImageData(
-        image,
-        0,
-        0
-      );
-
-      /*
-        Crop transparent borders so the character fills the
-        reference Vezir area instead of looking too small.
-      */
-      let minX = width;
-      let minY = height;
-      let maxX = -1;
-      let maxY = -1;
-
-      for(
-        let y=0;
-        y<height;
-        y++
-      ){
-        for(
-          let x=0;
-          x<width;
-          x++
-        ){
-          const alpha =
-            pixels[
-              (y * width + x) *
-              4 +
-              3
-            ];
-
-          if(alpha > 4){
-            minX =
-              Math.min(
-                minX,
-                x
-              );
-
-            minY =
-              Math.min(
-                minY,
-                y
-              );
-
-            maxX =
-              Math.max(
-                maxX,
-                x
-              );
-
-            maxY =
-              Math.max(
-                maxY,
-                y
-              );
-          }
-        }
-      }
-
-      if(
-        maxX >= minX &&
-        maxY >= minY
-      ){
-        const cropWidth =
-          maxX -
-          minX +
-          1;
-
-        const cropHeight =
-          maxY -
-          minY +
-          1;
-
-        const cropped =
-          document.createElement(
-            "canvas"
-          );
-
-        cropped.width =
-          cropWidth;
-
-        cropped.height =
-          cropHeight;
-
-        const croppedContext =
-          cropped.getContext(
-            "2d"
-          );
-
-        croppedContext.drawImage(
-          canvas,
-          minX,
-          minY,
-          cropWidth,
-          cropHeight,
-          0,
-          0,
-          cropWidth,
-          cropHeight
-        );
-
-        target.src =
-          cropped.toDataURL(
-            "image/png"
-          );
-
-      }else{
-        target.src =
-          canvas.toDataURL(
-            "image/png"
-          );
-      }
-
-    }catch(error){
-      console.warn(
-        "Vezir image cleanup skipped",
-        error
-      );
-
-      target.src =
-        "/static/vezir.png";
-    }
-  };
-
-  source.src =
-    "/static/vezir.png";
+  renderCandidateDetail();
 }
 
+function selectCandidate(key){
+  selectedCandidateKey =
+    key;
 
-/* CANONICAL LIVE CANDIDATES */
-
-
-function markMarketCards(){
-  document
-    .querySelectorAll(
-      ".market-name"
-    )
-    .forEach(node=>{
-      const card =
-        node.closest(
-          ".metric-card"
-        );
-
-      if(card){
-        card.classList.add(
-          "market-card"
-        );
-      }
-    });
+  renderCandidates();
 }
 
-
-function runtimeCandidateShortToken(
-  candidate
+function candidateDetailItem(
+  label,
+  value,
+  cls=""
 ){
-  const token = String(
-    candidate?.token || "TOKEN"
-  );
-
-  return token.length > 17
-    ? (
-        token.slice(0,8) +
-        "…" +
-        token.slice(-5)
-      )
-    : token;
-}
-
-
-function runtimeCandidatePlaceholder(){
   return `
-    <div class="candidate-row placeholder-row">
-      <span>1</span>
-      <b>CANLI ADAY BEKLENİYOR</b>
-      <span>—</span>
-      <span>—</span>
-      <span>—</span>
-      <span>—</span>
+    <div class="detail-item">
+      <small>
+        ${escapeHtml(label)}
+      </small>
+
+      <b class="${cls}">
+        ${escapeHtml(value)}
+      </b>
     </div>
   `;
 }
 
+function renderCandidateDetail(){
+  const row =
+    runtimeCandidates.find(
+      item =>
+        candidateKey(item) ===
+        selectedCandidateKey
+    );
 
-function renderRuntimeCandidates(
-  candidates
-){
-  const list =
-    candidates || [];
-
-  if(!list.length){
-    $("candidateList").innerHTML =
-      runtimeCandidatePlaceholder();
+  if(!row){
+    $("candidateDetail")
+      .innerHTML = `
+        <div class="empty">
+          Takip adayı seçildiğinde ayrıntıları burada göreceksin.
+        </div>
+      `;
 
     return;
   }
 
-  $("candidateList").innerHTML =
-    list
-      .slice(0,5)
-      .map((candidate,index)=>{
+  const state =
+    candidateState(row);
 
-        const action =
-          String(
-            candidate.paper_action ||
-            candidate.strategy ||
-            "—"
-          ).toUpperCase();
+  const stateClass = {
+    buy:"green",
+    watch:"yellow",
+    block:"red"
+  }[state] || "";
 
-        const actionClass =
-          action === "REJECT"
+  const sellability =
+    String(
+      row.sellability ||
+      "—"
+    )
+      .replace(
+        "SELLABILITY_",
+        ""
+      )
+      .replaceAll(
+        "_",
+        " "
+      );
+
+  const amount =
+    row.entry_amount_usdt;
+
+  const amountText =
+    amount === null ||
+    amount === undefined
+      ? "—"
+      : num(amount) <= 0
+        ? "0,00 USDT · BLOKLU"
+        : money(amount);
+
+  const allowed =
+    manualActionAllowed();
+
+  $("candidateDetail")
+    .innerHTML = `
+      <div class="detail-title">
+
+        <span>
+          ${escapeHtml(
+            row.name ||
+            shortAddress(
+              row.token
+            )
+          )}
+        </span>
+
+        <span class="${stateClass}">
+          ${escapeHtml(
+            state === "buy"
+              ? "PAPER_BUY"
+              : state === "block"
+                ? "BLOCKED"
+                : "WATCH"
+          )}
+        </span>
+
+      </div>
+
+      <div class="candidate-detail-grid">
+
+        ${candidateDetailItem(
+          "Likidite",
+          usd(
+            row.liquidity
+          )
+        )}
+
+        ${candidateDetailItem(
+          "Risk / Hard Gate",
+          row.hard_block === true
+            ? "BLOCK"
+            : row.hard_block === false
+              ? "TEMİZ"
+              : "BİLİNMİYOR",
+          row.hard_block === true
             ? "red"
-            : action === "PAPER_BUY"
+            : row.hard_block === false
               ? "green"
-              : action === "WATCH"
-                ? "yellow"
-                : "";
+              : "yellow"
+        )}
 
-        const rawSellability =
-          String(
-            candidate.sellability ||
-            "—"
-          ).toUpperCase();
+        ${candidateDetailItem(
+          "Hacim 24s",
+          usd(
+            row.volume_24h
+          )
+        )}
 
-        const sellability =
-          rawSellability.replace(
-            "SELLABILITY_",
-            ""
-          );
+        ${candidateDetailItem(
+          "Plan tutarı",
+          amountText,
+          (
+            amount !== null &&
+            amount !== undefined &&
+            num(amount) <= 0
+          )
+            ? "yellow"
+            : ""
+        )}
 
-        const sellClass =
+        ${candidateDetailItem(
+          "FDV",
+          usd(
+            row.fdv
+          )
+        )}
+
+        ${candidateDetailItem(
+          "Fiyat",
+          price(
+            row.price_usd
+          )
+        )}
+
+        ${candidateDetailItem(
+          "Sellability",
+          sellability,
           sellability === "OK"
             ? "green"
             : sellability === "FAIL"
               ? "red"
-              : sellability === "UNKNOWN"
-                ? "yellow"
-                : "";
+              : "yellow"
+        )}
 
-        const evidence =
-          candidate.coverage_confidence ??
-          candidate.evidence_coverage;
+        ${candidateDetailItem(
+          "Kanıt güveni",
+          confidence(
+            row.coverage_confidence ??
+            row.evidence_coverage
+          )
+        )}
 
-        const hard =
-          candidate.hard_block;
+        ${candidateDetailItem(
+          "Son güncelleme",
+          displayTime(
+            row.cache_updated_at ||
+            row.observed_at
+          )
+        )}
 
-        const gate =
-          hard === true
-            ? "BLOCK"
-            : hard === false
-              ? "TEMİZ"
-              : "—";
-
-        const gateClass =
-          hard === true
-            ? "red"
-            : hard === false
-              ? "green"
-              : "";
-
-        const pool =
+        ${candidateDetailItem(
+          "Sebep",
           String(
-            candidate.pool || ""
-          );
+            candidateReason(row)
+          ).replaceAll(
+            "_",
+            " "
+          ),
+          stateClass
+        )}
 
-        const shortPool =
-          !pool
-            ? "—"
-            : pool.length > 18
-              ? (
-                  pool.slice(0,8) +
-                  "…" +
-                  pool.slice(-5)
-                )
-              : pool;
+      </div>
 
-        return `
-          <div
-            class="candidate-row"
-            onclick="selectRuntimeCandidate(${index})">
+      <div class="action-row">
 
-            <span class="live-candidate-index">
-              ${index + 1}
-            </span>
+        <button
+          class="action buy"
+          ${
+            allowed
+              ? ""
+              : "disabled"
+          }
+          onclick="manualActionMessage()">
+          AL
+          ${
+            allowed
+              ? ""
+              : " · YETKİ YOK"
+          }
+        </button>
 
-            <div class="candidate-token-live">
-              <b>
+        <button
+          class="action secondary"
+          ${
+            allowed
+              ? ""
+              : "disabled"
+          }
+          onclick="manualActionMessage()">
+          İZLEMEDEN ÇIKAR
+        </button>
+
+      </div>
+    `;
+}
+
+/* ========================================================
+   VEZIR CHAT
+   Deterministic panel assistant, using only real dashboard data.
+   ======================================================== */
+
+function addChatMessage(
+  who,
+  message
+){
+  const node =
+    document.createElement(
+      "div"
+    );
+
+  node.className =
+    "chat-message " +
+    who;
+
+  const name =
+    who === "user"
+      ? "SEN"
+      : "VEZİR";
+
+  node.innerHTML = `
+    <div class="chat-name">
+      ${name}
+    </div>
+
+    <div>
+      ${escapeHtml(message)}
+    </div>
+  `;
+
+  $("chat").appendChild(
+    node
+  );
+
+  $("chat").scrollTop =
+    $("chat").scrollHeight;
+}
+
+function currentRiskCandidate(){
+  if(!runtimeCandidates.length){
+    return null;
+  }
+
+  return [...runtimeCandidates]
+    .sort(
+      (a,b) => {
+        const aBlock =
+          candidateState(a) ===
+          "block"
+            ? 1
+            : 0;
+
+        const bBlock =
+          candidateState(b) ===
+          "block"
+            ? 1
+            : 0;
+
+        if(aBlock !== bBlock){
+          return bBlock - aBlock;
+        }
+
+        return (
+          num(
+            b.coverage_confidence
+          ) -
+          num(
+            a.coverage_confidence
+          )
+        );
+      }
+    )[0];
+}
+
+function answerVezir(prompt){
+  const q =
+    String(prompt)
+      .toLocaleLowerCase(
+        "tr-TR"
+      );
+
+  const summary =
+    dashboard?.summary || {};
+
+  const positions =
+    dashboard?.positions || [];
+
+  const performance =
+    dashboard?.performance || {};
+
+  if(
+    q.includes("açık") ||
+    q.includes("pozisyon")
+  ){
+    if(!positions.length){
+      return (
+        "Şu anda açık paper pozisyon yok. " +
+        "Sermaye yeni giriş için boşta."
+      );
+    }
+
+    const total =
+      positions.reduce(
+        (sum,row) =>
+          sum +
+          num(
+            row.net_pnl_usdt ??
+            row.net_pnl
+          ),
+        0
+      );
+
+    return (
+      positions.length +
+      " açık pozisyon var. Açık PNL " +
+      money(total) +
+      ". En güncel detay için soldaki pozisyona tıkla."
+    );
+  }
+
+  if(
+    q.includes("pnl") ||
+    q.includes("kâr") ||
+    q.includes("kar")
+  ){
+    return (
+      "Bugünkü PNL " +
+      money(
+        summary.daily_pnl
+      ) +
+      ", toplam PNL " +
+      money(
+        summary.total_pnl
+      ) +
+      ", bakiye " +
+      money(
+        summary.equity
+      ) +
+      "."
+    );
+  }
+
+  if(
+    q.includes("risk")
+  ){
+    const row =
+      currentRiskCandidate();
+
+    if(!row){
+      return (
+        "Şu anda değerlendirebileceğim canlı aday yok."
+      );
+    }
+
+    return (
+      "Dikkat çeken aday " +
+      (
+        row.name ||
+        shortAddress(
+          row.token
+        )
+      ) +
+      ". Durum " +
+      (
+        candidateState(row) === "block"
+          ? "BLOCKED"
+          : candidateState(row) === "buy"
+            ? "PAPER_BUY"
+            : "WATCH"
+      ) +
+      ". Sebep: " +
+      candidateReason(row) +
+      "."
+    );
+  }
+
+  if(
+    q.includes("muhasebe") ||
+    q.includes("performans")
+  ){
+    return (
+      "Kapanan işlem " +
+      (
+        performance.closed ??
+        0
+      ) +
+      ", kârlı " +
+      (
+        performance.wins ??
+        0
+      ) +
+      ", zararlı " +
+      (
+        performance.losses ??
+        0
+      ) +
+      ", win rate " +
+      percent(
+        performance.win_rate_pct
+      ) +
+      ", realized PNL " +
+      money(
+        performance.net_total
+      ) +
+      "."
+    );
+  }
+
+  if(
+    q.includes("takip") ||
+    q.includes("aday")
+  ){
+    const buy =
+      runtimeCandidates.filter(
+        row =>
+          candidateState(row) ===
+          "buy"
+      ).length;
+
+    const watch =
+      runtimeCandidates.filter(
+        row =>
+          candidateState(row) ===
+          "watch"
+      ).length;
+
+    const block =
+      runtimeCandidates.filter(
+        row =>
+          candidateState(row) ===
+          "block"
+      ).length;
+
+    return (
+      runtimeCandidates.length +
+      " canlı aday var: " +
+      buy +
+      " uygun, " +
+      watch +
+      " izleniyor, " +
+      block +
+      " bloklu."
+    );
+  }
+
+  if(
+    q.includes("sağlık") ||
+    q.includes("sistem")
+  ){
+    const health =
+      dashboard?.health || {};
+
+    return (
+      "Panel API " +
+      String(
+        health.panel_api ||
+        "unknown"
+      ) +
+      ", paper runtime " +
+      String(
+        health.paper_runtime ||
+        "unknown"
+      ) +
+      ", veritabanı " +
+      (
+        health.database
+          ? "sağlıklı"
+          : "kontrol gerekli"
+      ) +
+      ". Live execution kapalı."
+    );
+  }
+
+  return (
+    "Panel özeti: bakiye " +
+    money(
+      summary.equity
+    ) +
+    ", toplam PNL " +
+    money(
+      summary.total_pnl
+    ) +
+    ", açık pozisyon " +
+    (
+      summary.open_count ??
+      0
+    ) +
+    ", canlı takip adayı " +
+    runtimeCandidates.length +
+    "."
+  );
+}
+
+function askVezir(prompt){
+  addChatMessage(
+    "user",
+    prompt
+  );
+
+  addChatMessage(
+    "vezir",
+    answerVezir(
+      prompt
+    )
+  );
+}
+
+function sendChat(){
+  const input =
+    $("chatInput");
+
+  const prompt =
+    input.value.trim();
+
+  if(!prompt){
+    return;
+  }
+
+  input.value = "";
+
+  askVezir(prompt);
+}
+
+function chatKey(event){
+  if(event.key === "Enter"){
+    event.preventDefault();
+
+    sendChat();
+  }
+}
+
+function renderInitialChat(){
+  if(chatStarted){
+    return;
+  }
+
+  chatStarted = true;
+
+  addChatMessage(
+    "vezir",
+    (
+      "Panel bağlantısı hazır. " +
+      "Açık pozisyon, PNL, takip adayları, risk veya muhasebe sorabilirsin."
+    )
+  );
+}
+
+/* ========================================================
+   INTELLIGENCE
+   Current runtime-candidate intelligence only.
+   No duplicate paper signal feed.
+   ======================================================== */
+
+function renderIntelligence(){
+  const rows =
+    [...runtimeCandidates]
+      .sort(
+        (a,b) =>
+          String(
+            b.observed_at || ""
+          ).localeCompare(
+            String(
+              a.observed_at || ""
+            )
+          )
+      )
+      .slice(0,6);
+
+  if(!rows.length){
+    $("intelList")
+      .innerHTML = `
+        <div class="empty">
+          Canlı aday istihbaratı bekleniyor.
+        </div>
+      `;
+
+    return;
+  }
+
+  $("intelList")
+    .innerHTML =
+      rows.map(
+        row => {
+          const state =
+            candidateState(row);
+
+          const kind =
+            state === "block"
+              ? "Aday blok"
+              : state === "buy"
+                ? "Güçlü aday"
+                : "Takip";
+
+          const cls =
+            state === "block"
+              ? "red"
+              : state === "buy"
+                ? "green"
+                : "yellow";
+
+          return `
+            <div class="intel-row">
+
+              <span class="intel-time">
                 ${escapeHtml(
-                  runtimeCandidateShortToken(
-                    candidate
+                  displayTime(
+                    row.observed_at
+                  ).split(" ").pop()
+                )}
+              </span>
+
+              <span
+                class="intel-kind ${cls}">
+                ${escapeHtml(kind)}
+              </span>
+
+              <span class="intel-copy">
+                ${escapeHtml(
+                  (
+                    row.name ||
+                    shortAddress(
+                      row.token
+                    )
+                  ) +
+                  " · " +
+                  String(
+                    candidateReason(
+                      row
+                    )
+                  ).replaceAll(
+                    "_",
+                    " "
                   )
                 )}
-              </b>
+              </span>
 
-              <small>
-                ${escapeHtml(shortPool)}
-              </small>
             </div>
+          `;
+        }
+      ).join("");
+}
 
-            <b class="live-action ${actionClass}">
-              ${escapeHtml(action)}
-            </b>
+/* ========================================================
+   HEALTH
+   ======================================================== */
 
-            <b class="live-sellability ${sellClass}">
-              ${escapeHtml(sellability)}
-            </b>
+function healthItem(
+  label,
+  value,
+  cls=""
+){
+  return `
+    <span class="health-item">
+      ${escapeHtml(label)}
+      →
+      <b class="${cls}">
+        ${escapeHtml(value)}
+      </b>
+    </span>
+  `;
+}
 
-            <span class="live-evidence">
-              ${
-                evidence === null ||
-                evidence === undefined
-                  ? "—"
-                  : escapeHtml(
-                      formatConfidence(
-                        evidence
-                      )
+function renderHealth(){
+  const health =
+    dashboard?.health || {};
+
+  $("healthItems")
+    .innerHTML =
+      healthItem(
+        "Panel API",
+        String(
+          health.panel_api ||
+          "UNKNOWN"
+        ).toUpperCase(),
+        health.panel_api === "active"
+          ? "green"
+          : "yellow"
+      ) +
+
+      healthItem(
+        "Paper Runtime",
+        String(
+          health.paper_runtime ||
+          "UNKNOWN"
+        ).toUpperCase(),
+        health.paper_runtime === "active"
+          ? "green"
+          : "yellow"
+      ) +
+
+      healthItem(
+        "DB",
+        health.database
+          ? "OK"
+          : "HATA",
+        health.database
+          ? "green"
+          : "red"
+      ) +
+
+      healthItem(
+        "Live Execution",
+        health.live_execution
+          ? "AÇIK"
+          : "KAPALI",
+        health.live_execution
+          ? "yellow"
+          : "red"
+      ) +
+
+      healthItem(
+        "Wallet",
+        health.wallet_authority
+          ? "YETKİLİ"
+          : "YOK",
+        health.wallet_authority
+          ? "yellow"
+          : "yellow"
+      );
+}
+
+/* ========================================================
+   PAPER SIGNALS
+   ======================================================== */
+
+function renderSignals(){
+  const rows =
+    dashboard?.signals || [];
+
+  if(!rows.length){
+    $("signalStrip")
+      .innerHTML = `
+        <span class="muted">
+          Yeni paper sinyali bekleniyor.
+        </span>
+      `;
+
+    return;
+  }
+
+  $("signalStrip")
+    .innerHTML =
+      rows.slice(0,4)
+        .map(
+          row => {
+            const pnl =
+              row.pnl;
+
+            return `
+              <div class="signal">
+
+                <b class="${
+                  pnl === null ||
+                  pnl === undefined
+                    ? ""
+                    : pnlClass(pnl)
+                }">
+                  ${escapeHtml(
+                    displayTime(
+                      row.timestamp
                     )
+                  )}
+                  ·
+                  ${escapeHtml(
+                    row.source ||
+                    "PAPER"
+                  )}
+                </b>
+
+                <small>
+                  ${escapeHtml(
+                    row.message ||
+                    "—"
+                  )}
+                </small>
+
+              </div>
+            `;
+          }
+        ).join("");
+}
+
+/* ========================================================
+   ACCOUNTING
+   ======================================================== */
+
+function accountBox(
+  label,
+  value,
+  cls=""
+){
+  return `
+    <div class="account-box">
+
+      <small>
+        ${escapeHtml(label)}
+      </small>
+
+      <b class="${cls}">
+        ${escapeHtml(value)}
+      </b>
+
+    </div>
+  `;
+}
+
+function renderAccounting(){
+  const summary =
+    dashboard?.summary || {};
+
+  const perf =
+    dashboard?.performance || {};
+
+  const policies =
+    dashboard?.policy_performance || [];
+
+  const exits =
+    dashboard?.exits || [];
+
+  const costComplete =
+    Number(
+      perf.cost_complete || 0
+    );
+
+  const costClosed =
+    Number(
+      perf.closed || 0
+    );
+
+  let html = `
+    <div class="account-grid">
+
+      ${accountBox(
+        "Bakiye",
+        money(
+          summary.equity
+        )
+      )}
+
+      ${accountBox(
+        "Toplam PNL",
+        money(
+          summary.total_pnl
+        ),
+        pnlClass(
+          summary.total_pnl
+        )
+      )}
+
+      ${accountBox(
+        "Realized PNL",
+        money(
+          summary.realized_net
+        ),
+        pnlClass(
+          summary.realized_net
+        )
+      )}
+
+      ${accountBox(
+        "Unrealized PNL",
+        money(
+          summary.open_pnl
+        ),
+        pnlClass(
+          summary.open_pnl
+        )
+      )}
+
+      ${accountBox(
+        "Kapanan işlem",
+        String(
+          perf.closed ?? 0
+        )
+      )}
+
+      ${accountBox(
+        "Win rate",
+        percent(
+          perf.win_rate_pct
+        )
+      )}
+
+      ${accountBox(
+        "Profit factor",
+        perf.profit_factor === null ||
+        perf.profit_factor === undefined
+          ? "—"
+          : num(
+              perf.profit_factor
+            ).toLocaleString(
+              "tr-TR",
+              {
+                minimumFractionDigits:2,
+                maximumFractionDigits:2
               }
+            )
+      )}
+
+      ${accountBox(
+        "Cost model",
+        costComplete +
+        "/" +
+        costClosed +
+        " COMPLETE",
+        (
+          costClosed > 0 &&
+          costComplete ===
+          costClosed
+        )
+          ? "green"
+          : "yellow"
+      )}
+
+    </div>
+
+    <div class="section-title">
+      POLICY PERFORMANSI
+    </div>
+  `;
+
+  if(!policies.length){
+    html += `
+      <div class="account-row">
+        <span>Policy verisi</span>
+        <b>—</b>
+      </div>
+    `;
+  }else{
+    policies.forEach(
+      row => {
+        html += `
+          <div class="account-row">
+
+            <span>
+              ${escapeHtml(
+                row.trade_policy ||
+                "LEGACY"
+              )}
+
+              ·
+
+              ${escapeHtml(
+                String(
+                  row.closed || 0
+                )
+              )}
+              işlem
             </span>
 
-            <b class="live-gate ${gateClass}">
-              ${gate}
+            <b class="${
+              pnlClass(
+                row.net_total
+              )
+            }">
+              ${escapeHtml(
+                money(
+                  row.net_total
+                )
+              )}
             </b>
 
           </div>
         `;
-      })
-      .join("");
-}
-
-
-function selectRuntimeCandidate(
-  index
-){
-  const candidate =
-    dashboard
-      ?.runtime_candidates
-      ?.[index];
-
-  if(!candidate){
-    return;
-  }
-
-  openJsonModal(
-    runtimeCandidateShortToken(
-      candidate
-    ) +
-    " · CANLI ADAY",
-    candidate
-  );
-}
-
-
-function openCandidatesModal(){
-  const candidates =
-    dashboard
-      ?.runtime_candidates ||
-    [];
-
-  if(!candidates.length){
-    openModal(
-      "CANLI ADAYLAR",
-      "<p>Son scanner döngüsünde canlı aday bulunmuyor.</p>"
+      }
     );
-
-    return;
   }
 
-  openJsonModal(
-    "CANLI RUNTIME ADAYLARI",
-    candidates
-  );
+  html += `
+    <div class="section-title">
+      SON KAPANIŞLAR
+    </div>
+  `;
+
+  if(!exits.length){
+    html += `
+      <div class="account-row">
+        <span>Kapanmış işlem yok</span>
+        <b>—</b>
+      </div>
+    `;
+  }else{
+    exits.slice(0,8)
+      .forEach(
+        row => {
+          const pnl =
+            row.net_pnl_usdt ??
+            row.net_pnl ??
+            0;
+
+          html += `
+            <div class="account-row">
+
+              <span>
+                ${escapeHtml(
+                  tokenName(row)
+                )}
+
+                ·
+
+                ${escapeHtml(
+                  String(
+                    row.close_reason ||
+                    "CLOSED"
+                  ).replaceAll(
+                    "_",
+                    " "
+                  )
+                )}
+              </span>
+
+              <b class="${
+                pnlClass(pnl)
+              }">
+                ${escapeHtml(
+                  money(pnl)
+                )}
+              </b>
+
+            </div>
+          `;
+        }
+      );
+  }
+
+  $("accountingContent")
+    .innerHTML =
+      html;
 }
 
+function openAccounting(){
+  renderAccounting();
 
-async function refreshDashboard(){
+  $("accountingBackdrop")
+    .classList.add(
+      "open"
+    );
+}
+
+function closeAccounting(){
+  $("accountingBackdrop")
+    .classList.remove(
+      "open"
+    );
+}
+
+function drawerBackdrop(event){
+  if(
+    event.target ===
+    $("accountingBackdrop")
+  ){
+    closeAccounting();
+  }
+}
+
+/* ========================================================
+   REFRESH
+   ======================================================== */
+
+async function refreshPanel(){
   try{
     const [
-      data,
-      runtimeCandidates
+      dashboardData,
+      candidateData,
+      authorityData
     ] = await Promise.all([
       getJson(
         "/api/dashboard"
       ),
       getJson(
         "/api/runtime-candidates"
+      ),
+      getJson(
+        "/api/authority"
       )
     ]);
 
-    data.runtime_candidates =
+    dashboard =
+      dashboardData;
+
+    runtimeCandidates =
+      candidateData || [];
+
+    panelAuthority =
+      authorityData || {};
+
+    dashboard.runtime_candidates =
       runtimeCandidates;
 
-    renderDashboard(data);
+    renderSummary();
+    renderPositions();
+    renderCandidates();
+    renderIntelligence();
+    renderHealth();
+    renderSignals();
+    renderInitialChat();
 
-    renderRuntimeCandidates(
-      runtimeCandidates
-    );
-
-    markMarketCards();
+    if(
+      $("accountingBackdrop")
+        .classList.contains(
+          "open"
+        )
+    ){
+      renderAccounting();
+    }
 
   }catch(error){
-    openModal(
-      "PANEL VERİ HATASI",
-      "<p>" +
-        escapeHtml(
-          error.message
-        ) +
-      "</p>"
+    console.error(
+      "Panel refresh failed",
+      error
     );
+
+    if(!chatStarted){
+      chatStarted = true;
+
+      addChatMessage(
+        "vezir",
+        (
+          "Panel verisi alınamadı: " +
+          error.message
+        )
+      );
+    }
   }
 }
 
+/* ========================================================
+   START
+   ======================================================== */
 
-/* CANONICAL PANEL INITIALIZATION */
+panelMode =
+  sessionStorage.getItem(
+    "coinoskobi-panel-mode"
+  ) === "manual"
+    ? "manual"
+    : "auto";
 
-prepareVezirImage();
+$("autoModeButton")
+  .classList.toggle(
+    "active",
+    panelMode === "auto"
+  );
 
-updateClock();
+$("manualModeButton")
+  .classList.toggle(
+    "active",
+    panelMode === "manual"
+  );
+
+refreshPanel();
+refreshMarket();
 
 setInterval(
-  updateClock,
-  1000
+  refreshPanel,
+  10000
 );
-
-refreshDashboard();
 
 setInterval(
-  refreshDashboard,
-  15000
+  refreshMarket,
+  30000
 );
-
-
 </script>
 
 </body>

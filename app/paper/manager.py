@@ -122,7 +122,16 @@ class PaperManager:
         pos,
         reason,
     ):
-        if reason in {
+        if reason == "NORMAL_TAKE_PROFIT":
+            value = (
+                pos
+                or {}
+            ).get(
+                "tp_price"
+            )
+
+        elif reason in {
+            "NORMAL_STOP_LOSS",
             "DYNAMIC_PROTECTION_FLOOR",
             "DYNAMIC_PROFIT_PROTECTION",
             "SEVERE_MARKET_DETERIORATION",
@@ -950,7 +959,156 @@ class PaperManager:
             },
         }
 
-    def _process_math_position(
+    def _process_normal_math_position(
+        self,
+        pos,
+        current,
+        highest,
+        lowest,
+        plan,
+    ):
+        """
+        NORMAL policy.
+
+        Entry, stop and take-profit are fixed at
+        position creation from the mathematical plan.
+
+        This path deliberately does not execute
+        Vur-Kac realization, principal-recovery,
+        TP1/TP2 partial realization, or runner logic.
+        """
+
+        self.db.record_price_observation(
+            pos["id"],
+            current,
+        )
+
+        evidence = (
+            self._hybrid_runtime_evidence(
+                pos
+            )
+            or {}
+        )
+
+        hard_exit = bool(
+            evidence.get(
+                "hard_block"
+            )
+        ) or (
+            evidence.get(
+                "sellability"
+            )
+            is False
+        )
+
+        static_stop = float(
+            pos.get(
+                "sl_price"
+            )
+            or 0.0
+        )
+
+        static_tp = float(
+            pos.get(
+                "tp_price"
+            )
+            or 0.0
+        )
+
+        if hard_exit:
+            return self._close_math(
+                pos,
+                current,
+                highest,
+                lowest,
+                plan,
+                "HARD_SAFETY_EXIT",
+            )
+
+        if (
+            static_stop > 0
+            and current <= static_stop
+        ):
+            return self._close_math(
+                pos,
+                current,
+                highest,
+                lowest,
+                plan,
+                "NORMAL_STOP_LOSS",
+            )
+
+        if (
+            static_tp > 0
+            and current >= static_tp
+        ):
+            return self._close_math(
+                pos,
+                current,
+                highest,
+                lowest,
+                plan,
+                "NORMAL_TAKE_PROFIT",
+            )
+
+        (
+            gross,
+            net,
+            roi,
+        ) = self._math_accounting(
+            pos,
+            current,
+            plan,
+        )
+
+        self.db.update_position(
+            pos["id"],
+            {
+                "current_price": current,
+                "highest_price": highest,
+                "lowest_price": lowest,
+                "gross_pnl": gross,
+                "net_pnl": net,
+                "roi": roi,
+                "gross_pnl_usdt": gross,
+                "net_pnl_usdt": net,
+            },
+        )
+
+        return {
+            "success": True,
+            "source": "paper",
+
+            "data": {
+                "action": "HOLD",
+
+                "token": (
+                    pos["token"]
+                ),
+
+                "entry_price": (
+                    pos["entry_price"]
+                ),
+
+                "current_price": current,
+                "roi": roi,
+                "status": "OPEN",
+
+                "reason": (
+                    "NORMAL_PLAN_ACTIVE"
+                ),
+
+                "gross_pnl_usdt": gross,
+                "net_pnl_usdt": net,
+
+                "static_sl": static_stop,
+                "static_tp": static_tp,
+
+                "trade_policy": "NORMAL",
+            },
+        }
+
+    def _process_vur_kac_position(
         self,
         pos,
         current,
@@ -2227,15 +2385,43 @@ class PaperManager:
                     "mathematical_trade_plan"
                 )
             ):
-                result = (
-                    self._process_math_position(
-                        pos,
-                        current,
-                        highest,
-                        lowest,
-                        plan,
+                policy = str(
+                    pos.get(
+                        "trade_policy"
                     )
-                )
+                    or "NORMAL"
+                ).strip().upper()
+
+                if policy == "VUR_KAC":
+                    result = (
+                        self._process_vur_kac_position(
+                            pos,
+                            current,
+                            highest,
+                            lowest,
+                            plan,
+                        )
+                    )
+
+                else:
+                    if policy != "NORMAL":
+                        logger.warning(
+                            "Unknown trade policy=%s "
+                            "position_id=%s; "
+                            "using NORMAL fail-safe",
+                            policy,
+                            pos.get("id"),
+                        )
+
+                    result = (
+                        self._process_normal_math_position(
+                            pos,
+                            current,
+                            highest,
+                            lowest,
+                            plan,
+                        )
+                    )
 
             else:
                 # Legacy compatibility only.

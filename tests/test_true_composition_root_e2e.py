@@ -536,6 +536,7 @@ def test_true_composition_root_e2e(
         ]
         in {
             "PERSISTED_STOP_LOSS",
+            "NORMAL_STOP_LOSS",
             "MATHEMATICAL_TREND_FLOOR",
             "DYNAMIC_PROTECTION_FLOOR",
             "DYNAMIC_PROFIT_PROTECTION",

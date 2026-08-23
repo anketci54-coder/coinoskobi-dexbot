@@ -36,6 +36,7 @@ REQUIRED_COLUMNS = {
     "pool",
     "dex",
     "opening_context_json",
+    "trade_policy",
 }
 
 

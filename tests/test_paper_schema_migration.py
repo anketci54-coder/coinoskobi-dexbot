@@ -321,3 +321,101 @@ def test_newer_schema_still_rejected(
         ensure_paper_schema(db)
 
     db.close()
+
+def test_existing_schema_gains_trade_policy_without_rewriting_history(
+    tmp_path,
+):
+    path = tmp_path / "policy-old.db"
+
+    db = _v1(path)
+
+    db.execute(
+        """
+        INSERT INTO paper_trades(
+            token,
+            status
+        )
+        VALUES ('0xabc', 'CLOSED')
+        """
+    )
+    db.commit()
+
+    ensure_paper_schema(db)
+
+    columns = {
+        row[1]
+        for row in db.execute(
+            "PRAGMA table_info(paper_trades)"
+        )
+    }
+
+    assert "trade_policy" in columns
+
+    row = db.execute(
+        """
+        SELECT token, status, trade_policy
+        FROM paper_trades
+        WHERE token='0xabc'
+        """
+    ).fetchone()
+
+    assert row == (
+        "0xabc",
+        "CLOSED",
+        None,
+    )
+
+    db.close()
+
+
+def test_existing_open_position_preserves_legacy_vur_kac_lifecycle(
+    tmp_path,
+):
+    path = tmp_path / "legacy-open-policy.db"
+
+    db = _v1(path)
+
+    db.execute(
+        """
+        INSERT INTO paper_trades(
+            token,
+            status
+        )
+        VALUES ('0xlegacy', 'OPEN')
+        """
+    )
+
+    db.execute(
+        """
+        INSERT INTO paper_trades(
+            token,
+            status
+        )
+        VALUES ('0xhistory', 'CLOSED')
+        """
+    )
+
+    db.commit()
+
+    ensure_paper_schema(db)
+
+    opened = db.execute(
+        """
+        SELECT trade_policy
+        FROM paper_trades
+        WHERE token='0xlegacy'
+        """
+    ).fetchone()[0]
+
+    closed = db.execute(
+        """
+        SELECT trade_policy
+        FROM paper_trades
+        WHERE token='0xhistory'
+        """
+    ).fetchone()[0]
+
+    assert opened == "VUR_KAC"
+    assert closed is None
+
+    db.close()

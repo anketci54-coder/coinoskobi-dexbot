@@ -2134,6 +2134,8 @@ class PipelineEngine:
                                 False
                             ),
 
+                            "trade_policy": "NORMAL",
+
                             "decision_authority": False,
                             "live_authority": False,
                             "wallet_authority": False,
@@ -2231,6 +2233,8 @@ class PipelineEngine:
                             "paper_account_version": (
                                 "PAPER_10K_V2"
                             ),
+
+                            "trade_policy": "NORMAL",
 
                             "entry_amount_usdt": (
                                 entry_amount_usdt

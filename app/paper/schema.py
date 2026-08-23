@@ -44,6 +44,7 @@ CREATE TABLE IF NOT EXISTS paper_trades (
     opening_context_json TEXT,
 
     paper_account_version TEXT,
+    trade_policy TEXT,
 
     entry_amount_usdt REAL,
     risk_amount_usdt REAL,
@@ -175,6 +176,11 @@ V3_COLUMNS = {
 }
 
 
+POLICY_COLUMNS = {
+    "trade_policy": "TEXT",
+}
+
+
 MATHEMATICAL_COLUMNS = {
     "initial_token_amount": "REAL",
 
@@ -262,6 +268,7 @@ REQUIRED_COLUMNS = {
     "opening_context_json",
 
     *V3_COLUMNS.keys(),
+    *POLICY_COLUMNS.keys(),
     *MATHEMATICAL_COLUMNS.keys(),
 }
 
@@ -388,6 +395,30 @@ def ensure_paper_schema(
         _add_columns(
             conn,
             V3_COLUMNS,
+        )
+
+        _add_columns(
+            conn,
+            POLICY_COLUMNS,
+        )
+
+        # Positions already OPEN before explicit policy
+        # identity existed are already being managed by
+        # the legacy Vur-Kac mathematical lifecycle.
+        #
+        # Preserve that active lifecycle across the
+        # migration. Closed history is intentionally
+        # left untouched.
+        conn.execute(
+            """
+            UPDATE paper_trades
+            SET trade_policy='VUR_KAC'
+            WHERE status='OPEN'
+              AND (
+                  trade_policy IS NULL
+                  OR trim(trade_policy)=''
+              )
+            """
         )
 
         _add_columns(

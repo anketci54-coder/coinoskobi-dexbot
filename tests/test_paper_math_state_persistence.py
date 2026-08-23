@@ -65,34 +65,72 @@ def test_no_fixed_tp_fraction_was_added():
 
 
 
-def test_vur_kac_uses_existing_math_tp_and_runner_path():
-    source = Path(
+def test_normal_and_vur_kac_have_separate_policy_paths():
+    manager = Path(
         "app/paper/manager.py"
     ).read_text(
         encoding="utf-8"
     )
 
+    engine = Path(
+        "app/pipeline/engine.py"
+    ).read_text(
+        encoding="utf-8"
+    )
+
+    assert (
+        "def _process_normal_math_position("
+        in manager
+    )
+
+    assert (
+        "def _process_vur_kac_position("
+        in manager
+    )
+
+    normal_start = manager.index(
+        "def _process_normal_math_position("
+    )
+
+    vur_start = manager.index(
+        "def _process_vur_kac_position("
+    )
+
+    normal_source = manager[
+        normal_start:vur_start
+    ]
+
+    assert (
+        "vur_kac"
+        not in normal_source.lower()
+    )
+
+    assert (
+        '"NORMAL_STOP_LOSS"'
+        in normal_source
+    )
+
+    assert (
+        '"NORMAL_TAKE_PROFIT"'
+        in normal_source
+    )
+
+    assert (
+        'policy == "VUR_KAC"'
+        in manager
+    )
+
+    assert (
+        '"trade_policy": "NORMAL"'
+        in engine
+    )
+
     assert (
         "mathematical_vur_kac_state("
-        in source
+        in manager
     )
 
     assert (
         '"MATHEMATICAL_VUR_KAC_EXIT"'
-        in source
-    )
-
-    assert (
-        "persistent_vur_kac"
-        in source
-    )
-
-    assert (
-        "TP1_CLOSE_FRACTION"
-        not in source
-    )
-
-    assert (
-        "TP2_CLOSE_FRACTION"
-        not in source
+        in manager
     )

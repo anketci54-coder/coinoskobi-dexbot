@@ -2572,6 +2572,280 @@ button{
 }
 
 
+
+/* =========================================================
+   DESKTOP READABILITY PASS
+   Geometry/grid/card structure intentionally unchanged.
+   ========================================================= */
+
+:root{
+  --muted:#99adb3;
+  --soft:#d0dadd;
+}
+
+.card-head{
+  font-size:11px;
+  font-weight:900;
+}
+
+.card-link{
+  font-size:8px;
+  font-weight:900;
+}
+
+.metric-label{
+  color:#b3c2c6;
+  font-size:8px;
+  font-weight:800;
+}
+
+.metric-value{
+  font-size:13px;
+}
+
+.metric-sub{
+  color:#92a5ab;
+  font-size:7px;
+  font-weight:600;
+}
+
+.market-name{
+  font-size:8px;
+}
+
+.live-clock,
+.mode-label{
+  font-size:7px;
+}
+
+.mode-button{
+  font-size:8px;
+}
+
+.mode-foot{
+  color:#91a4aa;
+  font-size:6px;
+}
+
+.vezir-role,
+.vezir-live{
+  font-size:8px;
+}
+
+.vezir-quote{
+  color:#f0f5f6;
+  font-size:8px;
+  font-weight:650;
+}
+
+.vezir-points{
+  color:#cad5d8;
+  font-size:7px;
+  font-weight:650;
+}
+
+.vezir-report{
+  font-size:8px;
+}
+
+.asset-chain{
+  color:#a5b5ba;
+  font-size:8px;
+}
+
+.signal-label{
+  color:#d1dadd;
+  font-size:7px;
+  font-weight:800;
+}
+
+.signal-state{
+  font-size:8px;
+}
+
+.best-section-title{
+  font-size:9px;
+}
+
+.check-row,
+.plan-row{
+  font-size:8px;
+  font-weight:650;
+}
+
+.check-name,
+.plan-name{
+  color:#c2ced1;
+}
+
+.check-value,
+.plan-value{
+  font-size:8px;
+}
+
+.best-tag small{
+  color:#a4b5ba;
+  font-size:6px;
+  font-weight:800;
+}
+
+.best-tag b{
+  font-size:8px;
+}
+
+.best-action{
+  font-size:8px;
+}
+
+.position-header{
+  color:#aebdc1;
+  font-size:7px;
+  font-weight:800;
+}
+
+.position-row{
+  font-size:8px;
+}
+
+.position-token small{
+  color:#9cabb0;
+  font-size:7px;
+  font-weight:600;
+}
+
+.summary-box small{
+  color:#9badb2;
+  font-size:6px;
+}
+
+.summary-box b{
+  font-size:9px;
+}
+
+.control-title{
+  font-size:11px;
+}
+
+.amount-box small{
+  color:#9badb2;
+  font-size:6px;
+  font-weight:800;
+}
+
+.amount-box b{
+  font-size:9px;
+}
+
+.trade-action small{
+  font-size:6px;
+}
+
+.authority-note{
+  color:#a9b8bc;
+  font-size:7px;
+  font-weight:600;
+}
+
+.candidate-header{
+  color:#a2b3b8;
+  font-size:6px;
+  font-weight:800;
+}
+
+.candidate-row{
+  font-size:8px;
+  font-weight:650;
+}
+
+.candidate-token-live small{
+  color:#93a6ac;
+  font-size:6px;
+}
+
+.intel-copy b{
+  font-size:8px;
+}
+
+.intel-copy small{
+  color:#9aacb1;
+  font-size:6px;
+  font-weight:600;
+}
+
+.intel-state{
+  font-size:7px;
+}
+
+.tab-button{
+  font-size:6px;
+}
+
+.performance-stat small{
+  color:#91a5ab;
+  font-size:5.5px;
+  font-weight:800;
+}
+
+.performance-stat b{
+  font-size:8px;
+}
+
+.policy-pill{
+  color:#a9b8bc;
+  font-size:6px;
+  font-weight:750;
+}
+
+.health-banner small{
+  color:#9badb2;
+  font-size:7px;
+}
+
+.health-row{
+  font-size:7px;
+  font-weight:650;
+}
+
+.signal-heading,
+.quick-heading{
+  font-size:9px;
+}
+
+.signal-item b{
+  font-size:7px;
+}
+
+.signal-item small{
+  color:#9badb2;
+  font-size:6px;
+  font-weight:600;
+}
+
+.quick-button{
+  color:#aab9bd;
+  font-size:7px;
+}
+
+.placeholder-row,
+.placeholder-row span,
+.placeholder-row b{
+  color:#94a7ad!important;
+}
+
+/*
+  Avoid thin/fuzzy-looking secondary text.
+  No scaling or transform is used.
+*/
+small,
+.metric-sub,
+.asset-chain,
+.intel-copy small,
+.signal-item small,
+.authority-note{
+  text-shadow:none;
+}
+
+
 </style>
 </head>
 
@@ -3082,7 +3356,7 @@ button{
         </div>
 
         <div class="best-tag">
-          <small>KANIT GÜVENİ</small>
+          <small>GÜNCELLEME</small>
           <b id="confidence">—</b>
         </div>
 
@@ -3207,7 +3481,7 @@ button{
       </div>
 
       <div class="amount-box">
-        <small>ADAY PLAN TUTARI</small>
+        <small>SEÇİLİ ADAY</small>
         <b id="controlAmount">—</b>
       </div>
 
@@ -3921,6 +4195,51 @@ function formatConfidence(value){
 }
 
 
+function formatRuntimeTime(value){
+  if(
+    value === null ||
+    value === undefined ||
+    value === ""
+  ){
+    return "—";
+  }
+
+  let source =
+    String(value).trim();
+
+  if(
+    /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/
+      .test(source)
+  ){
+    source =
+      source.replace(
+        " ",
+        "T"
+      ) + "Z";
+  }
+
+  const parsed =
+    new Date(source);
+
+  if(
+    Number.isNaN(
+      parsed.getTime()
+    )
+  ){
+    return "—";
+  }
+
+  return parsed.toLocaleTimeString(
+    "tr-TR",
+    {
+      hour:"2-digit",
+      minute:"2-digit",
+      timeZone:"Asia/Nicosia"
+    }
+  );
+}
+
+
 function paint(node,value){
   if(!node){
     return;
@@ -4521,17 +4840,12 @@ function applyRuntimeCandidateState(candidate){
   }
 
   $("bestScoreState").textContent =
-    blocked
-      ? textValue(
-          candidate.reason ||
-          candidate.sizing_reason ||
-          action
-        )
-      : textValue(
-          candidate.paper_action ||
-          candidate.unified ||
-          candidate.strategy
-        );
+    textValue(
+      candidate.paper_action ||
+      candidate.unified ||
+      candidate.strategy ||
+      action
+    );
 }
 
 
@@ -4608,8 +4922,9 @@ function renderRuntimeBestDetails(best){
         );
 
   $("confidence").textContent =
-    formatConfidence(
-      confidence
+    formatRuntimeTime(
+      candidate.cache_updated_at ||
+      candidate.observed_at
     );
 
   $("bestRoi").textContent =
@@ -4645,18 +4960,9 @@ function renderRuntimeBestDetails(best){
   );
 
   $("controlAmount").textContent =
-    candidate.entry_amount_usdt === null ||
-    candidate.entry_amount_usdt === undefined
-      ? "—"
-      : (
-          Number(
-            candidate.entry_amount_usdt
-          ) <= 0
-            ? "0,00 USDT · BLOKLU"
-            : formatMoney(
-                candidate.entry_amount_usdt
-              )
-        );
+    runtimeCandidateShortToken(
+      candidate
+    );
 
   $("bestChain").textContent =
     [

@@ -2394,6 +2394,77 @@ button{
 }
 
 
+
+/* CANONICAL POLICY / COST PERFORMANCE */
+
+.performance-layout{
+  grid-template-rows:
+    21px
+    minmax(52px,1fr)
+    34px
+    19px;
+}
+
+.policy-performance{
+  min-width:0;
+
+  display:flex;
+  align-items:center;
+
+  gap:5px;
+
+  overflow:hidden;
+}
+
+.policy-pill{
+  min-width:0;
+
+  padding:3px 6px;
+
+  border:1px solid var(--line-soft);
+  border-radius:3px;
+
+  background:#041018;
+  color:#8fa4aa;
+
+  font-size:5px;
+  font-weight:700;
+
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+
+.policy-pill b{
+  color:#f3f7f8;
+}
+
+.policy-pill strong{
+  font-weight:900;
+}
+
+@media (max-width:1300px), (hover:none) and (pointer:coarse){
+  .performance-layout{
+    grid-template-rows:
+      34px
+      minmax(140px,1fr)
+      auto
+      auto;
+  }
+
+  .policy-performance{
+    padding-top:7px;
+
+    flex-wrap:wrap;
+    overflow:visible;
+  }
+
+  .policy-pill{
+    font-size:7px;
+  }
+}
+
+
 </style>
 </head>
 
@@ -2665,7 +2736,7 @@ button{
 
     <div class="card-head">
 
-      <span>★ EN İYİ FIRSAT</span>
+      <span>★ ÖNCELİKLİ CANLI ADAY</span>
 
       <button
         class="card-link"
@@ -2708,7 +2779,7 @@ button{
             <div class="signal-box">
 
               <div class="signal-label">
-                SİNYAL GÜCÜ
+                KANIT GÜVENİ
               </div>
 
               <div
@@ -2894,27 +2965,27 @@ button{
       <div class="best-bottom">
 
         <div class="best-tag">
-          <small>TREND</small>
+          <small>VOLUME 24H</small>
           <b id="trend">—</b>
         </div>
 
         <div class="best-tag">
-          <small>ZAMANLAMA</small>
+          <small>ALIM 24H</small>
           <b id="timing">—</b>
         </div>
 
         <div class="best-tag">
-          <small>GÜVEN</small>
+          <small>KANIT GÜVENİ</small>
           <b id="confidence">—</b>
         </div>
 
         <div class="best-tag">
-          <small>ROI</small>
+          <small>FDV</small>
           <b id="bestRoi">—</b>
         </div>
 
         <div class="best-tag">
-          <small>NET P&L</small>
+          <small>PLAN TUTARI</small>
           <b id="bestNet">—</b>
         </div>
 
@@ -3084,10 +3155,10 @@ button{
       <div class="candidate-header">
         <span>#</span>
         <span>TOKEN / PAIR</span>
-        <span>ZİNCİR</span>
-        <span>SİNYAL</span>
-        <span>RİSK</span>
-        <span>CONFIDENCE</span>
+        <span>KARAR</span>
+        <span>SATIŞ</span>
+        <span>KANIT</span>
+        <span>GATE</span>
       </div>
 
       <div id="candidateList">
@@ -3372,6 +3443,14 @@ button{
           <b id="profitFactor">—</b>
         </div>
 
+      </div>
+
+      <div
+        class="policy-performance"
+        id="policyPerformance">
+        <span class="policy-pill">
+          POLICY VERİSİ BEKLENİYOR
+        </span>
       </div>
 
     </div>
@@ -3671,6 +3750,39 @@ function formatPrice(value){
     {
       minimumFractionDigits:decimals,
       maximumFractionDigits:decimals
+    }
+  );
+}
+
+
+
+function formatConfidence(value){
+  if(
+    value === null ||
+    value === undefined ||
+    value === ""
+  ){
+    return "—";
+  }
+
+  let parsed = Number(value);
+
+  if(!Number.isFinite(parsed)){
+    return "—";
+  }
+
+  if(
+    parsed >= 0 &&
+    parsed <= 1
+  ){
+    parsed *= 100;
+  }
+
+  return "%" + parsed.toLocaleString(
+    "tr-TR",
+    {
+      minimumFractionDigits:2,
+      maximumFractionDigits:2
     }
   );
 }
@@ -4028,7 +4140,12 @@ function renderSummary(summary){
     formatMoney(summary.open_risk);
 
   $("dailyPnlSub").textContent =
-    "Yeni dönem";
+    summary.local_date
+      ? (
+          "Bugün · " +
+          summary.local_date
+        )
+      : "Yeni dönem";
 
   $("totalPnlSub").textContent =
     formatPercent(
@@ -4176,6 +4293,131 @@ function runtimeCandidateToBest(candidate){
         candidate.sellability
     }
   };
+}
+
+
+
+function renderRuntimeBestDetails(best){
+  if(!best?.runtime_candidate){
+    return;
+  }
+
+  const candidate =
+    best.runtime_raw || {};
+
+  const confidence =
+    candidate.coverage_confidence ??
+    candidate.evidence_coverage;
+
+  $("bestToken").textContent =
+    candidate.name ||
+    runtimeCandidateShortToken(
+      candidate
+    );
+
+  $("bestScore").textContent =
+    formatConfidence(
+      confidence
+    );
+
+  $("liquidity").textContent =
+    candidate.liquidity === null ||
+    candidate.liquidity === undefined
+      ? "—"
+      : formatMoney(
+          candidate.liquidity
+        );
+
+  $("currentPrice").textContent =
+    formatPrice(
+      candidate.price_usd
+    );
+
+  $("positionSize").textContent =
+    candidate.entry_amount_usdt === null ||
+    candidate.entry_amount_usdt === undefined
+      ? "—"
+      : formatMoney(
+          candidate.entry_amount_usdt
+        );
+
+  $("trend").textContent =
+    candidate.volume_24h === null ||
+    candidate.volume_24h === undefined
+      ? "—"
+      : formatMoney(
+          candidate.volume_24h
+        );
+
+  $("timing").textContent =
+    candidate.buys_24h === null ||
+    candidate.buys_24h === undefined
+      ? "—"
+      : Number(
+          candidate.buys_24h
+        ).toLocaleString(
+          "tr-TR"
+        );
+
+  $("confidence").textContent =
+    formatConfidence(
+      confidence
+    );
+
+  $("bestRoi").textContent =
+    candidate.fdv === null ||
+    candidate.fdv === undefined
+      ? "—"
+      : formatMoney(
+          candidate.fdv
+        );
+
+  $("bestNet").textContent =
+    candidate.entry_amount_usdt === null ||
+    candidate.entry_amount_usdt === undefined
+      ? "—"
+      : formatMoney(
+          candidate.entry_amount_usdt
+        );
+
+  $("bestNet").classList.remove(
+    "green",
+    "red"
+  );
+
+  $("bestRoi").classList.remove(
+    "green",
+    "red"
+  );
+
+  $("controlAmount").textContent =
+    candidate.entry_amount_usdt === null ||
+    candidate.entry_amount_usdt === undefined
+      ? "—"
+      : formatMoney(
+          candidate.entry_amount_usdt
+        );
+
+  $("bestChain").textContent =
+    [
+      candidate.dex ||
+      "BSC RUNTIME",
+
+      candidate.pool
+        ? String(
+            candidate.pool
+          ).slice(0,14)
+        : null
+    ]
+      .filter(Boolean)
+      .join(" · ");
+
+  if(candidate.sizing_reason){
+    $("marketState").textContent =
+      textValue(
+        candidate.sizing_reason
+      );
+  }
 }
 
 
@@ -4475,8 +4717,16 @@ function renderPositions(data){
                   [
                     position.trade_policy ||
                     "LEGACY",
+
                     position.dex ||
-                    "PAPER"
+                    "PAPER",
+
+                    Number(
+                      position.cost_model_complete ||
+                      0
+                    ) === 1
+                      ? "COST TAMAM"
+                      : "COST EKSİK"
                   ].join(" · ")
                 )}
               </small>
@@ -4803,6 +5053,73 @@ function setChartRange(range,button){
 }
 
 
+
+function renderPolicyPerformance(rows){
+  const node =
+    $("policyPerformance");
+
+  if(!node){
+    return;
+  }
+
+  const list =
+    rows || [];
+
+  if(!list.length){
+    node.innerHTML =
+      "<span class=\"policy-pill\">POLICY VERİSİ BEKLENİYOR</span>";
+
+    return;
+  }
+
+  node.innerHTML =
+    list
+      .map(row=>{
+        const net =
+          Number(
+            row.net_total || 0
+          );
+
+        const closed =
+          Number(
+            row.closed || 0
+          );
+
+        const complete =
+          Number(
+            row.cost_complete || 0
+          );
+
+        return `
+          <span class="policy-pill">
+            <b>
+              ${escapeHtml(
+                textValue(
+                  row.trade_policy
+                )
+              )}
+            </b>
+
+            ${closed} işlem ·
+
+            <strong class="${
+              net >= 0
+                ? "green"
+                : "red"
+            }">
+              ${escapeHtml(
+                formatMoney(net)
+              )}
+            </strong>
+
+            · COST ${complete}/${closed}
+          </span>
+        `;
+      })
+      .join("");
+}
+
+
 function renderPerformance(data){
   const performance =
     data.performance || {};
@@ -4951,10 +5268,17 @@ function renderDashboard(data){
       data.runtime_candidates || []
     );
 
-  renderBest(
+  const runtimeBestView =
     runtimeCandidateToBest(
       runtimeBest
-    )
+    );
+
+  renderBest(
+    runtimeBestView
+  );
+
+  renderRuntimeBestDetails(
+    runtimeBestView
   );
 
   renderPositions(data);
@@ -4970,6 +5294,10 @@ function renderDashboard(data){
   );
 
   renderPerformance(data);
+
+  renderPolicyPerformance(
+    data.policy_performance || []
+  );
 
   renderSignals(
     data.signals || []
@@ -5509,7 +5837,7 @@ function renderRuntimeCandidates(
                 evidence === undefined
                   ? "—"
                   : escapeHtml(
-                      formatPercent(
+                      formatConfidence(
                         evidence
                       )
                     )

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 from pathlib import Path
 from typing import Any
 import json
@@ -15,7 +16,11 @@ from fastapi.staticfiles import StaticFiles
 
 BASE_DIR = Path(__file__).resolve().parents[2]
 PAPER_DB = BASE_DIR / "data" / "paper_trades.db"
+CACHE_DB = BASE_DIR / "data" / "cache" / "cache.db"
 STATIC_DIR = BASE_DIR / "app" / "api" / "static"
+
+PANEL_TIMEZONE_NAME = "Asia/Nicosia"
+PANEL_TIMEZONE = ZoneInfo(PANEL_TIMEZONE_NAME)
 INDEX_FILE = STATIC_DIR / "index.html"
 
 PAPER_STARTING_CAPITAL_USDT = 10_000.0
@@ -112,6 +117,81 @@ def table_count(table_name: str) -> int:
     )
 
     return int(row.get("count") or 0)
+
+
+
+def runtime_cache_snapshot() -> dict[str, dict[str, dict[str, Any]]]:
+    """
+    Read-only projection of the current Gecko scanner cache.
+
+    The panel never creates or updates cache rows.
+    """
+
+    snapshot: dict[str, dict[str, dict[str, Any]]] = {
+        "by_pool": {},
+        "by_token": {},
+    }
+
+    if not CACHE_DB.exists():
+        return snapshot
+
+    connection = None
+
+    try:
+        connection = sqlite3.connect(
+            f"file:{CACHE_DB}?mode=ro",
+            uri=True,
+            timeout=2,
+        )
+        connection.row_factory = sqlite3.Row
+
+        rows = connection.execute(
+            """
+            SELECT
+                pool,
+                token,
+                quote_token,
+                name,
+                dex,
+                liquidity,
+                volume24 AS volume_24h,
+                buys24 AS buys_24h,
+                fdv,
+                price_usd,
+                created_at,
+                updated_at
+            FROM gecko_pool_cache
+            """
+        ).fetchall()
+
+    except Exception:
+        return snapshot
+
+    finally:
+        if connection is not None:
+            connection.close()
+
+    for raw in rows:
+        row = dict(raw)
+
+        pool = str(
+            row.get("pool") or ""
+        ).strip().lower()
+
+        token = str(
+            row.get("token") or ""
+        ).strip().lower()
+
+        if token.startswith("bsc_"):
+            token = token[4:]
+
+        if pool:
+            snapshot["by_pool"][pool] = row
+
+        if token:
+            snapshot["by_token"][token] = row
+
+    return snapshot
 
 
 def parse_json_object(value: Any) -> dict[str, Any]:
@@ -348,6 +428,7 @@ def paper_rows(
             opening_context_json,
             paper_account_version,
             trade_policy,
+            cost_model_complete,
             entry_amount_usdt,
             risk_amount_usdt,
             capital_before_usdt,
@@ -480,7 +561,16 @@ def performance_payload(
                     END
                 ),
                 0
-            ) AS gross_loss
+            ) AS gross_loss,
+            SUM(
+                CASE
+                WHEN COALESCE(
+                    cost_model_complete,
+                    0
+                ) = 1
+                THEN 1 ELSE 0
+                END
+            ) AS cost_complete
         FROM paper_trades
         WHERE paper_account_version = 'PAPER_10K_V2'
           AND UPPER(
@@ -530,6 +620,10 @@ def performance_payload(
         else None
     )
 
+    cost_complete = int(
+        row.get("cost_complete") or 0
+    )
+
     return {
         "closed": closed,
         "wins": (
@@ -554,9 +648,151 @@ def performance_payload(
         "gross_profit": gross_profit,
         "gross_loss": gross_loss,
         "profit_factor": profit_factor,
+        "cost_complete": cost_complete,
+        "cost_incomplete": max(
+            0,
+            closed - cost_complete,
+        ),
     }
 
 
+
+
+
+def policy_performance_payload(
+    *,
+    active_only: bool = False,
+) -> list[dict[str, Any]]:
+    active_filter = ""
+    params: tuple[Any, ...] = ()
+
+    if active_only:
+        active_filter = " AND id >= ?"
+        params = (
+            PANEL_ACTIVE_PERIOD_MIN_TRADE_ID,
+        )
+
+    rows = query(
+        f"""
+        SELECT
+            COALESCE(
+                NULLIF(
+                    UPPER(TRIM(trade_policy)),
+                    ''
+                ),
+                'LEGACY'
+            ) AS trade_policy,
+
+            COUNT(*) AS closed,
+
+            SUM(
+                CASE
+                WHEN COALESCE(
+                    net_pnl_usdt,
+                    net_pnl,
+                    0
+                ) > 0
+                THEN 1 ELSE 0
+                END
+            ) AS wins,
+
+            SUM(
+                CASE
+                WHEN COALESCE(
+                    net_pnl_usdt,
+                    net_pnl,
+                    0
+                ) < 0
+                THEN 1 ELSE 0
+                END
+            ) AS losses,
+
+            AVG(roi) * 100.0 AS avg_roi_pct,
+
+            COALESCE(
+                SUM(
+                    COALESCE(
+                        net_pnl_usdt,
+                        net_pnl,
+                        0
+                    )
+                ),
+                0
+            ) AS net_total,
+
+            SUM(
+                CASE
+                WHEN COALESCE(
+                    cost_model_complete,
+                    0
+                ) = 1
+                THEN 1 ELSE 0
+                END
+            ) AS cost_complete
+
+        FROM paper_trades
+
+        WHERE paper_account_version = 'PAPER_10K_V2'
+          AND UPPER(
+                COALESCE(status, '')
+              ) = 'CLOSED'
+          {active_filter}
+
+        GROUP BY
+            COALESCE(
+                NULLIF(
+                    UPPER(TRIM(trade_policy)),
+                    ''
+                ),
+                'LEGACY'
+            )
+
+        ORDER BY closed DESC
+        """,
+        params,
+    )
+
+    result = []
+
+    for row in rows:
+        closed = int(
+            row.get("closed") or 0
+        )
+
+        cost_complete = int(
+            row.get("cost_complete") or 0
+        )
+
+        result.append({
+            "trade_policy": row.get(
+                "trade_policy"
+            ),
+            "closed": closed,
+            "wins": int(
+                row.get("wins") or 0
+            ),
+            "losses": int(
+                row.get("losses") or 0
+            ),
+            "avg_roi_pct": (
+                number(
+                    row.get("avg_roi_pct")
+                )
+                if row.get("avg_roi_pct")
+                is not None
+                else None
+            ),
+            "net_total": number(
+                row.get("net_total")
+            ),
+            "cost_complete": cost_complete,
+            "cost_incomplete": max(
+                0,
+                closed - cost_complete,
+            ),
+        })
+
+    return result
 
 
 def performance_series(
@@ -702,6 +938,8 @@ def runtime_candidate_rows(
     No trade / DB / wallet / execution authority.
     """
 
+    cache_snapshot = runtime_cache_snapshot()
+
     try:
         result = subprocess.run(
             [
@@ -784,6 +1022,16 @@ def runtime_candidate_rows(
             fields.get("pool") or ""
         ).strip()
 
+        cache_row = (
+            cache_snapshot["by_pool"].get(
+                pool.lower()
+            )
+            or cache_snapshot["by_token"].get(
+                token.lower()
+            )
+            or {}
+        )
+
         if not token:
             continue
 
@@ -851,6 +1099,73 @@ def runtime_candidate_rows(
             "sellability": fields.get(
                 "sellability"
             ),
+
+            "sizing_reason": fields.get(
+                "sizing_reason"
+            ),
+
+            "entry_amount_usdt": (
+                _runtime_number(
+                    fields.get(
+                        "entry_amount_usdt"
+                    )
+                )
+            ),
+
+            "name": cache_row.get(
+                "name"
+            ),
+
+            "dex": cache_row.get(
+                "dex"
+            ),
+
+            "liquidity": (
+                _runtime_number(
+                    cache_row.get(
+                        "liquidity"
+                    )
+                )
+            ),
+
+            "volume_24h": (
+                _runtime_number(
+                    cache_row.get(
+                        "volume_24h"
+                    )
+                )
+            ),
+
+            "buys_24h": (
+                _runtime_number(
+                    cache_row.get(
+                        "buys_24h"
+                    )
+                )
+            ),
+
+            "fdv": (
+                _runtime_number(
+                    cache_row.get(
+                        "fdv"
+                    )
+                )
+            ),
+
+            "price_usd": (
+                _runtime_number(
+                    cache_row.get(
+                        "price_usd"
+                    )
+                )
+            ),
+
+            "cache_updated_at": (
+                cache_row.get(
+                    "updated_at"
+                )
+            ),
+
             "source": (
                 "PAPER_RUNTIME_JOURNAL"
             ),
@@ -1259,9 +1574,39 @@ def api_dashboard() -> dict[str, Any]:
     total_pnl = realized_net + open_pnl
     equity = PAPER_STARTING_CAPITAL_USDT + total_pnl
 
-    today = datetime.now(
-        timezone.utc
-    ).date().isoformat()
+    now_local = datetime.now(
+        PANEL_TIMEZONE
+    )
+
+    day_start_local = now_local.replace(
+        hour=0,
+        minute=0,
+        second=0,
+        microsecond=0,
+    )
+
+    day_end_local = (
+        day_start_local
+        + timedelta(days=1)
+    )
+
+    day_start_utc = (
+        day_start_local
+        .astimezone(timezone.utc)
+        .isoformat()
+    )
+
+    day_end_utc = (
+        day_end_local
+        .astimezone(timezone.utc)
+        .isoformat()
+    )
+
+    local_date = (
+        day_start_local
+        .date()
+        .isoformat()
+    )
 
     daily_row = query_one(
         """
@@ -1280,15 +1625,19 @@ def api_dashboard() -> dict[str, Any]:
         WHERE paper_account_version = 'PAPER_10K_V2'
           AND UPPER(COALESCE(status, '')) = 'CLOSED'
           AND id >= ?
-          AND SUBSTR(
-                COALESCE(closed_at, created_at),
-                1,
-                10
-              ) = ?
+          AND COALESCE(
+                closed_at,
+                created_at
+              ) >= ?
+          AND COALESCE(
+                closed_at,
+                created_at
+              ) < ?
         """,
         (
             PANEL_ACTIVE_PERIOD_MIN_TRADE_ID,
-            today,
+            day_start_utc,
+            day_end_utc,
         ),
     )
 
@@ -1341,6 +1690,8 @@ def api_dashboard() -> dict[str, Any]:
         ).isoformat(),
         "summary": {
             "starting_capital": PAPER_STARTING_CAPITAL_USDT,
+            "panel_timezone": PANEL_TIMEZONE_NAME,
+            "local_date": local_date,
             "equity": equity,
             "daily_pnl": daily_pnl,
             "total_pnl": total_pnl,
@@ -1375,6 +1726,11 @@ def api_dashboard() -> dict[str, Any]:
         "exits": closed_positions[:10],
         "series": performance_series(active_only=True),
         "performance": performance,
+        "policy_performance": (
+            policy_performance_payload(
+                active_only=True
+            )
+        ),
         "intelligence": intelligence,
         "signals": recent_signals(
             rows,

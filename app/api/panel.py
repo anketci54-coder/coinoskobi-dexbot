@@ -20,9 +20,10 @@ INDEX_FILE = STATIC_DIR / "index.html"
 
 PAPER_STARTING_CAPITAL_USDT = 10_000.0
 
-# Active dashboard epoch. Historical trades remain in DB for empirical memory/calibration.
-PANEL_ACTIVE_PERIOD_MIN_TRADE_ID = 16
-PANEL_ACTIVE_PERIOD_LABEL = "PAPER_ACTIVE_ID_16_PLUS"
+# Active dashboard epoch. Historical paper trades are archived outside
+# the active paper_trades table; the clean runtime generation starts at ID 1.
+PANEL_ACTIVE_PERIOD_MIN_TRADE_ID = 1
+PANEL_ACTIVE_PERIOD_LABEL = "PAPER_ACTIVE_ID_1_PLUS"
 
 
 app = FastAPI(

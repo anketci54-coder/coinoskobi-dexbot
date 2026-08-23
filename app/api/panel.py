@@ -347,6 +347,7 @@ def paper_rows(
             dex,
             opening_context_json,
             paper_account_version,
+            trade_policy,
             entry_amount_usdt,
             risk_amount_usdt,
             capital_before_usdt,
@@ -1176,6 +1177,7 @@ def api_position_evidence(
             token,
             symbol,
             status,
+            trade_policy,
             opening_context_json
         FROM paper_trades
         WHERE id = ?
@@ -1199,6 +1201,7 @@ def api_position_evidence(
         "token": row.get("token"),
         "symbol": row.get("symbol"),
         "status": row.get("status"),
+        "trade_policy": row.get("trade_policy"),
         "entry_evidence": extract_entry_evidence(
             row.get("opening_context_json")
         ),

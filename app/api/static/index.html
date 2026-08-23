@@ -3848,6 +3848,19 @@ async function openIntelligence(){
 
 
 async function openBestEvidence(){
+  if(selectedBest?.runtime_candidate){
+    openJsonModal(
+      runtimeCandidateShortToken(
+        selectedBest.runtime_raw ||
+        selectedBest
+      ) +
+      " · CANLI ADAY KANITI",
+      selectedBest.runtime_raw ||
+      selectedBest
+    );
+    return;
+  }
+
   if(!selectedBest?.id){
     openModal(
       "ATIŞ POLİGONU",
@@ -3900,6 +3913,15 @@ function openPositionsModal(){
 
       <td>
         ${escapeHtml(
+          textValue(
+            position.trade_policy ||
+            "LEGACY"
+          )
+        )}
+      </td>
+
+      <td>
+        ${escapeHtml(
           formatPrice(position.entry_price)
         )}
       </td>
@@ -3941,6 +3963,7 @@ function openPositionsModal(){
         <thead>
           <tr>
             <th>Token</th>
+            <th>Policy</th>
             <th>Giriş</th>
             <th>Güncel</th>
             <th>SL</th>
@@ -4055,6 +4078,107 @@ function renderVezir(data){
 }
 
 
+function runtimeCandidateRank(candidate){
+  const action = String(
+    candidate?.paper_action ||
+    candidate?.unified ||
+    candidate?.strategy ||
+    ""
+  ).toUpperCase();
+
+  const actionRank = {
+    PAPER_BUY: 3,
+    WATCH: 2,
+    REJECT: 0
+  }[action] ?? 1;
+
+  const hardRank =
+    candidate?.hard_block === false
+      ? 2
+      : candidate?.hard_block === true
+        ? 0
+        : 1;
+
+  const sellability = String(
+    candidate?.sellability || ""
+  )
+    .toUpperCase()
+    .replace(
+      "SELLABILITY_",
+      ""
+    );
+
+  const sellRank = {
+    OK: 2,
+    UNKNOWN: 1,
+    FAIL: 0
+  }[sellability] ?? 1;
+
+  const confidence = number(
+    candidate?.coverage_confidence ??
+    candidate?.evidence_coverage ??
+    0
+  );
+
+  return (
+    actionRank * 100000 +
+    hardRank * 10000 +
+    sellRank * 1000 +
+    confidence
+  );
+}
+
+
+function selectBestRuntimeCandidate(candidates){
+  const list = [
+    ...(candidates || [])
+  ];
+
+  list.sort(
+    (a,b)=>
+      runtimeCandidateRank(b) -
+      runtimeCandidateRank(a)
+  );
+
+  return list[0] || null;
+}
+
+
+function runtimeCandidateToBest(candidate){
+  if(!candidate){
+    return null;
+  }
+
+  return {
+    runtime_candidate: true,
+    runtime_raw: candidate,
+
+    token: candidate.token,
+    pool: candidate.pool,
+    dex: "BSC · RUNTIME",
+
+    entry_evidence: {
+      unified_decision:
+        candidate.paper_action ||
+        candidate.unified ||
+        candidate.strategy ||
+        null,
+
+      confidence:
+        candidate.coverage_confidence ??
+        candidate.evidence_coverage ??
+        null,
+
+      hard_block:
+        candidate.hard_block,
+
+      sellability:
+        candidate.sellability
+    }
+  };
+}
+
+
 function renderBest(best){
   selectedBest = best || null;
 
@@ -4112,7 +4236,12 @@ function renderBest(best){
     shortToken(best);
 
   $("bestPair").textContent =
-    " / PAPER";
+    best.runtime_candidate
+      ? " / CANLI ADAY"
+      : " / " + textValue(
+          best.trade_policy ||
+          "PAPER"
+        );
 
   $("bestChain").textContent =
     [
@@ -4151,7 +4280,9 @@ function renderBest(best){
         );
 
   $("bestDetailButton").textContent =
-    "KANITI GÖR";
+    best.runtime_candidate
+      ? "CANLI KANITI GÖR"
+      : "KANITI GÖR";
 
   $("liquidity").textContent =
     textValue(evidence.liquidity);
@@ -4221,23 +4352,37 @@ function renderBest(best){
   $("bestRoi").textContent =
     formatPercent(best.roi_pct);
 
+  const hasNet =
+    best.net_pnl_usdt !== null &&
+    best.net_pnl_usdt !== undefined ||
+    best.net_pnl !== null &&
+    best.net_pnl !== undefined;
+
   const net =
     best.net_pnl_usdt ??
-    best.net_pnl ??
-    0;
+    best.net_pnl;
 
   $("bestNet").textContent =
-    formatMoney(net);
+    hasNet
+      ? formatMoney(net)
+      : "—";
 
   paint(
     $("bestRoi"),
     best.roi_pct
   );
 
-  paint(
-    $("bestNet"),
-    net
-  );
+  if(hasNet){
+    paint(
+      $("bestNet"),
+      net
+    );
+  }else{
+    $("bestNet").classList.remove(
+      "green",
+      "red"
+    );
+  }
 
   $("controlAmount").textContent =
     best.entry_amount_usdt === null ||
@@ -4327,8 +4472,12 @@ function renderPositions(data){
 
               <small>
                 ${escapeHtml(
-                  position.dex ||
-                  "PAPER"
+                  [
+                    position.trade_policy ||
+                    "LEGACY",
+                    position.dex ||
+                    "PAPER"
+                  ].join(" · ")
                 )}
               </small>
             </div>
@@ -4797,7 +4946,16 @@ function renderDashboard(data){
 
   renderVezir(data);
 
-  renderBest(data.best);
+  const runtimeBest =
+    selectBestRuntimeCandidate(
+      data.runtime_candidates || []
+    );
+
+  renderBest(
+    runtimeCandidateToBest(
+      runtimeBest
+    )
+  );
 
   renderPositions(data);
 

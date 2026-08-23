@@ -483,6 +483,8 @@ button{
   width:132px;
   height:132px;
 
+  opacity:0;
+
   object-fit:contain;
   object-position:center bottom;
 
@@ -492,6 +494,10 @@ button{
     contrast(1.12)
     saturate(1.1)
     brightness(.97);
+}
+
+.vezir-image.is-ready{
+  opacity:1;
 }
 
 .vezir-quote{
@@ -2507,7 +2513,7 @@ button{
     </div>
   </article>
 
-  <article class="card metric-card">
+  <article class="card metric-card market-card">
     <div class="market-name">
       <span class="coin-icon">₿</span>
       BTC / USDT
@@ -2522,7 +2528,7 @@ button{
     </div>
   </article>
 
-  <article class="card metric-card">
+  <article class="card metric-card market-card">
     <div class="market-name">
       <span class="coin-icon eth">♦</span>
       ETH / USDT
@@ -2607,7 +2613,6 @@ button{
       <img
         id="vezirImage"
         class="vezir-image"
-        src="/static/vezir.png"
         alt="Vezir">
 
     </div>
@@ -4832,6 +4837,12 @@ function prepareVezirImage(){
     return;
   }
 
+  target.onload = function(){
+    target.classList.add(
+      "is-ready"
+    );
+  };
+
   const source =
     new Image();
 
@@ -5144,12 +5155,14 @@ function prepareVezirImage(){
         "Vezir image cleanup skipped",
         error
       );
+
+      target.src =
+        "/static/vezir.png";
     }
   };
 
   source.src =
-    "/static/vezir.png?v=" +
-    Date.now();
+    "/static/vezir.png";
 }
 
 

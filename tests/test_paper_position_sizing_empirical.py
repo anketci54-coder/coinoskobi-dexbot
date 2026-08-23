@@ -176,3 +176,399 @@ def test_negative_effective_edge_blocks():
         result["entry_amount_usdt"]
         == 0.0
     )
+
+
+
+def test_archived_outcomes_feed_empirical_calibration(
+    tmp_path,
+):
+    import json
+    import sqlite3
+
+    db_path = (
+        tmp_path
+        / "paper_archive_calibration.db"
+    )
+
+    db = sqlite3.connect(db_path)
+
+    schema = """
+        status TEXT,
+        entry_price REAL,
+        current_price REAL,
+        entry_amount_usdt REAL,
+        net_pnl REAL,
+        mathematical_plan_json TEXT,
+        math_state_json TEXT
+    """
+
+    db.execute(
+        f"CREATE TABLE paper_trades ({schema})"
+    )
+
+    db.execute(
+        f"""
+        CREATE TABLE paper_trades_archive (
+            {schema}
+        )
+        """
+    )
+
+    db.execute(
+        """
+        INSERT INTO paper_trades_archive (
+            status,
+            entry_price,
+            current_price,
+            entry_amount_usdt,
+            net_pnl,
+            mathematical_plan_json,
+            math_state_json
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "CLOSED",
+            100.0,
+            80.0,
+            1000.0,
+            -220.0,
+            json.dumps(
+                {
+                    "entry": {
+                        "band_low": 90.0,
+                    }
+                }
+            ),
+            json.dumps(
+                {
+                    "last_stop": 90.0,
+                }
+            ),
+        ),
+    )
+
+    db.commit()
+    db.close()
+
+    plan = _plan(
+        raw_amount=1000,
+        available=10000,
+        reserve=5000,
+        risk_distance=0.2,
+        known_edge=0.25,
+    )
+
+    result = calculate_paper_position_size(
+        mathematical_plan=plan,
+        db_path=str(db_path),
+    )
+
+    assert math.isclose(
+        result["gap_multiplier"],
+        2.0,
+    )
+
+    assert math.isclose(
+        result[
+            "empirical_cost_uncertainty_fraction"
+        ],
+        0.02,
+    )
+
+    assert (
+        "GAP_RISK_UNOBSERVED"
+        not in result["blockers"]
+    )
+
+    assert (
+        "COST_UNCERTAINTY_UNOBSERVED"
+        not in result["blockers"]
+    )
+
+    assert result["entry_amount_usdt"] > 0
+
+
+
+def test_closed_gross_net_accounting_drives_cost_uncertainty(
+    tmp_path,
+):
+    import json
+    import sqlite3
+
+    db_path = (
+        tmp_path
+        / "gross_net_cost.db"
+    )
+
+    db = sqlite3.connect(db_path)
+
+    db.execute(
+        """
+        CREATE TABLE paper_trades (
+            status TEXT,
+            entry_price REAL,
+            current_price REAL,
+            entry_amount_usdt REAL,
+            net_pnl REAL,
+            mathematical_plan_json TEXT,
+            math_state_json TEXT,
+            gross_pnl_usdt REAL,
+            net_pnl_usdt REAL
+        )
+        """
+    )
+
+    db.execute(
+        """
+        INSERT INTO paper_trades (
+            status,
+            entry_price,
+            current_price,
+            entry_amount_usdt,
+            net_pnl,
+            mathematical_plan_json,
+            math_state_json,
+            gross_pnl_usdt,
+            net_pnl_usdt
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "CLOSED",
+            100.0,
+            300.0,
+            100.0,
+            50.0,
+            json.dumps(
+                {
+                    "entry": {
+                        "band_low": 90.0,
+                    }
+                }
+            ),
+            json.dumps({}),
+            60.0,
+            50.0,
+        ),
+    )
+
+    db.commit()
+    db.close()
+
+    plan = _plan(
+        raw_amount=1000,
+        available=10000,
+        reserve=5000,
+        risk_distance=0.2,
+        known_edge=0.25,
+    )
+
+    result = calculate_paper_position_size(
+        mathematical_plan=plan,
+        db_path=str(db_path),
+    )
+
+    assert math.isclose(
+        result[
+            "empirical_cost_uncertainty_fraction"
+        ],
+        0.10,
+    )
+
+
+
+def test_gap_calibration_uses_sample_median(
+    tmp_path,
+):
+    import json
+    import sqlite3
+
+    db_path = (
+        tmp_path
+        / "median_gap.db"
+    )
+
+    db = sqlite3.connect(db_path)
+
+    db.execute(
+        """
+        CREATE TABLE paper_trades (
+            status TEXT,
+            entry_price REAL,
+            current_price REAL,
+            entry_amount_usdt REAL,
+            net_pnl REAL,
+            mathematical_plan_json TEXT,
+            math_state_json TEXT
+        )
+        """
+    )
+
+    samples = (
+        (100.0, 80.0, 90.0),
+        (100.0, 80.0, 95.0),
+        (100.0, 1.0, 99.0),
+    )
+
+    for entry, current, stop in samples:
+        amount = 100.0
+
+        mark_pnl = (
+            amount
+            * (
+                current / entry
+                - 1.0
+            )
+        )
+
+        db.execute(
+            """
+            INSERT INTO paper_trades (
+                status,
+                entry_price,
+                current_price,
+                entry_amount_usdt,
+                net_pnl,
+                mathematical_plan_json,
+                math_state_json
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "CLOSED",
+                entry,
+                current,
+                amount,
+                mark_pnl,
+                json.dumps(
+                    {
+                        "entry": {
+                            "band_low": stop,
+                        }
+                    }
+                ),
+                json.dumps({}),
+            ),
+        )
+
+    db.commit()
+    db.close()
+
+    plan = _plan(
+        raw_amount=1000,
+        available=10000,
+        reserve=5000,
+        risk_distance=0.2,
+        known_edge=0.25,
+    )
+
+    result = calculate_paper_position_size(
+        mathematical_plan=plan,
+        db_path=str(db_path),
+    )
+
+    assert math.isclose(
+        result["gap_multiplier"],
+        4.0,
+    )
+
+
+
+def test_zero_cost_rows_do_not_dilute_observed_cost_median(
+    tmp_path,
+):
+    import json
+    import sqlite3
+
+    db_path = (
+        tmp_path
+        / "positive_cost_median.db"
+    )
+
+    db = sqlite3.connect(db_path)
+
+    db.execute(
+        """
+        CREATE TABLE paper_trades (
+            status TEXT,
+            entry_price REAL,
+            current_price REAL,
+            entry_amount_usdt REAL,
+            net_pnl REAL,
+            mathematical_plan_json TEXT,
+            math_state_json TEXT,
+            gross_pnl_usdt REAL,
+            net_pnl_usdt REAL
+        )
+        """
+    )
+
+    samples = (
+        (-20.0, -20.0),
+        (-20.0, -21.0),
+        (-20.0, -23.0),
+    )
+
+    for gross, net in samples:
+        db.execute(
+            """
+            INSERT INTO paper_trades (
+                status,
+                entry_price,
+                current_price,
+                entry_amount_usdt,
+                net_pnl,
+                mathematical_plan_json,
+                math_state_json,
+                gross_pnl_usdt,
+                net_pnl_usdt
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "CLOSED",
+                100.0,
+                80.0,
+                100.0,
+                net,
+                json.dumps(
+                    {
+                        "entry": {
+                            "band_low": 90.0,
+                        }
+                    }
+                ),
+                json.dumps({}),
+                gross,
+                net,
+            ),
+        )
+
+    db.commit()
+    db.close()
+
+    plan = _plan(
+        raw_amount=1000,
+        available=10000,
+        reserve=5000,
+        risk_distance=0.2,
+        known_edge=0.25,
+    )
+
+    result = calculate_paper_position_size(
+        mathematical_plan=plan,
+        db_path=str(db_path),
+    )
+
+    assert math.isclose(
+        result[
+            "empirical_cost_uncertainty_fraction"
+        ],
+        0.02,
+    )
+
+    assert (
+        result["cost_samples"]
+        == 2
+    )

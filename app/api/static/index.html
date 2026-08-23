@@ -2473,7 +2473,7 @@ button{
     <div
       class="metric-sub"
       id="totalPnlSub">
-      0,00%
+      %0,00
     </div>
   </article>
 
@@ -2503,7 +2503,7 @@ button{
     <div
       class="metric-value"
       id="riskUsed">
-      0,00%
+      %0,00
     </div>
 
     <div
@@ -3612,17 +3612,25 @@ function formatPercent(value){
     return "—";
   }
 
-  return parsed.toLocaleString(
+  return "%" + parsed.toLocaleString(
     "tr-TR",
     {
       minimumFractionDigits:2,
       maximumFractionDigits:2
     }
-  ) + "%";
+  );
 }
 
 
 function formatPrice(value){
+  if(
+    value === null ||
+    value === undefined ||
+    value === ""
+  ){
+    return "—";
+  }
+
   const parsed = Number(value);
 
   if(
@@ -3632,35 +3640,37 @@ function formatPrice(value){
     return "—";
   }
 
-  if(parsed < 0.000001){
-    return parsed.toExponential(3);
-  }
+  /*
+    Token price display rule:
+    preserve leading decimal zeros, then show
+    four meaningful digits with mathematical
+    rounding.
 
-  if(parsed < 0.01){
-    return parsed.toLocaleString(
-      "tr-TR",
-      {
-        minimumFractionDigits:8,
-        maximumFractionDigits:8
-      }
-    );
-  }
+    Examples:
+    0.0000067527 -> 0,000006753
+    0.0000685517 -> 0,00006855
+    0.00123467   -> 0,001235
+    0.0456789    -> 0,04568
+    0.567891     -> 0,5679
 
-  if(parsed < 1){
-    return parsed.toLocaleString(
-      "tr-TR",
-      {
-        minimumFractionDigits:6,
-        maximumFractionDigits:6
-      }
-    );
-  }
+    Prices >= 1 keep four decimal places.
+    Internal numeric precision is untouched.
+  */
+  const decimals =
+    parsed < 1
+      ? Math.max(
+          4,
+          3 - Math.floor(
+            Math.log10(parsed)
+          )
+        )
+      : 4;
 
   return parsed.toLocaleString(
     "tr-TR",
     {
-      minimumFractionDigits:2,
-      maximumFractionDigits:6
+      minimumFractionDigits:decimals,
+      maximumFractionDigits:decimals
     }
   );
 }
@@ -4123,7 +4133,7 @@ function renderBest(best){
           .toLocaleString(
             "tr-TR",
             {
-              minimumFractionDigits:0,
+              minimumFractionDigits:2,
               maximumFractionDigits:2
             }
           ) +
@@ -4204,17 +4214,9 @@ function renderBest(best){
     textValue(evidence.timing);
 
   $("confidence").textContent =
-    evidence.confidence === null ||
-    evidence.confidence === undefined
-      ? "—"
-      : number(evidence.confidence)
-          .toLocaleString(
-            "tr-TR",
-            {
-              minimumFractionDigits:0,
-              maximumFractionDigits:2
-            }
-          );
+    formatPercent(
+      evidence.confidence
+    );
 
   $("bestRoi").textContent =
     formatPercent(best.roi_pct);
@@ -5349,14 +5351,9 @@ function renderRuntimeCandidates(
                 evidence === undefined
                   ? "—"
                   : escapeHtml(
-                      number(
+                      formatPercent(
                         evidence
-                      ).toLocaleString(
-                        "tr-TR",
-                        {
-                          maximumFractionDigits:2
-                        }
-                      ) + "%"
+                      )
                     )
               }
             </span>

@@ -1,6 +1,7 @@
 import json
 import math
 import sqlite3
+import statistics
 from pathlib import Path
 
 
@@ -108,8 +109,9 @@ def _empirical_outcome_calibration(
         latest persisted mathematical floor.
 
     cost_uncertainty_fraction:
-        observed difference between raw mark PnL
-        and stored net PnL, relative to entry size.
+        robust center of positive observed
+        gross-to-net execution cost drag,
+        relative to entry size.
 
     No hand-picked percentage or risk coefficient
     is introduced here.
@@ -134,7 +136,7 @@ def _empirical_outcome_calibration(
         )
         db.row_factory = sqlite3.Row
 
-        table_exists = db.execute(
+        active_table_exists = db.execute(
             """
             SELECT 1
             FROM sqlite_master
@@ -143,7 +145,7 @@ def _empirical_outcome_calibration(
             """
         ).fetchone()
 
-        if table_exists is None:
+        if active_table_exists is None:
             db.close()
 
             return {
@@ -155,13 +157,6 @@ def _empirical_outcome_calibration(
                 "cost_samples": 0,
             }
 
-        columns = {
-            row[1]
-            for row in db.execute(
-                "PRAGMA table_info(paper_trades)"
-            ).fetchall()
-        }
-
         required = {
             "status",
             "entry_price",
@@ -172,7 +167,16 @@ def _empirical_outcome_calibration(
             "math_state_json",
         }
 
-        if not required.issubset(columns):
+        active_columns = {
+            row[1]
+            for row in db.execute(
+                "PRAGMA table_info(paper_trades)"
+            ).fetchall()
+        }
+
+        if not required.issubset(
+            active_columns
+        ):
             db.close()
 
             return {
@@ -184,21 +188,74 @@ def _empirical_outcome_calibration(
                 "cost_samples": 0,
             }
 
-        rows = db.execute(
-            """
-            SELECT
-                entry_price,
-                current_price,
-                entry_amount_usdt,
-                net_pnl,
-                mathematical_plan_json,
-                math_state_json
-            FROM paper_trades
-            WHERE status='CLOSED'
-              AND mathematical_plan_json IS NOT NULL
-            ORDER BY id
-            """
-        ).fetchall()
+        rows = []
+
+        # Performance/accounting stays on the active
+        # paper table. Risk calibration may also learn
+        # from genuine closed paper outcomes preserved
+        # by the canonical archive reset.
+        for table_name in (
+            "paper_trades_archive",
+            "paper_trades",
+        ):
+            table_exists = db.execute(
+                """
+                SELECT 1
+                FROM sqlite_master
+                WHERE type='table'
+                  AND name=?
+                """,
+                (table_name,),
+            ).fetchone()
+
+            if table_exists is None:
+                continue
+
+            columns = {
+                row[1]
+                for row in db.execute(
+                    f"PRAGMA table_info({table_name})"
+                ).fetchall()
+            }
+
+            if not required.issubset(
+                columns
+            ):
+                continue
+
+            gross_pnl_expr = (
+                "gross_pnl_usdt"
+                if "gross_pnl_usdt" in columns
+                else "NULL"
+            )
+
+            net_pnl_usdt_expr = (
+                "net_pnl_usdt"
+                if "net_pnl_usdt" in columns
+                else "NULL"
+            )
+
+            rows.extend(
+                db.execute(
+                    f"""
+                    SELECT
+                        entry_price,
+                        current_price,
+                        entry_amount_usdt,
+                        net_pnl,
+                        mathematical_plan_json,
+                        math_state_json,
+                        {gross_pnl_expr}
+                            AS gross_pnl_usdt,
+                        {net_pnl_usdt_expr}
+                            AS net_pnl_usdt
+                    FROM {table_name}
+                    WHERE status='CLOSED'
+                      AND mathematical_plan_json
+                          IS NOT NULL
+                    """
+                ).fetchall()
+            )
 
         db.close()
 
@@ -261,16 +318,46 @@ def _empirical_outcome_calibration(
                 entry_plan.get("band_low")
             )
 
-        actual_return = (
-            current / entry
-        ) - 1.0
-
-        mark_pnl = (
-            amount
-            * actual_return
+        gross_pnl_usdt = _number(
+            row["gross_pnl_usdt"]
         )
 
-        if net_pnl is not None:
+        net_pnl_usdt = _number(
+            row["net_pnl_usdt"]
+        )
+
+        residual = None
+
+        if (
+            gross_pnl_usdt is not None
+            and net_pnl_usdt is not None
+        ):
+            # Closed mathematical accounting already
+            # includes every partial realization.
+            # Therefore gross-minus-net is the observed
+            # execution/cost drag without reconstructing
+            # the position from the final mark price.
+            residual = max(
+                0.0,
+                (
+                    gross_pnl_usdt
+                    - net_pnl_usdt
+                )
+                / amount,
+            )
+
+        elif net_pnl is not None:
+            # Compatibility for historical rows that
+            # predate final gross/net USD accounting.
+            actual_return = (
+                current / entry
+            ) - 1.0
+
+            mark_pnl = (
+                amount
+                * actual_return
+            )
+
             residual = max(
                 0.0,
                 (
@@ -280,10 +367,13 @@ def _empirical_outcome_calibration(
                 / amount,
             )
 
-            if math.isfinite(residual):
-                cost_residuals.append(
-                    residual
-                )
+        if (
+            residual is not None
+            and math.isfinite(residual)
+        ):
+            cost_residuals.append(
+                residual
+            )
 
         if (
             stop is None
@@ -322,14 +412,24 @@ def _empirical_outcome_calibration(
             )
 
     gap_multiplier = (
-        max(gap_ratios)
+        statistics.median(
+            gap_ratios
+        )
         if gap_ratios
         else None
     )
 
+    positive_cost_residuals = [
+        value
+        for value in cost_residuals
+        if value > 0
+    ]
+
     cost_uncertainty = (
-        max(cost_residuals)
-        if cost_residuals
+        statistics.median(
+            positive_cost_residuals
+        )
+        if positive_cost_residuals
         else None
     )
 
@@ -355,7 +455,7 @@ def _empirical_outcome_calibration(
             gap_ratios
         ),
         "cost_samples": len(
-            cost_residuals
+            positive_cost_residuals
         ),
     }
 
@@ -626,8 +726,8 @@ def calculate_paper_position_size(
         * risk_retention
     )
 
-    # Scale by the worst empirically observed
-    # stop-gap overshoot.
+    # Scale by the robust empirical center of
+    # observed stop-gap overshoot.
     #
     # No edge multiplier is allowed here.
     empirical_exit_cap = (

@@ -1,12 +1,12 @@
 # COINOSKOBI CANONICAL PROJECT STATE
 
-Updated: 2026-08-21
+Updated: 2026-08-23
 
 ## CANONICAL SOURCE
 
 - VPS project: `/root/projects/coinoskobi-dexbot`
 - GitHub repo: `anketci54-coder/coinoskobi-dexbot`
-- Active branch: `emergency/paper-stop-panel-repair`
+- Active canonical branch: `main`
 - Canonical backend: `app/api/panel.py`
 - Canonical frontend: `app/api/static/index.html`
 - Paper DB: `data/paper_trades.db`
@@ -20,7 +20,7 @@ The active canonical HEAD must always be read from:
 
 and must match:
 
-`git rev-parse origin/emergency/paper-stop-panel-repair`
+`git rev-parse origin/main`
 
 Do not infer HEAD from chat memory.
 
@@ -171,19 +171,41 @@ Canonical behavior:
 
 One cause -> one correction -> one closure.
 
+Latest sealed canonical HEAD:
+
+`e86a40d895a6d1cc16d5a8b94df9bee6cc525e21`
+
+Final acceptance at this seal:
+
+- full regression: 1061 PASS / 0 FAIL
+- empirical calibration: READY
+- calibration reason: EMPIRICAL_OUTCOME_CALIBRATION
+- bootstrap blockers: cleared
+- observed PLAN_BLOCKED: 3
+- observed POSITION_SIZING_BLOCKED: 0
+- GAP_RISK_UNOBSERVED: 0
+- COST_UNCERTAINTY_UNOBSERVED: 0
+- active paper trades at acceptance: 0
+- DB quick_check: ok
+- paper runtime: active
+- panel runtime: active
+- service restart during final acceptance: false
+
+The blocker-distribution question is therefore resolved for the observed
+acceptance window: empirical position sizing was not the remaining blocker.
+Admission mathematics must not be loosened from this evidence alone.
+
 Current task:
 
-1. Observe natural runtime candidates with the new diagnostics.
-2. Determine whether each blocked PAPER_BUY_CANDIDATE is blocked by:
-   - trade-plan mathematics, or
-   - empirical position sizing.
-3. Do not loosen any gate until the actual blocker distribution is observed.
-4. Wait for a natural new paper OPEN.
-5. Verify real `vur_kac_*` state creation.
-6. If profitable momentum weakens, verify:
+1. Keep the canonical paper runtime operating naturally.
+2. Observe the next natural new paper OPEN.
+3. Verify real `vur_kac_*` state creation for that position.
+4. Verify persisted mathematical state from entry through close.
+5. If profitable momentum weakens, verify:
    - TP1 minimum risk neutralization
    - TP2 minimum principal recovery
    - runner behavior / mathematical Vur-Kac exit
+6. Do not loosen admission, sizing or safety gates without new runtime evidence.
 
 ## NEW CHAT CONTINUATION
 

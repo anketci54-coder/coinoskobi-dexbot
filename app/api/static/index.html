@@ -295,8 +295,9 @@ button{
   display:grid;
 
   grid-template-columns:
-    86px
-    minmax(0,1fr);
+    78px
+    minmax(0,1fr)
+    88px;
 
   grid-template-rows:
     1fr
@@ -353,7 +354,7 @@ button{
 }
 
 .live-line{
-  grid-column:1 / 3;
+  grid-column:1 / 4;
 
   display:flex;
   align-items:center;
@@ -365,6 +366,52 @@ button{
 
   font-size:8px;
   font-weight:900;
+}
+
+
+
+.wallet-button{
+  min-width:0;
+
+  border:
+    1px solid
+    #244852;
+
+  border-radius:5px;
+
+  background:#08151c;
+  color:#71888f;
+
+  padding:0 6px;
+
+  font-size:7px;
+  font-weight:900;
+
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+
+  cursor:not-allowed;
+  opacity:.58;
+}
+
+.top-actions.manual .wallet-button{
+  border-color:#17769a;
+
+  background:#082738;
+  color:#d7f8ff;
+
+  cursor:pointer;
+  opacity:1;
+}
+
+.wallet-button.connected{
+  border-color:#148451;
+
+  background:
+    rgba(19,231,123,.08);
+
+  color:var(--green);
 }
 
 .live-dot{
@@ -396,6 +443,31 @@ button{
     minmax(330px,.88fr);
 
   gap:9px;
+
+  transition:
+    grid-template-columns
+    .18s ease;
+}
+
+/*
+  Açık pozisyon yokken sol panel
+  ekranın büyük bölümünü işgal etmez.
+*/
+.main.positions-empty{
+  grid-template-columns:
+    245px
+    minmax(520px,1.45fr)
+    minmax(340px,.95fr);
+}
+
+.positions.empty-state{
+  grid-template-rows:
+    42px
+    minmax(0,1fr);
+}
+
+.positions.empty-state .detail{
+  display:none;
 }
 
 /* ======================================================
@@ -511,7 +583,9 @@ button{
 
 .position-list{
   min-height:0;
-  overflow:auto;
+
+  overflow-y:auto;
+  overflow-x:hidden;
 }
 
 .position-cols{
@@ -599,7 +673,8 @@ button{
 
   padding:10px;
 
-  overflow:auto;
+  overflow-y:auto;
+  overflow-x:hidden;
 
   border-top:
     1px solid
@@ -776,18 +851,17 @@ button{
 
 .candidate-list{
   min-height:0;
-  overflow:auto;
+
+  overflow-y:auto;
+  overflow-x:hidden;
 }
 
 .candidate-cols{
   grid-template-columns:
-    minmax(100px,1.25fr)
-    61px
-    48px
-    67px
-    67px
-    61px
-    minmax(78px,.9fr);
+    minmax(130px,1.45fr)
+    76px
+    64px
+    minmax(115px,1fr);
 }
 
 .candidate-row{
@@ -800,13 +874,10 @@ button{
   display:grid;
 
   grid-template-columns:
-    minmax(100px,1.25fr)
-    61px
-    48px
-    67px
-    67px
-    61px
-    minmax(78px,.9fr);
+    minmax(130px,1.45fr)
+    76px
+    64px
+    minmax(115px,1fr);
 
   gap:5px;
 
@@ -878,7 +949,8 @@ button{
 
   padding:9px;
 
-  overflow:auto;
+  overflow-y:auto;
+  overflow-x:hidden;
 
   border-top:
     1px solid
@@ -1106,7 +1178,65 @@ button{
 
   grid-template-rows:
     42px
+    auto
     minmax(0,1fr);
+}
+
+.intel-summary{
+  display:grid;
+
+  grid-template-columns:
+    repeat(3,minmax(0,1fr));
+
+  gap:5px;
+
+  padding:7px 9px;
+
+  border-bottom:
+    1px solid
+    var(--line);
+}
+
+.intel-stat{
+  min-width:0;
+
+  padding:6px;
+
+  border:
+    1px solid
+    #133440;
+
+  border-radius:5px;
+
+  background:#041017;
+}
+
+.intel-stat small{
+  display:block;
+
+  color:#82999f;
+
+  font-size:7px;
+  font-weight:800;
+
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+
+.intel-stat b{
+  display:block;
+
+  margin-top:4px;
+
+  color:#e9f1f3;
+
+  font-size:10px;
+  font-weight:900;
+
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
 }
 
 .intel-list{
@@ -1249,6 +1379,55 @@ button{
 
   overflow:hidden;
   text-overflow:ellipsis;
+}
+
+
+
+/* Thin dark scrollbars; never bright browser bars */
+
+.position-list,
+.detail,
+.candidate-list,
+.candidate-detail,
+.chat,
+.intel-list,
+.drawer{
+  scrollbar-width:thin;
+  scrollbar-color:
+    #28505c
+    transparent;
+}
+
+.position-list::-webkit-scrollbar,
+.detail::-webkit-scrollbar,
+.candidate-list::-webkit-scrollbar,
+.candidate-detail::-webkit-scrollbar,
+.chat::-webkit-scrollbar,
+.intel-list::-webkit-scrollbar,
+.drawer::-webkit-scrollbar{
+  width:6px;
+  height:6px;
+}
+
+.position-list::-webkit-scrollbar-track,
+.detail::-webkit-scrollbar-track,
+.candidate-list::-webkit-scrollbar-track,
+.candidate-detail::-webkit-scrollbar-track,
+.chat::-webkit-scrollbar-track,
+.intel-list::-webkit-scrollbar-track,
+.drawer::-webkit-scrollbar-track{
+  background:transparent;
+}
+
+.position-list::-webkit-scrollbar-thumb,
+.detail::-webkit-scrollbar-thumb,
+.candidate-list::-webkit-scrollbar-thumb,
+.candidate-detail::-webkit-scrollbar-thumb,
+.chat::-webkit-scrollbar-thumb,
+.intel-list::-webkit-scrollbar-thumb,
+.drawer::-webkit-scrollbar-thumb{
+  border-radius:8px;
+  background:#28505c;
 }
 
 /* ======================================================
@@ -1664,7 +1843,9 @@ button{
       </div>
     </section>
 
-    <section class="card top-actions">
+    <section
+      class="card top-actions"
+      id="topActions">
 
       <button
         class="accounting-button"
@@ -1687,6 +1868,14 @@ button{
           MANUEL
         </button>
       </div>
+
+      <button
+        class="wallet-button"
+        id="walletButton"
+        onclick="connectWallet()"
+        title="Rabby / MetaMask">
+        CÜZDAN
+      </button>
 
       <div class="live-line">
         <span class="live-dot"></span>
@@ -1865,7 +2054,14 @@ button{
         <div class="card-head">
           <span>◈ İSTİHBARAT MERKEZİ</span>
 
-          <small>CANLI ADAYLAR</small>
+          <small>
+            WHALE · WALLET · OUTCOME · ADAY
+          </small>
+        </div>
+
+        <div
+          class="intel-summary"
+          id="intelSummary">
         </div>
 
         <div
@@ -1954,6 +2150,9 @@ let selectedCandidateKey = null;
 
 let candidateFilter = "all";
 let panelMode = "auto";
+
+let connectedWallet = null;
+let connectedChainId = null;
 
 let chatStarted = false;
 
@@ -2382,6 +2581,59 @@ function refreshMarket(){
    MODE / AUTHORITY
    ======================================================== */
 
+function syncWalletButton(){
+  const button =
+    $("walletButton");
+
+  const actions =
+    $("topActions");
+
+  if(!button || !actions){
+    return;
+  }
+
+  actions.classList.toggle(
+    "manual",
+    panelMode === "manual"
+  );
+
+  button.classList.toggle(
+    "connected",
+    Boolean(
+      connectedWallet
+    )
+  );
+
+  if(connectedWallet){
+    button.textContent =
+      connectedWallet.slice(0,6) +
+      "…" +
+      connectedWallet.slice(-4);
+
+    button.title =
+      (
+        "Bağlı cüzdan: " +
+        connectedWallet +
+        " · Chain: " +
+        (
+          connectedChainId ||
+          "?"
+        )
+      );
+
+    return;
+  }
+
+  button.textContent =
+    panelMode === "manual"
+      ? "CÜZDAN BAĞLA"
+      : "CÜZDAN";
+
+  button.title =
+    "Rabby / MetaMask";
+}
+
+
 function setPanelMode(mode){
   panelMode =
     mode === "manual"
@@ -2405,45 +2657,203 @@ function setPanelMode(mode){
       panelMode === "manual"
     );
 
+  syncWalletButton();
+
   renderPositionDetail();
   renderCandidateDetail();
 
   if(panelMode === "manual"){
-    const allowed =
-      Boolean(
-        panelAuthority
-          ?.manual_order_authority
-      );
-
-    if(!allowed){
+    if(!connectedWallet){
       addChatMessage(
         "vezir",
         (
-          "Manuel görünüm seçildi. " +
-          "Backend manual order authority kapalı olduğu için " +
-          "AL/SAT işlemleri aktif edilmedi."
+          "Manuel görünüm açık. " +
+          "İstersen CÜZDAN BAĞLA ile Rabby/MetaMask adresini bağlayabilirsin. " +
+          "Bu işlem private key istemez ve işlem imzalamaz."
+        )
+      );
+    }
+
+    if(
+      !panelAuthority
+        ?.manual_order_authority
+    ){
+      addChatMessage(
+        "vezir",
+        (
+          "Backend manual order authority halen kapalı. " +
+          "Cüzdan bağlansa bile AL/SAT açılmayacak."
         )
       );
     }
   }
 }
 
-function manualActionAllowed(){
-  return (
-    panelMode === "manual" &&
-    Boolean(
-      panelAuthority
-        ?.manual_order_authority
-    )
-  );
+
+async function connectWallet(){
+  if(panelMode !== "manual"){
+    addChatMessage(
+      "vezir",
+      "Cüzdan bağlantısı için önce MANUEL görünümü seç."
+    );
+
+    return;
+  }
+
+  if(!window.ethereum){
+    addChatMessage(
+      "vezir",
+      (
+        "Tarayıcıda EVM wallet bulunamadı. " +
+        "Rabby veya MetaMask kurulu olmalı."
+      )
+    );
+
+    return;
+  }
+
+  try{
+    const accounts =
+      await window.ethereum.request({
+        method:"eth_requestAccounts"
+      });
+
+    if(
+      !accounts ||
+      !accounts.length
+    ){
+      throw new Error(
+        "Cüzdan hesabı seçilmedi"
+      );
+    }
+
+    connectedWallet =
+      String(
+        accounts[0]
+      );
+
+    connectedChainId =
+      await window.ethereum.request({
+        method:"eth_chainId"
+      });
+
+    /*
+      BNB Smart Chain mainnet = 0x38.
+      Burada yalnız network switch isteği gönderilir.
+      Hiçbir transaction veya signature gönderilmez.
+    */
+    if(
+      String(
+        connectedChainId
+      ).toLowerCase() !== "0x38"
+    ){
+      try{
+        await window.ethereum.request({
+          method:
+            "wallet_switchEthereumChain",
+          params:[
+            {
+              chainId:"0x38"
+            }
+          ]
+        });
+
+        connectedChainId =
+          await window.ethereum.request({
+            method:"eth_chainId"
+          });
+
+      }catch(switchError){
+        addChatMessage(
+          "vezir",
+          (
+            "Cüzdan bağlandı fakat ağ BNB Smart Chain değil. " +
+            "Wallet üzerinden BSC Mainnet seç."
+          )
+        );
+      }
+    }
+
+    syncWalletButton();
+
+    addChatMessage(
+      "vezir",
+      (
+        "Cüzdan bağlandı: " +
+        connectedWallet.slice(0,6) +
+        "…" +
+        connectedWallet.slice(-4) +
+        ". Bu bağlantı şu anda yalnız adres/ağ doğrulaması içindir; " +
+        "trade imzası veya transfer gönderilmedi."
+      )
+    );
+
+    renderPositionDetail();
+    renderCandidateDetail();
+
+  }catch(error){
+    addChatMessage(
+      "vezir",
+      (
+        "Cüzdan bağlantısı başarısız: " +
+        (
+          error?.message ||
+          "bilinmeyen hata"
+        )
+      )
+    );
+  }
 }
 
+
+function manualActionAllowed(){
+  /*
+    Gerçek execution endpoint'i ve authority
+    açık olmadığı sürece butonlar pasif kalır.
+  */
+  return false;
+}
+
+
 function manualActionMessage(){
+  if(panelMode !== "manual"){
+    addChatMessage(
+      "vezir",
+      "İşlem kontrolü için önce MANUEL görünümü seç."
+    );
+
+    return;
+  }
+
+  if(!connectedWallet){
+    addChatMessage(
+      "vezir",
+      "Önce CÜZDAN BAĞLA ile Rabby/MetaMask bağla."
+    );
+
+    return;
+  }
+
+  if(
+    !panelAuthority
+      ?.manual_order_authority
+  ){
+    addChatMessage(
+      "vezir",
+      (
+        "Cüzdan bağlı fakat backend manual order authority kapalı. " +
+        "Güvenlik kilidi nedeniyle AL/SAT gönderilmiyor."
+      )
+    );
+
+    return;
+  }
+
   addChatMessage(
     "vezir",
     (
-      "Bu panelde gerçek emir endpoint'i açık değil. " +
-      "Mevcut authority sınırı korunuyor."
+      "Manual execution endpoint'i henüz bu panele bağlanmadı. " +
+      "İşlem gönderilmedi."
     )
   );
 }
@@ -2485,6 +2895,30 @@ function policyBadge(policy){
 function renderPositions(){
   const positions =
     dashboard?.positions || [];
+
+  const main =
+    document.querySelector(
+      ".main"
+    );
+
+  const card =
+    document.querySelector(
+      ".positions"
+    );
+
+  if(main){
+    main.classList.toggle(
+      "positions-empty",
+      positions.length === 0
+    );
+  }
+
+  if(card){
+    card.classList.toggle(
+      "empty-state",
+      positions.length === 0
+    );
+  }
 
   $("positionHeadState")
     .textContent =
@@ -3073,30 +3507,6 @@ function renderCandidates(){
                     confidence(
                       row.coverage_confidence ??
                       row.evidence_coverage
-                    )
-                  )}
-                </div>
-
-                <div class="candidate-cell">
-                  ${escapeHtml(
-                    usd(
-                      row.liquidity
-                    )
-                  )}
-                </div>
-
-                <div class="candidate-cell">
-                  ${escapeHtml(
-                    usd(
-                      row.volume_24h
-                    )
-                  )}
-                </div>
-
-                <div class="candidate-cell">
-                  ${escapeHtml(
-                    usd(
-                      row.fdv
                     )
                   )}
                 </div>
@@ -3713,7 +4123,80 @@ function renderInitialChat(){
    ======================================================== */
 
 function renderIntelligence(){
-  const rows =
+  const intelligence =
+    dashboard?.intelligence || {};
+
+  const summary =
+    intelligence.summary || {};
+
+  const metrics = [
+    {
+      label:"BALİNA",
+      value:
+        intelligence.active_whales ??
+        0,
+      cls:"green"
+    },
+    {
+      label:"BAŞARILI WALLET",
+      value:
+        intelligence.successful_wallets ??
+        0,
+      cls:"cyan"
+    },
+    {
+      label:"WALLET REGISTRY",
+      value:
+        intelligence.tracked_wallets ??
+        0,
+      cls:""
+    },
+    {
+      label:"OUTCOME",
+      value:
+        intelligence.outcome_evidence ??
+        0,
+      cls:""
+    },
+    {
+      label:"ACTIVITY",
+      value:
+        intelligence.activity_buckets ??
+        0,
+      cls:""
+    },
+    {
+      label:"NEWS",
+      value:"BAĞLI DEĞİL",
+      cls:"muted"
+    }
+  ];
+
+  $("intelSummary")
+    .innerHTML =
+      metrics.map(
+        item => `
+          <div class="intel-stat">
+            <small>
+              ${escapeHtml(
+                item.label
+              )}
+            </small>
+
+            <b class="${
+              item.cls
+            }">
+              ${escapeHtml(
+                String(
+                  item.value
+                )
+              )}
+            </b>
+          </div>
+        `
+      ).join("");
+
+  const candidateRows =
     [...runtimeCandidates]
       .sort(
         (a,b) =>
@@ -3725,13 +4208,77 @@ function renderIntelligence(){
             )
           )
       )
-      .slice(0,6);
+      .slice(0,4);
+
+  const rows = [];
+
+  /*
+    Intelligence readmodel özeti gerçek DB verisidir.
+    Varsa feed'in en üstüne eklenir.
+  */
+  if(summary.vezir_summary){
+    rows.push({
+      time:
+        displayTime(
+          summary.generated_at
+        ),
+      kind:"ÖZET",
+      cls:"cyan",
+      copy:
+        String(
+          summary.vezir_summary
+        )
+    });
+  }
+
+  candidateRows.forEach(
+    row => {
+      const state =
+        candidateState(row);
+
+      rows.push({
+        time:
+          displayTime(
+            row.observed_at
+          ),
+        kind:
+          state === "block"
+            ? "ADAY BLOK"
+            : state === "buy"
+              ? "GÜÇLÜ ADAY"
+              : "TAKİP",
+        cls:
+          state === "block"
+            ? "red"
+            : state === "buy"
+              ? "green"
+              : "yellow",
+        copy:
+          (
+            row.name ||
+            shortAddress(
+              row.token
+            )
+          ) +
+          " · " +
+          String(
+            candidateReason(
+              row
+            )
+          ).replaceAll(
+            "_",
+            " "
+          )
+      });
+    }
+  );
 
   if(!rows.length){
     $("intelList")
       .innerHTML = `
         <div class="empty">
-          Canlı aday istihbaratı bekleniyor.
+          İstihbarat kaynağı mevcut;
+          yeni olay bekleniyor.
         </div>
       `;
 
@@ -3740,66 +4287,39 @@ function renderIntelligence(){
 
   $("intelList")
     .innerHTML =
-      rows.map(
-        row => {
-          const state =
-            candidateState(row);
-
-          const kind =
-            state === "block"
-              ? "Aday blok"
-              : state === "buy"
-                ? "Güçlü aday"
-                : "Takip";
-
-          const cls =
-            state === "block"
-              ? "red"
-              : state === "buy"
-                ? "green"
-                : "yellow";
-
-          return `
+      rows.slice(0,5)
+        .map(
+          row => `
             <div class="intel-row">
 
               <span class="intel-time">
                 ${escapeHtml(
-                  displayTime(
-                    row.observed_at
+                  String(
+                    row.time || "—"
                   ).split(" ").pop()
                 )}
               </span>
 
               <span
-                class="intel-kind ${cls}">
-                ${escapeHtml(kind)}
+                class="intel-kind ${
+                  row.cls
+                }">
+                ${escapeHtml(
+                  row.kind
+                )}
               </span>
 
               <span class="intel-copy">
                 ${escapeHtml(
-                  (
-                    row.name ||
-                    shortAddress(
-                      row.token
-                    )
-                  ) +
-                  " · " +
-                  String(
-                    candidateReason(
-                      row
-                    )
-                  ).replaceAll(
-                    "_",
-                    " "
-                  )
+                  row.copy
                 )}
               </span>
 
             </div>
-          `;
-        }
-      ).join("");
+          `
+        ).join("");
 }
+
 
 /* ========================================================
    HEALTH
@@ -4307,6 +4827,38 @@ $("manualModeButton")
     "active",
     panelMode === "manual"
   );
+
+syncWalletButton();
+
+if(window.ethereum){
+  window.ethereum.on(
+    "accountsChanged",
+    accounts => {
+      connectedWallet =
+        accounts &&
+        accounts.length
+          ? String(
+              accounts[0]
+            )
+          : null;
+
+      syncWalletButton();
+
+      renderPositionDetail();
+      renderCandidateDetail();
+    }
+  );
+
+  window.ethereum.on(
+    "chainChanged",
+    chainId => {
+      connectedChainId =
+        String(chainId);
+
+      syncWalletButton();
+    }
+  );
+}
 
 refreshPanel();
 refreshMarket();

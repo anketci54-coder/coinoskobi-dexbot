@@ -27,7 +27,7 @@ class Runner:
 
         if position_job:
             self.scheduler.every(
-                interval=60,
+                interval=10,
                 func=position_job,
                 name="paper_manager",
             )

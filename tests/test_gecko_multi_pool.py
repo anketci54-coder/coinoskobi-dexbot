@@ -2,6 +2,8 @@ from app.scanner.gecko_scanner import GeckoScanner
 
 
 class Response:
+    status_code = 200
+
     def raise_for_status(self):
         return None
 
@@ -58,3 +60,53 @@ def test_multi_pool_prices_reject_unbounded_list():
         return
 
     raise AssertionError("unbounded pool list accepted")
+
+
+
+def test_multi_pool_prices_back_off_and_retry_429(
+    monkeypatch,
+):
+    calls = []
+    sleeps = []
+
+    class RateLimitedResponse:
+        status_code = 429
+
+        def raise_for_status(self):
+            raise RuntimeError(
+                "rate limited"
+            )
+
+    responses = [
+        RateLimitedResponse(),
+        Response(),
+    ]
+
+    def get(url, **kwargs):
+        calls.append(url)
+        return responses.pop(0)
+
+    monkeypatch.setattr(
+        "app.scanner.gecko_scanner.requests.get",
+        get,
+    )
+
+    monkeypatch.setattr(
+        "app.scanner.gecko_scanner.time.sleep",
+        lambda seconds: sleeps.append(
+            seconds
+        ),
+    )
+
+    prices = GeckoScanner().pool_prices([
+        "0xpool1",
+        "0xpool2",
+    ])
+
+    assert prices == {
+        "0xpool1": 1.25,
+        "0xpool2": 2.50,
+    }
+
+    assert len(calls) == 2
+    assert sleeps == [2]

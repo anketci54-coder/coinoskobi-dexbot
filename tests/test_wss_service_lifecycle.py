@@ -523,3 +523,26 @@ def test_replace_pairs_rejects_unbounded_filter():
 
     assert result["state"] == "INVALID"
     assert service.pair == "0xpair"
+
+
+
+def test_runner_position_job_uses_ten_second_cadence():
+    runner = Runner(
+        scan_job=lambda: None,
+        position_job=lambda: None,
+    )
+
+    jobs = {
+        job["name"]: job
+        for job in runner.scheduler.jobs
+    }
+
+    assert (
+        jobs["scanner"]["interval"]
+        == 300
+    )
+
+    assert (
+        jobs["paper_manager"]["interval"]
+        == 10
+    )

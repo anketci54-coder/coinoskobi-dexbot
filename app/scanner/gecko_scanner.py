@@ -63,22 +63,61 @@ class GeckoScanner:
         if not addresses or len(addresses) > int(max_pools):
             raise ValueError("invalid bounded pool list")
 
-        response = requests.get(
-            (
-                "https://api.geckoterminal.com/api/v2/"
-                f"networks/{NETWORK}/pools/multi/"
-                + ",".join(addresses)
-            ),
-            headers={
-                "Accept": (
-                    "application/json;"
-                    "version=20230302"
-                ),
-            },
-            timeout=HTTP_TIMEOUT,
+        url = (
+            "https://api.geckoterminal.com/api/v2/"
+            f"networks/{NETWORK}/pools/multi/"
+            + ",".join(addresses)
         )
 
-        response.raise_for_status()
+        attempts = (
+            HTTP_429_MAX_RETRIES
+            + 1
+        )
+
+        response = None
+
+        for attempt in range(attempts):
+            response = requests.get(
+                url,
+                headers={
+                    "Accept": (
+                        "application/json;"
+                        "version=20230302"
+                    ),
+                },
+                timeout=HTTP_TIMEOUT,
+            )
+
+            if (
+                getattr(
+                    response,
+                    "status_code",
+                    200,
+                )
+                != 429
+            ):
+                response.raise_for_status()
+                break
+
+            if (
+                attempt
+                >= HTTP_429_MAX_RETRIES
+            ):
+                response.raise_for_status()
+
+            delay = (
+                HTTP_429_BACKOFF_SECONDS
+                * (2 ** attempt)
+            )
+
+            time.sleep(
+                delay
+            )
+
+        if response is None:
+            raise RuntimeError(
+                "multi-pool request unavailable"
+            )
 
         prices = {}
 

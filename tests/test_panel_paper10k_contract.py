@@ -1,4 +1,5 @@
 import sqlite3
+from types import SimpleNamespace
 
 import pytest
 
@@ -224,3 +225,89 @@ def test_runtime_candidate_snapshot_allows_true_zero_after_completed_scan():
         "Candidate token=" in line
         for line in selected
     )
+
+
+
+def test_runtime_candidate_rows_preserves_complete_blocker_lists(
+    monkeypatch,
+):
+    log = "\n".join([
+        "2026-08-24T13:54:00+0300 [JOB] scanner",
+        (
+            "2026-08-24T13:54:03+0300 "
+            "Candidate token=0xtoken "
+            "pool=0xpool "
+            "strategy=PAPER_BUY "
+            "unified=PAPER_BUY_CANDIDATE "
+            "paper=WATCH "
+            "reason=PLAN_BLOCKED "
+            "plan_blockers=['KNOWN_COMPONENT_EDGE_NOT_POSITIVE', "
+            "'MATHEMATICAL_POSITION_SIZE_ZERO', "
+            "'NO_VERIFIED_PERSISTENT_LIQUIDITY'] "
+            "sizing_blockers=['EXIT_CAPACITY_UNKNOWN', "
+            "'NET_EDGE_NOT_POSITIVE', "
+            "'PLAN_AMOUNT_ZERO'] "
+            "sizing_reason=MATHEMATICAL_POSITION_SIZE_ZERO "
+            "entry_amount_usdt=0.0 "
+            "hard_block=False "
+            "evidence_coverage=100.0 "
+            "coverage_confidence=100.0 "
+            "sellability=SELLABILITY_OK"
+        ),
+        "2026-08-24T13:54:04+0300 [JOB] paper_manager",
+    ])
+
+    monkeypatch.setattr(
+        panel_module,
+        "runtime_cache_snapshot",
+        lambda: {
+            "by_pool": {
+                "0xpool": {
+                    "name": "TEST / WBNB",
+                    "liquidity": 10000.0,
+                    "volume_24h": 5000.0,
+                    "fdv": 25000.0,
+                    "price_usd": 0.001,
+                },
+            },
+            "by_token": {},
+        },
+    )
+
+    monkeypatch.setattr(
+        panel_module.subprocess,
+        "run",
+        lambda *args, **kwargs: SimpleNamespace(
+            returncode=0,
+            stdout=log,
+        ),
+    )
+
+    rows = panel_module.runtime_candidate_rows()
+
+    assert len(rows) == 1
+
+    row = rows[0]
+
+    assert row["reason"] == "PLAN_BLOCKED"
+
+    assert row["plan_blockers"] == [
+        "KNOWN_COMPONENT_EDGE_NOT_POSITIVE",
+        "MATHEMATICAL_POSITION_SIZE_ZERO",
+        "NO_VERIFIED_PERSISTENT_LIQUIDITY",
+    ]
+
+    assert row["sizing_blockers"] == [
+        "EXIT_CAPACITY_UNKNOWN",
+        "NET_EDGE_NOT_POSITIVE",
+        "PLAN_AMOUNT_ZERO",
+    ]
+
+    assert (
+        row["sizing_reason"]
+        == "MATHEMATICAL_POSITION_SIZE_ZERO"
+    )
+
+    assert row["entry_amount_usdt"] == 0.0
+    assert row["hard_block"] is False
+    assert row["sellability"] == "SELLABILITY_OK"

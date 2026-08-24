@@ -5,6 +5,7 @@ from zoneinfo import ZoneInfo
 from pathlib import Path
 from typing import Any
 import json
+import re
 import shutil
 import sqlite3
 import subprocess
@@ -978,6 +979,81 @@ def _runtime_candidate_cycle_lines(
     ]
 
 
+def _runtime_candidate_fields(
+    payload: str,
+) -> dict[str, str]:
+    """
+    Parse one Candidate runtime payload while
+    preserving values that contain spaces, such as
+    blocker lists.
+
+    Read-only parsing only.
+    """
+    text = str(payload or "").strip()
+
+    if not text:
+        return {}
+
+    head = text.split(None, 1)
+
+    fields = {
+        "token": head[0],
+    }
+
+    if len(head) < 2:
+        return fields
+
+    remainder = head[1]
+
+    matches = list(
+        re.finditer(
+            r"(?<!\S)"
+            r"([A-Za-z_][A-Za-z0-9_]*)=",
+            remainder,
+        )
+    )
+
+    for index, match in enumerate(matches):
+        key = match.group(1)
+
+        start = match.end()
+
+        end = (
+            matches[index + 1].start()
+            if index + 1 < len(matches)
+            else len(remainder)
+        )
+
+        fields[key] = (
+            remainder[start:end].strip()
+        )
+
+    return fields
+
+
+def _runtime_blocker_list(
+    value: Any,
+) -> list[str]:
+    text = str(value or "").strip()
+
+    if text in {
+        "",
+        "[]",
+        "None",
+        "null",
+    }:
+        return []
+
+    return [
+        item.strip()
+        for item in re.findall(
+            r"""['"]([^'"]+)['"]""",
+            text,
+        )
+        if item.strip()
+    ]
+
+
 def runtime_candidate_rows(
     limit: int = 20,
 ) -> list[dict[str, Any]]:
@@ -1035,25 +1111,14 @@ def runtime_candidate_rows(
             1,
         )
 
-        parts = payload.split()
-
-        if not parts:
-            continue
-
-        fields = {
-            "token": parts[0],
-        }
-
-        for part in parts[1:]:
-            if "=" not in part:
-                continue
-
-            key, value = part.split(
-                "=",
-                1,
+        fields = (
+            _runtime_candidate_fields(
+                payload
             )
+        )
 
-            fields[key] = value
+        if not fields:
+            continue
 
         token = str(
             fields.get("token") or ""
@@ -1143,6 +1208,22 @@ def runtime_candidate_rows(
 
             "sizing_reason": fields.get(
                 "sizing_reason"
+            ),
+
+            "plan_blockers": (
+                _runtime_blocker_list(
+                    fields.get(
+                        "plan_blockers"
+                    )
+                )
+            ),
+
+            "sizing_blockers": (
+                _runtime_blocker_list(
+                    fields.get(
+                        "sizing_blockers"
+                    )
+                )
             ),
 
             "entry_amount_usdt": (

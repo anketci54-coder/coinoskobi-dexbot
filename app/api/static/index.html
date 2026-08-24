@@ -773,6 +773,32 @@ button{
   white-space:nowrap;
 }
 
+.detail-item.blocker-details{
+  grid-column:1 / -1;
+  min-height:0;
+}
+
+.blocker-list{
+  margin-top:6px;
+
+  display:flex;
+  flex-direction:column;
+
+  gap:4px;
+
+  color:var(--yellow);
+
+  font-size:10px;
+  font-weight:800;
+  line-height:1.45;
+}
+
+.blocker-line{
+  width:100%;
+  min-width:0;
+  white-space:normal;
+}
+
 .action-row{
   display:grid;
 
@@ -1704,7 +1730,8 @@ button{
     grid-column:1 / -1;
   }
 
-  .main{
+  .main,
+  .main.positions-empty{
     grid-template-columns:1fr;
   }
 
@@ -1719,10 +1746,73 @@ button{
     min-height:620px;
   }
 
+  .positions.empty-state{
+    min-height:190px;
+    grid-template-rows:
+      42px
+      minmax(120px,auto);
+  }
+
   .footer{
     grid-template-columns:1fr;
   }
 }
+
+@media(max-width:768px){
+  .positions.empty-state{
+    min-height:160px;
+  }
+
+  .candidates{
+    min-height:0;
+    grid-template-rows:
+      42px
+      38px
+      minmax(220px,42vh)
+      auto;
+  }
+
+  .candidate-detail{
+    overflow:visible;
+  }
+
+  .right-stack{
+    grid-template-rows:auto auto;
+  }
+
+  .vezir{
+    min-height:0;
+    grid-template-rows:
+      56px
+      44px
+      minmax(180px,280px)
+      50px;
+  }
+
+  .intel{
+    min-height:0;
+    grid-template-rows:
+      42px
+      auto
+      auto;
+  }
+
+  .intel-list{
+    max-height:320px;
+  }
+
+  .health-items,
+  .signal-strip{
+    overflow-x:auto;
+    overflow-y:hidden;
+  }
+
+  .health-item,
+  .signal{
+    flex:none;
+  }
+}
+
 </style>
 </head>
 
@@ -3350,12 +3440,154 @@ function candidateBadge(row){
   `;
 }
 
-function candidateReason(row){
+function candidateReasonLabel(code){
+  const normalized = String(
+    code || "UNKNOWN"
+  ).trim().toUpperCase();
+
+  const labels = {
+    MATHEMATICAL_POSITION_SIZE_ZERO:
+      "Güvenli alım miktarı hesaplanamadı",
+    PLAN_AMOUNT_ZERO:
+      "Güvenli alım tutarı 0 USDT",
+    EXIT_CAPACITY_UNKNOWN:
+      "Güvenli çıkış kapasitesi doğrulanamadı",
+    NET_EDGE_NOT_POSITIVE:
+      "Masraflar sonrası beklenen avantaj yok",
+    KNOWN_COMPONENT_EDGE_NOT_POSITIVE:
+      "Bilinen maliyetler sonrası avantaj yok",
+    NO_VERIFIED_PERSISTENT_LIQUIDITY:
+      "Likiditenin kalıcılığı doğrulanamadı",
+    EMPIRICAL_MOVEMENT_INSUFFICIENT:
+      "Yeterli fiyat hareketi geçmişi yok",
+    MARKET_QUALITY_EVIDENCE_NOT_READY:
+      "Piyasa kalitesi verisi henüz hazır değil",
+    MARKET_QUALITY_LIQUIDITY_DETERIORATING_FAST:
+      "Likidite hızla kötüleşiyor",
+    PARTICIPATION_EVIDENCE_UNKNOWN:
+      "Katılımcı dağılımı doğrulanamadı",
+    PARTICIPATION_CONCENTRATED:
+      "İşlemler az sayıda katılımcıda yoğun",
+    SUSPICIOUS_VOLUME:
+      "Hacim yapısı şüpheli",
+    SELLABILITY_NOT_OK:
+      "Satılabilirlik onayı yok",
+    PRICE_UNAVAILABLE:
+      "Güvenilir fiyat alınamadı",
+    PAPER_CAPITAL_INSUFFICIENT:
+      "Kullanılabilir paper bakiye yetersiz",
+    PAPER_POSITION_CAP_REACHED:
+      "Açık pozisyon limiti dolu",
+    OPEN_POSITION_EXISTS:
+      "Bu tokenda zaten açık pozisyon var",
+    PLAN_BLOCKED:
+      "Matematiksel işlem planı onaylanmadı",
+    UNKNOWN:
+      "Neden henüz belirlenemedi"
+  };
+
   return (
-    row?.reason ||
-    row?.sizing_reason ||
-    "—"
+    labels[normalized] ||
+    normalized.replaceAll("_", " ")
   );
+}
+
+function candidateReason(row){
+  const reason = String(
+    row?.reason || ""
+  ).trim().toUpperCase();
+
+  const sizing = String(
+    row?.sizing_reason || ""
+  ).trim().toUpperCase();
+
+  const code = (
+    reason === "PLAN_BLOCKED" && sizing
+      ? sizing
+      : (reason || sizing || "UNKNOWN")
+  );
+
+  return candidateReasonLabel(code);
+}
+
+function candidateBlockerReasons(row){
+  const plan = Array.isArray(
+    row?.plan_blockers
+  )
+    ? row.plan_blockers
+    : [];
+
+  const sizing = Array.isArray(
+    row?.sizing_blockers
+  )
+    ? row.sizing_blockers
+    : [];
+
+  const allCodes = [
+    ...plan,
+    ...sizing
+  ].map(
+    value =>
+      String(value || "")
+        .trim()
+        .toUpperCase()
+  ).filter(Boolean);
+
+  /*
+    Bunlar sonuç kodlarıdır.
+    Kullanıcıya "neden sıfır?" sorusunun
+    kök nedenlerini göstermek için önce
+    asıl blockerları tercih ediyoruz.
+  */
+  const mechanical = new Set([
+    "MATHEMATICAL_POSITION_SIZE_ZERO",
+    "PLAN_AMOUNT_ZERO"
+  ]);
+
+  const rootCodes = allCodes.filter(
+    code => !mechanical.has(code)
+  );
+
+  const selected = (
+    rootCodes.length
+      ? rootCodes
+      : allCodes
+  );
+
+  return [
+    ...new Set(
+      selected.map(
+        candidateReasonLabel
+      )
+    )
+  ];
+}
+
+function candidateBlockerDetails(row){
+  const reasons =
+    candidateBlockerReasons(row);
+
+  if(!reasons.length){
+    return "";
+  }
+
+  return `
+    <div class="detail-item blocker-details">
+      <small>
+        Alımı durduran koşullar
+      </small>
+
+      <div class="blocker-list">
+        ${reasons.map(
+          reason => `
+            <div class="blocker-line">
+              • ${escapeHtml(reason)}
+            </div>
+          `
+        ).join("")}
+      </div>
+    </div>
+  `;
 }
 
 function candidateRank(row){
@@ -3681,11 +3913,11 @@ function renderCandidateDetail(){
         )}
 
         ${candidateDetailItem(
-          "Risk / Hard Gate",
+          "Kritik güvenlik",
           row.hard_block === true
-            ? "BLOCK"
+            ? "KRİTİK ENGEL"
             : row.hard_block === false
-              ? "TEMİZ"
+              ? "ENGEL YOK"
               : "BİLİNMİYOR",
           row.hard_block === true
             ? "red"
@@ -3695,14 +3927,14 @@ function renderCandidateDetail(){
         )}
 
         ${candidateDetailItem(
-          "Hacim 24s",
+          "24s işlem hacmi",
           usd(
             row.volume_24h
           )
         )}
 
         ${candidateDetailItem(
-          "Plan tutarı",
+          "Güvenli alım tutarı",
           amountText,
           (
             amount !== null &&
@@ -3714,7 +3946,7 @@ function renderCandidateDetail(){
         )}
 
         ${candidateDetailItem(
-          "FDV",
+          "Tahmini değer (FDV)",
           usd(
             row.fdv
           )
@@ -3728,7 +3960,7 @@ function renderCandidateDetail(){
         )}
 
         ${candidateDetailItem(
-          "Sellability",
+          "Satılabilir mi?",
           sellability,
           sellability === "OK"
             ? "green"
@@ -3738,7 +3970,7 @@ function renderCandidateDetail(){
         )}
 
         ${candidateDetailItem(
-          "Kanıt güveni",
+          "Veri yeterliliği",
           confidence(
             row.coverage_confidence ??
             row.evidence_coverage
@@ -3754,7 +3986,7 @@ function renderCandidateDetail(){
         )}
 
         ${candidateDetailItem(
-          "Sebep",
+          "Alım engeli",
           String(
             candidateReason(row)
           ).replaceAll(
@@ -3763,6 +3995,8 @@ function renderCandidateDetail(){
           ),
           stateClass
         )}
+
+        ${candidateBlockerDetails(row)}
 
       </div>
 
@@ -4229,25 +4463,19 @@ function renderIntelligence(){
         `
       ).join("");
 
-  const candidateRows =
-    [...runtimeCandidates]
-      .sort(
-        (a,b) =>
-          String(
-            b.observed_at || ""
-          ).localeCompare(
-            String(
-              a.observed_at || ""
-            )
-          )
-      )
-      .slice(0,4);
-
   const rows = [];
 
   /*
-    Intelligence readmodel özeti gerçek DB verisidir.
-    Varsa feed'in en üstüne eklenir.
+    İstihbarat Merkezi aday listesinin kopyası değildir.
+
+    Runtime adayları zaten orta alanda:
+    - aday listesinde
+    - seçilen aday detayında
+
+    gösterilir.
+
+    Sağ-alt feed yalnız gerçek intelligence/readmodel
+    olaylarını gösterir.
   */
   if(summary.vezir_summary){
     rows.push({
@@ -4263,48 +4491,6 @@ function renderIntelligence(){
         )
     });
   }
-
-  candidateRows.forEach(
-    row => {
-      const state =
-        candidateState(row);
-
-      rows.push({
-        time:
-          displayTime(
-            row.observed_at
-          ),
-        kind:
-          state === "block"
-            ? "ADAY BLOK"
-            : state === "buy"
-              ? "GÜÇLÜ ADAY"
-              : "TAKİP",
-        cls:
-          state === "block"
-            ? "red"
-            : state === "buy"
-              ? "green"
-              : "yellow",
-        copy:
-          (
-            row.name ||
-            shortAddress(
-              row.token
-            )
-          ) +
-          " · " +
-          String(
-            candidateReason(
-              row
-            )
-          ).replaceAll(
-            "_",
-            " "
-          )
-      });
-    }
-  );
 
   if(!rows.length){
     $("intelList")

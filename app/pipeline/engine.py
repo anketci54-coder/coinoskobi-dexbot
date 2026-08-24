@@ -20,7 +20,10 @@ from app.strategy.decision import UnifiedDecisionEngine
 from app.strategy.execution_cost import ExecutionCostEngine
 from app.strategy.mathematical_trade_plan import build_trade_plan
 
-from app.paper.database import PaperDatabase
+from app.paper.database import (
+    DB as PAPER_DB,
+    PaperDatabase,
+)
 from app.paper.cache_price import CachePrice
 from app.paper.manager import PaperManager
 
@@ -463,7 +466,7 @@ class PipelineEngine:
             )
         )
         self.counterfactual_store = (
-            CounterfactualObservationStore()
+            CounterfactualObservationStore(db_path=PAPER_DB)
         )
 
         self.manager = PaperManager(
@@ -2827,7 +2830,7 @@ class PipelineEngine:
         )
 
         if store is None:
-            store = CounterfactualObservationStore()
+            store = CounterfactualObservationStore(db_path=PAPER_DB)
             self.counterfactual_store = store
 
         token = row.get("token")
@@ -2888,6 +2891,21 @@ class PipelineEngine:
                 "sellability": summary.get(
                     "sellability"
                 ),
+                "plan_blockers": list(
+                    summary.get(
+                        "plan_blockers"
+                    )
+                    or []
+                ),
+                "sizing_blockers": list(
+                    summary.get(
+                        "sizing_blockers"
+                    )
+                    or []
+                ),
+                "sizing_reason": summary.get(
+                    "sizing_reason"
+                ),
                 "hindsight_reconstructed": False,
             },
         )
@@ -2931,6 +2949,214 @@ class PipelineEngine:
             min_counterfactual_samples=20,
         )
 
+    def _refresh_durable_counterfactual_prices(
+        self,
+        scanner_rows,
+    ):
+        """
+        Observation-only follow-up for non-entered
+        candidates.
+
+        Uses current scanner prices first. Missing
+        pending pools use the existing bounded
+        multi-pool price endpoint.
+
+        No admission, sizing, paper-trade, live,
+        wallet or execution authority.
+        """
+        store = getattr(
+            self,
+            "counterfactual_store",
+            None,
+        )
+
+        pending_reader = getattr(
+            store,
+            "pending_pool_snapshot",
+            None,
+        )
+
+        observer = getattr(
+            store,
+            "observe_durable",
+            None,
+        )
+
+        if (
+            not callable(pending_reader)
+            or not callable(observer)
+        ):
+            return {
+                "state": "DISABLED",
+                "pending": 0,
+                "observed": 0,
+                "direct": 0,
+                "fetched": 0,
+                "failed": 0,
+                "requests": 0,
+                "bounded": True,
+                "decision_authority": False,
+                "paper_authority": False,
+                "live_authority": False,
+                "wallet_authority": False,
+                "execution_authority": False,
+            }
+
+        pending = pending_reader(
+            max_entries=120,
+        )
+
+        if not pending:
+            return {
+                "state": "READY",
+                "pending": 0,
+                "observed": 0,
+                "direct": 0,
+                "fetched": 0,
+                "failed": 0,
+                "requests": 0,
+                "bounded": True,
+                "decision_authority": False,
+                "paper_authority": False,
+                "live_authority": False,
+                "wallet_authority": False,
+                "execution_authority": False,
+            }
+
+        pool_tokens = {}
+
+        for token, pool in pending.items():
+            token = str(token or "").strip().lower()
+            pool = str(pool or "").strip().lower()
+
+            if token and pool:
+                pool_tokens.setdefault(
+                    pool,
+                    [],
+                ).append(token)
+
+        current_prices = {}
+
+        for row in scanner_rows or []:
+            pool = str(
+                row.get("pool") or ""
+            ).strip().lower()
+
+            try:
+                price = float(
+                    row.get("price_usd")
+                    or 0.0
+                )
+            except (TypeError, ValueError):
+                price = 0.0
+
+            if pool and price > 0:
+                current_prices[pool] = price
+
+        observed = 0
+        direct = 0
+        fetched = 0
+        failed = 0
+        requests = 0
+
+        for pool, tokens in pool_tokens.items():
+            price = current_prices.get(pool)
+
+            if price is None:
+                continue
+
+            for token in tokens:
+                result = observer(
+                    token=token,
+                    current_price=price,
+                )
+
+                if result.get("state") == "OBSERVED":
+                    observed += 1
+                    direct += 1
+
+        missing_pools = [
+            pool
+            for pool in pool_tokens
+            if pool not in current_prices
+        ]
+
+        pool_prices = getattr(
+            self.scanner,
+            "pool_prices",
+            None,
+        )
+
+        if missing_pools and callable(pool_prices):
+            for start in range(
+                0,
+                len(missing_pools),
+                30,
+            ):
+                batch = missing_pools[
+                    start:start + 30
+                ]
+
+                requests += 1
+
+                try:
+                    prices = pool_prices(batch) or {}
+                except Exception as exc:
+                    failed += len(batch)
+
+                    logger.warning(
+                        "Counterfactual price refresh failed: %s",
+                        f"{type(exc).__name__}: {exc}",
+                    )
+                    continue
+
+                normalized = {
+                    str(pool or "").strip().lower(): value
+                    for pool, value in prices.items()
+                }
+
+                for pool in batch:
+                    try:
+                        price = float(
+                            normalized.get(pool)
+                            or 0.0
+                        )
+                    except (TypeError, ValueError):
+                        price = 0.0
+
+                    if price <= 0:
+                        failed += 1
+                        continue
+
+                    for token in pool_tokens.get(
+                        pool,
+                        [],
+                    ):
+                        result = observer(
+                            token=token,
+                            current_price=price,
+                        )
+
+                        if result.get("state") == "OBSERVED":
+                            observed += 1
+                            fetched += 1
+
+        return {
+            "state": "READY",
+            "pending": len(pending),
+            "observed": observed,
+            "direct": direct,
+            "fetched": fetched,
+            "failed": failed,
+            "requests": requests,
+            "bounded": True,
+            "decision_authority": False,
+            "paper_authority": False,
+            "live_authority": False,
+            "wallet_authority": False,
+            "execution_authority": False,
+        }
+
     def refresh_candidate_cache(self):
         scanner = getattr(
             self,
@@ -2951,6 +3177,12 @@ class PipelineEngine:
 
         for row in rows:
             self.cache.replace(row)
+
+        self.last_counterfactual_refresh = (
+            self._refresh_durable_counterfactual_prices(
+                rows
+            )
+        )
 
         # A scanner discovery feed may rotate a promising pool out
         # before mathematical admission has accumulated enough real
@@ -3467,7 +3699,7 @@ class PipelineEngine:
 
         if counterfactual_store is None:
             counterfactual_store = (
-                CounterfactualObservationStore()
+                CounterfactualObservationStore(db_path=PAPER_DB)
             )
             self.counterfactual_store = (
                 counterfactual_store

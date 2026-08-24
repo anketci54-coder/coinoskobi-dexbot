@@ -1,3 +1,5 @@
+import json
+import sqlite3
 import threading
 import time
 from collections import OrderedDict
@@ -20,6 +22,7 @@ class CounterfactualObservationStore:
         max_entries=512,
         horizon_seconds=300,
         ttl_seconds=1800,
+        db_path=None,
     ):
         self.max_entries = max(
             1,
@@ -40,6 +43,315 @@ class CounterfactualObservationStore:
         self.evicted_count = 0
         self.expired_count = 0
         self.evaluated_count = 0
+
+        self._db_path = (
+            str(db_path)
+            if db_path
+            else None
+        )
+
+        self._db = None
+
+        if self._db_path:
+            self._db = sqlite3.connect(
+                self._db_path,
+                timeout=30,
+                check_same_thread=False,
+            )
+            self._db.row_factory = sqlite3.Row
+            self._db.execute(
+                "PRAGMA busy_timeout=30000;"
+            )
+
+        self._durable_horizons = (
+            (300, "5m"),
+            (900, "15m"),
+            (1800, "30m"),
+            (3600, "60m"),
+        )
+
+    def _persist_record(
+        self,
+        *,
+        token,
+        pool,
+        entry_price,
+        signal_state,
+        candidate_action,
+        observed_at,
+        context,
+    ):
+        if self._db is None:
+            return None
+
+        with self._lock:
+            existing = self._db.execute(
+                """
+                SELECT id
+                FROM counterfactual_observations
+                WHERE lower(token)=lower(?)
+                  AND completed_at IS NULL
+                ORDER BY id DESC
+                LIMIT 1
+                """,
+                (token,),
+            ).fetchone()
+
+            if existing is not None:
+                return int(existing["id"])
+
+            cursor = self._db.execute(
+                """
+                INSERT INTO counterfactual_observations (
+                    token,
+                    pool,
+                    observed_at,
+                    entry_price,
+                    signal_state,
+                    candidate_action,
+                    context_json,
+                    last_observed_at,
+                    last_price,
+                    max_price,
+                    min_price
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    token,
+                    pool,
+                    float(observed_at),
+                    float(entry_price),
+                    str(signal_state),
+                    str(candidate_action),
+                    json.dumps(
+                        context or {},
+                        sort_keys=True,
+                        separators=(",", ":"),
+                        default=str,
+                    ),
+                    float(observed_at),
+                    float(entry_price),
+                    float(entry_price),
+                    float(entry_price),
+                ),
+            )
+
+            self._db.commit()
+
+            return int(cursor.lastrowid)
+
+    def _persist_observe(
+        self,
+        *,
+        token,
+        current_price,
+        evaluated_at,
+    ):
+        if self._db is None:
+            return 0
+
+        now = float(evaluated_at)
+        price = float(current_price)
+
+        updated = 0
+
+        with self._lock:
+            rows = self._db.execute(
+                """
+                SELECT *
+                FROM counterfactual_observations
+                WHERE lower(token)=lower(?)
+                  AND completed_at IS NULL
+                ORDER BY id
+                """,
+                (token,),
+            ).fetchall()
+
+            for row in rows:
+                entry = float(row["entry_price"])
+                age = max(
+                    0.0,
+                    now - float(row["observed_at"]),
+                )
+
+                maximum = row["max_price"]
+                minimum = row["min_price"]
+
+                maximum = max(
+                    price,
+                    float(maximum)
+                    if maximum is not None
+                    else price,
+                )
+
+                minimum = min(
+                    price,
+                    float(minimum)
+                    if minimum is not None
+                    else price,
+                )
+
+                values = {
+                    "last_observed_at": now,
+                    "last_price": price,
+                    "max_price": maximum,
+                    "min_price": minimum,
+                }
+
+                for seconds, label in self._durable_horizons:
+                    price_key = f"price_{label}"
+
+                    if (
+                        row[price_key] is None
+                        and age >= seconds
+                    ):
+                        values[price_key] = price
+                        values[f"return_{label}"] = (
+                            price / entry - 1.0
+                        )
+                        values[
+                            f"observed_{label}_at"
+                        ] = now
+
+                if (
+                    row["price_60m"] is not None
+                    or "price_60m" in values
+                ):
+                    values["completed_at"] = now
+
+                sql = (
+                    "UPDATE counterfactual_observations SET "
+                    + ", ".join(
+                        f"{key}=?"
+                        for key in values
+                    )
+                    + " WHERE id=?"
+                )
+
+                self._db.execute(
+                    sql,
+                    tuple(values.values())
+                    + (int(row["id"]),),
+                )
+
+                updated += 1
+
+            if updated:
+                self._db.commit()
+
+        return updated
+
+    def observe_durable(
+        self,
+        *,
+        token,
+        current_price,
+        evaluated_at=None,
+    ):
+        key = str(token or "").strip().lower()
+
+        try:
+            price = float(current_price)
+        except (TypeError, ValueError):
+            price = 0.0
+
+        if not key or price <= 0:
+            return self._out(
+                "INVALID",
+                durable_updated=0,
+            )
+
+        now = (
+            float(evaluated_at)
+            if evaluated_at is not None
+            else time.time()
+        )
+
+        updated = self._persist_observe(
+            token=key,
+            current_price=price,
+            evaluated_at=now,
+        )
+
+        return self._out(
+            "OBSERVED",
+            durable_updated=updated,
+        )
+
+    def pending_pool_snapshot(
+        self,
+        *,
+        max_entries=120,
+    ):
+        if self._db is None:
+            return {}
+
+        limit = max(
+            1,
+            int(max_entries),
+        )
+
+        with self._lock:
+            rows = self._db.execute(
+                """
+                SELECT token, pool
+                FROM counterfactual_observations
+                WHERE completed_at IS NULL
+                ORDER BY observed_at DESC
+                LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
+
+        result = {}
+
+        for row in rows:
+            token = str(
+                row["token"] or ""
+            ).strip().lower()
+
+            pool = str(
+                row["pool"] or ""
+            ).strip().lower()
+
+            if (
+                token
+                and pool
+                and token not in result
+            ):
+                result[token] = pool
+
+        return result
+
+    def durable_snapshot(
+        self,
+        *,
+        limit=100,
+    ):
+        if self._db is None:
+            return []
+
+        limit = max(
+            1,
+            int(limit),
+        )
+
+        with self._lock:
+            rows = self._db.execute(
+                """
+                SELECT *
+                FROM counterfactual_observations
+                ORDER BY id DESC
+                LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
+
+        return [
+            dict(row)
+            for row in rows
+        ]
 
     @property
     def size(self):
@@ -131,9 +443,24 @@ class CounterfactualObservationStore:
                 "context": dict(context or {}),
             }
 
+        durable_id = self._persist_record(
+            token=key,
+            pool=pool,
+            entry_price=price,
+            signal_state=str(
+                signal_state or "UNKNOWN"
+            ).upper(),
+            candidate_action=str(
+                candidate_action or "UNKNOWN"
+            ).upper(),
+            observed_at=now,
+            context=context or {},
+        )
+
         return self._out(
             "RECORDED",
             stored=True,
+            durable_id=durable_id,
         )
 
     def observe(
@@ -157,6 +484,12 @@ class CounterfactualObservationStore:
             float(evaluated_at)
             if evaluated_at is not None
             else time.time()
+        )
+
+        self._persist_observe(
+            token=key,
+            current_price=price,
+            evaluated_at=now,
         )
 
         with self._lock:
@@ -319,8 +652,21 @@ class CounterfactualObservationStore:
                 self.evaluated_count
             ),
             "bounded": True,
-            "ram_only": True,
-            "db_write": False,
+            "ram_only": (
+                self._db is None
+            ),
+            "db_write": (
+                self._db is not None
+            ),
+            "durable_tracking": (
+                self._db is not None
+            ),
+            "durable_horizons_seconds": (
+                300,
+                900,
+                1800,
+                3600,
+            ),
             "external_fetch": False,
             "provider_call": False,
 

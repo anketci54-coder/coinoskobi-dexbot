@@ -1,4 +1,4 @@
-PAPER_SCHEMA_VERSION = 3
+PAPER_SCHEMA_VERSION = 4
 
 
 PAPER_TRADES_SCHEMA = """
@@ -123,6 +123,47 @@ CREATE TABLE IF NOT EXISTS paper_price_observations (
 """
 
 
+COUNTERFACTUAL_OBSERVATIONS_SCHEMA = """
+CREATE TABLE IF NOT EXISTS counterfactual_observations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+    token TEXT NOT NULL,
+    pool TEXT NOT NULL,
+
+    observed_at REAL NOT NULL,
+    entry_price REAL NOT NULL,
+
+    signal_state TEXT NOT NULL,
+    candidate_action TEXT NOT NULL,
+
+    context_json TEXT NOT NULL DEFAULT '{}',
+
+    last_observed_at REAL,
+    last_price REAL,
+
+    max_price REAL,
+    min_price REAL,
+
+    price_5m REAL,
+    return_5m REAL,
+    observed_5m_at REAL,
+
+    price_15m REAL,
+    return_15m REAL,
+    observed_15m_at REAL,
+
+    price_30m REAL,
+    return_30m REAL,
+    observed_30m_at REAL,
+
+    price_60m REAL,
+    return_60m REAL,
+    observed_60m_at REAL,
+
+    completed_at REAL
+)
+"""
+
 INDEXES = (
     """
     CREATE INDEX IF NOT EXISTS
@@ -146,6 +187,16 @@ INDEXES = (
     CREATE INDEX IF NOT EXISTS
     idx_paper_price_observations_position
     ON paper_price_observations(position_id, id)
+    """,
+
+    """
+    CREATE INDEX IF NOT EXISTS
+    idx_counterfactual_observations_pending
+    ON counterfactual_observations(
+        token,
+        completed_at,
+        observed_at
+    )
     """,
 )
 
@@ -432,6 +483,10 @@ def ensure_paper_schema(
 
         conn.execute(
             OBSERVATIONS_SCHEMA
+        )
+
+        conn.execute(
+            COUNTERFACTUAL_OBSERVATIONS_SCHEMA
         )
 
         for sql in INDEXES:

@@ -290,3 +290,130 @@ def test_movement_watch_allows_other_blockers_to_remain():
         )
         is False
     )
+
+
+
+def test_durable_counterfactual_prices_use_scan_then_bounded_fetch():
+    class DurableScanner:
+        def __init__(self):
+            self.price_calls = []
+
+        def scan(self):
+            return [{
+                "pool": "0xcurrentpool",
+                "base_token": "bsc_0xcurrent",
+                "quote_token": "bsc_0xquote",
+                "price_usd": 1.25,
+            }]
+
+        def pool_prices(self, pools):
+            pools = list(pools)
+
+            assert len(pools) <= 30
+
+            self.price_calls.append(
+                pools
+            )
+
+            return {
+                pool: 2.0
+                for pool in pools
+            }
+
+    class DurableCache:
+        def __init__(self):
+            self.replaced = []
+
+        def replace(self, row):
+            self.replaced.append(
+                dict(row)
+            )
+
+    class DurableStore:
+        def __init__(self):
+            self.observed = []
+
+        def pending_pool_snapshot(
+            self,
+            max_entries=120,
+        ):
+            assert max_entries == 120
+
+            result = {
+                "0xdirect": "0xcurrentpool",
+            }
+
+            for index in range(31):
+                result[f"0xfetch{index}"] = (
+                    f"0xpool{index:02d}"
+                )
+
+            return result
+
+        def observe_durable(
+            self,
+            *,
+            token,
+            current_price,
+        ):
+            self.observed.append(
+                (token, current_price)
+            )
+
+            return {
+                "state": "OBSERVED",
+            }
+
+    engine = PipelineEngine.__new__(
+        PipelineEngine
+    )
+
+    engine.scanner = DurableScanner()
+    engine.cache = DurableCache()
+    engine.counterfactual_store = (
+        DurableStore()
+    )
+
+    result = engine.refresh_candidate_cache()
+
+    stats = (
+        engine.last_counterfactual_refresh
+    )
+
+    assert result == {
+        "state": "REFRESHED",
+        "rows": 1,
+        "error": None,
+    }
+
+    assert stats["state"] == "READY"
+    assert stats["pending"] == 32
+    assert stats["observed"] == 32
+    assert stats["direct"] == 1
+    assert stats["fetched"] == 31
+    assert stats["failed"] == 0
+    assert stats["requests"] == 2
+
+    assert engine.scanner.price_calls == [
+        [
+            f"0xpool{index:02d}"
+            for index in range(30)
+        ],
+        ["0xpool30"],
+    ]
+
+    assert (
+        "0xdirect",
+        1.25,
+    ) in engine.counterfactual_store.observed
+
+    assert (
+        "0xfetch30",
+        2.0,
+    ) in engine.counterfactual_store.observed
+
+    assert stats["decision_authority"] is False
+    assert stats["paper_authority"] is False
+    assert stats["live_authority"] is False
+    assert stats["wallet_authority"] is False
+    assert stats["execution_authority"] is False

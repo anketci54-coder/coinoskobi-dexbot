@@ -1,6 +1,10 @@
+import json
+import sqlite3
+
 from app.learning.counterfactual_observation import (
     CounterfactualObservationStore,
 )
+from app.paper.schema import ensure_paper_schema
 
 
 def _store():
@@ -172,4 +176,114 @@ def test_evaluated_outcomes_are_bounded_in_memory():
     assert status["outcome_counts"] == {
         "EXPECTED_LOSS": 1,
     }
+    assert status["execution_authority"] is False
+
+
+
+def test_durable_counterfactual_horizons_use_paper_db(
+    tmp_path,
+):
+    db_path = tmp_path / "paper.db"
+
+    conn = sqlite3.connect(db_path)
+    ensure_paper_schema(conn)
+    conn.close()
+
+    store = CounterfactualObservationStore(
+        max_entries=8,
+        horizon_seconds=300,
+        ttl_seconds=900,
+        db_path=db_path,
+    )
+
+    recorded = store.record(
+        token="0xdurable",
+        pool="0xpool",
+        entry_price=1.0,
+        signal_state="POSITIVE",
+        candidate_action="DOWNGRADE",
+        observed_at=1000,
+        context={
+            "reason": "PLAN_BLOCKED",
+            "plan_blockers": [
+                "NO_VERIFIED_PERSISTENT_LIQUIDITY",
+            ],
+            "sizing_blockers": [
+                "EXIT_CAPACITY_UNKNOWN",
+            ],
+        },
+    )
+
+    assert recorded["state"] == "RECORDED"
+    assert recorded["durable_id"] is not None
+
+    evaluated = store.observe(
+        token="0xdurable",
+        current_price=1.10,
+        evaluated_at=1300,
+    )
+
+    assert evaluated["state"] == "EVALUATED"
+
+    store.observe_durable(
+        token="0xdurable",
+        current_price=1.20,
+        evaluated_at=1900,
+    )
+
+    store.observe_durable(
+        token="0xdurable",
+        current_price=0.90,
+        evaluated_at=2800,
+    )
+
+    store.observe_durable(
+        token="0xdurable",
+        current_price=1.50,
+        evaluated_at=4600,
+    )
+
+    rows = store.durable_snapshot(
+        limit=10,
+    )
+
+    assert len(rows) == 1
+
+    row = rows[0]
+
+    assert row["price_5m"] == 1.10
+    assert row["price_15m"] == 1.20
+    assert row["price_30m"] == 0.90
+    assert row["price_60m"] == 1.50
+
+    assert round(row["return_5m"], 6) == 0.10
+    assert round(row["return_15m"], 6) == 0.20
+    assert round(row["return_30m"], 6) == -0.10
+    assert round(row["return_60m"], 6) == 0.50
+
+    assert row["max_price"] == 1.50
+    assert row["min_price"] == 0.90
+    assert row["completed_at"] == 4600
+
+    context = json.loads(
+        row["context_json"]
+    )
+
+    assert context["reason"] == "PLAN_BLOCKED"
+    assert context["plan_blockers"] == [
+        "NO_VERIFIED_PERSISTENT_LIQUIDITY",
+    ]
+    assert context["sizing_blockers"] == [
+        "EXIT_CAPACITY_UNKNOWN",
+    ]
+
+    status = store.status()
+
+    assert status["ram_only"] is False
+    assert status["db_write"] is True
+    assert status["durable_tracking"] is True
+    assert status["provider_call"] is False
+    assert status["decision_authority"] is False
+    assert status["paper_authority"] is False
+    assert status["live_authority"] is False
     assert status["execution_authority"] is False

@@ -1,0 +1,111 @@
+name: VUR_KAC price history preflight
+
+on:
+  push:
+    branches:
+      - maintenance/vur-kac-price-history-seed-fix
+
+jobs:
+  test-price-history-fix:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          python -m pip install pytest
+
+      - name: Apply proposed runtime price-history fix in workspace
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          p = Path('app/pipeline/engine.py')
+          s = p.read_text(encoding='utf-8')
+
+          old = '''    # Seed once from a real upstream series when one exists.\n    if not history:\n        for item in upstream_price_series or []:\n            observed = _runtime_positive_number(item)\n\n            if observed is not None:\n                history.append(observed)\n\n    # Every runtime cycle is an actual observation. Equal prices are\n    # retained because a zero return is still a measured return.\n    if current_price is not None:\n        history.append(current_price)\n'''
+
+          new = '''    upstream_observations = []\n\n    for item in upstream_price_series or []:\n        observed = _runtime_positive_number(item)\n\n        if observed is not None:\n            upstream_observations.append(observed)\n\n    # Seed once from the real upstream series. The latest upstream\n    # sample already belongs to this observation cycle, so do not\n    # append current_price again in the same cycle.\n    if not history and upstream_observations:\n        history.extend(upstream_observations)\n\n    else:\n        # Keep one measured price per later runtime cycle. Prefer the\n        # same onchain/upstream source family when it is available;\n        # fall back to the cache price only when upstream is absent.\n        cycle_price = (\n            upstream_observations[-1]\n            if upstream_observations\n            else current_price\n        )\n\n        # Equal prices are intentionally retained across distinct\n        # runtime cycles because a zero return is a real observation.\n        if cycle_price is not None:\n            history.append(cycle_price)\n'''
+
+          if old not in s:
+              raise SystemExit('PRICE_HISTORY_ANCHOR_NOT_FOUND')
+
+          p.write_text(s.replace(old, new, 1), encoding='utf-8')
+          print('PRICE_HISTORY_FIX_APPLIED=True')
+          PY
+
+      - name: Compile
+        run: python -m py_compile app/pipeline/engine.py
+
+      - name: Regression assertions
+        run: |
+          python - <<'PY'
+          import app.pipeline.engine as engine
+
+          engine._RUNTIME_PRICE_HISTORY.clear()
+
+          first = engine._runtime_math_evidence(
+              token_address='0xtest',
+              price=100.0,
+              upstream_price_series=[90.0, 100.0],
+              exit_evidence={},
+              lp_evidence={},
+              market_context={},
+              sellability_data={},
+          )
+          assert first['price_series'] == [90.0, 100.0], first
+
+          second = engine._runtime_math_evidence(
+              token_address='0xtest',
+              price=999.0,
+              upstream_price_series=[90.0, 100.0],
+              exit_evidence={},
+              lp_evidence={},
+              market_context={},
+              sellability_data={},
+          )
+          assert second['price_series'] == [90.0, 100.0, 100.0], second
+
+          third = engine._runtime_math_evidence(
+              token_address='0xtest',
+              price=999.0,
+              upstream_price_series=[90.0, 110.0],
+              exit_evidence={},
+              lp_evidence={},
+              market_context={},
+              sellability_data={},
+          )
+          assert third['price_series'] == [90.0, 100.0, 100.0, 110.0], third
+
+          engine._RUNTIME_PRICE_HISTORY.clear()
+
+          fallback = engine._runtime_math_evidence(
+              token_address='0xfallback',
+              price=7.5,
+              upstream_price_series=[],
+              exit_evidence={},
+              lp_evidence={},
+              market_context={},
+              sellability_data={},
+          )
+          assert fallback['price_series'] == [7.5], fallback
+
+          print('PRICE_HISTORY_REGRESSION_PASS=True')
+          PY
+
+      - name: Targeted tests
+        run: python -m pytest -q tests/test_paper_math_state_persistence.py
+
+      - name: Full suite
+        run: python -m pytest -q

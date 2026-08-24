@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - maintenance/vur-kac-price-history-seed-fix
+  pull_request:
+    branches:
+      - main
 
 jobs:
   test-price-history-fix:

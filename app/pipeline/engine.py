@@ -163,6 +163,31 @@ def _runtime_observation_watch_snapshot():
         )
 
 
+def _runtime_should_watch_movement(
+    block_reason,
+    plan_blockers,
+):
+    """
+    Observation authority only.
+
+    A mathematical PAPER_BUY candidate may remain in
+    the bounded observation set whenever actual market
+    movement is still insufficient. Other blockers stay
+    fully effective and can continue to prevent entry.
+    """
+    return (
+        block_reason
+        == "PLAN_BLOCKED"
+        and (
+            "EMPIRICAL_MOVEMENT_INSUFFICIENT"
+            in set(
+                plan_blockers
+                or ()
+            )
+        )
+    )
+
+
 def _runtime_positive_number(value):
     import math
 
@@ -1757,19 +1782,15 @@ class PipelineEngine:
                     else:
                         block_reason = None
 
-                    # Retain only candidates whose admission math is
-                    # otherwise ready: sizing succeeded and the sole
-                    # remaining blocker is insufficient observed
-                    # movement. No blocker or threshold is relaxed.
+                    # Keep collecting real price observations whenever
+                    # movement evidence itself is still missing.
+                    # Other plan/sizing blockers remain unchanged and
+                    # watching grants no admission/trade authority.
                     watch_for_movement = (
-                        block_reason
-                        == "PLAN_BLOCKED"
-                        and plan_blockers
-                        == [
-                            "EMPIRICAL_MOVEMENT_INSUFFICIENT"
-                        ]
-                        and not sizing_blockers
-                        and entry_amount_usdt > 0
+                        _runtime_should_watch_movement(
+                            block_reason,
+                            plan_blockers,
+                        )
                     )
 
                     _runtime_watch_candidate(

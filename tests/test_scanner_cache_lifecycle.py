@@ -1,6 +1,7 @@
 from app.pipeline.engine import (
     PipelineEngine,
     _runtime_observation_watch_snapshot,
+    _runtime_should_watch_movement,
     _runtime_watch_candidate,
 )
 
@@ -252,3 +253,40 @@ def test_movement_only_candidate_is_retained_for_real_price_refresh():
             "0xwatchpool",
             enabled=False,
         )
+
+
+
+def test_movement_watch_allows_other_blockers_to_remain():
+    assert (
+        _runtime_should_watch_movement(
+            "PLAN_BLOCKED",
+            [
+                "EMPIRICAL_MOVEMENT_INSUFFICIENT",
+                "LP_PROTECTION_UNKNOWN",
+                "RETURN_RISK_UNOBSERVABLE",
+                "MATHEMATICAL_POSITION_SIZE_ZERO",
+            ],
+        )
+        is True
+    )
+
+    assert (
+        _runtime_should_watch_movement(
+            "PLAN_BLOCKED",
+            [
+                "LP_PROTECTION_UNKNOWN",
+                "MATHEMATICAL_POSITION_SIZE_ZERO",
+            ],
+        )
+        is False
+    )
+
+    assert (
+        _runtime_should_watch_movement(
+            None,
+            [
+                "EMPIRICAL_MOVEMENT_INSUFFICIENT",
+            ],
+        )
+        is False
+    )

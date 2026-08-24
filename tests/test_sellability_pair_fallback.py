@@ -504,3 +504,225 @@ def test_provider_success_is_cacheable(
     )
 
     assert len(stored) == 1
+
+
+
+def test_token_only_fallback_preserves_pair_local_evidence(
+    monkeypatch,
+):
+    pair_local = {
+        "completed": True,
+        "lp_security": {
+            "state": (
+                "PROTECTION_EVIDENCE_PRESENT"
+            ),
+            "lp_protected_fraction": 1.0,
+        },
+        "exit_feasibility": {
+            "evidence_complete": True,
+        },
+        "lp_error": None,
+        "exit_error": None,
+    }
+
+    calls = []
+
+    def fake(
+        address,
+        *,
+        pair=None,
+        simulate_liquidity=False,
+    ):
+        calls.append(
+            (
+                pair,
+                simulate_liquidity,
+            )
+        )
+
+        if pair:
+            return {
+                "success": False,
+                "provider_success": False,
+                "provider_status_code": 404,
+                "error": "404",
+                "data": {
+                    "local_evidence": (
+                        pair_local
+                    ),
+                },
+            }
+
+        return {
+            "success": True,
+            "provider_success": True,
+            "provider_status_code": 200,
+            "error": None,
+            "data": {
+                "sellable": True,
+                "local_evidence": {
+                    "completed": False,
+                    "lp_security": None,
+                },
+            },
+        }
+
+    monkeypatch.setattr(
+        module,
+        "_analyze_provider_once",
+        fake,
+    )
+
+    result = module.analyze(
+        ADDRESS,
+        pair=PAIR,
+    )
+
+    assert calls == [
+        (PAIR, False),
+        (None, False),
+    ]
+
+    assert (
+        result["data"][
+            "provider_fallback_mode"
+        ]
+        == "TOKEN_ONLY"
+    )
+
+    assert (
+        result["data"][
+            "local_evidence"
+        ]
+        == pair_local
+    )
+
+    assert (
+        result[
+            "local_evidence_complete"
+        ]
+        is True
+    )
+
+
+def test_simulated_fallback_preserves_pair_local_evidence(
+    monkeypatch,
+):
+    pair_local = {
+        "completed": True,
+        "lp_security": {
+            "state": (
+                "PROTECTION_EVIDENCE_PRESENT"
+            ),
+            "lp_protected_fraction": 1.0,
+        },
+        "exit_feasibility": {
+            "evidence_complete": True,
+        },
+        "lp_error": None,
+        "exit_error": None,
+    }
+
+    calls = []
+
+    def fake(
+        address,
+        *,
+        pair=None,
+        simulate_liquidity=False,
+    ):
+        calls.append(
+            (
+                pair,
+                simulate_liquidity,
+            )
+        )
+
+        if pair:
+            return {
+                "success": False,
+                "provider_success": False,
+                "provider_status_code": 404,
+                "error": "404 pair",
+                "data": {
+                    "local_evidence": (
+                        pair_local
+                    ),
+                },
+            }
+
+        if not simulate_liquidity:
+            return {
+                "success": False,
+                "provider_success": False,
+                "provider_status_code": 404,
+                "error": "404 token",
+                "data": {
+                    "local_evidence": {
+                        "completed": False,
+                    },
+                },
+            }
+
+        return {
+            "success": True,
+            "provider_success": True,
+            "provider_status_code": 200,
+            "error": None,
+            "data": {
+                "sellable": None,
+                "local_evidence": {
+                    "completed": False,
+                    "lp_security": None,
+                },
+            },
+        }
+
+    monkeypatch.setattr(
+        module,
+        "_analyze_provider_once",
+        fake,
+    )
+
+    result = module.analyze(
+        ADDRESS,
+        pair=PAIR,
+    )
+
+    assert calls == [
+        (PAIR, False),
+        (None, False),
+        (None, True),
+    ]
+
+    assert (
+        result["data"][
+            "provider_fallback_mode"
+        ]
+        == "SIMULATE_LIQUIDITY"
+    )
+
+    assert (
+        result["data"][
+            "local_evidence"
+        ]
+        == pair_local
+    )
+
+    assert (
+        result["data"][
+            "local_evidence"
+        ][
+            "lp_security"
+        ][
+            "lp_protected_fraction"
+        ]
+        == 1.0
+    )
+
+    assert (
+        result[
+            "local_evidence_complete"
+        ]
+        is True
+    )

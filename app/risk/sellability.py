@@ -491,6 +491,7 @@ def _fallback_metadata(
     mode,
     pair_error=None,
     token_error=None,
+    pair_local_evidence=None,
 ):
     if not isinstance(
         result,
@@ -523,6 +524,29 @@ def _fallback_metadata(
             token_error
         )
 
+    # Provider fallback may intentionally drop the pair
+    # parameter, but pair-local onchain evidence was
+    # already measured independently. Preserve that
+    # evidence without granting provider/sellability
+    # authority.
+    if isinstance(
+        pair_local_evidence,
+        dict,
+    ):
+        data[
+            "local_evidence"
+        ] = dict(
+            pair_local_evidence
+        )
+
+        result[
+            "local_evidence_complete"
+        ] = bool(
+            pair_local_evidence.get(
+                "completed"
+            )
+        )
+
     result["data"] = data
 
     return result
@@ -551,6 +575,32 @@ def analyze(
         address,
         pair=pair,
     )
+
+    pair_local_evidence = None
+
+    if isinstance(first, dict):
+        first_data = (
+            first.get("data")
+            or {}
+        )
+
+        if isinstance(
+            first_data,
+            dict,
+        ):
+            candidate_local = (
+                first_data.get(
+                    "local_evidence"
+                )
+            )
+
+            if isinstance(
+                candidate_local,
+                dict,
+            ):
+                pair_local_evidence = (
+                    candidate_local
+                )
 
     if _provider_verified(
         first
@@ -588,6 +638,9 @@ def analyze(
             token_only,
             mode="TOKEN_ONLY",
             pair_error=pair_error,
+            pair_local_evidence=(
+                pair_local_evidence
+            ),
         )
 
     if not _provider_404(
@@ -597,6 +650,9 @@ def analyze(
             token_only,
             mode="TOKEN_ONLY_FAILED",
             pair_error=pair_error,
+            pair_local_evidence=(
+                pair_local_evidence
+            ),
         )
 
     token_error = (
@@ -621,4 +677,7 @@ def analyze(
         mode="SIMULATE_LIQUIDITY",
         pair_error=pair_error,
         token_error=token_error,
+        pair_local_evidence=(
+            pair_local_evidence
+        ),
     )

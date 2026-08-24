@@ -13,6 +13,11 @@ from app.paper.schema import (
     ensure_paper_schema,
 )
 
+from app.risk.paper_position_sizing import (
+    PAPER_CAPITAL_USDT,
+    paper_available_capital_usdt,
+)
+
 
 DB = Path(
     os.getenv(
@@ -236,6 +241,50 @@ class PaperDatabase:
                 if opened >= limit:
                     self.conn.rollback()
                     return False
+
+                if (
+                    str(
+                        trade.get(
+                            "paper_account_version"
+                        )
+                        or ""
+                    ).upper()
+                    == "PAPER_10K_V2"
+                    and str(
+                        trade.get(
+                            "status"
+                        )
+                        or ""
+                    ).upper()
+                    == "OPEN"
+                ):
+                    try:
+                        requested_entry = float(
+                            trade.get(
+                                "entry_amount_usdt"
+                            )
+                            or 0.0
+                        )
+                    except (
+                        TypeError,
+                        ValueError,
+                    ):
+                        requested_entry = 0.0
+
+                    free_capital = (
+                        paper_available_capital_usdt(
+                            self.conn,
+                            PAPER_CAPITAL_USDT,
+                        )
+                    )
+
+                    if (
+                        requested_entry <= 0
+                        or requested_entry
+                        > free_capital + 1e-9
+                    ):
+                        self.conn.rollback()
+                        return False
 
                 self._insert_unlocked(
                     trade

@@ -12,6 +12,7 @@ from app.risk.mev import MEVExposureAnalyzer
 from app.risk.paper_position_sizing import (
     PAPER_CAPITAL_USDT,
     calculate_paper_position_size,
+    paper_available_capital_usdt,
 )
 from app.strategy.engine import StrategyEngine
 from app.strategy.unified_score import UnifiedScoreEngine
@@ -91,7 +92,6 @@ from app.learning.unified_outcome_readmodel import (
 # only from observations actually seen by this runtime.
 
 _RUNTIME_PRICE_HISTORY = {}
-_RUNTIME_QUOTE_RESERVE_HISTORY = {}
 
 # Candidates that have already passed empirical sizing but still need
 # additional real price movement observations are retained separately
@@ -327,10 +327,6 @@ def _runtime_math_evidence(
                 oldest_key,
                 None,
             )
-            _RUNTIME_QUOTE_RESERVE_HISTORY.pop(
-                oldest_key,
-                None,
-            )
 
     sources = (
         exit_evidence or {},
@@ -390,56 +386,19 @@ def _runtime_math_evidence(
                 f"{total_source}:TWO_ASSET_POOL_HALF"
             )
 
+    # Only explicit LP-security evidence may
+    # establish protected liquidity.
+    #
+    # Repeated reserve observations prove that
+    # liquidity existed. They do not prove that
+    # liquidity cannot be withdrawn.
     protected, protected_source = (
-        _runtime_find_fraction(sources)
+        _runtime_find_fraction(
+            (
+                lp_evidence or {},
+            )
+        )
     )
-
-    if quote_reserve is not None:
-        reserve_history = (
-            _RUNTIME_QUOTE_RESERVE_HISTORY.setdefault(
-                token_key,
-                [],
-            )
-        )
-
-        reserve_history.append(
-            quote_reserve
-        )
-
-        if len(reserve_history) > 64:
-            del reserve_history[:-64]
-
-        # If no explicit lock/burn evidence exists, two or more real
-        # reserve observations establish an empirical persistent
-        # liquidity floor. min/max is conservative and contains no
-        # fixed percentage threshold.
-        if (
-            protected is None
-            and len(reserve_history) >= 2
-        ):
-            observed_min = min(
-                reserve_history
-            )
-            observed_max = max(
-                reserve_history
-            )
-
-            if observed_max > 0:
-                protected = min(
-                    1.0,
-                    max(
-                        0.0,
-                        observed_min
-                        / observed_max,
-                    ),
-                )
-
-                if protected > 0:
-                    protected_source = (
-                        "OBSERVED_RESERVE_PERSISTENCE"
-                    )
-                else:
-                    protected = None
 
     return {
         "price_series": list(history),
@@ -1518,32 +1477,11 @@ class PipelineEngine:
                     }
 
                 else:
-                    capital_row = (
-                        self.paper_db.conn.execute(
-                            """
-                            SELECT
-                                COALESCE(
-                                    SUM(entry_amount_usdt),
-                                    0
-                                )
-                            FROM paper_trades
-                            WHERE status='OPEN'
-                              AND paper_account_version='PAPER_10K_V2'
-                            """
-                        ).fetchone()
-                    )
-
-                    capital_in_use = float(
-                        capital_row[0]
-                        or 0.0
-                    )
-
-                    available_capital_usdt = max(
-                        0.0,
-                        (
-                            PAPER_CAPITAL_USDT
-                            - capital_in_use
-                        ),
+                    available_capital_usdt = (
+                        paper_available_capital_usdt(
+                            self.paper_db.conn,
+                            PAPER_CAPITAL_USDT,
+                        )
                     )
 
                     local_evidence = (
@@ -2396,10 +2334,20 @@ class PipelineEngine:
                                 opening_entry_amount
                             )
 
+                        sizing_tail_risk = float(
+                            sizing.get(
+                                "risk_amount_usdt"
+                            )
+                            or 0.0
+                        )
+
                         trade_row[
                             "risk_amount_usdt"
-                        ] = float(
-                            opening_initial_risk
+                        ] = max(
+                            float(
+                                opening_initial_risk
+                            ),
+                            sizing_tail_risk,
                         )
 
                         opening_math_state = {}
@@ -2439,6 +2387,14 @@ class PipelineEngine:
                             "initial_net_risk_usdt"
                         ] = float(
                             opening_initial_risk
+                        )
+
+                        opening_math_state[
+                            "sizing_tail_risk_usdt"
+                        ] = float(
+                            trade_row[
+                                "risk_amount_usdt"
+                            ]
                         )
 
                         trade_row[
@@ -2485,6 +2441,18 @@ class PipelineEngine:
                             ):
                                 reason = (
                                     "OPEN_POSITION_EXISTS"
+                                )
+
+                            elif (
+                                paper_available_capital_usdt(
+                                    self.paper_db.conn,
+                                    PAPER_CAPITAL_USDT,
+                                )
+                                + 1e-9
+                                < entry_amount_usdt
+                            ):
+                                reason = (
+                                    "PAPER_CAPITAL_INSUFFICIENT"
                                 )
 
                             else:

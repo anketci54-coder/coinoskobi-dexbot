@@ -378,7 +378,7 @@ def test_closed_gross_net_accounting_drives_cost_uncertainty(
 
 
 
-def test_gap_calibration_uses_sample_median(
+def test_gap_calibration_uses_worst_observed_tail(
     tmp_path,
 ):
     import json
@@ -470,7 +470,7 @@ def test_gap_calibration_uses_sample_median(
 
     assert math.isclose(
         result["gap_multiplier"],
-        4.0,
+        99.0,
     )
 
 
@@ -571,4 +571,123 @@ def test_zero_cost_rows_do_not_dilute_observed_cost_median(
     assert (
         result["cost_samples"]
         == 2
+    )
+
+
+
+def test_tail_gap_cannot_expand_original_stop_risk_budget(
+    tmp_path,
+):
+    import json
+    import sqlite3
+
+    db_path = (
+        tmp_path
+        / "tail_risk_budget.db"
+    )
+
+    db = sqlite3.connect(
+        db_path
+    )
+
+    db.execute(
+        """
+        CREATE TABLE paper_trades (
+            status TEXT,
+            entry_price REAL,
+            current_price REAL,
+            entry_amount_usdt REAL,
+            net_pnl REAL,
+            mathematical_plan_json TEXT,
+            math_state_json TEXT
+        )
+        """
+    )
+
+    db.execute(
+        """
+        INSERT INTO paper_trades(
+            status,
+            entry_price,
+            current_price,
+            entry_amount_usdt,
+            net_pnl,
+            mathematical_plan_json,
+            math_state_json
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "CLOSED",
+            100.0,
+            1.0,
+            100.0,
+            -99.0,
+            json.dumps(
+                {
+                    "entry": {
+                        "band_low": 90.0,
+                    }
+                }
+            ),
+            json.dumps({}),
+        ),
+    )
+
+    db.commit()
+    db.close()
+
+    plan = _plan(
+        raw_amount=1000.0,
+        available=1000.0,
+        reserve=1_000_000.0,
+        risk_distance=0.2,
+        known_edge=0.25,
+        full_edge=0.25,
+        cost_complete=True,
+    )
+
+    result = calculate_paper_position_size(
+        mathematical_plan=plan,
+        available_capital_usdt=1000.0,
+        db_path=str(
+            db_path
+        ),
+    )
+
+    original_stop_budget = (
+        1000.0
+        * (
+            1.0
+            - math.exp(-0.2)
+        )
+    )
+
+    assert math.isclose(
+        result["gap_multiplier"],
+        9.9,
+    )
+
+    assert math.isclose(
+        result["tail_loss_fraction"],
+        1.0,
+    )
+
+    assert (
+        result["entry_amount_usdt"]
+        <= original_stop_budget
+        + 1e-9
+    )
+
+    assert (
+        result["risk_amount_usdt"]
+        <= original_stop_budget
+        + 1e-9
+    )
+
+    assert math.isclose(
+        result[
+            "stop_risk_budget_usdt"
+        ],
+        original_stop_budget,
     )

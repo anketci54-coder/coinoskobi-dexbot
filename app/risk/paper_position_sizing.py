@@ -35,6 +35,122 @@ def _positive(value):
     return value
 
 
+def paper_available_capital_usdt(
+    conn,
+    starting_capital_usdt=PAPER_CAPITAL_USDT,
+):
+    """
+    Durable free-cash truth for PAPER_10K_V2.
+
+    Closed net PnL changes account capital.
+    Realized PnL from a partial OPEN realization
+    changes cash.
+    Remaining OPEN cost basis stays deployed.
+
+    Unrealized PnL is not spendable cash.
+    """
+
+    starting = _number(
+        starting_capital_usdt
+    )
+
+    if (
+        starting is None
+        or starting < 0
+    ):
+        starting = 0.0
+
+    row = conn.execute(
+        """
+        SELECT
+            COALESCE(
+                SUM(
+                    CASE
+                    WHEN UPPER(
+                        COALESCE(status, '')
+                    ) = 'CLOSED'
+                    THEN COALESCE(
+                        net_pnl_usdt,
+                        net_pnl,
+                        0
+                    )
+                    ELSE 0
+                    END
+                ),
+                0
+            ),
+
+            COALESCE(
+                SUM(
+                    CASE
+                    WHEN UPPER(
+                        COALESCE(status, '')
+                    ) = 'OPEN'
+                    THEN COALESCE(
+                        realized_pnl_usdt,
+                        0
+                    )
+                    ELSE 0
+                    END
+                ),
+                0
+            ),
+
+            COALESCE(
+                SUM(
+                    CASE
+                    WHEN UPPER(
+                        COALESCE(status, '')
+                    ) = 'OPEN'
+                    THEN COALESCE(
+                        remaining_cost_basis_usdt,
+                        entry_amount_usdt,
+                        0
+                    )
+                    ELSE 0
+                    END
+                ),
+                0
+            )
+
+        FROM paper_trades
+
+        WHERE paper_account_version='PAPER_10K_V2'
+        """
+    ).fetchone()
+
+    if row is None:
+        return max(
+            0.0,
+            starting,
+        )
+
+    closed_pnl = (
+        _number(row[0])
+        or 0.0
+    )
+
+    open_realized_pnl = (
+        _number(row[1])
+        or 0.0
+    )
+
+    open_remaining_basis = (
+        _number(row[2])
+        or 0.0
+    )
+
+    return max(
+        0.0,
+        (
+            starting
+            + closed_pnl
+            + open_realized_pnl
+            - open_remaining_basis
+        ),
+    )
+
+
 def _find_number(node, names):
     """
     Find one named numeric measurement anywhere
@@ -411,8 +527,16 @@ def _empirical_outcome_calibration(
                 ratio
             )
 
-    gap_multiplier = (
+    gap_median = (
         statistics.median(
+            gap_ratios
+        )
+        if gap_ratios
+        else None
+    )
+
+    gap_multiplier = (
+        max(
             gap_ratios
         )
         if gap_ratios
@@ -447,6 +571,14 @@ def _empirical_outcome_calibration(
         ),
         "gap_multiplier": (
             gap_multiplier
+        ),
+        "gap_median": (
+            gap_median
+        ),
+        "gap_statistic": (
+            "MAX_OBSERVED"
+            if ready
+            else None
         ),
         "cost_uncertainty_fraction": (
             cost_uncertainty
@@ -714,11 +846,46 @@ def calculate_paper_position_size(
     # the mathematical stop:
     #
     # stop = entry * exp(-risk_distance)
-    #
-    # Therefore the exit-capacity retention
-    # is data-derived, not a fixed percentage.
     risk_retention = math.exp(
         -risk_log_distance
+    )
+
+    stop_loss_fraction = (
+        1.0
+        - risk_retention
+    )
+
+    # This is the original mathematical stop-risk
+    # budget before tail-gap adjustment.
+    base_risk_notional = min(
+        raw_amount,
+        available,
+    )
+
+    stop_risk_budget = (
+        base_risk_notional
+        * stop_loss_fraction
+    )
+
+    # Historical worst observed stop overshoot
+    # converts the static stop into tail loss.
+    #
+    # If historical evidence proves a rug can
+    # destroy the whole position, loss fraction
+    # becomes 1.0.
+    tail_loss_fraction = min(
+        1.0,
+        (
+            stop_loss_fraction
+            * gap_multiplier
+        ),
+    )
+
+    tail_risk_amount_cap = (
+        stop_risk_budget
+        / tail_loss_fraction
+        if tail_loss_fraction > 0
+        else 0.0
     )
 
     risk_adjusted_exit_capacity = (
@@ -726,10 +893,6 @@ def calculate_paper_position_size(
         * risk_retention
     )
 
-    # Scale by the robust empirical center of
-    # observed stop-gap overshoot.
-    #
-    # No edge multiplier is allowed here.
     empirical_exit_cap = (
         risk_adjusted_exit_capacity
         / gap_multiplier
@@ -741,18 +904,12 @@ def calculate_paper_position_size(
             raw_amount,
             available,
             empirical_exit_cap,
+            tail_risk_amount_cap,
         ),
     )
 
-    stop_loss_fraction = (
-        1.0
-        - risk_retention
-    )
-
-    empirical_risk_fraction = min(
-        1.0,
-        stop_loss_fraction
-        * gap_multiplier,
+    empirical_risk_fraction = (
+        tail_loss_fraction
     )
 
     risk = (
@@ -809,6 +966,15 @@ def calculate_paper_position_size(
         ),
         "risk_retention": (
             risk_retention
+        ),
+        "stop_risk_budget_usdt": (
+            stop_risk_budget
+        ),
+        "tail_loss_fraction": (
+            tail_loss_fraction
+        ),
+        "tail_risk_amount_cap_usdt": (
+            tail_risk_amount_cap
         ),
         "risk_adjusted_exit_capacity_usdt": (
             risk_adjusted_exit_capacity

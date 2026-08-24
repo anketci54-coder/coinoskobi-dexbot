@@ -2,6 +2,9 @@ import sqlite3
 import threading
 
 from app.paper.database import PaperDatabase
+from app.risk.paper_position_sizing import (
+    paper_available_capital_usdt,
+)
 
 
 def make_db():
@@ -17,7 +20,13 @@ def make_db():
             id INTEGER PRIMARY KEY,
             token TEXT,
             status TEXT,
-            created_at TEXT
+            created_at TEXT,
+            paper_account_version TEXT,
+            entry_amount_usdt REAL,
+            remaining_cost_basis_usdt REAL,
+            realized_pnl_usdt REAL,
+            net_pnl_usdt REAL,
+            net_pnl REAL
         )
     """)
     return db
@@ -57,3 +66,143 @@ def test_atomic_cap_rejects_duplicate_token():
         {"token": "0xtoken", "status": "OPEN"},
         30,
     ) is False
+
+
+
+def test_available_capital_uses_realized_account_truth():
+    db = make_db()
+
+    db.conn.execute(
+        """
+        INSERT INTO paper_trades(
+            token,
+            status,
+            paper_account_version,
+            entry_amount_usdt,
+            remaining_cost_basis_usdt,
+            realized_pnl_usdt,
+            net_pnl_usdt,
+            net_pnl
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "0xclosed",
+            "CLOSED",
+            "PAPER_10K_V2",
+            1000.0,
+            0.0,
+            -1000.0,
+            -1000.0,
+            -1000.0,
+        ),
+    )
+
+    db.conn.execute(
+        """
+        INSERT INTO paper_trades(
+            token,
+            status,
+            paper_account_version,
+            entry_amount_usdt,
+            remaining_cost_basis_usdt,
+            realized_pnl_usdt,
+            net_pnl_usdt,
+            net_pnl
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "0xopen",
+            "OPEN",
+            "PAPER_10K_V2",
+            2000.0,
+            1200.0,
+            100.0,
+            0.0,
+            0.0,
+        ),
+    )
+
+    db.conn.commit()
+
+    assert (
+        paper_available_capital_usdt(
+            db.conn
+        )
+        == 7900.0
+    )
+
+
+def test_atomic_insert_rejects_entry_above_real_free_capital():
+    db = make_db()
+
+    db.conn.execute(
+        """
+        INSERT INTO paper_trades(
+            token,
+            status,
+            paper_account_version,
+            entry_amount_usdt,
+            remaining_cost_basis_usdt,
+            realized_pnl_usdt,
+            net_pnl_usdt,
+            net_pnl
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "0xloss",
+            "CLOSED",
+            "PAPER_10K_V2",
+            8000.0,
+            0.0,
+            -8000.0,
+            -8000.0,
+            -8000.0,
+        ),
+    )
+
+    db.conn.commit()
+
+    assert (
+        paper_available_capital_usdt(
+            db.conn
+        )
+        == 2000.0
+    )
+
+    assert db.insert_if_below_open_limit(
+        {
+            "token": "0xtoo-big",
+            "status": "OPEN",
+            "paper_account_version": (
+                "PAPER_10K_V2"
+            ),
+            "entry_amount_usdt": 2500.0,
+            "remaining_cost_basis_usdt": 2500.0,
+            "realized_pnl_usdt": 0.0,
+        },
+        30,
+    ) is False
+
+    assert db.insert_if_below_open_limit(
+        {
+            "token": "0xfits",
+            "status": "OPEN",
+            "paper_account_version": (
+                "PAPER_10K_V2"
+            ),
+            "entry_amount_usdt": 1500.0,
+            "remaining_cost_basis_usdt": 1500.0,
+            "realized_pnl_usdt": 0.0,
+        },
+        30,
+    ) is True
+
+    assert (
+        paper_available_capital_usdt(
+            db.conn
+        )
+        == 500.0
+    )

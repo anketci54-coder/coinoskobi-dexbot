@@ -1,5 +1,6 @@
 import json
 import logging
+import math
 import threading
 
 from app.analyzer.token import analyze as token_analyze
@@ -313,6 +314,7 @@ def _runtime_find_fraction(sources):
 def _runtime_math_evidence(
     *,
     token_address,
+    pool,
     price,
     upstream_price_series,
     exit_evidence,
@@ -324,25 +326,60 @@ def _runtime_math_evidence(
         token_address or ""
     ).lower()
 
+    pool_key = str(
+        pool or ""
+    ).lower()
+
     current_price = _runtime_positive_number(price)
 
-    history = _RUNTIME_PRICE_HISTORY.setdefault(
+    upstream_observations = []
+
+    for item in upstream_price_series or []:
+        observed = _runtime_positive_number(item)
+
+        if observed is not None:
+            upstream_observations.append(observed)
+
+    # Never join token-cache observations and pair-specific
+    # onchain observations into the same return history.
+    # A source transition must start/resume its own series.
+    source_key = (
+        "PAIR_ONCHAIN"
+        if upstream_observations
+        else "TOKEN_CACHE"
+    )
+
+    history_key = (
         token_key,
+        pool_key,
+        source_key,
+    )
+
+    history = _RUNTIME_PRICE_HISTORY.setdefault(
+        history_key,
         [],
     )
 
-    # Seed once from a real upstream series when one exists.
-    if not history:
-        for item in upstream_price_series or []:
-            observed = _runtime_positive_number(item)
+    # Seed once from the real upstream series. The latest upstream
+    # sample already belongs to this observation cycle, so do not
+    # append current_price again in the same cycle.
+    if not history and upstream_observations:
+        history.extend(upstream_observations)
 
-            if observed is not None:
-                history.append(observed)
+    else:
+        # Keep one measured price per later runtime cycle. Prefer the
+        # same onchain/upstream source family when it is available;
+        # fall back to the cache price only when upstream is absent.
+        cycle_price = (
+            upstream_observations[-1]
+            if upstream_observations
+            else current_price
+        )
 
-    # Every runtime cycle is an actual observation. Equal prices are
-    # retained because a zero return is still a measured return.
-    if current_price is not None:
-        history.append(current_price)
+        # Equal prices are intentionally retained across distinct
+        # runtime cycles because a zero return is a real observation.
+        if cycle_price is not None:
+            history.append(cycle_price)
 
     if len(history) > 64:
         del history[:-64]
@@ -350,7 +387,7 @@ def _runtime_math_evidence(
     if len(_RUNTIME_PRICE_HISTORY) > 2048:
         oldest_key = next(iter(_RUNTIME_PRICE_HISTORY))
 
-        if oldest_key != token_key:
+        if oldest_key != history_key:
             _RUNTIME_PRICE_HISTORY.pop(
                 oldest_key,
                 None,
@@ -435,6 +472,239 @@ def _runtime_math_evidence(
         "lp_protected_fraction": protected,
         "lp_protection_source": protected_source,
     }
+
+
+def _vur_kac_entry_signal(
+    *,
+    price_series,
+    signal_bundle,
+):
+    """
+    Observation-only VUR_KAC entry classification.
+
+    Reuses the existing VUR_KAC continuation
+    semantics:
+    - measured price momentum
+    - measured price acceleration
+    - fresh/full native flow
+    - positive flow momentum
+    - non-negative flow acceleration
+
+    No percentage threshold is invented.
+    No paper/live/wallet/execution authority.
+    """
+    prices = []
+
+    for value in price_series or []:
+        try:
+            number = float(value)
+        except (
+            TypeError,
+            ValueError,
+        ):
+            continue
+
+        if (
+            math.isfinite(number)
+            and number > 0
+        ):
+            prices.append(number)
+
+    signal = (
+        dict(signal_bundle)
+        if isinstance(
+            signal_bundle,
+            dict,
+        )
+        else {}
+    )
+
+    def number(value):
+        try:
+            value = float(value)
+        except (
+            TypeError,
+            ValueError,
+        ):
+            return None
+
+        return (
+            value
+            if math.isfinite(value)
+            else None
+        )
+
+    def result(
+        *,
+        ready,
+        reason,
+        latest_return=None,
+        previous_return=None,
+        price_acceleration=None,
+        flow_momentum=None,
+        flow_acceleration=None,
+    ):
+        return {
+            "ready": bool(ready),
+            "reason": reason,
+            "trade_policy_candidate": (
+                "VUR_KAC"
+                if ready
+                else None
+            ),
+            "latest_log_return": (
+                latest_return
+            ),
+            "previous_log_return": (
+                previous_return
+            ),
+            "price_acceleration": (
+                price_acceleration
+            ),
+            "flow_momentum": (
+                flow_momentum
+            ),
+            "flow_acceleration": (
+                flow_acceleration
+            ),
+            "freshness": str(
+                signal.get(
+                    "freshness"
+                )
+                or "UNKNOWN"
+            ).upper(),
+            "coverage": number(
+                signal.get(
+                    "coverage"
+                )
+            ),
+            "shadow_only": True,
+            "decision_authority": False,
+            "paper_authority": False,
+            "live_authority": False,
+            "wallet_authority": False,
+            "execution_authority": False,
+        }
+
+    if len(prices) < 3:
+        return result(
+            ready=False,
+            reason=(
+                "VUR_KAC_PRICE_EVIDENCE_NOT_READY"
+            ),
+        )
+
+    previous_return = math.log(
+        prices[-2] / prices[-3]
+    )
+
+    latest_return = math.log(
+        prices[-1] / prices[-2]
+    )
+
+    price_acceleration = (
+        latest_return
+        - previous_return
+    )
+
+    freshness = str(
+        signal.get(
+            "freshness"
+        )
+        or "UNKNOWN"
+    ).upper()
+
+    coverage = number(
+        signal.get(
+            "coverage"
+        )
+    )
+
+    flow_momentum = number(
+        signal.get(
+            "flow_momentum"
+        )
+    )
+
+    flow_acceleration = number(
+        signal.get(
+            "flow_acceleration"
+        )
+    )
+
+    if (
+        freshness != "FRESH"
+        or coverage is None
+        or coverage < 1.0
+        or flow_momentum is None
+        or flow_acceleration is None
+    ):
+        return result(
+            ready=False,
+            reason=(
+                "VUR_KAC_FLOW_EVIDENCE_NOT_READY"
+            ),
+            latest_return=latest_return,
+            previous_return=previous_return,
+            price_acceleration=(
+                price_acceleration
+            ),
+            flow_momentum=flow_momentum,
+            flow_acceleration=(
+                flow_acceleration
+            ),
+        )
+
+    if latest_return <= 0:
+        reason = (
+            "VUR_KAC_PRICE_MOMENTUM_NOT_POSITIVE"
+        )
+
+    elif price_acceleration < 0:
+        reason = (
+            "VUR_KAC_PRICE_ACCELERATION_WEAKENING"
+        )
+
+    elif flow_momentum <= 0:
+        reason = (
+            "VUR_KAC_FLOW_MOMENTUM_NOT_POSITIVE"
+        )
+
+    elif flow_acceleration < 0:
+        reason = (
+            "VUR_KAC_FLOW_ACCELERATION_WEAKENING"
+        )
+
+    else:
+        return result(
+            ready=True,
+            reason=(
+                "VUR_KAC_ENTRY_SIGNAL_READY"
+            ),
+            latest_return=latest_return,
+            previous_return=previous_return,
+            price_acceleration=(
+                price_acceleration
+            ),
+            flow_momentum=flow_momentum,
+            flow_acceleration=(
+                flow_acceleration
+            ),
+        )
+
+    return result(
+        ready=False,
+        reason=reason,
+        latest_return=latest_return,
+        previous_return=previous_return,
+        price_acceleration=(
+            price_acceleration
+        ),
+        flow_momentum=flow_momentum,
+        flow_acceleration=(
+            flow_acceleration
+        ),
+    )
 
 
 class PipelineEngine:
@@ -1420,25 +1690,13 @@ class PipelineEngine:
                 }
 
             else:
-                try:
-                    price = (
-                        self.price.get_price(
-                            token_address
-                        )
-                    )
-                except Exception:
-                    price = 0.0
+                # Pair-specific onchain reserve evidence is
+                # canonical when available. Token-only cache price
+                # is only a fallback and must not override another
+                # pool's measured price.
+                price = 0.0
 
-                # Cache absence is not evidence of
-                # price absence. Use the latest price already
-                # measured from verified pair reserves.
-                if (
-                    (
-                        price is None
-                        or price <= 0
-                    )
-                    and local_math_price_series
-                ):
+                if local_math_price_series:
                     try:
                         price = float(
                             local_math_price_series[-1]
@@ -1447,6 +1705,19 @@ class PipelineEngine:
                         TypeError,
                         ValueError,
                     ):
+                        price = 0.0
+
+                if (
+                    price is None
+                    or price <= 0
+                ):
+                    try:
+                        price = (
+                            self.price.get_price(
+                                token_address
+                            )
+                        )
+                    except Exception:
                         price = 0.0
 
                 # Propagate measured facts to downstream
@@ -1537,15 +1808,11 @@ class PipelineEngine:
                         or []
                     )
 
+                    # Never mix token-only cache pricing into a
+                    # pair-specific onchain price series.
                     if (
-                        price > 0
-                        and (
-                            not price_series
-                            or (
-                                price_series[-1]
-                                != price
-                            )
-                        )
+                        not price_series
+                        and price > 0
                     ):
                         price_series.append(
                             price
@@ -1554,6 +1821,11 @@ class PipelineEngine:
                     runtime_math_evidence = (
                         _runtime_math_evidence(
                             token_address=token_address,
+                            pool=(
+                                market_context.get(
+                                    "candidate_pool"
+                                )
+                            ),
                             price=price,
                             upstream_price_series=(
                                 price_series
@@ -1577,6 +1849,69 @@ class PipelineEngine:
                         runtime_math_evidence[
                             "price_series"
                         ]
+                    )
+
+                    candidate_vur_kac_evidence = (
+                        self._hybrid_exit_runtime_evidence(
+                            {
+                                "token": (
+                                    token_address
+                                ),
+                                "opening_context_json": (
+                                    json.dumps(
+                                        {
+                                            "raw_signals": {
+                                                "pool": (
+                                                    market_context.get(
+                                                        "candidate_pool"
+                                                    )
+                                                ),
+                                                "liquidity": (
+                                                    market_context.get(
+                                                        "liquidity"
+                                                    )
+                                                ),
+                                                "volume_24h": (
+                                                    market_context.get(
+                                                        "volume_24h"
+                                                    )
+                                                    or market_context.get(
+                                                        "volume24"
+                                                    )
+                                                ),
+                                                "buys_24h": (
+                                                    market_context.get(
+                                                        "buys_24h"
+                                                    )
+                                                    or market_context.get(
+                                                        "buys24"
+                                                    )
+                                                ),
+                                                "price_usd": (
+                                                    price
+                                                ),
+                                            }
+                                        },
+                                        sort_keys=True,
+                                    )
+                                ),
+                            }
+                        )
+                        or {}
+                    )
+
+                    vur_kac_entry_shadow = (
+                        _vur_kac_entry_signal(
+                            price_series=(
+                                price_series
+                            ),
+                            signal_bundle=(
+                                candidate_vur_kac_evidence.get(
+                                    "signal_bundle"
+                                )
+                                or {}
+                            ),
+                        )
                     )
 
                     exit_evidence = dict(
@@ -1912,6 +2247,10 @@ class PipelineEngine:
                             "mathematical_plan": (
                                 mathematical_plan
                             ),
+
+                            "vur_kac_entry_shadow": (
+                                vur_kac_entry_shadow
+                            ),
                         }
 
                     else:
@@ -2097,6 +2436,10 @@ class PipelineEngine:
                             ),
 
                             "trade_policy": "NORMAL",
+
+                            "vur_kac_entry_shadow": (
+                                vur_kac_entry_shadow
+                            ),
 
                             "decision_authority": False,
                             "live_authority": False,
@@ -2487,6 +2830,9 @@ class PipelineEngine:
                             paper = {
                                 "action": "SKIP",
                                 "reason": reason,
+                                "vur_kac_entry_shadow": (
+                                    vur_kac_entry_shadow
+                                ),
                             }
 
                         else:
@@ -2587,6 +2933,10 @@ class PipelineEngine:
 
                                 "paper_account_version": (
                                     "PAPER_10K_V2"
+                                ),
+
+                                "vur_kac_entry_shadow": (
+                                    vur_kac_entry_shadow
                                 ),
                             }
 
@@ -3556,6 +3906,12 @@ class PipelineEngine:
                             "entry_amount_usdt"
                         )
                     ),
+                    "vur_kac_entry_shadow": (
+                        paper.get(
+                            "vur_kac_entry_shadow"
+                        )
+                        or {}
+                    ),
                     "hard_block": bool(
                         risk_gate.get("hard_block")
                     ),
@@ -3602,6 +3958,11 @@ class PipelineEngine:
                         "paper=%s reason=%s "
                         "plan_blockers=%s sizing_blockers=%s "
                         "sizing_reason=%s entry_amount_usdt=%s "
+                        "vur_kac_shadow=%s vur_kac_reason=%s "
+                        "vk_latest_ret=%s vk_prev_ret=%s "
+                        "vk_price_accel=%s vk_flow_momentum=%s "
+                        "vk_flow_accel=%s vk_freshness=%s "
+                        "vk_coverage=%s "
                         "hard_block=%s evidence_coverage=%s "
                         "coverage_confidence=%s sellability=%s"
                     ),
@@ -3615,6 +3976,69 @@ class PipelineEngine:
                     summary["sizing_blockers"],
                     summary["sizing_reason"],
                     summary["entry_amount_usdt"],
+                    (
+                        summary[
+                            "vur_kac_entry_shadow"
+                        ].get(
+                            "ready"
+                        )
+                    ),
+                    (
+                        summary[
+                            "vur_kac_entry_shadow"
+                        ].get(
+                            "reason"
+                        )
+                    ),
+                    (
+                        summary[
+                            "vur_kac_entry_shadow"
+                        ].get(
+                            "latest_log_return"
+                        )
+                    ),
+                    (
+                        summary[
+                            "vur_kac_entry_shadow"
+                        ].get(
+                            "previous_log_return"
+                        )
+                    ),
+                    (
+                        summary[
+                            "vur_kac_entry_shadow"
+                        ].get(
+                            "price_acceleration"
+                        )
+                    ),
+                    (
+                        summary[
+                            "vur_kac_entry_shadow"
+                        ].get(
+                            "flow_momentum"
+                        )
+                    ),
+                    (
+                        summary[
+                            "vur_kac_entry_shadow"
+                        ].get(
+                            "flow_acceleration"
+                        )
+                    ),
+                    (
+                        summary[
+                            "vur_kac_entry_shadow"
+                        ].get(
+                            "freshness"
+                        )
+                    ),
+                    (
+                        summary[
+                            "vur_kac_entry_shadow"
+                        ].get(
+                            "coverage"
+                        )
+                    ),
                     summary["hard_block"],
                     summary["score"],
                     summary["confidence"],

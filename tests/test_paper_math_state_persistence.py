@@ -134,3 +134,208 @@ def test_normal_and_vur_kac_have_separate_policy_paths():
         '"MATHEMATICAL_VUR_KAC_EXIT"'
         in manager
     )
+
+
+
+def test_vur_kac_entry_shadow_uses_existing_momentum_semantics():
+    from app.pipeline.engine import (
+        _vur_kac_entry_signal,
+    )
+
+    ready = _vur_kac_entry_signal(
+        price_series=[
+            1.0,
+            1.01,
+            1.03,
+        ],
+        signal_bundle={
+            "freshness": "FRESH",
+            "coverage": 1.0,
+            "flow_momentum": 0.25,
+            "flow_acceleration": 0.10,
+        },
+    )
+
+    assert ready["ready"] is True
+    assert (
+        ready["reason"]
+        == "VUR_KAC_ENTRY_SIGNAL_READY"
+    )
+    assert (
+        ready["trade_policy_candidate"]
+        == "VUR_KAC"
+    )
+    assert ready["shadow_only"] is True
+    assert ready["paper_authority"] is False
+    assert ready["live_authority"] is False
+    assert ready["wallet_authority"] is False
+    assert ready["execution_authority"] is False
+
+    weakening = _vur_kac_entry_signal(
+        price_series=[
+            1.0,
+            1.03,
+            1.04,
+        ],
+        signal_bundle={
+            "freshness": "FRESH",
+            "coverage": 1.0,
+            "flow_momentum": 0.25,
+            "flow_acceleration": 0.10,
+        },
+    )
+
+    assert weakening["ready"] is False
+    assert (
+        weakening["reason"]
+        == "VUR_KAC_PRICE_ACCELERATION_WEAKENING"
+    )
+
+    stale = _vur_kac_entry_signal(
+        price_series=[
+            1.0,
+            1.01,
+            1.03,
+        ],
+        signal_bundle={
+            "freshness": "STALE",
+            "coverage": 1.0,
+            "flow_momentum": 0.25,
+            "flow_acceleration": 0.10,
+        },
+    )
+
+    assert stale["ready"] is False
+    assert (
+        stale["reason"]
+        == "VUR_KAC_FLOW_EVIDENCE_NOT_READY"
+    )
+
+
+
+def test_runtime_math_price_history_isolated_by_pool():
+    from app.pipeline import engine as engine_module
+
+    engine_module._RUNTIME_PRICE_HISTORY.clear()
+
+    try:
+        first = engine_module._runtime_math_evidence(
+            token_address="0xabc",
+            pool="0xpool1",
+            price=1.1,
+            upstream_price_series=[
+                1.0,
+                1.1,
+            ],
+            exit_evidence={},
+            lp_evidence={},
+            market_context={},
+            sellability_data={},
+        )
+
+        second = engine_module._runtime_math_evidence(
+            token_address="0xabc",
+            pool="0xpool2",
+            price=11.0,
+            upstream_price_series=[
+                10.0,
+                11.0,
+            ],
+            exit_evidence={},
+            lp_evidence={},
+            market_context={},
+            sellability_data={},
+        )
+
+        assert first["price_series"] == [
+            1.0,
+            1.1,
+        ]
+
+        assert second["price_series"] == [
+            10.0,
+            11.0,
+        ]
+
+        assert len(
+            engine_module._RUNTIME_PRICE_HISTORY
+        ) == 2
+
+        assert (
+            "0xabc",
+            "0xpool1",
+            "PAIR_ONCHAIN",
+        ) in engine_module._RUNTIME_PRICE_HISTORY
+
+        assert (
+            "0xabc",
+            "0xpool2",
+            "PAIR_ONCHAIN",
+        ) in engine_module._RUNTIME_PRICE_HISTORY
+
+    finally:
+        engine_module._RUNTIME_PRICE_HISTORY.clear()
+
+
+
+def test_runtime_math_history_isolates_cache_from_pair_onchain_source():
+    from app.pipeline import engine as engine_module
+
+    engine_module._RUNTIME_PRICE_HISTORY.clear()
+
+    common = {
+        "token_address": "0xtoken",
+        "pool": "0xpool",
+        "exit_evidence": {},
+        "lp_evidence": {},
+        "market_context": {},
+        "sellability_data": {},
+    }
+
+    cache_result = engine_module._runtime_math_evidence(
+        **common,
+        price=5.0e-5,
+        upstream_price_series=[],
+    )
+
+    assert cache_result["price_series"] == [
+        5.0e-5
+    ]
+
+    onchain_series = [
+        2.40e-9,
+        2.41e-9,
+        2.42e-9,
+    ]
+
+    onchain_result = engine_module._runtime_math_evidence(
+        **common,
+        price=2.42e-9,
+        upstream_price_series=onchain_series,
+    )
+
+    assert onchain_result["price_series"] == (
+        onchain_series
+    )
+
+    # The earlier token-cache price must never appear
+    # inside the pair-specific onchain return history.
+    assert 5.0e-5 not in (
+        onchain_result["price_series"]
+    )
+
+    keys = set(
+        engine_module._RUNTIME_PRICE_HISTORY
+    )
+
+    assert (
+        "0xtoken",
+        "0xpool",
+        "TOKEN_CACHE",
+    ) in keys
+
+    assert (
+        "0xtoken",
+        "0xpool",
+        "PAIR_ONCHAIN",
+    ) in keys

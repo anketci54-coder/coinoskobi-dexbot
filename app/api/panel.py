@@ -928,6 +928,56 @@ def _runtime_bool(value: Any) -> bool | None:
     return None
 
 
+def _runtime_candidate_cycle_lines(
+    lines: list[str],
+) -> list[str]:
+    """
+    Return one coherent scanner-cycle snapshot.
+
+    The scheduler runs scanner synchronously before
+    paper_manager.  Therefore a paper_manager job marker
+    after the latest scanner marker means that scanner
+    cycle has completed.
+
+    While the latest scanner cycle is still running,
+    preserve the previous completed scanner snapshot
+    instead of exposing a transient empty/partial list.
+    """
+
+    scanner_indices = [
+        index
+        for index, line in enumerate(lines)
+        if "[JOB] scanner" in line
+    ]
+
+    if not scanner_indices:
+        return lines
+
+    latest_index = scanner_indices[-1]
+
+    latest_lines = lines[
+        latest_index + 1:
+    ]
+
+    latest_complete = any(
+        "[JOB] paper_manager" in line
+        for line in latest_lines
+    )
+
+    if latest_complete:
+        return latest_lines
+
+    if len(scanner_indices) < 2:
+        return latest_lines
+
+    previous_index = scanner_indices[-2]
+
+    return lines[
+        previous_index + 1:
+        latest_index
+    ]
+
+
 def runtime_candidate_rows(
     limit: int = 20,
 ) -> list[dict[str, Any]]:
@@ -966,18 +1016,9 @@ def runtime_candidate_rows(
     if result.returncode != 0:
         return []
 
-    lines = result.stdout.splitlines()
-
-    scanner_index = None
-
-    for index, line in enumerate(lines):
-        if "[JOB] scanner" in line:
-            scanner_index = index
-
-    if scanner_index is not None:
-        lines = lines[
-            scanner_index + 1:
-        ]
+    lines = _runtime_candidate_cycle_lines(
+        result.stdout.splitlines()
+    )
 
     rows = []
     seen = set()

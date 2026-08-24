@@ -142,3 +142,85 @@ def test_exits_use_only_paper_10k_usdt_accounting(panel_db):
     assert stop_loss["trades"] == 1
     assert stop_loss["avg_roi_pct"] == pytest.approx(-10.0)
     assert stop_loss["net_total"] == pytest.approx(-10.0)
+
+def test_runtime_candidate_snapshot_keeps_previous_cycle_while_scanner_runs():
+    lines = [
+        "08:55:00 [JOB] scanner",
+        (
+            "08:55:01 Candidate token=0xold "
+            "pool=0xpoolold"
+        ),
+        "08:55:04 [JOB] paper_manager",
+        "09:00:00 [JOB] scanner",
+        (
+            "09:00:01 Candidate token=0xpartial "
+            "pool=0xpoolpartial"
+        ),
+    ]
+
+    selected = (
+        panel_module
+        ._runtime_candidate_cycle_lines(
+            lines
+        )
+    )
+
+    assert selected == lines[1:3]
+    assert "0xold" in selected[0]
+    assert not any(
+        "0xpartial" in line
+        for line in selected
+    )
+
+
+def test_runtime_candidate_snapshot_switches_after_scanner_completes():
+    lines = [
+        "08:55:00 [JOB] scanner",
+        (
+            "08:55:01 Candidate token=0xold "
+            "pool=0xpoolold"
+        ),
+        "08:55:04 [JOB] paper_manager",
+        "09:00:00 [JOB] scanner",
+        (
+            "09:00:01 Candidate token=0xnew "
+            "pool=0xpoolnew"
+        ),
+        "09:00:04 [JOB] paper_manager",
+    ]
+
+    selected = (
+        panel_module
+        ._runtime_candidate_cycle_lines(
+            lines
+        )
+    )
+
+    assert selected == lines[4:]
+    assert "0xnew" in selected[0]
+
+
+def test_runtime_candidate_snapshot_allows_true_zero_after_completed_scan():
+    lines = [
+        "08:55:00 [JOB] scanner",
+        (
+            "08:55:01 Candidate token=0xold "
+            "pool=0xpoolold"
+        ),
+        "08:55:04 [JOB] paper_manager",
+        "09:00:00 [JOB] scanner",
+        "09:00:04 [JOB] paper_manager",
+    ]
+
+    selected = (
+        panel_module
+        ._runtime_candidate_cycle_lines(
+            lines
+        )
+    )
+
+    assert selected == lines[4:]
+    assert not any(
+        "Candidate token=" in line
+        for line in selected
+    )

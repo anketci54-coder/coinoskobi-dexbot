@@ -1195,12 +1195,7 @@ async def panel_no_cache(
         request
     )
 
-    if (
-        request.url.path == "/"
-        or request.url.path.startswith(
-            "/static/"
-        )
-    ):
+    if request.url.path == "/":
         response.headers[
             "Cache-Control"
         ] = (
@@ -1215,6 +1210,15 @@ async def panel_no_cache(
         response.headers[
             "Expires"
         ] = "0"
+
+    elif request.url.path.startswith(
+        "/static/"
+    ):
+        response.headers[
+            "Cache-Control"
+        ] = (
+            "public, max-age=86400"
+        )
 
     return response
 

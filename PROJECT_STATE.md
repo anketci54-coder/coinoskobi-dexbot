@@ -1,6 +1,6 @@
 # COINOSKOBI CANONICAL PROJECT STATE
 
-Updated: 2026-08-23
+Updated: 2026-08-24
 
 ## CANONICAL SOURCE
 
@@ -169,33 +169,54 @@ Canonical behavior:
 
 ## CURRENT OPEN WORK
 
-One cause -> one correction -> one closure.
+Numbered roadmap status:
 
-Latest sealed canonical HEAD:
+- Phase 0–15: CLOSED
+- Phase 16: NOT OPENED
+- Current mode: post-roadmap operation / maintenance
 
-`e86a40d895a6d1cc16d5a8b94df9bee6cc525e21`
+Latest functional code seal before this state sync:
 
-Final acceptance at this seal:
+`42f14a9faeb57e7a729f3fc660f2296b5ba959eb`
 
-- full regression: 1061 PASS / 0 FAIL
-- empirical calibration: READY
-- calibration reason: EMPIRICAL_OUTCOME_CALIBRATION
-- bootstrap blockers: cleared
-- observed PLAN_BLOCKED: 3
-- observed POSITION_SIZING_BLOCKED: 0
-- GAP_RISK_UNOBSERVED: 0
-- COST_UNCERTAINTY_UNOBSERVED: 0
-- active paper trades at acceptance: 0
-- DB quick_check: ok
-- paper runtime: active
-- panel runtime: active
-- service restart during final acceptance: false
+Current canonical HEAD must still be read from:
 
-The blocker-distribution question is therefore resolved for the observed
-acceptance window: empirical position sizing was not the remaining blocker.
-Admission mathematics must not be loosened from this evidence alone.
+`git rev-parse HEAD`
 
-Current task:
+and must match:
+
+`git rev-parse origin/main`
+
+Recent canonical maintenance seals:
+
+1. `e8b9ab61cb4e197a863179c9565504eaaad64f21`
+   - runtime price history isolated by token, pool and source family
+   - TOKEN_CACHE and PAIR_ONCHAIN observations cannot contaminate the same return history
+   - source-transition extreme-return artifact was not observed after restart
+   - full regression: 1081 PASS / 0 FAIL
+
+2. `42f14a9faeb57e7a729f3fc660f2296b5ba959eb`
+   - panel runtime candidate parser preserves complete blocker lists
+   - panel exposes real plan/sizing blocker reasons
+   - duplicate candidate feed removed from Intelligence Center
+   - canonical panel HTTP route smoke: PASS
+   - real runtime blocker parsing: PASS
+
+Final operational acceptance at this seal:
+
+- local HEAD = origin/main
+- worktree clean
+- paper runtime active
+- panel runtime active
+- unexpected restart: false
+- paper runtime was not restarted by panel acceptance
+- panel remains read-only
+- live execution authority = 0
+- wallet/signing authority = 0
+
+The blocker-distribution and price-source diagnostic work is closed.
+
+Current operational task:
 
 1. Keep the canonical paper runtime operating naturally.
 2. Observe the next natural new paper OPEN.
@@ -205,7 +226,9 @@ Current task:
    - TP1 minimum risk neutralization
    - TP2 minimum principal recovery
    - runner behavior / mathematical Vur-Kac exit
-6. Do not loosen admission, sizing or safety gates without new runtime evidence.
+6. Compare the real lifecycle with persisted entry evidence and counterfactual outcome evidence.
+7. Do not loosen admission, sizing or safety gates without new runtime evidence.
+8. Do not open Phase 16, Era, V2/V3 or a replacement architecture.
 
 ## NEW CHAT CONTINUATION
 

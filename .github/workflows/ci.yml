@@ -28,6 +28,7 @@ jobs:
           python -m pytest -q
           tests/test_runtime_market_flow.py
           tests/test_pipeline_real_actor_binding.py
+          tests/test_origin_participation_binding.py
           tests/test_vur_kac_entry_admission.py
           tests/test_catastrophic_gap_calibration.py
           tests/test_true_composition_root_e2e.py

@@ -367,9 +367,9 @@ def test_true_composition_root_e2e(
     pipeline.conveyor = PassConveyor()
     pipeline.price = OpenPrice()
 
-    # Three snapshots are the minimum to mature native flow from
-    # spread -> velocity -> acceleration through the real runtime path.
-    # Production cooldown is irrelevant to this deterministic E2E.
+    # Repeated deterministic snapshots mature native flow from
+    # spread -> velocity -> acceleration. Stop immediately after the
+    # first complete paper lifecycle so the fixture cannot re-enter.
     pipeline.candidate_queue.cooldown_seconds = 0.0
 
     pipeline.manager.price = (
@@ -421,18 +421,22 @@ def test_true_composition_root_e2e(
     def bounded_sleep(_):
         sleep_count["value"] += 1
 
-        if sleep_count["value"] < 3:
-            jobs["scanner"]["next"] = 0.0
-            jobs["paper_manager"]["next"] = 0.0
+        if pipeline.paper_db.closed_positions():
+            runner.stop()
             return
 
-        runner.stop()
+        if sleep_count["value"] >= 4:
+            runner.stop()
+            return
+
+        jobs["scanner"]["next"] = 0.0
+        jobs["paper_manager"]["next"] = 0.0
 
     runner.sleep_func = bounded_sleep
 
     runner.run()
 
-    assert sleep_count["value"] == 3
+    assert 1 <= sleep_count["value"] <= 4
     assert service.started == 1
     assert service.stopped == 1
     assert runner.services_started is False

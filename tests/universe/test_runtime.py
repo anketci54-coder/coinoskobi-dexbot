@@ -2,11 +2,13 @@ import sqlite3
 import threading
 import time
 
+import app.universe.runtime as runtime_module
 from app.universe.discovery import PANCAKE_FACTORY_STREAMS, PAIR_CREATED_TOPIC
 from app.universe.registry import UniverseRegistry
 from app.universe.runtime import (
     FullUniverseObservationRuntime,
     UniverseShadowService,
+    Web3LogReader,
     bind_shadow_runtime,
 )
 
@@ -83,6 +85,45 @@ def test_shadow_runtime_requires_explicit_start_blocks_and_bounded_batches():
             pass
         else:
             raise AssertionError("invalid shadow bound accepted")
+
+
+def test_spawn_isolated_uses_worker_owned_rpc(monkeypatch, tmp_path):
+    class Eth:
+        block_number = 123
+    class WorkerWeb3:
+        eth = Eth()
+
+    worker_web3 = WorkerWeb3()
+    created = []
+    monkeypatch.setattr(
+        runtime_module,
+        "_new_bsc_web3",
+        lambda: created.append(worker_web3) or worker_web3,
+    )
+    monkeypatch.setattr(
+        runtime_module,
+        "UniverseRegistry",
+        lambda: UniverseRegistry(
+            connection=sqlite3.connect(":memory:")
+        ),
+    )
+    monkeypatch.setattr(
+        runtime_module,
+        "DexScreenerSnapshotClient",
+        SnapshotClient,
+    )
+
+    template = runtime(
+        UniverseRegistry(connection=sqlite3.connect(":memory:")),
+        LogReader(),
+    )
+    isolated = template.spawn_isolated()
+
+    assert created == [worker_web3]
+    assert isinstance(isolated.discovery.log_reader, Web3LogReader)
+    assert isolated.discovery.log_reader.web3 is worker_web3
+    assert isolated.finalized_block_reader() == 123
+    assert isolated.registry is not template.registry
 
 
 def test_shadow_binding_uses_background_service_and_not_scheduler():

@@ -77,6 +77,22 @@ def test_phase5_phase7_trending_bull():
         "market_regime"
     ]["market_regime"] == "TRENDING_BULL"
 
+    probability = r[
+        "flow_spread"
+    ]
+
+    assert probability[
+        "probability_model"
+    ] == "BETA_BINOMIAL"
+
+    assert probability[
+        "buy_probability_mean"
+    ] == 121.0 / 202.0
+
+    assert probability[
+        "decision_authority"
+    ] is False
+
 
 def test_phase9_phase10_readmodels_connected():
     c = RuntimeIntelligenceComposition()

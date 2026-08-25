@@ -1,5 +1,5 @@
 import json
-from decimal import Decimal, InvalidOperation
+import math
 
 import requests
 from web3 import Web3
@@ -310,19 +310,19 @@ def _goplus_tax_pct(value):
     except (TypeError, ValueError):
         return None
 
-    if fraction < 0:
+    if not math.isfinite(fraction) or fraction < 0:
         return None
 
     return fraction * 100.0
 
 
 def _fraction(value):
-    if value in (None, ""):
-        return None
-
     try:
         number = float(value)
     except (TypeError, ValueError):
+        return None
+
+    if not math.isfinite(number):
         return None
 
     if number < 0 or number > 1:
@@ -331,53 +331,78 @@ def _fraction(value):
     return number
 
 
-def _goplus_lp_total_supply_raw(value):
-    if value in (None, ""):
-        return None
-
+def _positive_number(value):
     try:
-        supply = Decimal(str(value))
-    except (InvalidOperation, ValueError):
+        number = float(value)
+    except (TypeError, ValueError):
         return None
 
-    if supply <= 0:
+    if not math.isfinite(number) or number <= 0:
         return None
 
-    raw = supply * Decimal(10**18)
-
-    if raw != raw.to_integral_value():
-        return None
-
-    return int(raw)
+    return number
 
 
-def _goplus_pair_in_dex(token_data, pair):
-    if not pair:
-        return None
+def _goplus_primary_pair(token_data, pair):
+    pair_key = str(pair or "").strip().lower()
+    if not pair_key:
+        return False, False
 
-    wanted = str(pair).strip().lower()
+    raw_dex = token_data.get("dexs")
+    if not isinstance(raw_dex, list):
+        raw_dex = token_data.get("dex")
+    if not isinstance(raw_dex, list):
+        raw_dex = []
 
-    for item in token_data.get("dex") or []:
+    rows = []
+    pair_in_dex = False
+
+    for item in raw_dex:
         if not isinstance(item, dict):
             continue
 
-        candidate = str(
-            item.get("pair")
-            or item.get("pair_address")
-            or ""
-        ).strip().lower()
+        item_pair = str(item.get("pair") or "").strip().lower()
+        liquidity = _positive_number(item.get("liquidity"))
 
-        if candidate and candidate == wanted:
-            return True
+        if item_pair == pair_key:
+            pair_in_dex = True
 
-    return False
+        if item_pair and liquidity is not None:
+            rows.append((item_pair, liquidity))
+
+    if not rows:
+        return pair_in_dex, False
+
+    max_liquidity = max(value for _, value in rows)
+    leaders = [
+        item_pair
+        for item_pair, value in rows
+        if value == max_liquidity
+    ]
+
+    # GoPlus lp_holders describes the dominant/main LP.
+    # Bind that evidence only when the target pair is the
+    # unique highest-liquidity DEX pair. Ties stay UNKNOWN.
+    is_primary = (
+        len(leaders) == 1
+        and leaders[0] == pair_key
+    )
+
+    return pair_in_dex, is_primary
 
 
-def _goplus_locked_lp_fraction(token_data):
-    total = 0.0
+def _goplus_locked_fraction(token_data, *, pair_is_primary):
+    if not pair_is_primary:
+        return None, 0
+
+    holders = token_data.get("lp_holders")
+    if not isinstance(holders, list):
+        return None, 0
+
+    locked = 0.0
     count = 0
 
-    for holder in token_data.get("lp_holders") or []:
+    for holder in holders:
         if not isinstance(holder, dict):
             continue
 
@@ -385,17 +410,19 @@ def _goplus_locked_lp_fraction(token_data):
             continue
 
         fraction = _fraction(holder.get("percent"))
-
-        if fraction is None or fraction <= 0:
+        if fraction is None:
             continue
 
-        total += fraction
+        locked += fraction
         count += 1
 
-    return min(1.0, total), count
+    if count <= 0 or locked <= 0:
+        return None, 0
+
+    return min(1.0, locked), count
 
 
-def _parse_goplus_payload(payload, token, pair=None):
+def _parse_goplus_payload(payload, token, *, pair=None):
     result = payload.get("result") or {}
     token_data = result.get(token.lower()) or {}
 
@@ -426,8 +453,13 @@ def _parse_goplus_payload(payload, token, pair=None):
     else:
         sellable = None
 
-    locked_fraction, locked_count = (
-        _goplus_locked_lp_fraction(token_data)
+    pair_in_dex, pair_is_primary = _goplus_primary_pair(
+        token_data,
+        pair,
+    )
+    locked_fraction, locked_count = _goplus_locked_fraction(
+        token_data,
+        pair_is_primary=pair_is_primary,
     )
 
     return {
@@ -460,15 +492,8 @@ def _parse_goplus_payload(payload, token, pair=None):
         "goplus_is_open_source": _normalized_flag(
             token_data.get("is_open_source")
         ),
-        "goplus_pair_in_dex": _goplus_pair_in_dex(
-            token_data,
-            pair,
-        ),
-        "goplus_lp_total_supply_raw": (
-            _goplus_lp_total_supply_raw(
-                token_data.get("lp_total_supply")
-            )
-        ),
+        "goplus_pair_in_dex": pair_in_dex,
+        "goplus_pair_is_primary_lp": pair_is_primary,
         "goplus_lp_locked_fraction_reported": locked_fraction,
         "goplus_lp_locked_holder_count": locked_count,
         "goplus_api_code": payload.get("code"),
@@ -492,7 +517,7 @@ def _analyze_goplus_once(address, *, pair=None):
         }
 
     pair_key = str(pair or "").strip().lower()
-    cache_key = f"goplus:bsc:{token.lower()}:{pair_key}"
+    cache_key = f"goplus:bsc:{token.lower()}:{pair_key or 'token'}"
 
     try:
         cached = _cache.get(
@@ -573,79 +598,107 @@ def _analyze_goplus_once(address, *, pair=None):
     return result
 
 
-def _local_lp_needs_secondary(local):
+def _local_lp_protected_fraction(local):
     if not isinstance(local, dict):
-        return False
+        return None
 
+    lp = local.get("lp_security")
+    if not isinstance(lp, dict):
+        return None
+
+    return _fraction(lp.get("lp_protected_fraction"))
+
+
+def _merge_goplus_lp_evidence(primary, secondary, *, pair=None):
+    result = dict(primary)
+    data = dict(result.get("data") or {})
+    local = data.get("local_evidence")
+
+    if not isinstance(local, dict):
+        return result
+
+    local = dict(local)
     lp = local.get("lp_security")
 
     if not isinstance(lp, dict):
-        return False
+        return result
 
-    try:
-        protected = float(lp.get("lp_protected_fraction"))
-    except (TypeError, ValueError):
-        protected = None
-
-    return protected is not None and protected <= 0
-
-
-def _enrich_local_lp_from_goplus(local, secondary_data, pair):
-    local = dict(local or {})
-    lp = dict(local.get("lp_security") or {})
-
-    try:
-        onchain_total = int(lp.get("total_supply_raw"))
-    except (TypeError, ValueError):
-        onchain_total = None
-
-    provider_total = secondary_data.get(
-        "goplus_lp_total_supply_raw"
-    )
-    provider_fraction = secondary_data.get(
-        "goplus_lp_locked_fraction_reported"
-    )
-    pair_matches = secondary_data.get("goplus_pair_in_dex") is True
-
-    verified = bool(
-        pair_matches
-        and onchain_total is not None
-        and onchain_total > 0
-        and provider_total == onchain_total
-        and provider_fraction is not None
-        and provider_fraction > 0
-        and provider_fraction <= 1
+    lp = dict(lp)
+    secondary_data = (
+        secondary.get("data")
+        if isinstance(secondary, dict)
+        else None
     )
 
-    if not verified:
-        return local, False
+    data["secondary_provider"] = "goplus"
+    data["secondary_provider_attempted"] = True
+    data["secondary_provider_success"] = bool(
+        _provider_verified(secondary)
+    )
+    data["goplus_lp_protection_verified"] = False
 
-    onchain_state = lp.get("state")
-    onchain_fraction = lp.get("lp_protected_fraction")
+    if not isinstance(secondary_data, dict):
+        local["lp_security"] = lp
+        data["local_evidence"] = local
+        result["data"] = data
+        return result
 
-    lp.update({
-        "onchain_state": onchain_state,
-        "onchain_lp_protected_fraction": onchain_fraction,
-        "state": "PROTECTION_EVIDENCE_PRESENT",
-        "protection_evidence_present": True,
-        "lp_protected_fraction": provider_fraction,
-        "lp_withdrawable_fraction": 1.0 - provider_fraction,
-        "lp_protection_source": "GOPLUS_LOCKED_LP_HOLDERS",
-        "goplus_pair": str(pair or ""),
-        "goplus_lp_total_supply_raw": provider_total,
-        "goplus_lp_locked_holder_count": secondary_data.get(
-            "goplus_lp_locked_holder_count"
-        ),
-        "economic_safety_authority": False,
-        "trade_authority": False,
-        "paper_authority": False,
-        "live_authority": False,
-        "wallet_authority": False,
-        "execution_authority": False,
-    })
+    fraction = _fraction(
+        secondary_data.get(
+            "goplus_lp_locked_fraction_reported"
+        )
+    )
+    pair_is_primary = (
+        secondary_data.get("goplus_pair_is_primary_lp")
+        is True
+    )
+    pair_in_dex = (
+        secondary_data.get("goplus_pair_in_dex")
+        is True
+    )
+
+    if (
+        _provider_verified(secondary)
+        and pair_in_dex
+        and pair_is_primary
+        and fraction is not None
+        and fraction > 0
+    ):
+        onchain_fraction = _fraction(
+            lp.get("lp_protected_fraction")
+        )
+        onchain_fraction = onchain_fraction or 0.0
+        protected = max(onchain_fraction, fraction)
+
+        lp["onchain_state"] = lp.get("state")
+        lp["onchain_lp_protected_fraction"] = onchain_fraction
+        lp["lp_protected_fraction"] = protected
+        lp["lp_withdrawable_fraction"] = max(
+            0.0,
+            1.0 - protected,
+        )
+        lp["protection_evidence_present"] = True
+        lp["state"] = "PROTECTION_EVIDENCE_PRESENT"
+        lp["lp_protection_source"] = (
+            "GOPLUS_PRIMARY_POOL_LOCKED_HOLDERS"
+        )
+        lp["goplus_pair"] = str(pair or "")
+        lp["goplus_locked_fraction"] = fraction
+        lp["goplus_locked_holder_count"] = (
+            secondary_data.get(
+                "goplus_lp_locked_holder_count"
+            )
+        )
+        data["lp_evidence_fallback_mode"] = "GOPLUS"
+        data["goplus_lp_protection_verified"] = True
 
     local["lp_security"] = lp
-    return local, True
+    data["local_evidence"] = local
+    result["local_evidence_complete"] = bool(
+        local.get("completed")
+    )
+    result["data"] = data
+    return result
 
 
 def _with_goplus_fallback(address, primary, *, pair=None):
@@ -655,39 +708,36 @@ def _with_goplus_fallback(address, primary, *, pair=None):
     primary_data = dict(primary.get("data") or {})
 
     # Compatibility: a successful primary-provider response
-    # must explicitly say that sellability was checked before
-    # an UNKNOWN result can trigger the secondary provider.
+    # must explicitly say sellability was checked before its
+    # UNKNOWN result can authorize a secondary sellability verdict.
     if (
         primary.get("provider_success") is True
         and primary_data.get("sellability_checked") is not True
     ):
         return primary
 
-    local = primary_data.get("local_evidence")
-    local_complete = bool(
-        isinstance(local, dict)
-        and local.get("completed") is True
-    )
-
-    # An explicit negative Honeypot.is verdict remains final.
-    # No secondary provider can weaken it.
+    # Never override an explicit negative Honeypot.is verdict.
     if primary_data.get("sellable") is False:
         return primary
 
-    needs_sellability = primary_data.get("sellable") is None
-    needs_lp = bool(
-        pair
-        and local_complete
-        and _local_lp_needs_secondary(local)
-    )
+    local = primary_data.get("local_evidence")
 
-    if not needs_sellability and not needs_lp:
+    if not (
+        isinstance(local, dict)
+        and local.get("completed") is True
+    ):
         return primary
 
-    # GoPlus is a second provider, not a replacement for
-    # pair-local onchain evidence. Both must be available
-    # before it can create SELLABILITY_OK or LP protection.
-    if not local_complete:
+    current_lp_fraction = _local_lp_protected_fraction(local)
+    needs_lp_evidence = (
+        current_lp_fraction is None
+        or current_lp_fraction <= 0
+    )
+    needs_sellability = (
+        primary_data.get("sellable") is None
+    )
+
+    if not needs_lp_evidence and not needs_sellability:
         return primary
 
     secondary = _analyze_goplus_once(
@@ -695,12 +745,14 @@ def _with_goplus_fallback(address, primary, *, pair=None):
         pair=pair,
     )
 
+    result = _merge_goplus_lp_evidence(
+        primary,
+        secondary,
+        pair=pair,
+    )
+    data = dict(result.get("data") or {})
+
     if not _provider_verified(secondary):
-        result = dict(primary)
-        data = dict(primary_data)
-        data["secondary_provider"] = "goplus"
-        data["secondary_provider_attempted"] = True
-        data["secondary_provider_success"] = False
         data["secondary_provider_error"] = str(
             secondary.get("error")
             if isinstance(secondary, dict)
@@ -710,44 +762,50 @@ def _with_goplus_fallback(address, primary, *, pair=None):
         return result
 
     secondary_data = dict(secondary.get("data") or {})
-    enriched_local, lp_verified = (
-        _enrich_local_lp_from_goplus(
-            local,
-            secondary_data,
-            pair,
+
+    # A positive/negative secondary sellability verdict is used
+    # only when the primary provider remained UNKNOWN. Existing
+    # Honeypot.is SELLABILITY_OK remains the canonical sellability
+    # verdict while GoPlus can independently enrich LP evidence.
+    if needs_sellability and secondary_data.get("sellable") in {
+        True,
+        False,
+    }:
+        enriched_local = data.get("local_evidence")
+        merged = dict(secondary)
+        merged_data = dict(secondary_data)
+        merged_data["local_evidence"] = enriched_local
+        merged_data["provider_fallback_mode"] = "GOPLUS"
+        merged_data["primary_sellability_provider"] = (
+            primary_data.get("sellability_provider")
         )
-    )
+        merged_data["primary_provider_status_code"] = (
+            primary.get("provider_status_code")
+        )
+        merged_data["primary_simulation_error"] = (
+            primary_data.get("simulation_error")
+        )
+        merged_data["secondary_provider"] = "goplus"
+        merged_data["secondary_provider_attempted"] = True
+        merged_data["secondary_provider_success"] = True
 
-    if needs_sellability:
-        result = dict(secondary)
-        data = dict(secondary_data)
-        data["provider_fallback_mode"] = "GOPLUS"
-    else:
-        # Honeypot.is already confirmed sellability. Preserve
-        # that primary verdict and use GoPlus only as an
-        # independently verified LP-lock evidence source.
-        result = dict(primary)
-        data = dict(primary_data)
+        for key in (
+            "lp_evidence_fallback_mode",
+            "goplus_lp_protection_verified",
+        ):
+            if key in data:
+                merged_data[key] = data[key]
 
-    data["local_evidence"] = enriched_local
-    data["primary_sellability_provider"] = primary_data.get(
-        "sellability_provider"
-    )
-    data["primary_provider_status_code"] = primary.get(
-        "provider_status_code"
-    )
-    data["primary_simulation_error"] = primary_data.get(
-        "simulation_error"
-    )
+        merged["local_evidence_complete"] = bool(
+            isinstance(enriched_local, dict)
+            and enriched_local.get("completed") is True
+        )
+        merged["data"] = merged_data
+        return merged
+
     data["secondary_provider"] = "goplus"
     data["secondary_provider_attempted"] = True
     data["secondary_provider_success"] = True
-    data["goplus_lp_protection_verified"] = lp_verified
-
-    if lp_verified:
-        data["lp_evidence_fallback_mode"] = "GOPLUS"
-
-    result["local_evidence_complete"] = True
     result["data"] = data
     return result
 
@@ -756,20 +814,21 @@ def analyze(address, *, pair=None):
     """
     Provider-backed sellability and LP-evidence chain.
 
-    Honeypot.is remains primary:
+    Honeypot.is remains the primary sellability provider:
       pair
         -> HTTP 404 only: token-only
         -> HTTP 404 only: simulateLiquidity=true
 
-    GoPlus is independent secondary evidence when:
-    - primary sellability remains UNKNOWN, or
-    - local pair LP exists but burn/known-locker protection
-      is still unproven.
+    GoPlus has two narrow fallback roles:
+      1. If primary sellability remains UNKNOWN, it may provide an
+         independent sellability verdict.
+      2. If pair-local LP protection is unproven, its locked LP
+         holder data may enrich persistent-liquidity evidence only
+         when the target pair is the unique highest-liquidity DEX
+         pair reported for that token.
 
-    A GoPlus LP lock is accepted only when the requested pair
-    is present in GoPlus DEX evidence and GoPlus LP total supply
-    exactly matches the onchain pair totalSupply. An explicit
-    negative Honeypot.is verdict is never overridden.
+    Explicit negative Honeypot.is verdicts are never overridden.
+    Missing/ambiguous GoPlus LP data remains UNKNOWN.
     """
 
     first = _analyze_provider_once(address, pair=pair)

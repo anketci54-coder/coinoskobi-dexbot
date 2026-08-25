@@ -121,3 +121,136 @@ def test_expected_shortfall_accepts_empirical_alpha_zero():
         result["expected_shortfall_loss_fraction"]
         > 0
     )
+
+
+def test_ewma_decay_calibration_is_data_derived():
+    from app.risk.stream_stats import (
+        calibrate_ewma_decay,
+    )
+
+    result = calibrate_ewma_decay(
+        [
+            0.01,
+            0.03,
+            -0.02,
+            0.04,
+            -0.01,
+        ]
+    )
+
+    assert result["state"] == "READY"
+    assert 0 < result["decay"] < 1
+    assert result["candidate_count"] == 4
+    assert result["sample_count"] == 5
+    assert result["loss"] >= 0
+    assert result["decision_authority"] is False
+
+
+def test_cusum_calibration_does_not_trigger_its_own_history():
+    from app.risk.stream_stats import (
+        calibrate_cusum,
+        cusum_step,
+    )
+
+    values = [
+        0.01,
+        -0.02,
+        0.015,
+        -0.04,
+        0.01,
+    ]
+
+    calibration = calibrate_cusum(
+        values
+    )
+
+    assert calibration["state"] == "READY"
+
+    up = 0.0
+    down = 0.0
+
+    for value in values:
+        step = cusum_step(
+            value,
+            previous_up=up,
+            previous_down=down,
+            reference=calibration[
+                "reference"
+            ],
+            threshold=calibration[
+                "threshold"
+            ],
+        )
+
+        assert step["change"] == "NO_CHANGE"
+
+        up = step["up_cusum"]
+        down = step["down_cusum"]
+
+
+def test_stream_calibration_refuses_mixed_source_identity():
+    from app.risk.stream_stats import (
+        calibrate_stream_math,
+    )
+
+    rows = [
+        {
+            "chain": "bsc",
+            "dex": "pancakeswap_v2",
+            "pool": "0xpool",
+            "source": "geckoterminal",
+            "price_usd": 1.0,
+            "liquidity_usd": 100.0,
+        },
+        {
+            "chain": "bsc",
+            "dex": "pancakeswap_v2",
+            "pool": "0xpool",
+            "source": "dexscreener",
+            "price_usd": 1.1,
+            "liquidity_usd": 90.0,
+        },
+    ]
+
+    result = calibrate_stream_math(
+        rows
+    )
+
+    assert result["state"] == "IDENTITY_MIXED"
+    assert result["calibration"] == {}
+
+
+def test_stream_calibration_requires_real_sequence_depth():
+    from app.risk.stream_stats import (
+        calibrate_stream_math,
+    )
+
+    rows = [
+        {
+            "chain": "bsc",
+            "dex": "pancakeswap_v2",
+            "pool": "0xpool",
+            "source": "geckoterminal",
+            "price_usd": 1.0,
+            "liquidity_usd": 100.0,
+        },
+        {
+            "chain": "bsc",
+            "dex": "pancakeswap_v2",
+            "pool": "0xpool",
+            "source": "geckoterminal",
+            "price_usd": 1.1,
+            "liquidity_usd": 90.0,
+        },
+    ]
+
+    result = calibrate_stream_math(
+        rows
+    )
+
+    assert (
+        result["state"]
+        == "INSUFFICIENT_DATA"
+    )
+
+    assert result["calibration"] == {}

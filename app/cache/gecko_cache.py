@@ -305,6 +305,27 @@ class GeckoCache:
         rows.reverse()
         return rows
 
+    def stream_math_calibration_for_pool(
+        self,
+        pool,
+        *,
+        source,
+        limit=512,
+    ):
+        from app.risk.stream_stats import (
+            calibrate_stream_math,
+        )
+
+        history = self.history_for_pool(
+            pool,
+            source=source,
+            limit=limit,
+        )
+
+        return calibrate_stream_math(
+            history
+        )
+
     def observation_count(self):
         row = self.db.execute(
             """

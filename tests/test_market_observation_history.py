@@ -224,3 +224,80 @@ def test_source_filter_prevents_cross_source_history_mix(
     assert len(dex) == 1
     assert gecko[0]["price_usd"] == 1.0
     assert dex[0]["price_usd"] == 2.0
+
+
+def test_cache_builds_pool_source_calibration_from_raw_history(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.setattr(
+        module,
+        "DB",
+        tmp_path / "cache.db",
+    )
+
+    cache = module.GeckoCache()
+
+    samples = (
+        (1.00, 10000.0),
+        (1.03, 9800.0),
+        (1.01, 10100.0),
+        (1.06, 9500.0),
+        (1.04, 9700.0),
+        (1.10, 9000.0),
+    )
+
+    for index, (
+        price,
+        liquidity,
+    ) in enumerate(samples):
+        cache.replace(
+            row(
+                source="geckoterminal",
+                observed_at=(
+                    "2026-08-25T10:"
+                    f"{index:02d}:00Z"
+                ),
+                price=price,
+                liquidity=liquidity,
+            )
+        )
+
+    result = (
+        cache.stream_math_calibration_for_pool(
+            "0xpool1",
+            source="geckoterminal",
+        )
+    )
+
+    assert result["state"] == "READY"
+
+    assert (
+        result["identity"]["pool"]
+        == "0xpool1"
+    )
+
+    assert (
+        result["identity"]["source"]
+        == "geckoterminal"
+    )
+
+    calibration = result[
+        "calibration"
+    ]
+
+    assert 0 < calibration[
+        "ewma_decay"
+    ] < 1
+
+    assert calibration[
+        "cusum_reference"
+    ] >= 0
+
+    assert calibration[
+        "cusum_threshold"
+    ] > 0
+
+    assert result[
+        "decision_authority"
+    ] is False

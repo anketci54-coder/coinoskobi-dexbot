@@ -398,3 +398,252 @@ def test_market_evidence_wait_requires_real_buy_and_sell_actors():
     assert ready["pending"] == 0
     assert ready["decision_authority"] is False
     assert ready["execution_authority"] is False
+
+
+def _canonical_market_candidate(
+    *,
+    source,
+    price,
+    liquidity,
+):
+    return {
+        "chain": "bsc",
+        "dex": "pancakeswap_v2",
+        "source": source,
+        "pool": PAIR,
+        "price_usd": price,
+        "liquidity": liquidity,
+        "volume_24h": 1000,
+        "buys_24h": 10,
+    }
+
+
+def test_stream_math_requires_calibration_without_inventing_parameters():
+    store = RuntimeMarketFlowStore()
+
+    store.register_pair(
+        PAIR,
+        TOKEN,
+        QUOTE,
+    )
+
+    store.snapshot(
+        PAIR,
+        candidate=_canonical_market_candidate(
+            source="geckoterminal",
+            price=1.0,
+            liquidity=100.0,
+        ),
+    )
+
+    result = store.snapshot(
+        PAIR,
+        candidate=_canonical_market_candidate(
+            source="geckoterminal",
+            price=1.1,
+            liquidity=80.0,
+        ),
+    )
+
+    math_state = result["stream_math"]
+
+    assert math_state["state"] == "UNCALIBRATED"
+    assert (
+        math_state["ewma"]["state"]
+        == "UNCALIBRATED"
+    )
+    assert (
+        math_state[
+            "liquidity_cusum"
+        ]["state"]
+        == "UNCALIBRATED"
+    )
+    assert math_state["decision_authority"] is False
+
+
+def test_stream_math_runs_with_explicit_calibration():
+    store = RuntimeMarketFlowStore(
+        stream_math_calibration={
+            "ewma_decay": 0.9,
+            "cusum_reference": 0.0,
+            "cusum_threshold": 0.10,
+        }
+    )
+
+    store.register_pair(
+        PAIR,
+        TOKEN,
+        QUOTE,
+    )
+
+    first = store.snapshot(
+        PAIR,
+        candidate=_canonical_market_candidate(
+            source="geckoterminal",
+            price=1.0,
+            liquidity=100.0,
+        ),
+    )
+
+    assert (
+        first["stream_math"]["state"]
+        == "WARMING"
+    )
+
+    second = store.snapshot(
+        PAIR,
+        candidate=_canonical_market_candidate(
+            source="geckoterminal",
+            price=1.1,
+            liquidity=80.0,
+        ),
+    )
+
+    math_state = second["stream_math"]
+
+    assert math_state["state"] == "READY"
+    assert math_state["price_log_return"] > 0
+    assert math_state["liquidity_log_change"] < 0
+    assert (
+        math_state["ewma"]["state"]
+        == "READY"
+    )
+    assert (
+        math_state[
+            "liquidity_cusum"
+        ]["state"]
+        == "READY"
+    )
+    assert (
+        math_state[
+            "liquidity_cusum"
+        ]["change"]
+        == "DOWN_CHANGE"
+    )
+
+    identity = math_state["identity"]
+
+    assert identity["chain"] == "bsc"
+    assert identity["dex"] == "pancakeswap_v2"
+    assert identity["pair"] == PAIR
+    assert identity["source"] == "geckoterminal"
+    assert (
+        identity["model_version"]
+        == "STREAM_MATH_V1"
+    )
+
+
+def test_stream_math_does_not_mix_sources_for_same_pool():
+    store = RuntimeMarketFlowStore(
+        stream_math_calibration={
+            "ewma_decay": 0.9,
+            "cusum_reference": 0.0,
+            "cusum_threshold": 0.10,
+        }
+    )
+
+    store.register_pair(
+        PAIR,
+        TOKEN,
+        QUOTE,
+    )
+
+    store.snapshot(
+        PAIR,
+        candidate=_canonical_market_candidate(
+            source="geckoterminal",
+            price=1.0,
+            liquidity=100.0,
+        ),
+    )
+
+    switched = store.snapshot(
+        PAIR,
+        candidate=_canonical_market_candidate(
+            source="dexscreener",
+            price=2.0,
+            liquidity=50.0,
+        ),
+    )
+
+    math_state = switched["stream_math"]
+
+    assert math_state["state"] == "WARMING"
+    assert math_state["price_log_return"] is None
+    assert (
+        math_state[
+            "liquidity_log_change"
+        ]
+        is None
+    )
+    assert (
+        math_state["identity"]["source"]
+        == "dexscreener"
+    )
+
+    continued = store.snapshot(
+        PAIR,
+        candidate=_canonical_market_candidate(
+            source="dexscreener",
+            price=2.2,
+            liquidity=40.0,
+        ),
+    )
+
+    assert (
+        continued["stream_math"]["state"]
+        == "READY"
+    )
+    assert (
+        continued[
+            "stream_math"
+        ]["price_log_return"]
+        > 0
+    )
+
+
+def test_stream_math_state_is_removed_with_pair_eviction():
+    second_pair = (
+        "0x00000000000000000000000000000000000000bb"
+    )
+    second_token = (
+        "0x0000000000000000000000000000000000000003"
+    )
+
+    store = RuntimeMarketFlowStore(
+        max_pairs=1,
+        stream_math_calibration={
+            "ewma_decay": 0.9,
+            "cusum_reference": 0.0,
+            "cusum_threshold": 0.10,
+        },
+    )
+
+    store.register_pair(
+        PAIR,
+        TOKEN,
+        QUOTE,
+    )
+
+    store.snapshot(
+        PAIR,
+        candidate=_canonical_market_candidate(
+            source="geckoterminal",
+            price=1.0,
+            liquidity=100.0,
+        ),
+    )
+
+    assert len(
+        store._stream_math_state
+    ) == 1
+
+    store.register_pair(
+        second_pair,
+        second_token,
+        QUOTE,
+    )
+
+    assert len(
+        store._stream_math_state
+    ) == 0

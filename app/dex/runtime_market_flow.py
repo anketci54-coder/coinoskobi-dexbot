@@ -3,6 +3,14 @@ import threading
 import time
 
 from app.dex.native_ingestion import SWAP_TOPIC
+from app.risk.stream_stats import (
+    cusum_step,
+    ewma_variance_step,
+    log_change,
+)
+
+
+STREAM_MATH_VERSION = "STREAM_MATH_V1"
 
 
 def _address(value):
@@ -24,6 +32,18 @@ def _number(value):
         return None
 
     if value < 0:
+        return None
+
+    return value
+
+
+def _text(value):
+    if value is None:
+        return None
+
+    value = str(value).strip().lower()
+
+    if not value:
         return None
 
     return value
@@ -163,6 +183,7 @@ class RuntimeMarketFlowStore:
         max_pairs=256,
         max_events_per_pair=2048,
         require_membership_confirmation=False,
+        stream_math_calibration=None,
     ):
         self.max_pairs = max(
             1,
@@ -178,9 +199,17 @@ class RuntimeMarketFlowStore:
             require_membership_confirmation
         )
 
+        self.stream_math_calibration = dict(
+            stream_math_calibration
+            or {}
+        )
+
         self._pairs = OrderedDict()
         self._events = {}
         self._snapshot_state = {}
+
+        self._stream_math_state = {}
+
         self._event_condition = threading.Condition()
 
         self.accepted_events = 0
@@ -245,6 +274,19 @@ class RuntimeMarketFlowStore:
                 oldest,
                 None,
             )
+
+            for key in list(
+                self._stream_math_state
+            ):
+                if (
+                    isinstance(key, tuple)
+                    and len(key) >= 3
+                    and key[2] == oldest
+                ):
+                    self._stream_math_state.pop(
+                        key,
+                        None,
+                    )
 
         self._pairs.pop(
             pair,
@@ -637,6 +679,11 @@ class RuntimeMarketFlowStore:
             events,
         )
 
+        stream_math = self._stream_math_input(
+            pair,
+            candidate,
+        )
+
         state = (
             "READY"
             if (
@@ -662,6 +709,9 @@ class RuntimeMarketFlowStore:
             "flow_intelligence": (
                 real_flow
             ),
+            "stream_math": (
+                stream_math
+            ),
             "native_event_count": (
                 len(events)
             ),
@@ -669,6 +719,248 @@ class RuntimeMarketFlowStore:
                 "SCANNER_PLUS_NATIVE_WSS"
             ),
             "synthetic": False,
+            "decision_authority": False,
+            "paper_authority": False,
+            "live_authority": False,
+            "wallet_authority": False,
+            "execution_authority": False,
+        }
+
+    def _stream_math_input(
+        self,
+        pair,
+        candidate,
+    ):
+        candidate = dict(
+            candidate or {}
+        )
+
+        chain = _text(
+            candidate.get("chain")
+        )
+        dex = _text(
+            candidate.get("dex")
+        )
+        source = _text(
+            candidate.get("source")
+        )
+        pair = _address(pair)
+
+        identity = {
+            "chain": chain,
+            "dex": dex,
+            "pair": pair,
+            "source": source,
+            "model_version": (
+                STREAM_MATH_VERSION
+            ),
+        }
+
+        if not all(
+            (
+                chain,
+                dex,
+                pair,
+                source,
+            )
+        ):
+            return {
+                "state": "UNKNOWN",
+                "reason": (
+                    "STREAM_IDENTITY_INCOMPLETE"
+                ),
+                "identity": identity,
+                "price_log_return": None,
+                "liquidity_log_change": None,
+                "ewma": {
+                    "state": "UNKNOWN",
+                },
+                "liquidity_cusum": {
+                    "state": "UNKNOWN",
+                },
+                "decision_authority": False,
+                "paper_authority": False,
+                "live_authority": False,
+                "wallet_authority": False,
+                "execution_authority": False,
+            }
+
+        key = (
+            chain,
+            dex,
+            pair,
+            source,
+            STREAM_MATH_VERSION,
+        )
+
+        for existing_key in list(
+            self._stream_math_state
+        ):
+            if (
+                existing_key != key
+                and existing_key[0] == chain
+                and existing_key[1] == dex
+                and existing_key[2] == pair
+                and existing_key[4]
+                    == STREAM_MATH_VERSION
+            ):
+                self._stream_math_state.pop(
+                    existing_key,
+                    None,
+                )
+
+        previous = (
+            self._stream_math_state.get(
+                key
+            )
+            or {}
+        )
+
+        price = _number(
+            candidate.get("price_usd")
+        )
+        liquidity = _number(
+            candidate.get("liquidity")
+        )
+
+        if price is not None and price <= 0:
+            price = None
+
+        if (
+            liquidity is not None
+            and liquidity <= 0
+        ):
+            liquidity = None
+
+        price_log_return = log_change(
+            price,
+            previous.get("price_usd"),
+        )
+
+        liquidity_log_change = log_change(
+            liquidity,
+            previous.get(
+                "liquidity_usd"
+            ),
+        )
+
+        ewma = ewma_variance_step(
+            price_log_return,
+            previous_variance=(
+                previous.get(
+                    "ewma_variance"
+                )
+            ),
+            decay=(
+                self.stream_math_calibration
+                .get("ewma_decay")
+            ),
+        )
+
+        liquidity_cusum = cusum_step(
+            liquidity_log_change,
+            previous_up=(
+                previous.get(
+                    "liquidity_cusum_up",
+                    0.0,
+                )
+            ),
+            previous_down=(
+                previous.get(
+                    "liquidity_cusum_down",
+                    0.0,
+                )
+            ),
+            reference=(
+                self.stream_math_calibration
+                .get("cusum_reference")
+            ),
+            threshold=(
+                self.stream_math_calibration
+                .get("cusum_threshold")
+            ),
+        )
+
+        if not previous:
+            state = "WARMING"
+
+        elif (
+            ewma.get("state") == "READY"
+            or liquidity_cusum.get(
+                "state"
+            ) == "READY"
+        ):
+            state = "READY"
+
+        elif (
+            ewma.get("state")
+            == "UNCALIBRATED"
+            or liquidity_cusum.get(
+                "state"
+            ) == "UNCALIBRATED"
+        ):
+            state = "UNCALIBRATED"
+
+        else:
+            state = "WARMING"
+
+        ewma_variance = previous.get(
+            "ewma_variance"
+        )
+
+        if ewma.get("state") == "READY":
+            ewma_variance = ewma.get(
+                "ewma_variance"
+            )
+
+        cusum_up = previous.get(
+            "liquidity_cusum_up",
+            0.0,
+        )
+        cusum_down = previous.get(
+            "liquidity_cusum_down",
+            0.0,
+        )
+
+        if (
+            liquidity_cusum.get("state")
+            == "READY"
+        ):
+            cusum_up = liquidity_cusum.get(
+                "up_cusum"
+            )
+            cusum_down = (
+                liquidity_cusum.get(
+                    "down_cusum"
+                )
+            )
+
+        self._stream_math_state[
+            key
+        ] = {
+            "price_usd": price,
+            "liquidity_usd": liquidity,
+            "ewma_variance": ewma_variance,
+            "liquidity_cusum_up": cusum_up,
+            "liquidity_cusum_down": (
+                cusum_down
+            ),
+        }
+
+        return {
+            "state": state,
+            "reason": None,
+            "identity": identity,
+            "price_log_return": (
+                price_log_return
+            ),
+            "liquidity_log_change": (
+                liquidity_log_change
+            ),
+            "ewma": ewma,
+            "liquidity_cusum": (
+                liquidity_cusum
+            ),
             "decision_authority": False,
             "paper_authority": False,
             "live_authority": False,

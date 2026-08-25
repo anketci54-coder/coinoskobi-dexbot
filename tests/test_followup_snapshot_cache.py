@@ -126,6 +126,8 @@ def test_only_registered_followup_pool_gets_fresh_market_snapshot(
     db.commit()
     db.close()
 
+    # Mirrors the real Gecko exact-pool parser: no synthetic
+    # observed_at field is required from the provider payload.
     result = persist_registered_followup_snapshots(
         [
             {
@@ -141,7 +143,6 @@ def test_only_registered_followup_pool_gets_fresh_market_snapshot(
                 "fdv": 1250000.0,
                 "market_cap": 1000000.0,
                 "created_at": "2026-08-25T00:00:00Z",
-                "observed_at": "2026-08-25T12:00:00Z",
             },
             {
                 "pool": "0xother",
@@ -156,7 +157,6 @@ def test_only_registered_followup_pool_gets_fresh_market_snapshot(
                 "fdv": 9999999.0,
                 "market_cap": 9999999.0,
                 "created_at": "2026-08-25T00:00:00Z",
-                "observed_at": "2026-08-25T12:00:00Z",
             },
         ],
         db_path=path,
@@ -203,7 +203,8 @@ def test_only_registered_followup_pool_gets_fresh_market_snapshot(
             price_usd,
             liquidity_usd,
             volume_24h,
-            buys_24h
+            buys_24h,
+            observed_at
         FROM market_observation_history
         """
     ).fetchall()
@@ -228,13 +229,13 @@ def test_only_registered_followup_pool_gets_fresh_market_snapshot(
         1.0,
     )
 
-    assert history == [
-        (
-            "geckoterminal_followup",
-            "0xtracked",
-            2.5,
-            250000.0,
-            750000.0,
-            321,
-        )
-    ]
+    assert len(history) == 1
+    assert history[0][:6] == (
+        "geckoterminal_followup",
+        "0xtracked",
+        2.5,
+        250000.0,
+        750000.0,
+        321,
+    )
+    assert history[0][6]

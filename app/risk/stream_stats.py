@@ -170,3 +170,84 @@ def cusum_step(
         "decision_authority": False,
         "execution_authority": False,
     }
+
+
+def empirical_expected_shortfall(
+    returns,
+    *,
+    alpha=None,
+):
+    """
+    Historical Expected Shortfall / CVaR on observed returns.
+
+    alpha is deliberately mandatory. The function does not assume a
+    95% or 99% confidence level. Loss is represented as a positive
+    fraction, while the tail return remains in return space.
+    """
+    confidence = _finite(alpha)
+
+    if confidence is None or not 0.0 < confidence < 1.0:
+        return {
+            "state": "UNCALIBRATED",
+            "alpha": confidence,
+            "sample_count": 0,
+            "tail_count": 0,
+            "var_return": None,
+            "expected_shortfall_return": None,
+            "expected_shortfall_loss_fraction": None,
+            "decision_authority": False,
+            "execution_authority": False,
+        }
+
+    observed = []
+
+    for value in returns or ():
+        number = _finite(value)
+        if number is not None:
+            observed.append(number)
+
+    if not observed:
+        return {
+            "state": "UNKNOWN",
+            "alpha": confidence,
+            "sample_count": 0,
+            "tail_count": 0,
+            "var_return": None,
+            "expected_shortfall_return": None,
+            "expected_shortfall_loss_fraction": None,
+            "decision_authority": False,
+            "execution_authority": False,
+        }
+
+    ordered = sorted(observed)
+    tail_probability = 1.0 - confidence
+    tail_count = max(
+        1,
+        int(math.ceil(
+            len(ordered) * tail_probability
+        )),
+    )
+
+    tail = ordered[:tail_count]
+    var_return = tail[-1]
+    es_return = sum(tail) / len(tail)
+    loss_fraction = max(
+        0.0,
+        -math.expm1(es_return),
+    )
+
+    return {
+        "state": "READY",
+        "model": "HISTORICAL_EXPECTED_SHORTFALL",
+        "alpha": confidence,
+        "sample_count": len(ordered),
+        "tail_count": len(tail),
+        "var_return": var_return,
+        "expected_shortfall_return": es_return,
+        "expected_shortfall_loss_fraction": loss_fraction,
+        "decision_authority": False,
+        "paper_authority": False,
+        "live_authority": False,
+        "wallet_authority": False,
+        "execution_authority": False,
+    }

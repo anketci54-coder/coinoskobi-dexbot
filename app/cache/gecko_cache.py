@@ -57,6 +57,49 @@ class GeckoCache:
                 "ADD COLUMN quote_token TEXT"
             )
 
+        # Raw FACT history for calibration / future learning.
+        # This never stores model scores or decision outputs.
+        self.db.execute("""
+        CREATE TABLE IF NOT EXISTS market_observation_history(
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            schema_version TEXT NOT NULL,
+            chain TEXT NOT NULL,
+            source TEXT NOT NULL,
+            dex TEXT,
+            pool TEXT NOT NULL,
+            token TEXT,
+            quote_token TEXT,
+            price_usd REAL,
+            liquidity_usd REAL,
+            volume_24h REAL,
+            buys_24h INTEGER,
+            fdv_usd REAL,
+            market_cap_usd REAL,
+            pool_created_at TEXT,
+            observed_at TEXT NOT NULL,
+            ingested_at TEXT NOT NULL
+        )
+        """)
+
+        self.db.execute("""
+        CREATE INDEX IF NOT EXISTS
+        idx_market_history_pool_source_time
+        ON market_observation_history(
+            pool,
+            source,
+            observed_at
+        )
+        """)
+
+        self.db.execute("""
+        CREATE INDEX IF NOT EXISTS
+        idx_market_history_token_time
+        ON market_observation_history(
+            token,
+            observed_at
+        )
+        """)
+
         self.db.commit()
 
     def replace(self, row):
@@ -98,7 +141,179 @@ class GeckoCache:
 
         ))
 
+        def canonical_address(value):
+            value = str(
+                value or ""
+            ).strip().lower()
+
+            if value.startswith("bsc_"):
+                value = value[4:]
+
+            return value or None
+
+        source = str(
+            row.get("source")
+            or "geckoterminal"
+        ).strip().lower()
+
+        chain = str(
+            row.get("chain")
+            or "bsc"
+        ).strip().lower()
+
+        self.db.execute(
+            """
+            INSERT INTO market_observation_history(
+                schema_version,
+                chain,
+                source,
+                dex,
+                pool,
+                token,
+                quote_token,
+                price_usd,
+                liquidity_usd,
+                volume_24h,
+                buys_24h,
+                fdv_usd,
+                market_cap_usd,
+                pool_created_at,
+                observed_at,
+                ingested_at
+            )
+            VALUES(
+                ?,?,?,?,?,?,?,?,?,?,?,?,?,?,
+                COALESCE(
+                    ?,
+                    strftime(
+                        '%Y-%m-%dT%H:%M:%fZ',
+                        'now'
+                    )
+                ),
+                strftime(
+                    '%Y-%m-%dT%H:%M:%fZ',
+                    'now'
+                )
+            )
+            """,
+            (
+                "MARKET_OBSERVATION_V1",
+                chain,
+                source,
+                str(
+                    row.get("dex")
+                    or ""
+                ).strip().lower()
+                or None,
+                canonical_address(
+                    row.get("pool")
+                ),
+                canonical_address(
+                    row.get("base_token")
+                    or row.get("token")
+                ),
+                canonical_address(
+                    row.get("quote_token")
+                ),
+                row.get("price_usd"),
+                row.get("liquidity"),
+                row.get("volume_24h"),
+                row.get("buys_24h"),
+                row.get("fdv"),
+                row.get("market_cap"),
+                row.get("created_at"),
+                row.get("observed_at"),
+            ),
+        )
+
         self.db.commit()
+
+    def history_for_pool(
+        self,
+        pool,
+        *,
+        source=None,
+        limit=512,
+    ):
+        pool = str(
+            pool or ""
+        ).strip().lower()
+
+        if not pool:
+            return []
+
+        limit = max(
+            1,
+            int(limit),
+        )
+
+        params = [pool]
+
+        sql = """
+            SELECT
+                id,
+                schema_version,
+                chain,
+                source,
+                dex,
+                pool,
+                token,
+                quote_token,
+                price_usd,
+                liquidity_usd,
+                volume_24h,
+                buys_24h,
+                fdv_usd,
+                market_cap_usd,
+                pool_created_at,
+                observed_at,
+                ingested_at
+            FROM market_observation_history
+            WHERE lower(pool)=lower(?)
+        """
+
+        if source is not None:
+            sql += """
+                AND lower(source)=lower(?)
+            """
+            params.append(
+                str(source).strip().lower()
+            )
+
+        sql += """
+            ORDER BY id DESC
+            LIMIT ?
+        """
+
+        params.append(limit)
+
+        cur = self.db.execute(
+            sql,
+            tuple(params),
+        )
+
+        cols = [
+            item[0]
+            for item in cur.description
+        ]
+
+        rows = [
+            dict(zip(cols, row))
+            for row in cur.fetchall()
+        ]
+
+        rows.reverse()
+        return rows
+
+    def observation_count(self):
+        row = self.db.execute(
+            """
+            SELECT COUNT(*)
+            FROM market_observation_history
+            """
+        ).fetchone()
+
+        return int(row[0])
 
     def prune_except(self, pools, preserve_tokens=None):
         pools = list(dict.fromkeys(

@@ -195,7 +195,17 @@ def persist_registered_followup_snapshots(
                         'bsc',
                         'geckoterminal_followup',
                         ?,?,?,?,?,?,?,?,?,?,?,?,
-                        strftime('%Y-%m-%dT%H:%M:%fZ','now')
+                        COALESCE(
+                            ?,
+                            strftime(
+                                '%Y-%m-%dT%H:%M:%fZ',
+                                'now'
+                            )
+                        ),
+                        strftime(
+                            '%Y-%m-%dT%H:%M:%fZ',
+                            'now'
+                        )
                     )
                     """,
                     (

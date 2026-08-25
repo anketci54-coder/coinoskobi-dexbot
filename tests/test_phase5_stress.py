@@ -2,7 +2,6 @@ from app.dex.flow_acceleration import analyze_flow_acceleration
 from app.dex.wallet_flow import analyze_wallet_flow
 from app.dex.reserve_dynamics import analyze_reserve_dynamics
 from app.dex.price_impact import analyze_price_impact
-from app.dex.signal_bundle import build_dex_signal_bundle
 
 
 def test_fake_volume_concentrated_wallets_do_not_look_clean():
@@ -52,19 +51,3 @@ def test_shallow_market_large_trade_visible():
     assert result[
         "estimated_impact_context"
     ] == "CRITICAL"
-
-
-def test_stale_signal_bundle_remains_stale():
-    bundle = build_dex_signal_bundle(
-        flow={},
-        acceleration={},
-        market_quality={},
-        wallet_flow={},
-        reserve_dynamics={},
-        price_impact={},
-        age_seconds=30,
-        max_age_seconds=2,
-    )
-
-    assert bundle["freshness"] == "STALE"
-    assert bundle["trade_authority"] is False

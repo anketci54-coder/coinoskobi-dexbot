@@ -34,6 +34,9 @@ jobs:
           tests/test_origin_participation_admission_integration.py
           tests/test_vur_kac_entry_admission.py
           tests/test_catastrophic_gap_calibration.py
+          tests/test_candidate_reevaluation_ledger.py
+          tests/test_phase13_counterfactual_observation.py
+          tests/test_phase13_counterfactual_pipeline.py
           tests/test_true_composition_root_e2e.py
           tests/test_open_position_hot_path.py
           tests/test_application_market_flow_binding.py

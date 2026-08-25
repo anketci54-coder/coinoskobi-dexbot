@@ -2,6 +2,7 @@ import json
 import math
 from statistics import fmean
 
+from app.dex.flow_spread import flow_spread
 from app.risk.stream_stats import (
     empirical_expected_shortfall,
 )
@@ -591,6 +592,7 @@ def mathematical_vur_kac_state(
         "execution_authority": False,
     }
 
+
 def build_cost_model(
     sellability_data=None,
     exit_evidence=None,
@@ -948,6 +950,298 @@ def _score_from_edge_and_risk(
 
 
 
+def vur_kac_entry_admission_state(
+    *,
+    stats,
+    market_context,
+):
+    """
+    Canonical VUR_KAC entry continuation gate.
+
+    It is enforced only for the runtime planning path, identified by
+    the presence of runtime_intelligence in market_context. Generic
+    mathematical-plan callers remain backwards compatible.
+
+    No fixed percentage threshold is introduced. Entry requires the
+    measured move to still be positive and non-weakening, together
+    with fresh/full native flow that is positive and non-weakening.
+    """
+
+    context = (
+        market_context
+        if isinstance(
+            market_context,
+            dict,
+        )
+        else {}
+    )
+
+    enforced = (
+        "runtime_intelligence"
+        in context
+    )
+
+    def result(
+        *,
+        ready,
+        reason,
+        latest_log_return=None,
+        previous_log_return=None,
+        price_acceleration=None,
+        flow_momentum=None,
+        flow_acceleration=None,
+        freshness="UNKNOWN",
+        coverage=None,
+    ):
+        return {
+            "enforced": bool(enforced),
+            "ready": bool(ready),
+            "reason": reason,
+            "latest_log_return": (
+                latest_log_return
+            ),
+            "previous_log_return": (
+                previous_log_return
+            ),
+            "price_acceleration": (
+                price_acceleration
+            ),
+            "flow_momentum": (
+                flow_momentum
+            ),
+            "flow_acceleration": (
+                flow_acceleration
+            ),
+            "freshness": str(
+                freshness
+                or "UNKNOWN"
+            ).upper(),
+            "coverage": coverage,
+            "decision_authority": False,
+            "paper_authority": False,
+            "live_authority": False,
+            "wallet_authority": False,
+            "execution_authority": False,
+        }
+
+    if not enforced:
+        return result(
+            ready=True,
+            reason=(
+                "VUR_KAC_ENTRY_GATE_NOT_APPLICABLE"
+            ),
+        )
+
+    prices = _positive_series(
+        (stats or {}).get(
+            "prices"
+        )
+    )
+
+    if len(prices) < 3:
+        return result(
+            ready=False,
+            reason=(
+                "VUR_KAC_PRICE_EVIDENCE_NOT_READY"
+            ),
+        )
+
+    previous_log_return = math.log(
+        prices[-2] / prices[-3]
+    )
+
+    latest_log_return = math.log(
+        prices[-1] / prices[-2]
+    )
+
+    price_acceleration = (
+        latest_log_return
+        - previous_log_return
+    )
+
+    flow = context.get(
+        "flow_intelligence"
+    )
+
+    if not isinstance(
+        flow,
+        dict,
+    ):
+        return result(
+            ready=False,
+            reason=(
+                "VUR_KAC_FLOW_EVIDENCE_NOT_READY"
+            ),
+            latest_log_return=(
+                latest_log_return
+            ),
+            previous_log_return=(
+                previous_log_return
+            ),
+            price_acceleration=(
+                price_acceleration
+            ),
+        )
+
+    freshness = str(
+        flow.get(
+            "freshness"
+        )
+        or "UNKNOWN"
+    ).upper()
+
+    coverage = _number(
+        flow.get(
+            "coverage"
+        )
+    )
+
+    canonical_flow = flow_spread(
+        flow.get("buy_flow"),
+        flow.get("sell_flow"),
+        prev_spread=flow.get(
+            "prev_spread"
+        ),
+        prev_velocity=flow.get(
+            "prev_velocity"
+        ),
+        freshness=freshness,
+        coverage=(
+            coverage
+            if coverage is not None
+            else 0.0
+        ),
+    )
+
+    buy_flow = _number(
+        canonical_flow.get(
+            "buy_flow"
+        )
+    )
+
+    sell_flow = _number(
+        canonical_flow.get(
+            "sell_flow"
+        )
+    )
+
+    spread = _number(
+        canonical_flow.get(
+            "spread"
+        )
+    )
+
+    acceleration = _number(
+        canonical_flow.get(
+            "acceleration"
+        )
+    )
+
+    total_flow = (
+        (buy_flow or 0.0)
+        + (sell_flow or 0.0)
+    )
+
+    if (
+        canonical_flow.get(
+            "state"
+        )
+        != "READY"
+        or total_flow <= 0
+        or spread is None
+        or acceleration is None
+    ):
+        return result(
+            ready=False,
+            reason=(
+                "VUR_KAC_FLOW_EVIDENCE_NOT_READY"
+            ),
+            latest_log_return=(
+                latest_log_return
+            ),
+            previous_log_return=(
+                previous_log_return
+            ),
+            price_acceleration=(
+                price_acceleration
+            ),
+            freshness=freshness,
+            coverage=coverage,
+        )
+
+    flow_momentum = (
+        spread / total_flow
+    )
+
+    flow_acceleration = (
+        acceleration / total_flow
+    )
+
+    if latest_log_return <= 0:
+        reason = (
+            "VUR_KAC_PRICE_MOMENTUM_NOT_POSITIVE"
+        )
+
+    elif price_acceleration < 0:
+        reason = (
+            "VUR_KAC_PRICE_ACCELERATION_WEAKENING"
+        )
+
+    elif flow_momentum <= 0:
+        reason = (
+            "VUR_KAC_FLOW_MOMENTUM_NOT_POSITIVE"
+        )
+
+    elif flow_acceleration < 0:
+        reason = (
+            "VUR_KAC_FLOW_ACCELERATION_WEAKENING"
+        )
+
+    else:
+        return result(
+            ready=True,
+            reason=(
+                "VUR_KAC_ENTRY_SIGNAL_READY"
+            ),
+            latest_log_return=(
+                latest_log_return
+            ),
+            previous_log_return=(
+                previous_log_return
+            ),
+            price_acceleration=(
+                price_acceleration
+            ),
+            flow_momentum=flow_momentum,
+            flow_acceleration=(
+                flow_acceleration
+            ),
+            freshness=freshness,
+            coverage=coverage,
+        )
+
+    return result(
+        ready=False,
+        reason=reason,
+        latest_log_return=(
+            latest_log_return
+        ),
+        previous_log_return=(
+            previous_log_return
+        ),
+        price_acceleration=(
+            price_acceleration
+        ),
+        flow_momentum=flow_momentum,
+        flow_acceleration=(
+            flow_acceleration
+        ),
+        freshness=freshness,
+        coverage=coverage,
+    )
+
+
+
 def _runtime_admission_evidence_blockers(
     *,
     stats,
@@ -1184,6 +1478,30 @@ def build_trade_plan(
             market_context=market_context,
         )
     )
+
+    vur_kac_entry = (
+        vur_kac_entry_admission_state(
+            stats=stats,
+            market_context=market_context,
+        )
+    )
+
+    if (
+        vur_kac_entry.get("enforced")
+        and not vur_kac_entry.get("ready")
+    ):
+        blockers.append(
+            "VUR_KAC_ENTRY_NOT_READY"
+        )
+
+        reason = vur_kac_entry.get(
+            "reason"
+        )
+
+        if reason:
+            blockers.append(
+                str(reason)
+            )
 
     unknowns = list(
         costs[
@@ -1649,6 +1967,10 @@ def build_trade_plan(
             sellability_status
         ),
 
+        "vur_kac_entry": (
+            vur_kac_entry
+        ),
+
         "entry": {
             "price": entry,
 
@@ -1989,6 +2311,7 @@ def initial_net_risk_usdt(
         entry_amount
         - stop_proceeds,
     )
+
 
 def tp1_required_fraction(
     token_amount,

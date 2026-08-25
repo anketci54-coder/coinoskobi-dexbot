@@ -1,5 +1,6 @@
 from app.risk.mev import (
     MEVExposureAnalyzer,
+    expected_mev_loss,
 )
 
 
@@ -134,3 +135,39 @@ def test_negative_values_are_treated_unknown():
 
     assert result["status"] == "UNKNOWN"
     assert result["signals"] == []
+
+
+def test_expected_mev_loss_requires_real_inputs():
+    result = expected_mev_loss(
+        None,
+        10.0,
+    )
+
+    assert result["state"] == "UNKNOWN"
+    assert result["expected_mev_loss_usd"] is None
+    assert result["decision_authority"] is False
+
+
+def test_expected_mev_loss_math():
+    result = expected_mev_loss(
+        0.25,
+        12.0,
+    )
+
+    assert result["state"] == "READY"
+    assert result["expected_mev_loss_usd"] == 3.0
+    assert result["trade_authority"] is False
+
+
+def test_analyzer_exposes_expected_loss_without_changing_authority():
+    result = MEVExposureAnalyzer().evaluate({
+        "liquidity_usd": 100_000,
+        "trade_size_usd": 500,
+        "mev_attack_probability": 0.10,
+        "mev_conditional_loss_usd": 20.0,
+    })
+
+    assert result["expected_loss"]["state"] == "READY"
+    assert result["expected_loss"]["expected_mev_loss_usd"] == 2.0
+    assert result["hard_block"] is False
+    assert result["trade_authority"] is False

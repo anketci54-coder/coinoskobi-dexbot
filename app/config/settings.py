@@ -19,3 +19,11 @@ WSS_PAIR = os.getenv("WSS_PAIR", "").strip()
 # Without it WSS lifecycle may run, but market/flow binding
 # remains UNKNOWN rather than inventing token direction.
 WSS_TOKEN = os.getenv("WSS_TOKEN", "").strip()
+
+# Full-universe observation stays fail-closed until deployment blocks are
+# independently verified on the active BSC provider.
+UNIVERSE_SHADOW_ENABLED = os.getenv(
+    "UNIVERSE_SHADOW_ENABLED", "0"
+).strip().lower() in {"1", "true", "yes", "on"}
+UNIVERSE_V2_START_BLOCK = int(os.getenv("UNIVERSE_V2_START_BLOCK", "0") or 0)
+UNIVERSE_V3_START_BLOCK = int(os.getenv("UNIVERSE_V3_START_BLOCK", "0") or 0)

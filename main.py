@@ -1,9 +1,16 @@
 import logging
 from app.config.contracts import WBNB
 from app.config.settings import (
+    UNIVERSE_SHADOW_ENABLED,
+    UNIVERSE_V2_START_BLOCK,
+    UNIVERSE_V3_START_BLOCK,
     WSS_PAIR,
     WSS_TOKEN,
     WSS_URL,
+)
+from app.universe.runtime import (
+    FullUniverseObservationRuntime,
+    bind_shadow_runtime,
 )
 from app.core.runner import Runner
 from app.dex.open_position_hot_path import (
@@ -24,6 +31,7 @@ def build_application(
     *,
     pipeline=None,
     wss_service_factory=None,
+    universe_runtime=None,
 ):
     pipeline = (
         pipeline
@@ -634,6 +642,26 @@ def build_application(
         services=services,
     )
 
+    shadow_runtime = universe_runtime
+    if shadow_runtime is None and UNIVERSE_SHADOW_ENABLED:
+        if UNIVERSE_V2_START_BLOCK < 1 or UNIVERSE_V3_START_BLOCK < 1:
+            raise RuntimeError(
+                "verified universe V2/V3 start blocks required"
+            )
+        shadow_runtime = FullUniverseObservationRuntime(
+            start_blocks={
+                "pancakeswap_v2": UNIVERSE_V2_START_BLOCK,
+                "pancakeswap_v3": UNIVERSE_V3_START_BLOCK,
+            },
+            registry=getattr(pipeline, "universe_registry", None),
+        )
+
+    shadow_binding = None
+    if shadow_runtime is not None:
+        shadow_binding = bind_shadow_runtime(
+            runner, shadow_runtime, interval=1
+        )
+
     if hot_position_capable:
         runner.scheduler.every(
             interval=1,
@@ -661,6 +689,8 @@ def build_application(
         "hot_position_bound": (
             hot_position_capable
         ),
+        "universe_shadow_bound": shadow_binding is not None,
+        "universe_shadow": shadow_binding,
         "decision_authority": False,
         "live_authority": False,
         "execution_authority": False,

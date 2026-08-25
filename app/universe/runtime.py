@@ -101,3 +101,22 @@ class FullUniverseObservationRuntime:
 
 
 __all__ = ["FullUniverseObservationRuntime", "Web3LogReader"]
+
+
+def bind_shadow_runtime(runner, runtime, *, interval=1):
+    interval = int(interval)
+    if interval < 1:
+        raise ValueError("positive shadow interval required")
+    runner.scheduler.every(
+        interval=interval, func=runtime.run_once,
+        name="full_universe_shadow",
+    )
+    return {
+        "state": "BOUND", "interval": interval,
+        "decision_authority": False, "paper_authority": False,
+        "live_authority": False, "wallet_authority": False,
+        "execution_authority": False,
+    }
+
+
+__all__.append("bind_shadow_runtime")

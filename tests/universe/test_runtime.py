@@ -1,7 +1,7 @@
 import sqlite3
 from app.universe.discovery import PANCAKE_FACTORY_STREAMS, PAIR_CREATED_TOPIC
 from app.universe.registry import UniverseRegistry
-from app.universe.runtime import FullUniverseObservationRuntime
+from app.universe.runtime import FullUniverseObservationRuntime, bind_shadow_runtime
 
 
 def address(value): return "0x" + f"{value:040x}"
@@ -76,3 +76,20 @@ def test_shadow_runtime_requires_explicit_start_blocks_and_bounded_batches():
             pass
         else:
             raise AssertionError("invalid shadow bound accepted")
+
+
+def test_shadow_binding_uses_single_runner_and_has_no_authority():
+    calls = []
+    class Scheduler:
+        def every(self, **kwargs): calls.append(kwargs)
+    class Runner:
+        scheduler = Scheduler()
+    class Runtime:
+        def run_once(self): return {"state": "SHADOW_READY"}
+    runtime_instance = Runtime()
+    result = bind_shadow_runtime(Runner(), runtime_instance, interval=1)
+    assert len(calls) == 1
+    assert calls[0]["name"] == "full_universe_shadow"
+    assert calls[0]["func"].__self__ is runtime_instance
+    assert result["state"] == "BOUND"
+    assert result["decision_authority"] is False

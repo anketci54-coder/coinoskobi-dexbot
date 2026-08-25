@@ -1,3 +1,4 @@
+import asyncio
 import importlib
 
 
@@ -136,15 +137,41 @@ def test_application_binds_real_market_flow(
         "services"
     ][0]
 
-    assert (
+    assert callable(
         service.on_event
-        == pipeline.on_native_event
+    )
+    assert callable(
+        service.on_retraction
     )
 
-    assert (
-        service.on_retraction
-        == pipeline.on_native_retraction
-    )
+    event = {
+        "address": pair,
+        "topics": ["0xnot_sync"],
+        "data": "0x",
+    }
+
+    retraction = {
+        "address": pair,
+        "removed": True,
+    }
+
+    assert asyncio.run(
+        service.on_event(event)
+    ) is True
+
+    assert asyncio.run(
+        service.on_retraction(
+            retraction
+        )
+    ) is True
+
+    assert pipeline.events == [
+        event
+    ]
+
+    assert pipeline.retractions == [
+        retraction
+    ]
 
 
 def test_missing_target_token_never_guesses(

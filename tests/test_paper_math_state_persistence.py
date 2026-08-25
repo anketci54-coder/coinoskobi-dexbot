@@ -121,7 +121,7 @@ def test_normal_and_vur_kac_have_separate_policy_paths():
     )
 
     assert (
-        '"trade_policy": "NORMAL"'
+        '"trade_policy": "VUR_KAC"'
         in engine
     )
 
@@ -339,3 +339,26 @@ def test_runtime_math_history_isolates_cache_from_pair_onchain_source():
         "0xpool",
         "PAIR_ONCHAIN",
     ) in keys
+
+
+
+def test_new_paper_positions_default_to_vur_kac_policy():
+    source = Path(
+        "app/pipeline/engine.py"
+    ).read_text(
+        encoding="utf-8"
+    )
+
+    # One value is persisted in opening context,
+    # the other is the canonical paper trade row.
+    assert (
+        source.count(
+            '"trade_policy": "VUR_KAC"'
+        )
+        == 2
+    )
+
+    assert (
+        '"trade_policy": "NORMAL"'
+        not in source
+    )

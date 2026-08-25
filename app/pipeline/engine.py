@@ -2435,7 +2435,7 @@ class PipelineEngine:
                                 False
                             ),
 
-                            "trade_policy": "NORMAL",
+                            "trade_policy": "VUR_KAC",
 
                             "vur_kac_entry_shadow": (
                                 vur_kac_entry_shadow
@@ -2539,7 +2539,7 @@ class PipelineEngine:
                                 "PAPER_10K_V2"
                             ),
 
-                            "trade_policy": "NORMAL",
+                            "trade_policy": "VUR_KAC",
 
                             "entry_amount_usdt": (
                                 entry_amount_usdt

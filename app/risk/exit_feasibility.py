@@ -10,6 +10,9 @@ from app.config.contracts import (
 from app.config.early_entry import (
     RESERVE_HISTORY_BLOCK_OFFSETS,
 )
+from app.dex.price_impact import (
+    infer_constant_product_fee,
+)
 
 
 PAIR_ABI = [
@@ -294,8 +297,40 @@ def analyze(token, pair):
             else None
         )
 
+        observed_quote_reserves_usd = [
+            row["wbnb_reserve"] * wbnb_usd
+            for row in samples
+            if wbnb_usd is not None
+        ]
+
+        observed_min_quote_reserve_usd = (
+            min(observed_quote_reserves_usd)
+            if observed_quote_reserves_usd
+            else None
+        )
+
+        reserve_floor_fraction_of_current = None
+
+        if (
+            observed_min_quote_reserve_usd is not None
+            and quote_reserve_usd is not None
+            and quote_reserve_usd > 0
+        ):
+            reserve_floor_fraction_of_current = min(
+                1.0,
+                max(
+                    0.0,
+                    observed_min_quote_reserve_usd
+                    / quote_reserve_usd,
+                ),
+            )
+
         route_friction = None
         route_quote_out_wbnb = None
+        implied_fee = {
+            "state": "UNKNOWN",
+            "fee_fraction": None,
+        }
 
         if current:
             one_token_raw = (
@@ -337,6 +372,19 @@ def analyze(token, pair):
                             ),
                         ),
                     )
+
+                implied_fee = infer_constant_product_fee(
+                    reserve_in=current[
+                        "token_reserve"
+                    ],
+                    reserve_out=current[
+                        "wbnb_reserve"
+                    ],
+                    amount_in=1.0,
+                    amount_out=(
+                        route_quote_out_wbnb
+                    ),
+                )
 
             except Exception:
                 pass
@@ -399,6 +447,16 @@ def analyze(token, pair):
                     liquidity_usd
                 ),
 
+                "observed_min_quote_reserve_usd": (
+                    observed_min_quote_reserve_usd
+                ),
+
+                "reserve_floor_fraction_of_current": (
+                    reserve_floor_fraction_of_current
+                ),
+
+                "reserve_observation_count": len(samples),
+
                 "reserve_change_fraction": (
                     reserve_change
                 ),
@@ -417,6 +475,20 @@ def analyze(token, pair):
 
                 "route_friction_fraction": (
                     route_friction
+                ),
+
+                "implied_v2_fee_fraction": (
+                    implied_fee.get(
+                        "fee_fraction"
+                    )
+                    if implied_fee.get(
+                        "state"
+                    ) == "READY"
+                    else None
+                ),
+
+                "implied_v2_fee_state": (
+                    implied_fee.get("state")
                 ),
 
                 "gas_price_wei": int(
@@ -457,6 +529,16 @@ def analyze(token, pair):
                 "spot_price_series_usd": [],
 
                 "quote_reserve_usd": None,
+
+                "observed_min_quote_reserve_usd": None,
+
+                "reserve_floor_fraction_of_current": None,
+
+                "reserve_observation_count": 0,
+
+                "implied_v2_fee_fraction": None,
+
+                "implied_v2_fee_state": "UNKNOWN",
 
                 "trade_authority": False,
                 "paper_authority": False,

@@ -6,6 +6,12 @@ from app.config.settings import (
     WSS_URL,
 )
 from app.core.runner import Runner
+from app.dex.open_position_hot_path import (
+    HotPositionWSSBridge,
+    merge_wss_targets,
+    open_position_signature,
+    process_hot_positions,
+)
 from app.dex.wss_service import (
     NativeWSSService,
 )
@@ -25,146 +31,60 @@ def build_application(
     )
 
     services = []
-
     market_flow_bound = False
+    hot_bridge = HotPositionWSSBridge()
+    base_wss_targets = []
+    hot_signature = {
+        "value": None,
+    }
 
-    if WSS_URL and WSS_PAIR:
-        startup_refresh = getattr(
+    def merged_targets(
+        scanner_targets,
+    ):
+        return merge_wss_targets(
             pipeline,
-            "refresh_candidate_cache",
-            None,
+            scanner_targets,
+            max_pairs=256,
         )
 
-        if startup_refresh is not None:
-            try:
-                startup_refresh()
-            except Exception as exc:
-                logging.getLogger(__name__).warning(
-                    "Startup scanner refresh failed; using cache: %s",
-                    f"{type(exc).__name__}: {exc}",
-                )
-
-        factory = (
-            wss_service_factory
-            or NativeWSSService
+    async def on_native_event(event):
+        hot_bridge.observe_event(
+            event
         )
 
-        target_loader = getattr(
+        handler = getattr(
             pipeline,
-            "native_wss_targets",
+            "on_native_event",
             None,
         )
 
-        targets = (
-            target_loader()
-            if target_loader is not None
-            else []
+        if handler is None:
+            return True
+
+        return await handler(event)
+
+    async def on_native_retraction(event):
+        hot_bridge.observe_retraction(
+            event
         )
 
-        if not targets and WSS_TOKEN:
-            targets = [{
-                "pair": WSS_PAIR,
-                "token": WSS_TOKEN,
-                "quote_token": WBNB,
-            }]
-
-        pair_addresses = [
-            target["pair"]
-            for target in targets
-        ]
-
-        if len(pair_addresses) == 1:
-            pair_filter = pair_addresses[0]
-        elif pair_addresses:
-            pair_filter = pair_addresses
-        else:
-            pair_filter = WSS_PAIR
-
-        service = factory(
-            WSS_URL,
-            pair_filter,
-        )
-
-        configure = getattr(
+        handler = getattr(
             pipeline,
-            "configure_native_market_flow",
+            "on_native_retraction",
             None,
         )
 
-        bind_callbacks = getattr(
-            service,
-            "bind_callbacks",
-            None,
-        )
+        if handler is None:
+            return True
 
-        registered = 0
+        return await handler(event)
 
-        if configure is not None:
-            for target in targets:
-                result = configure(
-                    target["pair"],
-                    target["token"],
-                    target["quote_token"],
-                )
-
-                if result.get("state") == "REGISTERED":
-                    confirm = getattr(
-                        pipeline,
-                        "confirm_native_market_flow",
-                        None,
-                    )
-
-                    if confirm is None:
-                        registered += 1
-                    else:
-                        confirmation = confirm(
-                            target["pair"],
-                            target["token"],
-                            target["quote_token"],
-                        )
-
-                        if confirmation.get("state") == "VERIFIED":
-                            registered += 1
-
-        if registered and bind_callbacks is not None:
-            bind_callbacks(
-                on_event=pipeline.on_native_event,
-                on_retraction=pipeline.on_native_retraction,
-            )
-            market_flow_bound = True
-
-        services.append(service)
-
-    def refresh_native_wss_targets():
-        if not services:
-            return {
-                "state": "NO_SERVICE",
-                "address_count": 0,
-                "addresses": [],
-            }
-
-        target_loader = getattr(
-            pipeline,
-            "native_wss_targets",
-            None,
-        )
-
-        if target_loader is None:
-            return {
-                "state": "NO_TARGET_LOADER",
-                "address_count": 0,
-                "addresses": [],
-            }
-
-        refreshed_targets = target_loader()
-
-        if not refreshed_targets:
-            return {
-                "state": "NO_TARGETS",
-                "address_count": 0,
-                "addresses": [],
-            }
-
+    def apply_wss_targets(
+        targets,
+        *,
+        open_pairs=None,
+        replace_service=True,
+    ):
         configure = getattr(
             pipeline,
             "configure_native_market_flow",
@@ -177,9 +97,9 @@ def build_application(
             None,
         )
 
-        verified_addresses = []
+        verified_targets = []
 
-        for target in refreshed_targets:
+        for target in targets or []:
             if configure is None:
                 break
 
@@ -208,9 +128,59 @@ def build_application(
                 ):
                     continue
 
-            verified_addresses.append(
-                target["pair"]
+            verified_targets.append(
+                target
             )
+
+        verified_addresses = [
+            target["pair"]
+            for target in verified_targets
+        ]
+
+        address_set = set(
+            verified_addresses
+        )
+
+        verified_open = {
+            pair
+            for pair in (
+                open_pairs or []
+            )
+            if pair in address_set
+        }
+
+        hot_bridge.replace_targets(
+            verified_targets,
+            open_pairs=verified_open,
+        )
+
+        if not services:
+            return {
+                "state": "NO_SERVICE",
+                "address_count": len(
+                    verified_addresses
+                ),
+                "addresses": list(
+                    verified_addresses
+                ),
+                "open_pair_count": len(
+                    verified_open
+                ),
+            }
+
+        if not replace_service:
+            return {
+                "state": "CONFIGURED",
+                "address_count": len(
+                    verified_addresses
+                ),
+                "addresses": list(
+                    verified_addresses
+                ),
+                "open_pair_count": len(
+                    verified_open
+                ),
+            }
 
         replace_pairs = getattr(
             services[0],
@@ -226,6 +196,7 @@ def build_application(
                 "state": "NO_VERIFIED_TARGETS",
                 "address_count": 0,
                 "addresses": [],
+                "open_pair_count": 0,
             }
 
         pair_filter = (
@@ -249,7 +220,177 @@ def build_application(
             "addresses": list(
                 verified_addresses
             ),
+            "open_pair_count": len(
+                verified_open
+            ),
         }
+
+    if WSS_URL and WSS_PAIR:
+        startup_refresh = getattr(
+            pipeline,
+            "refresh_candidate_cache",
+            None,
+        )
+
+        if startup_refresh is not None:
+            try:
+                startup_refresh()
+            except Exception as exc:
+                logging.getLogger(__name__).warning(
+                    "Startup scanner refresh failed; using cache: %s",
+                    f"{type(exc).__name__}: {exc}",
+                )
+
+        factory = (
+            wss_service_factory
+            or NativeWSSService
+        )
+
+        target_loader = getattr(
+            pipeline,
+            "native_wss_targets",
+            None,
+        )
+
+        base_wss_targets = (
+            target_loader()
+            if target_loader is not None
+            else []
+        )
+
+        if not base_wss_targets and WSS_TOKEN:
+            base_wss_targets = [{
+                "pair": WSS_PAIR,
+                "token": WSS_TOKEN,
+                "quote_token": WBNB,
+            }]
+
+        initial_merge = merged_targets(
+            base_wss_targets
+        )
+
+        targets = initial_merge[
+            "targets"
+        ]
+
+        pair_addresses = [
+            target["pair"]
+            for target in targets
+        ]
+
+        if len(pair_addresses) == 1:
+            pair_filter = pair_addresses[0]
+        elif pair_addresses:
+            pair_filter = pair_addresses
+        else:
+            pair_filter = WSS_PAIR
+
+        service = factory(
+            WSS_URL,
+            pair_filter,
+        )
+
+        services.append(service)
+
+        bind_callbacks = getattr(
+            service,
+            "bind_callbacks",
+            None,
+        )
+
+        initial_binding = apply_wss_targets(
+            targets,
+            open_pairs=(
+                initial_merge[
+                    "open_pairs"
+                ]
+            ),
+            replace_service=False,
+        )
+
+        if (
+            initial_binding.get(
+                "address_count",
+                0,
+            )
+            and bind_callbacks is not None
+        ):
+            bind_callbacks(
+                on_event=on_native_event,
+                on_retraction=on_native_retraction,
+            )
+            market_flow_bound = True
+
+        hot_signature[
+            "value"
+        ] = open_position_signature(
+            pipeline
+        )
+
+    def refresh_native_wss_targets():
+        nonlocal base_wss_targets
+
+        if not services:
+            return {
+                "state": "NO_SERVICE",
+                "address_count": 0,
+                "addresses": [],
+                "open_pair_count": 0,
+            }
+
+        target_loader = getattr(
+            pipeline,
+            "native_wss_targets",
+            None,
+        )
+
+        if target_loader is None:
+            return {
+                "state": "NO_TARGET_LOADER",
+                "address_count": 0,
+                "addresses": [],
+                "open_pair_count": 0,
+            }
+
+        refreshed_targets = (
+            target_loader()
+        )
+
+        if refreshed_targets:
+            base_wss_targets = list(
+                refreshed_targets
+            )
+
+        merged = merged_targets(
+            base_wss_targets
+        )
+
+        return apply_wss_targets(
+            merged["targets"],
+            open_pairs=merged[
+                "open_pairs"
+            ],
+        )
+
+    def refresh_hot_open_position_targets():
+        if not services:
+            return {
+                "state": "NO_SERVICE",
+                "address_count": 0,
+                "addresses": [],
+                "open_pair_count": 0,
+            }
+
+        merged = merged_targets(
+            base_wss_targets
+        )
+
+        return apply_wss_targets(
+            merged["targets"],
+            open_pairs=merged[
+                "open_pairs"
+            ],
+        )
 
     def prepare_native_market_evidence(
         candidates=None,
@@ -342,10 +483,149 @@ def build_application(
             ),
         )
 
-    position_job = getattr(
+    original_position_job = getattr(
         pipeline,
         "process_positions",
         None,
+    )
+
+    refresh_open_prices = getattr(
+        pipeline,
+        "refresh_open_position_prices",
+        None,
+    )
+
+    manager = getattr(
+        pipeline,
+        "manager",
+        None,
+    )
+
+    manager_db = getattr(
+        manager,
+        "db",
+        None,
+    )
+
+    open_reader = getattr(
+        manager_db,
+        "open_positions",
+        None,
+    )
+
+    hot_position_capable = bool(
+        services
+        and callable(open_reader)
+        and callable(refresh_open_prices)
+    )
+
+    def application_position_job():
+        if not hot_position_capable:
+            if original_position_job is None:
+                return []
+
+            return original_position_job()
+
+        refresh = refresh_open_prices()
+
+        open_count = int(
+            refresh.get(
+                "open_positions",
+                0,
+            )
+            or 0
+        )
+
+        if (
+            refresh.get("state")
+            == "REFRESHED"
+            and int(
+                refresh.get(
+                    "failed",
+                    0,
+                )
+                or 0
+            ) == 0
+            and int(
+                refresh.get(
+                    "refreshed",
+                    0,
+                )
+                or 0
+            ) == open_count
+        ):
+            hot_bridge.anchor_from_cache(
+                pipeline
+            )
+
+        return process_hot_positions(
+            pipeline
+        )
+
+    def application_hot_position_job():
+        current_signature = (
+            open_position_signature(
+                pipeline
+            )
+        )
+
+        binding = None
+
+        if (
+            current_signature
+            != hot_signature[
+                "value"
+            ]
+        ):
+            binding = (
+                refresh_hot_open_position_targets()
+            )
+
+            hot_signature[
+                "value"
+            ] = current_signature
+
+        drained = (
+            hot_bridge.drain_price_updates(
+                pipeline
+            )
+        )
+
+        processed = 0
+
+        if int(
+            drained.get(
+                "updated",
+                0,
+            )
+            or 0
+        ) > 0:
+            processed = len(
+                process_hot_positions(
+                    pipeline
+                )
+                or []
+            )
+
+        return {
+            "state": "READY",
+            "binding": binding,
+            "drain": drained,
+            "processed": processed,
+            "bridge": hot_bridge.status(),
+            "provider_call": False,
+            "hot_path_wait": False,
+            "decision_authority": False,
+            "paper_authority": False,
+            "live_authority": False,
+            "wallet_authority": False,
+            "execution_authority": False,
+        }
+
+    position_job = (
+        application_position_job
+        if original_position_job is not None
+        else None
     )
 
     runner = Runner(
@@ -353,6 +633,13 @@ def build_application(
         position_job=position_job,
         services=services,
     )
+
+    if hot_position_capable:
+        runner.scheduler.every(
+            interval=1,
+            func=application_hot_position_job,
+            name="paper_hot_manager",
+        )
 
     return {
         "pipeline": pipeline,
@@ -367,6 +654,12 @@ def build_application(
         ),
         "paper_lifecycle_bound": (
             position_job is not None
+        ),
+        "hot_position_wss": (
+            hot_bridge.status()
+        ),
+        "hot_position_bound": (
+            hot_position_capable
         ),
         "decision_authority": False,
         "live_authority": False,

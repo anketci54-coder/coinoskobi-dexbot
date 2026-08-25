@@ -37,6 +37,8 @@ jobs:
           tests/test_candidate_reevaluation_ledger.py
           tests/test_phase13_counterfactual_observation.py
           tests/test_phase13_counterfactual_pipeline.py
+          tests/test_gecko_multi_pool.py
+          tests/test_scanner_cache_lifecycle.py
           tests/test_true_composition_root_e2e.py
           tests/test_open_position_hot_path.py
           tests/test_application_market_flow_binding.py

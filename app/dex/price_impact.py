@@ -31,6 +31,84 @@ def _fee_fraction(value):
     return value
 
 
+def infer_constant_product_fee(
+    *,
+    reserve_in,
+    reserve_out,
+    amount_in,
+    amount_out,
+):
+    """Infer the effective V2 fee from one measured direct-route quote.
+
+    For dy = y*dx_eff/(x+dx_eff):
+        dx_eff = dy*x/(y-dy)
+        fee = 1 - dx_eff/dx
+
+    No canonical fee is assumed. Invalid or non-V2-compatible evidence
+    remains UNKNOWN.
+    """
+    x = _finite_positive(reserve_in)
+    y = _finite_positive(reserve_out)
+    dx = _finite_positive(amount_in)
+    dy = _finite_positive(amount_out)
+
+    if (
+        x is None
+        or y is None
+        or dx is None
+        or dy is None
+        or dy >= y
+    ):
+        return {
+            "state": "UNKNOWN",
+            "fee_fraction": None,
+            "effective_amount_in": None,
+            "decision_authority": False,
+            "execution_authority": False,
+        }
+
+    effective_in = (
+        dy * x
+        / (y - dy)
+    )
+
+    if effective_in <= 0 or effective_in > dx:
+        return {
+            "state": "UNKNOWN",
+            "fee_fraction": None,
+            "effective_amount_in": None,
+            "decision_authority": False,
+            "execution_authority": False,
+        }
+
+    fee = 1.0 - effective_in / dx
+
+    if not 0.0 <= fee < 1.0:
+        return {
+            "state": "UNKNOWN",
+            "fee_fraction": None,
+            "effective_amount_in": None,
+            "decision_authority": False,
+            "execution_authority": False,
+        }
+
+    return {
+        "state": "READY",
+        "model": "CONSTANT_PRODUCT_V2_FEE_INFERENCE",
+        "fee_fraction": fee,
+        "effective_amount_in": effective_in,
+        "reserve_in": x,
+        "reserve_out": y,
+        "amount_in": dx,
+        "amount_out": dy,
+        "decision_authority": False,
+        "paper_authority": False,
+        "live_authority": False,
+        "wallet_authority": False,
+        "execution_authority": False,
+    }
+
+
 def max_input_for_price_impact(
     *,
     reserve_in,
@@ -100,8 +178,8 @@ def constant_product_quote(
     """Exact fee-aware x*y=k swap math for V2-style pools.
 
     No fee is assumed. The caller must provide the verified pool fee as
-    a fraction (for example 0.0025 for 0.25%). Missing/invalid evidence
-    stays UNKNOWN rather than silently using a default.
+    a fraction. Missing/invalid evidence stays UNKNOWN rather than
+    silently using a default.
     """
     x = _finite_positive(reserve_in)
     y = _finite_positive(reserve_out)

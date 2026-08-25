@@ -236,6 +236,31 @@ def _analysis_stubs(monkeypatch):
     def deterministic_plan(
         **_kwargs,
     ):
+        runtime_context = dict(
+            _kwargs.get("market_context")
+            or {}
+        )
+
+        runtime_intelligence = dict(
+            runtime_context.get(
+                "runtime_intelligence"
+            )
+            or {}
+        )
+
+        runtime_intelligence[
+            "market_quality"
+        ] = {
+            "market_evidence_ready": True,
+            "participation_state": "DIVERSE",
+            "liquidity_state": "STABLE",
+            "suspicious_volume": False,
+        }
+
+        runtime_context[
+            "runtime_intelligence"
+        ] = runtime_intelligence
+
         return real_build_trade_plan(
             entry_price=1.0,
             available_capital_usdt=10000.0,
@@ -255,20 +280,9 @@ def _analysis_stubs(monkeypatch):
                 "sell_tax": 0.0,
             },
             exit_evidence={},
-            market_context={
-                "runtime_intelligence": {
-                    "market_quality": {
-                        "market_evidence_ready": True,
-                        "participation_state": (
-                            "DIVERSE"
-                        ),
-                        "liquidity_state": (
-                            "STABLE"
-                        ),
-                        "suspicious_volume": False,
-                    }
-                }
-            },
+            market_context=(
+                runtime_context
+            ),
         )
 
     monkeypatch.setattr(
@@ -353,6 +367,12 @@ def test_true_composition_root_e2e(
     pipeline.conveyor = PassConveyor()
     pipeline.price = OpenPrice()
 
+    # This E2E deliberately observes the same candidate twice so
+    # VUR_KAC flow velocity/acceleration can mature through the real
+    # runtime snapshot path. The production cooldown is irrelevant to
+    # this deterministic composition test.
+    pipeline.candidate_queue.cooldown_seconds = 0.0
+
     pipeline.manager.price = (
         StopHitPrice()
     )
@@ -395,12 +415,25 @@ def test_true_composition_root_e2e(
     jobs["scanner"]["next"] = 0.0
     jobs["paper_manager"]["next"] = 0.0
 
-    runner.sleep_func = (
-        lambda _: runner.stop()
-    )
+    sleep_count = {
+        "value": 0,
+    }
+
+    def bounded_sleep(_):
+        sleep_count["value"] += 1
+
+        if sleep_count["value"] == 1:
+            jobs["scanner"]["next"] = 0.0
+            jobs["paper_manager"]["next"] = 0.0
+            return
+
+        runner.stop()
+
+    runner.sleep_func = bounded_sleep
 
     runner.run()
 
+    assert sleep_count["value"] == 2
     assert service.started == 1
     assert service.stopped == 1
     assert runner.services_started is False

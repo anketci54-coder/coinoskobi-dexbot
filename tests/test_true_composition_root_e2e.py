@@ -266,7 +266,7 @@ def _analysis_stubs(monkeypatch):
             available_capital_usdt=10000.0,
             price_series=[
                 0.80,
-                0.90,
+                0.88,
                 1.00,
             ],
             quote_reserve_usd=50000.0,

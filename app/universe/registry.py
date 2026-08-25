@@ -101,12 +101,45 @@ class UniverseRegistry:
                     dex TEXT NOT NULL,
                     factory TEXT NOT NULL,
                     event_kind TEXT NOT NULL,
+                    discovery_branch TEXT NOT NULL DEFAULT 'EXISTING'
+                        CHECK(discovery_branch IN ('EXISTING','NEW')),
                     last_scanned_block INTEGER NOT NULL,
                     last_finalized_block INTEGER NOT NULL,
                     updated_at TEXT NOT NULL,
-                    PRIMARY KEY(chain, dex, factory, event_kind)
+                    PRIMARY KEY(chain, dex, factory, event_kind, discovery_branch)
                 )
             """)
+            checkpoint_columns = {
+                row[1] for row in self.db.execute(
+                    "PRAGMA table_info(universe_discovery_checkpoint)"
+                )
+            }
+            if "discovery_branch" not in checkpoint_columns:
+                self.db.execute("""
+                    ALTER TABLE universe_discovery_checkpoint
+                    RENAME TO universe_discovery_checkpoint_migration
+                """)
+                self.db.execute("""
+                    CREATE TABLE universe_discovery_checkpoint(
+                        chain TEXT NOT NULL, dex TEXT NOT NULL,
+                        factory TEXT NOT NULL, event_kind TEXT NOT NULL,
+                        discovery_branch TEXT NOT NULL
+                            CHECK(discovery_branch IN ('EXISTING','NEW')),
+                        last_scanned_block INTEGER NOT NULL,
+                        last_finalized_block INTEGER NOT NULL,
+                        updated_at TEXT NOT NULL,
+                        PRIMARY KEY(chain,dex,factory,event_kind,discovery_branch)
+                    )
+                """)
+                self.db.execute("""
+                    INSERT INTO universe_discovery_checkpoint(
+                        chain,dex,factory,event_kind,discovery_branch,
+                        last_scanned_block,last_finalized_block,updated_at
+                    ) SELECT chain,dex,factory,event_kind,'EXISTING',
+                        last_scanned_block,last_finalized_block,updated_at
+                      FROM universe_discovery_checkpoint_migration
+                """)
+                self.db.execute("DROP TABLE universe_discovery_checkpoint_migration")
             self.db.execute("""
                 CREATE TABLE IF NOT EXISTS universe_market_observation_v1(
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -278,6 +311,9 @@ class UniverseRegistry:
             "dex": canonical_dex(row["dex"]),
             "factory": canonical_address(row["factory"]),
             "event_kind": str(row["event_kind"]).strip().upper(),
+            "discovery_branch": canonical_discovery_branch(
+                row.get("discovery_branch", "EXISTING")
+            ),
             "last_scanned_block": last_scanned,
             "last_finalized_block": last_finalized,
             "updated_at": updated_at,
@@ -287,13 +323,14 @@ class UniverseRegistry:
 
         self.db.execute("""
             INSERT INTO universe_discovery_checkpoint(
-                chain, dex, factory, event_kind,
+                chain, dex, factory, event_kind, discovery_branch,
                 last_scanned_block, last_finalized_block, updated_at
             ) VALUES(
-                :chain, :dex, :factory, :event_kind,
+                :chain, :dex, :factory, :event_kind, :discovery_branch,
                 :last_scanned_block, :last_finalized_block, :updated_at
             )
-            ON CONFLICT(chain, dex, factory, event_kind) DO UPDATE SET
+            ON CONFLICT(chain, dex, factory, event_kind, discovery_branch)
+            DO UPDATE SET
                 last_scanned_block=excluded.last_scanned_block,
                 last_finalized_block=excluded.last_finalized_block,
                 updated_at=excluded.updated_at
@@ -334,16 +371,18 @@ class UniverseRegistry:
         )).fetchone()
         return dict(row) if row else None
 
-    def checkpoint(self, chain, dex, factory, event_kind):
+    def checkpoint(self, chain, dex, factory, event_kind, branch="EXISTING"):
         row = self.db.execute("""
             SELECT *
             FROM universe_discovery_checkpoint
             WHERE chain=? AND dex=? AND factory=? AND event_kind=?
+              AND discovery_branch=?
         """, (
             canonical_chain(chain),
             canonical_dex(dex),
             canonical_address(factory),
             str(event_kind).strip().upper(),
+            canonical_discovery_branch(branch),
         )).fetchone()
         return dict(row) if row else None
 

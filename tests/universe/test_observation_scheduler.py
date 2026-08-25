@@ -87,7 +87,8 @@ def test_scheduler_is_bounded_and_uses_state_cadence(tmp_path):
     ).run_once(limit=2)
     assert result == {
         "state": "OBSERVED", "requested": 2, "observed": 2,
-        "missing": 0, "provider_call": True,
+        "missing": 0, "pools": [address(1), address(2)],
+        "provider_call": True,
     }
     assert registry.get_pool("bsc", "pancakeswap_v2", address(1))[
         "next_observation_at"] == "2026-08-25T16:04:00+00:00"

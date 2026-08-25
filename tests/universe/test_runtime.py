@@ -1,0 +1,78 @@
+import sqlite3
+from app.universe.discovery import PANCAKE_FACTORY_STREAMS, PAIR_CREATED_TOPIC
+from app.universe.registry import UniverseRegistry
+from app.universe.runtime import FullUniverseObservationRuntime
+
+
+def address(value): return "0x" + f"{value:040x}"
+def topic_address(value): return "0x" + "0" * 24 + f"{value:040x}"
+def word(value): return f"{value:064x}"
+
+
+class LogReader:
+    def __init__(self): self.calls = []
+    def __call__(self, **request):
+        self.calls.append(request)
+        if request["topic0"] == PAIR_CREATED_TOPIC and request["from_block"] == 1:
+            return [{"topics": [PAIR_CREATED_TOPIC, topic_address(1), topic_address(2)],
+                     "data": "0x" + word(3) + word(1), "blockNumber": 1,
+                     "transactionHash": "0x" + "a" * 64}]
+        return []
+
+
+class SnapshotClient:
+    def __init__(self): self.calls = []
+    def fetch(self, due):
+        self.calls.append(due)
+        return [{"chain": row["chain"], "dex": row["dex"], "pool": row["pool"],
+                 "source": "dexscreener", "observed_at": "2026-08-25T16:00:00+00:00",
+                 "price_usd": 1, "liquidity_usd": 1000,
+                 "volume_m5_usd": 100, "volume_h24_usd": 1000,
+                 "txns_m5": 10, "change_m5": 0.1} for row in due]
+
+
+def runtime(registry, reader):
+    return FullUniverseObservationRuntime(
+        start_blocks={"pancakeswap_v2": 1, "pancakeswap_v3": 1},
+        registry=registry, log_reader=reader, finalized_block_reader=lambda: 20,
+        snapshot_client=SnapshotClient(), confirmation_depth=0,
+        discovery_block_span=10, observation_batches_per_cycle=1,
+    )
+
+
+def test_shadow_runtime_keeps_existing_and_new_checkpoints_independent():
+    registry = UniverseRegistry(connection=sqlite3.connect(":memory:"))
+    reader = LogReader(); result = runtime(registry, reader).run_once()
+    stream = PANCAKE_FACTORY_STREAMS[0]
+    existing = registry.checkpoint("bsc", stream["dex"], stream["factory"],
+                                   stream["event_kind"], "EXISTING")
+    new = registry.checkpoint("bsc", stream["dex"], stream["factory"],
+                              stream["event_kind"], "NEW")
+    assert existing["last_scanned_block"] == 10
+    assert new["last_scanned_block"] == 20
+    assert result["state"] == "SHADOW_READY"
+    assert result["universe_size"] == 1 and result["evaluated"] == 1
+    assert result["decision_authority"] is False
+
+
+def test_shadow_runtime_round_robins_v2_and_v3():
+    registry = UniverseRegistry(connection=sqlite3.connect(":memory:"))
+    reader = LogReader(); subject = runtime(registry, reader)
+    subject.run_once(); subject.run_once()
+    assert reader.calls[0]["address"].lower() == PANCAKE_FACTORY_STREAMS[0]["factory"].lower()
+    assert reader.calls[2]["address"].lower() == PANCAKE_FACTORY_STREAMS[1]["factory"].lower()
+
+
+def test_shadow_runtime_requires_explicit_start_blocks_and_bounded_batches():
+    for blocks, batches in (({"pancakeswap_v2": 1}, 1),
+                            ({"pancakeswap_v2": 1, "pancakeswap_v3": 1}, 5)):
+        try:
+            FullUniverseObservationRuntime(
+                start_blocks=blocks, registry=object(), log_reader=lambda **kwargs: [],
+                finalized_block_reader=lambda: 1, snapshot_client=object(),
+                observation_batches_per_cycle=batches,
+            )
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("invalid shadow bound accepted")

@@ -74,6 +74,7 @@ class UniverseObservationScheduler:
         return {
             "state": "OBSERVED", "requested": len(due),
             "observed": len(snapshots), "missing": len(missing),
+            "pools": [row["pool"] for row in snapshots],
             "provider_call": True,
         }
 

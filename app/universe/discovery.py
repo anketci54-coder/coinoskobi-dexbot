@@ -106,7 +106,8 @@ class PancakeUniverseDiscovery:
 
         factory = canonical_address(stream["factory"])
         saved = self.registry.checkpoint(
-            stream["chain"], stream["dex"], factory, stream["event_kind"]
+            stream["chain"], stream["dex"], factory, stream["event_kind"],
+            branch,
         )
         from_block = (
             int(saved["last_scanned_block"]) + 1
@@ -135,6 +136,7 @@ class PancakeUniverseDiscovery:
         self.registry.ingest(rows, checkpoint={
             "chain": stream["chain"], "dex": stream["dex"],
             "factory": factory, "event_kind": stream["event_kind"],
+            "discovery_branch": branch,
             "last_scanned_block": to_block,
             "last_finalized_block": to_block,
         })

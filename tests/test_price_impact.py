@@ -1,6 +1,7 @@
 from app.dex.price_impact import (
     analyze_price_impact,
     constant_product_quote,
+    max_input_for_price_impact,
 )
 
 
@@ -16,6 +17,7 @@ def test_small_trade_is_healthy():
     )
 
     assert result["exact_amm_ready"] is False
+    assert result["impact_capacity_ready"] is False
 
 
 def test_large_trade_is_critical():
@@ -83,6 +85,39 @@ def test_constant_product_quote_matches_fee_aware_formula():
     assert result["execution_authority"] is False
 
 
+def test_inverse_impact_capacity_reconstructs_requested_bound():
+    capacity = max_input_for_price_impact(
+        reserve_in=1000,
+        fee_fraction=0.0025,
+        max_price_impact_fraction=0.01,
+    )
+
+    assert capacity["state"] == "READY"
+
+    quote = constant_product_quote(
+        reserve_in=1000,
+        reserve_out=2000,
+        amount_in=capacity["max_amount_in"],
+        fee_fraction=0.0025,
+    )
+
+    assert quote["state"] == "READY"
+    assert abs(
+        quote["price_impact_fraction"] - 0.01
+    ) < 1e-12
+
+
+def test_inverse_impact_capacity_requires_explicit_policy_bound():
+    result = max_input_for_price_impact(
+        reserve_in=1000,
+        fee_fraction=0.0025,
+        max_price_impact_fraction=None,
+    )
+
+    assert result["state"] == "UNKNOWN"
+    assert result["max_amount_in"] is None
+
+
 def test_analyzer_exposes_exact_amm_without_replacing_legacy_context():
     result = analyze_price_impact(
         trade_size_usd=100,
@@ -91,8 +126,10 @@ def test_analyzer_exposes_exact_amm_without_replacing_legacy_context():
         reserve_out=2000,
         amount_in=10,
         fee_fraction=0.0025,
+        max_price_impact_fraction=0.01,
     )
 
     assert result["estimated_impact_context"] == "HEALTHY"
     assert result["exact_amm_ready"] is True
     assert result["exact_amm"]["state"] == "READY"
+    assert result["impact_capacity_ready"] is True

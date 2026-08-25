@@ -11,6 +11,8 @@ concurrency:
   group: coinoskobi-ci-${{ github.ref }}
   cancel-in-progress: true
 
+# Full regression is opt-in by commit marker after a coherent
+# production package has already passed the canonical smoke/E2E gate.
 jobs:
   smoke:
     runs-on: ubuntu-latest

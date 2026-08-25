@@ -5,8 +5,6 @@ import statistics
 from pathlib import Path
 
 
-# Paper account capital.
-# Not a trade allocation percentage.
 PAPER_CAPITAL_USDT = 10_000.0
 
 
@@ -14,9 +12,7 @@ def _number(value):
     try:
         if value is None:
             return None
-
         value = float(value)
-
     except (TypeError, ValueError):
         return None
 
@@ -28,222 +24,303 @@ def _number(value):
 
 def _positive(value):
     value = _number(value)
-
     if value is None or value <= 0:
         return None
-
     return value
+
+
+def _json_dict(raw):
+    if isinstance(raw, dict):
+        return raw
+    if not raw:
+        return {}
+
+    try:
+        value = json.loads(raw)
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return {}
+
+    return value if isinstance(value, dict) else {}
+
+
+def _find_number(node, names):
+    if isinstance(node, dict):
+        for key in names:
+            if key in node:
+                value = _number(node.get(key))
+                if value is not None:
+                    return value
+
+        for value in node.values():
+            found = _find_number(value, names)
+            if found is not None:
+                return found
+
+    elif isinstance(node, (list, tuple)):
+        for value in node:
+            found = _find_number(value, names)
+            if found is not None:
+                return found
+
+    return None
 
 
 def paper_available_capital_usdt(
     conn,
     starting_capital_usdt=PAPER_CAPITAL_USDT,
 ):
-    """
-    Durable free-cash truth for PAPER_10K_V2.
-
-    Closed net PnL changes account capital.
-    Realized PnL from a partial OPEN realization
-    changes cash.
-    Remaining OPEN cost basis stays deployed.
-
-    Unrealized PnL is not spendable cash.
-    """
-
-    starting = _number(
-        starting_capital_usdt
-    )
-
-    if (
-        starting is None
-        or starting < 0
-    ):
+    """Durable free-cash truth for PAPER_10K_V2."""
+    starting = _number(starting_capital_usdt)
+    if starting is None or starting < 0:
         starting = 0.0
 
     row = conn.execute(
         """
         SELECT
-            COALESCE(
-                SUM(
-                    CASE
-                    WHEN UPPER(
-                        COALESCE(status, '')
-                    ) = 'CLOSED'
-                    THEN COALESCE(
-                        net_pnl_usdt,
-                        net_pnl,
-                        0
-                    )
-                    ELSE 0
-                    END
-                ),
-                0
-            ),
-
-            COALESCE(
-                SUM(
-                    CASE
-                    WHEN UPPER(
-                        COALESCE(status, '')
-                    ) = 'OPEN'
-                    THEN COALESCE(
-                        realized_pnl_usdt,
-                        0
-                    )
-                    ELSE 0
-                    END
-                ),
-                0
-            ),
-
-            COALESCE(
-                SUM(
-                    CASE
-                    WHEN UPPER(
-                        COALESCE(status, '')
-                    ) = 'OPEN'
-                    THEN COALESCE(
-                        remaining_cost_basis_usdt,
-                        entry_amount_usdt,
-                        0
-                    )
-                    ELSE 0
-                    END
-                ),
-                0
-            )
-
+            COALESCE(SUM(
+                CASE
+                WHEN UPPER(COALESCE(status, ''))='CLOSED'
+                THEN COALESCE(net_pnl_usdt, net_pnl, 0)
+                ELSE 0
+                END
+            ), 0),
+            COALESCE(SUM(
+                CASE
+                WHEN UPPER(COALESCE(status, ''))='OPEN'
+                THEN COALESCE(realized_pnl_usdt, 0)
+                ELSE 0
+                END
+            ), 0),
+            COALESCE(SUM(
+                CASE
+                WHEN UPPER(COALESCE(status, ''))='OPEN'
+                THEN COALESCE(
+                    remaining_cost_basis_usdt,
+                    entry_amount_usdt,
+                    0
+                )
+                ELSE 0
+                END
+            ), 0)
         FROM paper_trades
-
         WHERE paper_account_version='PAPER_10K_V2'
         """
     ).fetchone()
 
     if row is None:
-        return max(
-            0.0,
-            starting,
-        )
+        return max(0.0, starting)
 
-    closed_pnl = (
-        _number(row[0])
-        or 0.0
-    )
-
-    open_realized_pnl = (
-        _number(row[1])
-        or 0.0
-    )
-
-    open_remaining_basis = (
-        _number(row[2])
-        or 0.0
-    )
+    closed_pnl = _number(row[0]) or 0.0
+    open_realized_pnl = _number(row[1]) or 0.0
+    open_remaining_basis = _number(row[2]) or 0.0
 
     return max(
         0.0,
-        (
-            starting
-            + closed_pnl
-            + open_realized_pnl
-            - open_remaining_basis
-        ),
+        starting
+        + closed_pnl
+        + open_realized_pnl
+        - open_remaining_basis,
     )
 
 
-def _find_number(node, names):
+def _calibration_empty(reason):
+    return {
+        "ready": False,
+        "reason": reason,
+        "gap_multiplier": None,
+        "gap_median": None,
+        "gap_statistic": None,
+        "cost_uncertainty_fraction": None,
+        "gap_samples": 0,
+        "cost_samples": 0,
+    }
+
+
+def _table_columns(db, table_name):
+    return {
+        row[1]
+        for row in db.execute(
+            f"PRAGMA table_info({table_name})"
+        ).fetchall()
+    }
+
+
+def _column_expr(columns, name):
+    return name if name in columns else "NULL"
+
+
+def _closed_outcome_rows(db, table_name):
+    exists = db.execute(
+        """
+        SELECT 1
+        FROM sqlite_master
+        WHERE type='table' AND name=?
+        """,
+        (table_name,),
+    ).fetchone()
+
+    if exists is None:
+        return []
+
+    columns = _table_columns(db, table_name)
+
+    required = {
+        "status",
+        "entry_price",
+        "entry_amount_usdt",
+        "mathematical_plan_json",
+        "math_state_json",
+    }
+
+    if not required.issubset(columns):
+        return []
+
+    names = (
+        "current_price",
+        "exit_price",
+        "net_pnl",
+        "gross_pnl_usdt",
+        "net_pnl_usdt",
+    )
+
+    expressions = {
+        name: _column_expr(columns, name)
+        for name in names
+    }
+
+    return db.execute(
+        f"""
+        SELECT
+            entry_price,
+            entry_amount_usdt,
+            mathematical_plan_json,
+            math_state_json,
+            {expressions['current_price']} AS current_price,
+            {expressions['exit_price']} AS exit_price,
+            {expressions['net_pnl']} AS net_pnl,
+            {expressions['gross_pnl_usdt']} AS gross_pnl_usdt,
+            {expressions['net_pnl_usdt']} AS net_pnl_usdt
+        FROM {table_name}
+        WHERE UPPER(COALESCE(status, ''))='CLOSED'
+          AND mathematical_plan_json IS NOT NULL
+        """
+    ).fetchall()
+
+
+def _planned_loss_fraction(row):
+    entry = _positive(row["entry_price"])
+    if entry is None:
+        return None
+
+    plan = _json_dict(row["mathematical_plan_json"])
+    state = _json_dict(row["math_state_json"])
+
+    stop = _positive(state.get("last_stop"))
+
+    if stop is None:
+        entry_plan = (
+            plan.get("entry")
+            if isinstance(plan.get("entry"), dict)
+            else {}
+        )
+        stop = _positive(entry_plan.get("band_low"))
+
+    if stop is None or stop >= entry:
+        return None
+
+    fraction = 1.0 - stop / entry
+    return fraction if fraction > 0 else None
+
+
+def _observed_market_loss_fraction(row):
     """
-    Find one named numeric measurement anywhere
-    inside a mathematical plan.
+    Closed-outcome downside truth.
 
-    This is compatibility-only because historical
-    plan nesting may differ.
+    Preference order:
+    1. closed gross PnL over original entry amount;
+    2. explicit exit price;
+    3. legacy current price;
+    4. closed net PnL as a final compatibility fallback.
+
+    This deliberately avoids treating a stale current_price field as
+    canonical when durable closed accounting or exit price is present.
     """
+    amount = _positive(row["entry_amount_usdt"])
+    entry = _positive(row["entry_price"])
 
-    if isinstance(node, dict):
-        for key in names:
-            if key in node:
-                value = _number(node.get(key))
+    if amount is None:
+        return None
 
-                if value is not None:
-                    return value
+    gross = _number(row["gross_pnl_usdt"])
+    if gross is not None and gross < 0:
+        return min(1.0, max(0.0, -gross / amount))
 
-        for value in node.values():
-            result = _find_number(
-                value,
-                names,
+    if entry is not None:
+        exit_price = _positive(row["exit_price"])
+        if exit_price is not None:
+            return min(
+                1.0,
+                max(0.0, 1.0 - exit_price / entry),
             )
 
-            if result is not None:
-                return result
-
-    elif isinstance(node, (list, tuple)):
-        for value in node:
-            result = _find_number(
-                value,
-                names,
+        current = _positive(row["current_price"])
+        if current is not None:
+            return min(
+                1.0,
+                max(0.0, 1.0 - current / entry),
             )
 
-            if result is not None:
-                return result
+    net = _number(row["net_pnl_usdt"])
+    if net is None:
+        net = _number(row["net_pnl"])
+
+    if net is not None and net < 0:
+        return min(1.0, max(0.0, -net / amount))
+
+    return 0.0
+
+
+def _observed_cost_fraction(row):
+    amount = _positive(row["entry_amount_usdt"])
+    if amount is None:
+        return None
+
+    gross = _number(row["gross_pnl_usdt"])
+    net_usdt = _number(row["net_pnl_usdt"])
+
+    if gross is not None and net_usdt is not None:
+        value = max(0.0, (gross - net_usdt) / amount)
+        return value if math.isfinite(value) else None
+
+    net = _number(row["net_pnl"])
+    entry = _positive(row["entry_price"])
+
+    mark = _positive(row["exit_price"])
+    if mark is None:
+        mark = _positive(row["current_price"])
+
+    if (
+        net is not None
+        and entry is not None
+        and mark is not None
+    ):
+        mark_pnl = amount * (mark / entry - 1.0)
+        value = max(0.0, (mark_pnl - net) / amount)
+        return value if math.isfinite(value) else None
 
     return None
-
-
-def _json_dict(raw):
-    if isinstance(raw, dict):
-        return raw
-
-    if not raw:
-        return {}
-
-    try:
-        result = json.loads(raw)
-    except (
-        TypeError,
-        ValueError,
-        json.JSONDecodeError,
-    ):
-        return {}
-
-    return (
-        result
-        if isinstance(result, dict)
-        else {}
-    )
 
 
 def _empirical_outcome_calibration(
     db_path="data/paper_trades.db",
 ):
     """
-    Learn only from observed closed mathematical
-    paper outcomes.
-
-    gap_multiplier:
-        actual downside / downside implied by the
-        latest persisted mathematical floor.
-
-    cost_uncertainty_fraction:
-        robust center of positive observed
-        gross-to-net execution cost drag,
-        relative to entry size.
-
-    No hand-picked percentage or risk coefficient
-    is introduced here.
+    Learn gap overshoot and cost uncertainty from durable closed paper
+    outcomes only. No fixed risk percentage is introduced.
     """
-
     path = Path(db_path)
-
     if not path.exists():
-        return {
-            "ready": False,
-            "reason": "OUTCOME_DB_MISSING",
-            "gap_multiplier": None,
-            "cost_uncertainty_fraction": None,
-            "gap_samples": 0,
-            "cost_samples": 0,
-        }
+        return _calibration_empty("OUTCOME_DB_MISSING")
 
     try:
         db = sqlite3.connect(
@@ -252,315 +329,93 @@ def _empirical_outcome_calibration(
         )
         db.row_factory = sqlite3.Row
 
-        active_table_exists = db.execute(
+        active_exists = db.execute(
             """
             SELECT 1
             FROM sqlite_master
-            WHERE type='table'
-              AND name='paper_trades'
+            WHERE type='table' AND name='paper_trades'
             """
         ).fetchone()
 
-        if active_table_exists is None:
+        if active_exists is None:
             db.close()
+            return _calibration_empty("PAPER_TRADES_MISSING")
 
-            return {
-                "ready": False,
-                "reason": "PAPER_TRADES_MISSING",
-                "gap_multiplier": None,
-                "cost_uncertainty_fraction": None,
-                "gap_samples": 0,
-                "cost_samples": 0,
-            }
-
-        required = {
+        active_columns = _table_columns(db, "paper_trades")
+        minimum = {
             "status",
             "entry_price",
-            "current_price",
             "entry_amount_usdt",
-            "net_pnl",
             "mathematical_plan_json",
             "math_state_json",
         }
 
-        active_columns = {
-            row[1]
-            for row in db.execute(
-                "PRAGMA table_info(paper_trades)"
-            ).fetchall()
-        }
-
-        if not required.issubset(
-            active_columns
-        ):
+        if not minimum.issubset(active_columns):
             db.close()
-
-            return {
-                "ready": False,
-                "reason": "OUTCOME_COLUMNS_INCOMPLETE",
-                "gap_multiplier": None,
-                "cost_uncertainty_fraction": None,
-                "gap_samples": 0,
-                "cost_samples": 0,
-            }
+            return _calibration_empty("OUTCOME_COLUMNS_INCOMPLETE")
 
         rows = []
-
-        # Performance/accounting stays on the active
-        # paper table. Risk calibration may also learn
-        # from genuine closed paper outcomes preserved
-        # by the canonical archive reset.
         for table_name in (
             "paper_trades_archive",
             "paper_trades",
         ):
-            table_exists = db.execute(
-                """
-                SELECT 1
-                FROM sqlite_master
-                WHERE type='table'
-                  AND name=?
-                """,
-                (table_name,),
-            ).fetchone()
-
-            if table_exists is None:
-                continue
-
-            columns = {
-                row[1]
-                for row in db.execute(
-                    f"PRAGMA table_info({table_name})"
-                ).fetchall()
-            }
-
-            if not required.issubset(
-                columns
-            ):
-                continue
-
-            gross_pnl_expr = (
-                "gross_pnl_usdt"
-                if "gross_pnl_usdt" in columns
-                else "NULL"
-            )
-
-            net_pnl_usdt_expr = (
-                "net_pnl_usdt"
-                if "net_pnl_usdt" in columns
-                else "NULL"
-            )
-
             rows.extend(
-                db.execute(
-                    f"""
-                    SELECT
-                        entry_price,
-                        current_price,
-                        entry_amount_usdt,
-                        net_pnl,
-                        mathematical_plan_json,
-                        math_state_json,
-                        {gross_pnl_expr}
-                            AS gross_pnl_usdt,
-                        {net_pnl_usdt_expr}
-                            AS net_pnl_usdt
-                    FROM {table_name}
-                    WHERE status='CLOSED'
-                      AND mathematical_plan_json
-                          IS NOT NULL
-                    """
-                ).fetchall()
+                _closed_outcome_rows(db, table_name)
             )
 
         db.close()
 
     except sqlite3.Error:
-        return {
-            "ready": False,
-            "reason": "OUTCOME_DB_READ_FAILED",
-            "gap_multiplier": None,
-            "cost_uncertainty_fraction": None,
-            "gap_samples": 0,
-            "cost_samples": 0,
-        }
+        return _calibration_empty("OUTCOME_DB_READ_FAILED")
 
     gap_ratios = []
     cost_residuals = []
 
     for row in rows:
-        entry = _positive(
-            row["entry_price"]
-        )
-        current = _positive(
-            row["current_price"]
-        )
-        amount = _positive(
-            row["entry_amount_usdt"]
-        )
-        net_pnl = _number(
-            row["net_pnl"]
-        )
+        planned_loss = _planned_loss_fraction(row)
+        observed_loss = _observed_market_loss_fraction(row)
+        cost_fraction = _observed_cost_fraction(row)
 
         if (
-            entry is None
-            or current is None
-            or amount is None
+            cost_fraction is not None
+            and math.isfinite(cost_fraction)
+        ):
+            cost_residuals.append(cost_fraction)
+
+        if (
+            planned_loss is None
+            or observed_loss is None
+            or planned_loss <= 0
+            or observed_loss <= 0
         ):
             continue
 
-        plan = _json_dict(
-            row["mathematical_plan_json"]
-        )
-        state = _json_dict(
-            row["math_state_json"]
-        )
+        ratio = observed_loss / planned_loss
 
-        stop = _positive(
-            state.get("last_stop")
-        )
-
-        if stop is None:
-            entry_plan = (
-                plan.get("entry")
-                if isinstance(
-                    plan.get("entry"),
-                    dict,
-                )
-                else {}
-            )
-
-            stop = _positive(
-                entry_plan.get("band_low")
-            )
-
-        gross_pnl_usdt = _number(
-            row["gross_pnl_usdt"]
-        )
-
-        net_pnl_usdt = _number(
-            row["net_pnl_usdt"]
-        )
-
-        residual = None
-
-        if (
-            gross_pnl_usdt is not None
-            and net_pnl_usdt is not None
-        ):
-            # Closed mathematical accounting already
-            # includes every partial realization.
-            # Therefore gross-minus-net is the observed
-            # execution/cost drag without reconstructing
-            # the position from the final mark price.
-            residual = max(
-                0.0,
-                (
-                    gross_pnl_usdt
-                    - net_pnl_usdt
-                )
-                / amount,
-            )
-
-        elif net_pnl is not None:
-            # Compatibility for historical rows that
-            # predate final gross/net USD accounting.
-            actual_return = (
-                current / entry
-            ) - 1.0
-
-            mark_pnl = (
-                amount
-                * actual_return
-            )
-
-            residual = max(
-                0.0,
-                (
-                    mark_pnl
-                    - net_pnl
-                )
-                / amount,
-            )
-
-        if (
-            residual is not None
-            and math.isfinite(residual)
-        ):
-            cost_residuals.append(
-                residual
-            )
-
-        if (
-            stop is None
-            or stop >= entry
-        ):
-            continue
-
-        planned_loss_fraction = (
-            1.0
-            - stop / entry
-        )
-
-        actual_loss_fraction = max(
-            0.0,
-            1.0
-            - current / entry,
-        )
-
-        if (
-            planned_loss_fraction <= 0
-            or actual_loss_fraction <= 0
-        ):
-            continue
-
-        ratio = (
-            actual_loss_fraction
-            / planned_loss_fraction
-        )
-
-        if (
-            math.isfinite(ratio)
-            and ratio > 0
-        ):
-            gap_ratios.append(
-                ratio
-            )
+        if math.isfinite(ratio) and ratio > 0:
+            gap_ratios.append(ratio)
 
     gap_median = (
-        statistics.median(
-            gap_ratios
-        )
+        statistics.median(gap_ratios)
         if gap_ratios
         else None
     )
 
-    gap_multiplier = (
-        max(
-            gap_ratios
-        )
-        if gap_ratios
-        else None
-    )
+    gap_multiplier = max(gap_ratios) if gap_ratios else None
 
-    positive_cost_residuals = [
+    positive_costs = [
         value
         for value in cost_residuals
         if value > 0
     ]
 
     cost_uncertainty = (
-        statistics.median(
-            positive_cost_residuals
-        )
-        if positive_cost_residuals
+        statistics.median(positive_costs)
+        if positive_costs
         else None
     )
 
-    ready = (
-        gap_multiplier is not None
-        and gap_multiplier > 0
-    )
+    ready = gap_multiplier is not None and gap_multiplier > 0
 
     return {
         "ready": ready,
@@ -569,26 +424,51 @@ def _empirical_outcome_calibration(
             if ready
             else "GAP_RISK_UNOBSERVED"
         ),
-        "gap_multiplier": (
-            gap_multiplier
+        "gap_multiplier": gap_multiplier,
+        "gap_median": gap_median,
+        "gap_statistic": "MAX_OBSERVED" if ready else None,
+        "cost_uncertainty_fraction": cost_uncertainty,
+        "gap_samples": len(gap_ratios),
+        "cost_samples": len(positive_costs),
+    }
+
+
+def _zero_result(
+    *,
+    available,
+    raw_amount,
+    safe_quote_reserve,
+    risk_log_distance,
+    gap_multiplier,
+    calibration,
+    empirical_cost_uncertainty,
+    effective_edge,
+    cost_complete,
+    blockers,
+):
+    return {
+        "entry_amount_usdt": 0.0,
+        "risk_amount_usdt": 0.0,
+        "capital_before_usdt": available,
+        "capital_after_entry_usdt": available,
+        "position_size_pct": 0.0,
+        "sizing_reason": "MATHEMATICAL_POSITION_SIZE_ZERO",
+        "formula_authority": "DATA_DERIVED",
+        "magic_percentage_rule": False,
+        "sizing_model": "EMPIRICAL_GAP_EXIT_CAPACITY_V2",
+        "blockers": sorted(set(blockers)),
+        "raw_plan_amount_usdt": raw_amount,
+        "safe_quote_reserve_usd": safe_quote_reserve,
+        "risk_log_distance": risk_log_distance,
+        "gap_multiplier": gap_multiplier,
+        "gap_samples": calibration.get("gap_samples"),
+        "empirical_cost_uncertainty_fraction": (
+            empirical_cost_uncertainty
         ),
-        "gap_median": (
-            gap_median
-        ),
-        "gap_statistic": (
-            "MAX_OBSERVED"
-            if ready
-            else None
-        ),
-        "cost_uncertainty_fraction": (
-            cost_uncertainty
-        ),
-        "gap_samples": len(
-            gap_ratios
-        ),
-        "cost_samples": len(
-            positive_cost_residuals
-        ),
+        "cost_samples": calibration.get("cost_samples"),
+        "effective_edge_fraction": effective_edge,
+        "cost_complete": cost_complete,
+        "kelly_diagnostic_only": True,
     }
 
 
@@ -599,87 +479,48 @@ def calculate_paper_position_size(
     db_path="data/paper_trades.db",
     **_legacy,
 ):
-    """
-    Risk-first paper sizing.
-
-    Important properties:
-
-    1. Edge never expands measured exit capacity.
-    2. Kelly may remain diagnostic in the plan,
-       but cannot override the exit-capacity cap.
-    3. Unknown costs are not treated as zero.
-       Empirical observed net-cost residual is
-       deducted from known-component edge.
-    4. Historical observed gap overshoot scales
-       down position size.
-    5. No fixed position percentage exists.
-    """
-
+    """Risk-first position sizing with empirical tail-gap calibration."""
     plan = (
         mathematical_plan
-        if isinstance(
-            mathematical_plan,
-            dict,
-        )
+        if isinstance(mathematical_plan, dict)
         else {}
     )
 
     capital = (
         plan.get("capital")
-        if isinstance(
-            plan.get("capital"),
-            dict,
-        )
+        if isinstance(plan.get("capital"), dict)
         else {}
     )
 
     expected = (
         plan.get("expected")
-        if isinstance(
-            plan.get("expected"),
-            dict,
-        )
+        if isinstance(plan.get("expected"), dict)
         else {}
     )
 
     cost_model = (
         plan.get("cost_model")
-        if isinstance(
-            plan.get("cost_model"),
-            dict,
-        )
+        if isinstance(plan.get("cost_model"), dict)
         else {}
     )
 
     raw_amount = max(
         0.0,
-        _number(
-            capital.get(
-                "entry_amount_usdt"
-            )
-        )
-        or 0.0,
+        _number(capital.get("entry_amount_usdt")) or 0.0,
     )
 
     available = max(
         0.0,
         _number(
             available_capital_usdt
-            if (
-                available_capital_usdt
-                is not None
-            )
-            else capital.get(
-                "available_usdt"
-            )
+            if available_capital_usdt is not None
+            else capital.get("available_usdt")
         )
         or 0.0,
     )
 
     safe_quote_reserve = _positive(
-        capital.get(
-            "safe_quote_reserve_usd"
-        )
+        capital.get("safe_quote_reserve_usd")
     )
 
     risk_log_distance = _positive(
@@ -693,209 +534,90 @@ def calculate_paper_position_size(
     )
 
     full_edge = _number(
-        expected.get(
-            "full_net_edge_fraction"
-        )
+        expected.get("full_net_edge_fraction")
     )
-
     known_edge = _number(
-        expected.get(
-            "known_net_edge_fraction"
-        )
+        expected.get("known_net_edge_fraction")
     )
+    cost_complete = bool(cost_model.get("cost_complete"))
 
-    cost_complete = bool(
-        cost_model.get(
-            "cost_complete"
-        )
+    calibration = _empirical_outcome_calibration(
+        db_path=db_path
     )
-
-    calibration = (
-        _empirical_outcome_calibration(
-            db_path=db_path,
-        )
-    )
-
     gap_multiplier = _positive(
-        calibration.get(
-            "gap_multiplier"
-        )
+        calibration.get("gap_multiplier")
     )
-
-    empirical_cost_uncertainty = (
-        _number(
-            calibration.get(
-                "cost_uncertainty_fraction"
-            )
-        )
+    empirical_cost_uncertainty = _number(
+        calibration.get("cost_uncertainty_fraction")
     )
 
     blockers = []
 
     if raw_amount <= 0:
-        blockers.append(
-            "PLAN_AMOUNT_ZERO"
-        )
-
+        blockers.append("PLAN_AMOUNT_ZERO")
     if available <= 0:
-        blockers.append(
-            "AVAILABLE_CAPITAL_ZERO"
-        )
-
+        blockers.append("AVAILABLE_CAPITAL_ZERO")
     if safe_quote_reserve is None:
-        blockers.append(
-            "EXIT_CAPACITY_UNKNOWN"
-        )
-
+        blockers.append("EXIT_CAPACITY_UNKNOWN")
     if risk_log_distance is None:
-        blockers.append(
-            "EMPIRICAL_RISK_DISTANCE_UNKNOWN"
-        )
-
+        blockers.append("EMPIRICAL_RISK_DISTANCE_UNKNOWN")
     if gap_multiplier is None:
-        blockers.append(
-            "GAP_RISK_UNOBSERVED"
-        )
+        blockers.append("GAP_RISK_UNOBSERVED")
 
     if cost_complete:
         effective_edge = full_edge
-
         if effective_edge is None:
-            blockers.append(
-                "FULL_NET_EDGE_UNKNOWN"
-            )
+            blockers.append("FULL_NET_EDGE_UNKNOWN")
     else:
         if (
             known_edge is None
-            or empirical_cost_uncertainty
-            is None
+            or empirical_cost_uncertainty is None
         ):
             effective_edge = None
-
-            blockers.append(
-                "COST_UNCERTAINTY_UNOBSERVED"
-            )
+            blockers.append("COST_UNCERTAINTY_UNOBSERVED")
         else:
-            effective_edge = (
-                known_edge
-                - empirical_cost_uncertainty
-            )
+            effective_edge = known_edge - empirical_cost_uncertainty
 
-    if (
-        effective_edge is None
-        or effective_edge <= 0
-    ):
-        blockers.append(
-            "NET_EDGE_NOT_POSITIVE"
-        )
+    if effective_edge is None or effective_edge <= 0:
+        blockers.append("NET_EDGE_NOT_POSITIVE")
 
     if blockers:
-        return {
-            "entry_amount_usdt": 0.0,
-            "risk_amount_usdt": 0.0,
-            "capital_before_usdt": (
-                available
-            ),
-            "capital_after_entry_usdt": (
-                available
-            ),
-            "position_size_pct": 0.0,
-            "sizing_reason": (
-                "MATHEMATICAL_POSITION_SIZE_ZERO"
-            ),
-            "formula_authority": (
-                "DATA_DERIVED"
-            ),
-            "magic_percentage_rule": False,
-            "sizing_model": (
-                "EMPIRICAL_GAP_EXIT_CAPACITY_V1"
-            ),
-            "blockers": sorted(
-                set(blockers)
-            ),
-            "raw_plan_amount_usdt": (
-                raw_amount
-            ),
-            "safe_quote_reserve_usd": (
-                safe_quote_reserve
-            ),
-            "risk_log_distance": (
-                risk_log_distance
-            ),
-            "gap_multiplier": (
-                gap_multiplier
-            ),
-            "gap_samples": calibration.get(
-                "gap_samples"
-            ),
-            "empirical_cost_uncertainty_fraction": (
-                empirical_cost_uncertainty
-            ),
-            "cost_samples": calibration.get(
-                "cost_samples"
-            ),
-            "effective_edge_fraction": (
-                effective_edge
-            ),
-            "cost_complete": (
-                cost_complete
-            ),
-        }
+        return _zero_result(
+            available=available,
+            raw_amount=raw_amount,
+            safe_quote_reserve=safe_quote_reserve,
+            risk_log_distance=risk_log_distance,
+            gap_multiplier=gap_multiplier,
+            calibration=calibration,
+            empirical_cost_uncertainty=empirical_cost_uncertainty,
+            effective_edge=effective_edge,
+            cost_complete=cost_complete,
+            blockers=blockers,
+        )
 
-    # Same exponential relation used by
-    # the mathematical stop:
-    #
-    # stop = entry * exp(-risk_distance)
-    risk_retention = math.exp(
-        -risk_log_distance
-    )
+    risk_retention = math.exp(-risk_log_distance)
+    stop_loss_fraction = 1.0 - risk_retention
 
-    stop_loss_fraction = (
-        1.0
-        - risk_retention
-    )
+    base_risk_notional = min(raw_amount, available)
+    stop_risk_budget = base_risk_notional * stop_loss_fraction
 
-    # This is the original mathematical stop-risk
-    # budget before tail-gap adjustment.
-    base_risk_notional = min(
-        raw_amount,
-        available,
-    )
-
-    stop_risk_budget = (
-        base_risk_notional
-        * stop_loss_fraction
-    )
-
-    # Historical worst observed stop overshoot
-    # converts the static stop into tail loss.
-    #
-    # If historical evidence proves a rug can
-    # destroy the whole position, loss fraction
-    # becomes 1.0.
     tail_loss_fraction = min(
         1.0,
-        (
-            stop_loss_fraction
-            * gap_multiplier
-        ),
+        stop_loss_fraction * gap_multiplier,
     )
 
     tail_risk_amount_cap = (
-        stop_risk_budget
-        / tail_loss_fraction
+        stop_risk_budget / tail_loss_fraction
         if tail_loss_fraction > 0
         else 0.0
     )
 
     risk_adjusted_exit_capacity = (
-        safe_quote_reserve
-        * risk_retention
+        safe_quote_reserve * risk_retention
     )
 
     empirical_exit_cap = (
-        risk_adjusted_exit_capacity
-        / gap_multiplier
+        risk_adjusted_exit_capacity / gap_multiplier
     )
 
     amount = max(
@@ -908,97 +630,45 @@ def calculate_paper_position_size(
         ),
     )
 
-    empirical_risk_fraction = (
-        tail_loss_fraction
-    )
-
-    risk = (
-        amount
-        * empirical_risk_fraction
-    )
+    risk = amount * tail_loss_fraction
 
     return {
-        "entry_amount_usdt": (
-            amount
-        ),
-        "risk_amount_usdt": (
-            risk
-        ),
-        "capital_before_usdt": (
-            available
-        ),
-        "capital_after_entry_usdt": max(
-            0.0,
-            available - amount,
-        ),
-        # Reporting only.
-        # Never an input rule.
+        "entry_amount_usdt": amount,
+        "risk_amount_usdt": risk,
+        "capital_before_usdt": available,
+        "capital_after_entry_usdt": max(0.0, available - amount),
         "position_size_pct": (
-            100.0
-            * amount
-            / available
+            100.0 * amount / available
             if available > 0
             else 0.0
         ),
         "sizing_reason": (
             "EMPIRICAL_GAP_EXIT_CAPACITY"
             if amount > 0
-            else (
-                "MATHEMATICAL_POSITION_SIZE_ZERO"
-            )
+            else "MATHEMATICAL_POSITION_SIZE_ZERO"
         ),
-        "formula_authority": (
-            "DATA_DERIVED"
-        ),
+        "formula_authority": "DATA_DERIVED",
         "magic_percentage_rule": False,
-        "sizing_model": (
-            "EMPIRICAL_GAP_EXIT_CAPACITY_V1"
-        ),
+        "sizing_model": "EMPIRICAL_GAP_EXIT_CAPACITY_V2",
         "blockers": [],
-        "raw_plan_amount_usdt": (
-            raw_amount
-        ),
-        "safe_quote_reserve_usd": (
-            safe_quote_reserve
-        ),
-        "risk_log_distance": (
-            risk_log_distance
-        ),
-        "risk_retention": (
-            risk_retention
-        ),
-        "stop_risk_budget_usdt": (
-            stop_risk_budget
-        ),
-        "tail_loss_fraction": (
-            tail_loss_fraction
-        ),
-        "tail_risk_amount_cap_usdt": (
-            tail_risk_amount_cap
-        ),
+        "raw_plan_amount_usdt": raw_amount,
+        "safe_quote_reserve_usd": safe_quote_reserve,
+        "risk_log_distance": risk_log_distance,
+        "risk_retention": risk_retention,
+        "stop_risk_budget_usdt": stop_risk_budget,
+        "tail_loss_fraction": tail_loss_fraction,
+        "tail_risk_amount_cap_usdt": tail_risk_amount_cap,
         "risk_adjusted_exit_capacity_usdt": (
             risk_adjusted_exit_capacity
         ),
-        "empirical_exit_capacity_usdt": (
-            empirical_exit_cap
-        ),
-        "gap_multiplier": (
-            gap_multiplier
-        ),
-        "gap_samples": calibration.get(
-            "gap_samples"
-        ),
+        "empirical_exit_capacity_usdt": empirical_exit_cap,
+        "gap_multiplier": gap_multiplier,
+        "gap_samples": calibration.get("gap_samples"),
         "empirical_cost_uncertainty_fraction": (
             empirical_cost_uncertainty
         ),
-        "cost_samples": calibration.get(
-            "cost_samples"
-        ),
-        "effective_edge_fraction": (
-            effective_edge
-        ),
-        "cost_complete": (
-            cost_complete
-        ),
+        "cost_samples": calibration.get("cost_samples"),
+        "effective_edge_fraction": effective_edge,
+        "cost_complete": cost_complete,
         "kelly_diagnostic_only": True,
     }

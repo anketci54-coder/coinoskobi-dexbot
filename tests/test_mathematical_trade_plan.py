@@ -158,6 +158,71 @@ def test_unprotected_lp_naturally_sizes_zero_without_percent_threshold():
     )
 
 
+
+def test_unprotected_lp_can_use_measured_empirical_reserve_floor():
+    plan = build_trade_plan(
+        entry_price=1.04,
+        available_capital_usdt=1000,
+        price_series=[
+            1.0,
+            1.02,
+            1.04,
+        ],
+        quote_reserve_usd=10000,
+        lp_protected_fraction=0.0,
+        sellability_status="SELLABILITY_OK",
+        sellability_data=sellability(),
+        exit_evidence={
+            **exit_evidence(),
+            "observed_min_quote_reserve_usd": 8000.0,
+            "reserve_observation_count": 3,
+        },
+    )
+
+    blockers = set(plan["blockers"])
+
+    assert "NO_VERIFIED_PERSISTENT_LIQUIDITY" not in blockers
+    assert plan["capital"]["safe_quote_reserve_usd"] == 8000.0
+    assert (
+        plan["capital"]["liquidity_capacity_source"]
+        == "EMPIRICAL_RESERVE_FLOOR"
+    )
+    assert plan["capital"]["entry_amount_usdt"] > 0
+
+
+def test_unknown_lp_protection_remains_unknown_but_not_veto_with_empirical_floor():
+    plan = build_trade_plan(
+        entry_price=1.04,
+        available_capital_usdt=1000,
+        price_series=[
+            1.0,
+            1.02,
+            1.04,
+        ],
+        quote_reserve_usd=10000,
+        lp_protected_fraction=None,
+        sellability_status="SELLABILITY_OK",
+        sellability_data=sellability(),
+        exit_evidence={
+            **exit_evidence(),
+            "observed_min_quote_reserve_usd": 7500.0,
+            "reserve_observation_count": 3,
+        },
+    )
+
+    blockers = set(plan["blockers"])
+    unknowns = set(plan["unknowns"])
+
+    assert "LP_PROTECTION_UNKNOWN" not in blockers
+    assert "LP_PROTECTION_FRACTION" in unknowns
+    assert plan["capital"]["safe_quote_reserve_usd"] == 7500.0
+    assert (
+        plan["capital"]["liquidity_capacity_source"]
+        == "EMPIRICAL_RESERVE_FLOOR"
+    )
+    assert plan["capital"]["entry_amount_usdt"] > 0
+
+
 def test_dynamic_stop_never_moves_down():
     stop = (
         dynamic_stop_price(

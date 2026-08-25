@@ -1134,6 +1134,44 @@ def build_trade_plan(
         exit_evidence,
     )
 
+    exit_data = (
+        dict(exit_evidence)
+        if isinstance(
+            exit_evidence,
+            dict,
+        )
+        else {}
+    )
+
+    observed_min_quote_reserve = max(
+        0.0,
+        _number(
+            exit_data.get(
+                "observed_min_quote_reserve_usd"
+            )
+        )
+        or 0.0,
+    )
+
+    reserve_observation_count = max(
+        0,
+        int(
+            _number(
+                exit_data.get(
+                    "reserve_observation_count"
+                )
+            )
+            or 0
+        ),
+    )
+
+    # Persistence requires more than one measured reserve observation.
+    # This is physical exit-capacity evidence, NOT LP-lock evidence.
+    empirical_reserve_ready = (
+        observed_min_quote_reserve > 0
+        and reserve_observation_count >= 2
+    )
+
     blockers = []
 
     blockers.extend(
@@ -1189,14 +1227,16 @@ def build_trade_plan(
             "LP_PROTECTION_FRACTION"
         )
 
-        blockers.append(
-            "LP_PROTECTION_UNKNOWN"
-        )
+        if not empirical_reserve_ready:
+            blockers.append(
+                "LP_PROTECTION_UNKNOWN"
+            )
 
     elif protected <= 0:
-        blockers.append(
-            "NO_VERIFIED_PERSISTENT_LIQUIDITY"
-        )
+        if not empirical_reserve_ready:
+            blockers.append(
+                "NO_VERIFIED_PERSISTENT_LIQUIDITY"
+            )
 
     gross_log_edge = (
         _number(
@@ -1283,13 +1323,35 @@ def build_trade_plan(
             ),
         )
 
-    safe_quote_reserve = (
-        quote_reserve
-        * protected
-        if protected
-        is not None
-        else 0.0
-    )
+    if (
+        protected is not None
+        and protected > 0
+    ):
+        safe_quote_reserve = (
+            quote_reserve
+            * protected
+        )
+
+        liquidity_capacity_source = (
+            "VERIFIED_LP_PROTECTION"
+        )
+
+    elif empirical_reserve_ready:
+        safe_quote_reserve = min(
+            quote_reserve,
+            observed_min_quote_reserve,
+        )
+
+        liquidity_capacity_source = (
+            "EMPIRICAL_RESERVE_FLOOR"
+        )
+
+    else:
+        safe_quote_reserve = 0.0
+
+        liquidity_capacity_source = (
+            "UNAVAILABLE"
+        )
 
     # Constant-product liquidity cap:
     # position notional is bounded by
@@ -1493,6 +1555,20 @@ def build_trade_plan(
 
             "safe_quote_reserve_usd": (
                 safe_quote_reserve
+            ),
+
+            "liquidity_capacity_source": (
+                liquidity_capacity_source
+            ),
+
+            "observed_min_quote_reserve_usd": (
+                observed_min_quote_reserve
+                if empirical_reserve_ready
+                else None
+            ),
+
+            "reserve_observation_count": (
+                reserve_observation_count
             ),
 
             "liquidity_edge_cap_usdt": (

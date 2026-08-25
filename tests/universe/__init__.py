@@ -1,0 +1,1 @@
+"""Full-universe registry tests."""

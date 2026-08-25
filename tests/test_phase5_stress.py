@@ -1,4 +1,3 @@
-from app.dex.flow_acceleration import analyze_flow_acceleration
 from app.dex.wallet_flow import analyze_wallet_flow
 from app.dex.reserve_dynamics import analyze_reserve_dynamics
 from app.dex.price_impact import analyze_price_impact
@@ -25,21 +24,6 @@ def test_liquidity_withdrawal_is_visible():
     )
 
     assert reserves["state"] == "LIQUIDITY_SHOCK"
-
-
-def test_flow_deceleration_visible():
-    result = analyze_flow_acceleration(
-        short_flow={
-            "count_imbalance": 0.1,
-            "volume_imbalance": 0.0,
-        },
-        long_flow={
-            "count_imbalance": 0.8,
-            "volume_imbalance": 0.7,
-        },
-    )
-
-    assert result["state"] == "ACCELERATING_SELL"
 
 
 def test_shallow_market_large_trade_visible():

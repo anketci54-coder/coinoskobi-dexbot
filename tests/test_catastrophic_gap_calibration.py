@@ -89,12 +89,6 @@ def test_catastrophic_exit_overrides_stale_current_price(tmp_path):
         rel_tol=1e-3,
     )
 
-    assert math.isclose(
-        result["tail_loss_fraction"],
-        1.0 - math.exp(-0.05),
-        rel_tol=1e-9,
-    ) is False
-
     assert result["tail_loss_fraction"] > 0.95
 
     original_stop_budget = (
@@ -105,12 +99,24 @@ def test_catastrophic_exit_overrides_stale_current_price(tmp_path):
         )
     )
 
+    expected_position_cap = (
+        original_stop_budget
+        / result["tail_loss_fraction"]
+    )
+
     assert (
         result["entry_amount_usdt"]
-        <= original_stop_budget + 1e-9
+        <= expected_position_cap + 1e-9
     )
 
     assert (
         result["risk_amount_usdt"]
         <= original_stop_budget + 1e-9
+    )
+
+    assert math.isclose(
+        result["risk_amount_usdt"],
+        result["entry_amount_usdt"]
+        * result["tail_loss_fraction"],
+        rel_tol=1e-9,
     )

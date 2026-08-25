@@ -8,6 +8,17 @@ from app.universe.seismic import SeismicClassifier
 from app.universe.snapshot import DexScreenerSnapshotClient
 
 
+def _new_bsc_web3():
+    """Create a worker-owned HTTP provider instead of sharing app.chains.bsc.w3."""
+    from web3 import Web3
+    from app.config.settings import RPC_URL
+
+    if not RPC_URL:
+        raise RuntimeError("RPC_URL required for universe shadow")
+
+    return Web3(Web3.HTTPProvider(RPC_URL))
+
+
 class Web3LogReader:
     def __init__(self, web3):
         self.web3 = web3
@@ -54,8 +65,13 @@ class FullUniverseObservationRuntime:
 
     def spawn_isolated(self):
         """Build a worker-owned runtime with its own SQLite/provider objects."""
+        worker_web3 = _new_bsc_web3()
         return type(self)(
             start_blocks=dict(self.start_blocks),
+            registry=UniverseRegistry(),
+            log_reader=Web3LogReader(worker_web3),
+            finalized_block_reader=lambda: worker_web3.eth.block_number,
+            snapshot_client=DexScreenerSnapshotClient(),
             confirmation_depth=self.confirmation_depth,
             discovery_block_span=self.discovery.max_block_span,
             observation_batches_per_cycle=self.observation_batches_per_cycle,

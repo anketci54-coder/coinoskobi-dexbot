@@ -1,6 +1,9 @@
 import sqlite3
 
-from app.universe.hot_path import HotDeepPathRouter
+from app.universe.hot_path import (
+    BOOTSTRAP_NATIVE_WSS_LIMIT,
+    HotDeepPathRouter,
+)
 
 
 def address(value):
@@ -18,12 +21,12 @@ class Registry:
 
 
 def row(value, *, dex="pancakeswap_v2", token0=None, token1=None,
-        score=5):
+        score=5, state="HOT"):
     return {
         "chain": "bsc", "dex": dex, "pool": address(value),
         "token0": token0 or address(100 + value),
         "token1": token1 or "0x55d398326f99059ff775485246999027b3197955",
-        "market_state": "HOT", "seismic_score": score,
+        "market_state": state, "seismic_score": score,
         "latest_price_usd": 1, "latest_liquidity_usd": 5000,
         "latest_volume_24h": 9000, "latest_snapshot_source": "dexscreener",
     }
@@ -33,6 +36,16 @@ def verifier(pair, token, quote):
     return {"state": "VERIFIED"}
 
 
+def ingest_pool(registry, pool, *, factory=None, creation_block=None):
+    registry.ingest([{
+        "chain": "bsc", "dex": pool["dex"], "pool": pool["pool"],
+        "token0": pool["token0"], "token1": pool["token1"],
+        "factory": factory or address(900),
+        "creation_block": creation_block if creation_block is not None else int(pool["pool"], 16),
+        "discovery_branch": "EXISTING",
+    }])
+
+
 def test_hot_v2_is_native_eligible_and_identity_is_bound():
     registry = Registry([row(1)])
     router = HotDeepPathRouter(registry, pair_membership_verifier=verifier)
@@ -40,6 +53,7 @@ def test_hot_v2_is_native_eligible_and_identity_is_bound():
     assert target["pair"] == address(1)
     assert target["token"] == address(101)
     assert target["market_state"] == "HOT"
+    assert target["selection_reason"] == "HOT_SEISMIC"
     assert registry.limits == [10]
 
 
@@ -76,12 +90,7 @@ def test_registry_hot_read_is_bounded_and_score_ordered():
     registry = UniverseRegistry(connection=sqlite3.connect(":memory:"))
     for value, score in ((1, 3), (2, 9)):
         pool = row(value, score=score)
-        registry.ingest([{
-            "chain": "bsc", "dex": pool["dex"], "pool": pool["pool"],
-            "token0": pool["token0"], "token1": pool["token1"],
-            "factory": address(900), "creation_block": value,
-            "discovery_branch": "EXISTING",
-        }])
+        ingest_pool(registry, pool, creation_block=value)
         registry.db.execute(
             "UPDATE universe_pool_registry SET market_state='HOT' WHERE pool=?",
             (pool["pool"],),
@@ -100,3 +109,80 @@ def test_registry_hot_read_is_bounded_and_score_ordered():
     assert len(selected) == 1
     assert selected[0]["pool"] == address(2)
     assert selected[0]["seismic_score"] == 9
+
+
+def test_cold_registry_bootstrap_keeps_native_wss_coverage_bounded():
+    from app.universe.registry import UniverseRegistry
+
+    registry = UniverseRegistry(connection=sqlite3.connect(":memory:"))
+    for value, txns in ((10, 3), (11, 21)):
+        pool = row(value, state="COLD")
+        ingest_pool(registry, pool, creation_block=value)
+        registry.db.execute("""
+            UPDATE universe_pool_registry
+            SET latest_txns_5m=?, latest_change_5m=?, latest_volume_24h=?,
+                latest_snapshot_at=?
+            WHERE pool=?
+        """, (
+            txns, float(txns) / 10.0, txns * 100,
+            f"2026-08-25T16:{value}:00+00:00", pool["pool"],
+        ))
+    registry.db.commit()
+
+    router = HotDeepPathRouter(registry, pair_membership_verifier=verifier)
+    targets = router.native_wss_targets(limit=1)
+
+    assert len(targets) == 1
+    assert targets[0]["pair"] == address(11)
+    assert targets[0]["market_state"] == "COLD"
+    assert targets[0]["selection_reason"] == "UNIVERSE_BOOTSTRAP"
+    assert targets[0]["membership_verified"] is True
+
+
+def test_hot_v3_does_not_suppress_bootstrap_v2_native_coverage():
+    from app.universe.registry import UniverseRegistry
+
+    registry = UniverseRegistry(connection=sqlite3.connect(":memory:"))
+    v3 = row(20, dex="pancakeswap_v3")
+    v2 = row(21, state="COLD")
+
+    ingest_pool(registry, v3)
+    ingest_pool(registry, v2)
+
+    registry.db.execute(
+        "UPDATE universe_pool_registry SET market_state='HOT' WHERE pool=?",
+        (v3["pool"],),
+    )
+    registry.db.commit()
+
+    router = HotDeepPathRouter(registry, pair_membership_verifier=verifier)
+    targets = router.native_wss_targets(limit=10)
+
+    assert len(targets) == 1
+    assert targets[0]["pair"] == v2["pool"]
+    assert targets[0]["selection_reason"] == "UNIVERSE_BOOTSTRAP"
+
+
+def test_bootstrap_membership_rpc_work_has_hard_cap():
+    from app.universe.registry import UniverseRegistry
+
+    registry = UniverseRegistry(connection=sqlite3.connect(":memory:"))
+    for value in range(100, 100 + BOOTSTRAP_NATIVE_WSS_LIMIT + 8):
+        ingest_pool(registry, row(value, state="COLD"), creation_block=value)
+    registry.db.commit()
+
+    calls = []
+
+    def counting_verifier(pair, token, quote):
+        calls.append(pair)
+        return {"state": "VERIFIED"}
+
+    router = HotDeepPathRouter(
+        registry,
+        pair_membership_verifier=counting_verifier,
+    )
+    targets = router.native_wss_targets(limit=256)
+
+    assert len(targets) == BOOTSTRAP_NATIVE_WSS_LIMIT
+    assert len(calls) == BOOTSTRAP_NATIVE_WSS_LIMIT
+    assert router.status()["bootstrap_native_limit"] == BOOTSTRAP_NATIVE_WSS_LIMIT

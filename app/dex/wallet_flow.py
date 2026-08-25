@@ -1,4 +1,5 @@
 from collections import Counter
+import math
 
 
 def analyze_wallet_flow(
@@ -41,7 +42,7 @@ def analyze_wallet_flow(
         except (TypeError, ValueError):
             notional = 0.0
 
-        if notional < 0:
+        if notional < 0 or not math.isfinite(notional):
             notional = 0.0
 
         contribution[wallet] += notional
@@ -64,6 +65,50 @@ def analyze_wallet_flow(
         top_wallet_notional / total_notional
         if total_notional > 0
         else 0.0
+    )
+
+    shares = (
+        [
+            value / total_notional
+            for value in contribution.values()
+            if value > 0
+        ]
+        if total_notional > 0
+        else []
+    )
+
+    hhi = (
+        sum(
+            share * share
+            for share in shares
+        )
+        if shares
+        else None
+    )
+
+    shannon_entropy = (
+        -sum(
+            share * math.log(share)
+            for share in shares
+        )
+        if shares
+        else None
+    )
+
+    if len(shares) > 1:
+        normalized_entropy = (
+            shannon_entropy
+            / math.log(len(shares))
+        )
+    elif len(shares) == 1:
+        normalized_entropy = 0.0
+    else:
+        normalized_entropy = None
+
+    effective_wallet_count = (
+        1.0 / hhi
+        if hhi is not None and hhi > 0
+        else None
     )
 
     repeated_transactions = sum(
@@ -111,6 +156,11 @@ def analyze_wallet_flow(
         "repeat_ratio": repeat_ratio,
         "new_wallet_count": len(new_wallets),
         "new_wallet_ratio": new_wallet_ratio,
+        "hhi": hhi,
+        "shannon_entropy": shannon_entropy,
+        "normalized_entropy": normalized_entropy,
+        "effective_wallet_count": effective_wallet_count,
+        "concentration_model": "HHI_SHANNON",
         "concentration_state": state,
         "identity_authority": False,
         "whale_authority": False,

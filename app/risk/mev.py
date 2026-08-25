@@ -31,6 +31,53 @@ def _number(value):
     return value
 
 
+def expected_mev_loss(
+    attack_probability,
+    conditional_loss_usd,
+):
+    """
+    Evidence-bound expected MEV loss.
+
+    E[MEV loss] = P(attack) * E[loss | attack]
+
+    No probability is inferred here. The probability must come from a
+    calibrated model or measured empirical estimator, and the conditional
+    loss must come from an execution/sandwich loss model.
+    """
+    probability = _number(
+        attack_probability
+    )
+    conditional_loss = _number(
+        conditional_loss_usd
+    )
+
+    if (
+        probability is None
+        or conditional_loss is None
+        or probability > 1.0
+    ):
+        return {
+            "state": "UNKNOWN",
+            "attack_probability": None,
+            "conditional_loss_usd": None,
+            "expected_mev_loss_usd": None,
+            "decision_authority": False,
+            "trade_authority": False,
+        }
+
+    return {
+        "state": "READY",
+        "attack_probability": probability,
+        "conditional_loss_usd": conditional_loss,
+        "expected_mev_loss_usd": (
+            probability
+            * conditional_loss
+        ),
+        "decision_authority": False,
+        "trade_authority": False,
+    }
+
+
 class MEVExposureAnalyzer:
     """
     Pure-local MEV / sandwich exposure model.
@@ -251,6 +298,15 @@ class MEVExposureAnalyzer:
         else:
             status = "HIGH_EXPOSURE"
 
+        expected_loss = expected_mev_loss(
+            context.get(
+                "mev_attack_probability"
+            ),
+            context.get(
+                "mev_conditional_loss_usd"
+            ),
+        )
+
         return {
             "status": status,
             "severity": severity,
@@ -260,6 +316,7 @@ class MEVExposureAnalyzer:
             "trade_liquidity_pct": (
                 trade_liquidity_pct
             ),
+            "expected_loss": expected_loss,
 
             # Constitutional authority boundary.
             "hard_block": False,

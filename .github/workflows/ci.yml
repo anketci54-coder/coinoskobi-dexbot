@@ -13,7 +13,7 @@ concurrency:
 
 # Full regression is opt-in by commit marker after a coherent
 # production package has already passed the canonical smoke/E2E gate.
-# Candidate reevaluation package final validation marker.
+# Runtime performance observer validated by full regression marker.
 jobs:
   smoke:
     runs-on: ubuntu-latest

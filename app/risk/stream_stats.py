@@ -186,7 +186,7 @@ def empirical_expected_shortfall(
     """
     confidence = _finite(alpha)
 
-    if confidence is None or not 0.0 < confidence < 1.0:
+    if confidence is None or not 0.0 <= confidence < 1.0:
         return {
             "state": "UNCALIBRATED",
             "alpha": confidence,

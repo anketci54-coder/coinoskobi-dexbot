@@ -2,6 +2,10 @@ import json
 import math
 from statistics import fmean
 
+from app.risk.stream_stats import (
+    empirical_expected_shortfall,
+)
+
 
 def _number(value):
     try:
@@ -1293,6 +1297,116 @@ def build_trade_plan(
             "KNOWN_COMPONENT_EDGE_NOT_POSITIVE"
         )
 
+    risk_log_distance = (
+        _number(
+            stats.get(
+                "risk_log_distance"
+            )
+        )
+        or 0.0
+    )
+
+    empirical_stop_risk_fraction = (
+        (
+            1.0
+            - math.exp(
+                -risk_log_distance
+            )
+        )
+        if risk_log_distance > 0
+        else 0.0
+    )
+
+    observed_returns = [
+        value
+        for value in (
+            stats.get(
+                "log_returns"
+            )
+            or ()
+        )
+        if (
+            _number(value)
+            is not None
+        )
+    ]
+
+    downside_count = sum(
+        1
+        for value in observed_returns
+        if value < 0
+    )
+
+    observed_downside_rate = (
+        downside_count
+        / len(observed_returns)
+        if observed_returns
+        else None
+    )
+
+    empirical_tail_alpha = (
+        1.0
+        - observed_downside_rate
+        if (
+            observed_downside_rate
+            is not None
+            and downside_count > 0
+        )
+        else None
+    )
+
+    if empirical_tail_alpha is None:
+        expected_shortfall = {
+            "state": "NO_DOWNSIDE_OBSERVED",
+            "alpha": None,
+            "sample_count": len(
+                observed_returns
+            ),
+            "tail_count": 0,
+            "expected_shortfall_return": None,
+            "expected_shortfall_loss_fraction": None,
+            "decision_authority": False,
+            "execution_authority": False,
+        }
+
+    else:
+        expected_shortfall = (
+            empirical_expected_shortfall(
+                observed_returns,
+                alpha=empirical_tail_alpha,
+            )
+        )
+
+    expected_shortfall_loss = (
+        _number(
+            expected_shortfall.get(
+                "expected_shortfall_loss_fraction"
+            )
+        )
+        or 0.0
+    )
+
+    tail_risk_fraction = max(
+        empirical_stop_risk_fraction,
+        expected_shortfall_loss,
+    )
+
+    stats[
+        "observed_downside_rate"
+    ] = observed_downside_rate
+
+    stats[
+        "empirical_tail_alpha"
+    ] = empirical_tail_alpha
+
+    stats[
+        "empirical_expected_shortfall"
+    ] = expected_shortfall
+
+    stats[
+        "tail_risk_fraction"
+    ] = tail_risk_fraction
+
     second_moment = (
         _number(
             stats.get(
@@ -1307,12 +1421,13 @@ def build_trade_plan(
             "RETURN_RISK_UNOBSERVABLE"
         )
 
+        full_kelly_fraction = 0.0
+        kelly_shrinkage = 0.0
         kelly_fraction = 0.0
 
     else:
-        # Full Kelly, bounded only by
-        # the physical no-leverage wallet limit.
-        kelly_fraction = min(
+        # Full Kelly remains visible as a diagnostic.
+        full_kelly_fraction = min(
             1.0,
             max(
                 0.0,
@@ -1321,6 +1436,31 @@ def build_trade_plan(
                     / second_moment
                 ),
             ),
+        )
+
+        positive_edge_fraction = max(
+            0.0,
+            edge_fraction,
+        )
+
+        edge_plus_tail = (
+            positive_edge_fraction
+            + tail_risk_fraction
+        )
+
+        # No fixed half/quarter-Kelly constant:
+        # shrinkage comes only from measured
+        # edge relative to measured tail risk.
+        kelly_shrinkage = (
+            positive_edge_fraction
+            / edge_plus_tail
+            if edge_plus_tail > 0
+            else 0.0
+        )
+
+        kelly_fraction = (
+            full_kelly_fraction
+            * kelly_shrinkage
         )
 
     if (
@@ -1389,15 +1529,6 @@ def build_trade_plan(
         )
     )
 
-    risk_log_distance = (
-        _number(
-            stats.get(
-                "risk_log_distance"
-            )
-        )
-        or 0.0
-    )
-
     initial_sl = (
         entry
         * math.exp(
@@ -1464,14 +1595,7 @@ def build_trade_plan(
         )
 
     risk_fraction = (
-        (
-            1.0
-            - math.exp(
-                -risk_log_distance
-            )
-        )
-        if risk_log_distance > 0
-        else 0.0
+        tail_risk_fraction
     )
 
     mathematical_score = (
@@ -1543,6 +1667,14 @@ def build_trade_plan(
         "capital": {
             "available_usdt": (
                 capital
+            ),
+
+            "full_kelly_fraction": (
+                full_kelly_fraction
+            ),
+
+            "kelly_shrinkage": (
+                kelly_shrinkage
             ),
 
             "kelly_fraction": (
@@ -1701,9 +1833,11 @@ def build_trade_plan(
 
         "formulas": {
             "kelly": (
-                "known_net_log_edge/"
+                "full_kelly=known_net_log_edge/"
                 "mean_squared_log_return;"
-                "capped only by no-leverage wallet boundary"
+                "fractional_kelly=full_kelly*"
+                "positive_edge/(positive_edge+tail_risk);"
+                "tail_risk=max(empirical_stop_risk,CVaR_loss)"
             ),
 
             "liquidity_cap": (

@@ -223,6 +223,93 @@ def test_unknown_lp_protection_remains_unknown_but_not_veto_with_empirical_floor
     assert plan["capital"]["entry_amount_usdt"] > 0
 
 
+
+def test_fractional_kelly_is_data_derived_from_tail_risk():
+    plan = build_trade_plan(
+        entry_price=1.30,
+        available_capital_usdt=10000.0,
+        price_series=[
+            1.00,
+            1.20,
+            1.10,
+            1.30,
+        ],
+        quote_reserve_usd=50000.0,
+        lp_protected_fraction=1.0,
+        sellability_status="SELLABILITY_OK",
+        hard_block=False,
+        sellability_data=sellability(),
+        exit_evidence=exit_evidence(),
+    )
+
+    capital = plan["capital"]
+    stats = plan["statistics"]
+
+    assert (
+        0
+        < capital["kelly_fraction"]
+        < capital["full_kelly_fraction"]
+        <= 1
+    )
+
+    assert (
+        0
+        < capital["kelly_shrinkage"]
+        < 1
+    )
+
+    assert (
+        stats["observed_downside_rate"]
+        == 1 / 3
+    )
+
+    es = stats[
+        "empirical_expected_shortfall"
+    ]
+
+    assert es["state"] == "READY"
+
+    assert (
+        stats["tail_risk_fraction"]
+        >= es[
+            "expected_shortfall_loss_fraction"
+        ]
+    )
+
+
+def test_positive_only_series_uses_empirical_stop_risk_without_fake_cvar():
+    plan = build_trade_plan(
+        entry_price=1.30,
+        available_capital_usdt=10000.0,
+        price_series=[
+            1.00,
+            1.10,
+            1.20,
+            1.30,
+        ],
+        quote_reserve_usd=50000.0,
+        lp_protected_fraction=1.0,
+        sellability_status="SELLABILITY_OK",
+        hard_block=False,
+        sellability_data=sellability(),
+        exit_evidence=exit_evidence(),
+    )
+
+    stats = plan["statistics"]
+
+    assert (
+        stats[
+            "empirical_expected_shortfall"
+        ]["state"]
+        == "NO_DOWNSIDE_OBSERVED"
+    )
+
+    assert (
+        stats["tail_risk_fraction"]
+        > 0
+    )
+
+
 def test_dynamic_stop_never_moves_down():
     stop = (
         dynamic_stop_price(

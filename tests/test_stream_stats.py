@@ -102,3 +102,22 @@ def test_expected_shortfall_uses_observed_worst_tail():
         > 0
     )
     assert result["decision_authority"] is False
+
+
+def test_expected_shortfall_accepts_empirical_alpha_zero():
+    from app.risk.stream_stats import (
+        empirical_expected_shortfall,
+    )
+
+    result = empirical_expected_shortfall(
+        [-0.10, -0.20, -0.05],
+        alpha=0.0,
+    )
+
+    assert result["state"] == "READY"
+    assert result["tail_count"] == 3
+    assert result["expected_shortfall_return"] < 0
+    assert (
+        result["expected_shortfall_loss_fraction"]
+        > 0
+    )

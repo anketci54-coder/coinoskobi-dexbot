@@ -1,3 +1,6 @@
+import threading
+import time
+
 from app.universe.discovery import PANCAKE_FACTORY_STREAMS, PancakeUniverseDiscovery
 from app.universe.registry import UniverseRegistry
 from app.universe.scheduler import UniverseObservationScheduler
@@ -48,6 +51,15 @@ class FullUniverseObservationRuntime:
             raise ValueError("observation batches per cycle must be 1..4")
         self._stream_cursor = 0
         self.cycles = 0
+
+    def spawn_isolated(self):
+        """Build a worker-owned runtime with its own SQLite/provider objects."""
+        return type(self)(
+            start_blocks=dict(self.start_blocks),
+            confirmation_depth=self.confirmation_depth,
+            discovery_block_span=self.discovery.max_block_span,
+            observation_batches_per_cycle=self.observation_batches_per_cycle,
+        )
 
     def run_once(self):
         finalized = max(0, int(self.finalized_block_reader()) - self.confirmation_depth)
@@ -100,23 +112,130 @@ class FullUniverseObservationRuntime:
         }
 
 
-__all__ = ["FullUniverseObservationRuntime", "Web3LogReader"]
+class UniverseShadowService:
+    """Background owner that keeps slow universe/provider work off Runner.tick()."""
+
+    def __init__(self, runtime, *, interval=1, join_timeout=5.0):
+        interval = float(interval)
+        if interval <= 0:
+            raise ValueError("positive shadow interval required")
+        self.runtime_template = runtime
+        self.interval = interval
+        self.join_timeout = max(0.1, float(join_timeout))
+        self._lock = threading.RLock()
+        self._stop_event = threading.Event()
+        self._thread = None
+        self._runtime = None
+        self.start_count = 0
+        self.stop_count = 0
+        self.cycle_count = 0
+        self.failure_count = 0
+        self.last_result = None
+        self.last_error = None
+
+    @property
+    def name(self):
+        return "full_universe_shadow"
+
+    def _build_runtime(self):
+        spawn = getattr(self.runtime_template, "spawn_isolated", None)
+        if callable(spawn):
+            return spawn()
+        return self.runtime_template
+
+    def _thread_main(self):
+        try:
+            runtime = self._build_runtime()
+            with self._lock:
+                self._runtime = runtime
+        except Exception as exc:
+            with self._lock:
+                self.failure_count += 1
+                self.last_error = f"{type(exc).__name__}: {exc}"
+            return
+
+        while not self._stop_event.is_set():
+            started = time.monotonic()
+            try:
+                result = runtime.run_once()
+                with self._lock:
+                    self.cycle_count += 1
+                    self.last_result = result
+                    self.last_error = None
+            except Exception as exc:
+                with self._lock:
+                    self.failure_count += 1
+                    self.last_error = f"{type(exc).__name__}: {exc}"
+
+            elapsed = time.monotonic() - started
+            self._stop_event.wait(max(0.0, self.interval - elapsed))
+
+    def start(self):
+        with self._lock:
+            if self._thread is not None and self._thread.is_alive():
+                return False
+            self._stop_event.clear()
+            self.last_error = None
+            thread = threading.Thread(
+                target=self._thread_main,
+                name="coinoskobi-universe-shadow",
+                daemon=True,
+            )
+            self._thread = thread
+            self.start_count += 1
+            thread.start()
+            return True
+
+    def stop(self):
+        with self._lock:
+            thread = self._thread
+            if thread is None:
+                return False
+            self._stop_event.set()
+
+        thread.join(self.join_timeout)
+        stopped = not thread.is_alive()
+        with self._lock:
+            if stopped:
+                self.stop_count += 1
+                self._thread = None
+                self._runtime = None
+        return stopped
+
+    def status(self):
+        with self._lock:
+            running = bool(self._thread and self._thread.is_alive())
+            return {
+                "name": self.name,
+                "state": "READY" if running else "STOPPED",
+                "running": running,
+                "interval": self.interval,
+                "cycles": self.cycle_count,
+                "failures": self.failure_count,
+                "last_error": self.last_error,
+                "decision_authority": False,
+                "paper_authority": False,
+                "live_authority": False,
+                "wallet_authority": False,
+                "execution_authority": False,
+            }
 
 
 def bind_shadow_runtime(runner, runtime, *, interval=1):
-    interval = int(interval)
-    if interval < 1:
-        raise ValueError("positive shadow interval required")
-    runner.scheduler.every(
-        interval=interval, func=runtime.run_once,
-        name="full_universe_shadow",
-    )
+    service = UniverseShadowService(runtime, interval=interval)
+    runner.services.append(service)
     return {
-        "state": "BOUND", "interval": interval,
+        "state": "BOUND", "interval": int(interval),
+        "mode": "BACKGROUND_SERVICE",
         "decision_authority": False, "paper_authority": False,
         "live_authority": False, "wallet_authority": False,
         "execution_authority": False,
     }
 
 
-__all__.append("bind_shadow_runtime")
+__all__ = [
+    "FullUniverseObservationRuntime",
+    "UniverseShadowService",
+    "Web3LogReader",
+    "bind_shadow_runtime",
+]

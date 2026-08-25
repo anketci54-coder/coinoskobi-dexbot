@@ -367,10 +367,9 @@ def test_true_composition_root_e2e(
     pipeline.conveyor = PassConveyor()
     pipeline.price = OpenPrice()
 
-    # This E2E deliberately observes the same candidate twice so
-    # VUR_KAC flow velocity/acceleration can mature through the real
-    # runtime snapshot path. The production cooldown is irrelevant to
-    # this deterministic composition test.
+    # Three snapshots are the minimum to mature native flow from
+    # spread -> velocity -> acceleration through the real runtime path.
+    # Production cooldown is irrelevant to this deterministic E2E.
     pipeline.candidate_queue.cooldown_seconds = 0.0
 
     pipeline.manager.price = (
@@ -422,7 +421,7 @@ def test_true_composition_root_e2e(
     def bounded_sleep(_):
         sleep_count["value"] += 1
 
-        if sleep_count["value"] == 1:
+        if sleep_count["value"] < 3:
             jobs["scanner"]["next"] = 0.0
             jobs["paper_manager"]["next"] = 0.0
             return
@@ -433,7 +432,7 @@ def test_true_composition_root_e2e(
 
     runner.run()
 
-    assert sleep_count["value"] == 2
+    assert sleep_count["value"] == 3
     assert service.started == 1
     assert service.stopped == 1
     assert runner.services_started is False

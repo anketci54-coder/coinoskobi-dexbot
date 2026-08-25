@@ -107,6 +107,54 @@ class UniverseRegistry:
                     PRIMARY KEY(chain, dex, factory, event_kind)
                 )
             """)
+            self.db.execute("""
+                CREATE TABLE IF NOT EXISTS universe_market_observation_v1(
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    chain TEXT NOT NULL,
+                    dex TEXT NOT NULL,
+                    pool TEXT NOT NULL,
+                    source TEXT NOT NULL,
+                    observed_at TEXT NOT NULL,
+                    price_usd REAL,
+                    liquidity_usd REAL,
+                    fdv_usd REAL,
+                    market_cap_usd REAL,
+                    pair_created_at_ms INTEGER,
+                    volume_m5_usd REAL,
+                    volume_h1_usd REAL,
+                    volume_h6_usd REAL,
+                    volume_h24_usd REAL,
+                    buys_m5 INTEGER,
+                    buys_h1 INTEGER,
+                    buys_h6 INTEGER,
+                    buys_h24 INTEGER,
+                    sells_m5 INTEGER,
+                    sells_h1 INTEGER,
+                    sells_h6 INTEGER,
+                    sells_h24 INTEGER,
+                    txns_m5 INTEGER,
+                    txns_h1 INTEGER,
+                    txns_h6 INTEGER,
+                    txns_h24 INTEGER,
+                    change_m5 REAL,
+                    change_h1 REAL,
+                    change_h6 REAL,
+                    change_h24 REAL,
+                    ingested_at TEXT NOT NULL,
+                    FOREIGN KEY(chain, dex, pool)
+                        REFERENCES universe_pool_registry(chain, dex, pool)
+                )
+            """)
+            self.db.execute("""
+                CREATE INDEX IF NOT EXISTS idx_universe_observation_pool_time
+                ON universe_market_observation_v1(
+                    chain, dex, pool, observed_at
+                )
+            """)
+            self.db.execute("""
+                CREATE INDEX IF NOT EXISTS idx_universe_observation_source_time
+                ON universe_market_observation_v1(source, observed_at)
+            """)
 
     @staticmethod
     def _normalize_pool(row, observed_at):
@@ -275,6 +323,107 @@ class UniverseRegistry:
         return int(self.db.execute(
             "SELECT COUNT(*) FROM universe_pool_registry"
         ).fetchone()[0])
+
+    def record_observations(self, snapshots, *, next_observation_at):
+        """Append raw facts and update registry profiles in one transaction."""
+        schedule = {
+            canonical_address(pool): str(timestamp)
+            for pool, timestamp in dict(next_observation_at).items()
+        }
+        rows = []
+        ingested_at = _utc_now()
+
+        for raw in snapshots or []:
+            row = dict(raw)
+            values = {
+                "chain": canonical_chain(row.get("chain", "bsc")),
+                "dex": canonical_dex(row["dex"]),
+                "pool": canonical_address(row["pool"]),
+                "source": str(row.get("source") or "").strip().lower(),
+                "observed_at": str(row.get("observed_at") or "").strip(),
+                "price_usd": row.get("price_usd"),
+                "liquidity_usd": row.get("liquidity_usd"),
+                "fdv_usd": row.get("fdv_usd"),
+                "market_cap_usd": row.get("market_cap_usd"),
+                "pair_created_at_ms": row.get("pair_created_at_ms"),
+                "ingested_at": ingested_at,
+            }
+            if not values["source"] or not values["observed_at"]:
+                raise ValueError("snapshot source and observed_at required")
+            if values["pool"] not in schedule:
+                raise ValueError("next observation time required")
+            values["next_observation_at"] = schedule[values["pool"]]
+            for window in ("m5", "h1", "h6", "h24"):
+                for prefix in ("volume", "buys", "sells", "txns", "change"):
+                    key = f"{prefix}_{window}"
+                    if prefix == "volume":
+                        key += "_usd"
+                    values[key] = row.get(key)
+            rows.append(values)
+
+        columns = (
+            "chain,dex,pool,source,observed_at,price_usd,liquidity_usd,"
+            "fdv_usd,market_cap_usd,pair_created_at_ms,volume_m5_usd,"
+            "volume_h1_usd,volume_h6_usd,volume_h24_usd,buys_m5,buys_h1,"
+            "buys_h6,buys_h24,sells_m5,sells_h1,sells_h6,sells_h24,"
+            "txns_m5,txns_h1,txns_h6,txns_h24,change_m5,change_h1,"
+            "change_h6,change_h24,ingested_at"
+        )
+        placeholders = ",".join(f":{name}" for name in columns.split(","))
+
+        with self.db:
+            for row in rows:
+                exists = self.db.execute("""
+                    SELECT 1 FROM universe_pool_registry
+                    WHERE chain=? AND dex=? AND pool=?
+                """, (row["chain"], row["dex"], row["pool"])).fetchone()
+                if exists is None:
+                    raise ValueError("snapshot pool is not registered")
+                self.db.execute(
+                    f"INSERT INTO universe_market_observation_v1({columns}) "
+                    f"VALUES({placeholders})",
+                    row,
+                )
+                self.db.execute("""
+                    UPDATE universe_pool_registry
+                    SET latest_price_usd=?, latest_liquidity_usd=?,
+                        latest_volume_24h=?, latest_txns_5m=?,
+                        latest_txns_1h=?, latest_txns_6h=?, latest_txns_24h=?,
+                        latest_change_5m=?, latest_change_1h=?,
+                        latest_change_6h=?, latest_change_24h=?,
+                        latest_snapshot_source=?, latest_snapshot_at=?,
+                        last_observation_at=?, next_observation_at=?
+                    WHERE chain=? AND dex=? AND pool=?
+                """, (
+                    row["price_usd"], row["liquidity_usd"],
+                    row["volume_h24_usd"], row["txns_m5"],
+                    row["txns_h1"], row["txns_h6"], row["txns_h24"],
+                    row["change_m5"], row["change_h1"],
+                    row["change_h6"], row["change_h24"],
+                    row["source"], row["observed_at"], row["observed_at"],
+                    row["next_observation_at"], row["chain"], row["dex"],
+                    row["pool"],
+                ))
+
+        return len(rows)
+
+    def schedule_observations(self, schedule):
+        """Move attempted pools forward without inventing market facts."""
+        normalized = [
+            (str(timestamp), canonical_chain(row.get("chain", "bsc")),
+             canonical_dex(row["dex"]), canonical_address(row["pool"]))
+            for row, timestamp in schedule
+        ]
+        with self.db:
+            for values in normalized:
+                cursor = self.db.execute("""
+                    UPDATE universe_pool_registry
+                    SET next_observation_at=?
+                    WHERE chain=? AND dex=? AND pool=?
+                """, values)
+                if cursor.rowcount != 1:
+                    raise ValueError("scheduled pool is not registered")
+        return len(normalized)
 
     def close(self):
         if self._owns_connection:

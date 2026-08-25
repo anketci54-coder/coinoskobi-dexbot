@@ -155,6 +155,34 @@ class UniverseRegistry:
                 CREATE INDEX IF NOT EXISTS idx_universe_observation_source_time
                 ON universe_market_observation_v1(source, observed_at)
             """)
+            self.db.execute("""
+                CREATE TABLE IF NOT EXISTS universe_seismic_evaluation_v1(
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    chain TEXT NOT NULL,
+                    dex TEXT NOT NULL,
+                    pool TEXT NOT NULL,
+                    observed_at TEXT NOT NULL,
+                    policy TEXT NOT NULL,
+                    previous_state TEXT NOT NULL,
+                    next_state TEXT NOT NULL,
+                    score REAL NOT NULL,
+                    price_z REAL,
+                    volume_z REAL,
+                    txns_z REAL,
+                    liquidity_ratio REAL,
+                    evidence_count INTEGER NOT NULL,
+                    reason TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    FOREIGN KEY(chain, dex, pool)
+                        REFERENCES universe_pool_registry(chain, dex, pool)
+                )
+            """)
+            self.db.execute("""
+                CREATE INDEX IF NOT EXISTS idx_universe_seismic_pool_time
+                ON universe_seismic_evaluation_v1(
+                    chain, dex, pool, observed_at
+                )
+            """)
 
     @staticmethod
     def _normalize_pool(row, observed_at):
@@ -425,7 +453,67 @@ class UniverseRegistry:
                     raise ValueError("scheduled pool is not registered")
         return len(normalized)
 
+    def observation_history(self, chain, dex, pool, *, limit):
+        limit = int(limit)
+        if limit < 2:
+            raise ValueError("history limit must be at least 2")
+        rows = self.db.execute("""
+            SELECT * FROM universe_market_observation_v1
+            WHERE chain=? AND dex=? AND pool=?
+            ORDER BY observed_at DESC, id DESC
+            LIMIT ?
+        """, (
+            canonical_chain(chain), canonical_dex(dex),
+            canonical_address(pool), limit,
+        )).fetchall()
+        return [dict(row) for row in reversed(rows)]
+
+    def apply_seismic_evaluation(self, evaluation):
+        values = dict(evaluation)
+        values["chain"] = canonical_chain(values.get("chain", "bsc"))
+        values["dex"] = canonical_dex(values["dex"])
+        values["pool"] = canonical_address(values["pool"])
+        values["previous_state"] = str(values["previous_state"]).upper()
+        values["next_state"] = str(values["next_state"]).upper()
+        if values["previous_state"] not in {"COLD", "WARM", "HOT"}:
+            raise ValueError("invalid previous market state")
+        if values["next_state"] not in {"COLD", "WARM", "HOT"}:
+            raise ValueError("invalid next market state")
+        values["created_at"] = _utc_now()
+
+        with self.db:
+            current = self.db.execute("""
+                SELECT market_state FROM universe_pool_registry
+                WHERE chain=? AND dex=? AND pool=?
+            """, (values["chain"], values["dex"], values["pool"])).fetchone()
+            if current is None:
+                raise ValueError("seismic pool is not registered")
+            if current[0] != values["previous_state"]:
+                raise ValueError("stale seismic evaluation")
+            self.db.execute("""
+                INSERT INTO universe_seismic_evaluation_v1(
+                    chain,dex,pool,observed_at,policy,previous_state,next_state,
+                    score,price_z,volume_z,txns_z,liquidity_ratio,
+                    evidence_count,reason,created_at
+                ) VALUES(
+                    :chain,:dex,:pool,:observed_at,:policy,:previous_state,
+                    :next_state,:score,:price_z,:volume_z,:txns_z,
+                    :liquidity_ratio,:evidence_count,:reason,:created_at
+                )
+            """, values)
+            self.db.execute("""
+                UPDATE universe_pool_registry
+                SET market_state=?,
+                    state_changed_at=CASE WHEN market_state<>? THEN ?
+                                          ELSE state_changed_at END
+                WHERE chain=? AND dex=? AND pool=?
+            """, (
+                values["next_state"], values["next_state"],
+                values["observed_at"], values["chain"], values["dex"],
+                values["pool"],
+            ))
+        return values["next_state"]
+
     def close(self):
         if self._owns_connection:
             self.db.close()
-

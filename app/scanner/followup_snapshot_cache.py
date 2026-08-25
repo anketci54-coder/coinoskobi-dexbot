@@ -1,5 +1,6 @@
 import sqlite3
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 
 
@@ -51,6 +52,12 @@ def persist_registered_followup_snapshots(
         time.time()
         if now is None
         else now
+    )
+    fallback_observed_at = (
+        datetime.fromtimestamp(
+            timestamp,
+            tz=timezone.utc,
+        ).isoformat()
     )
 
     try:
@@ -194,14 +201,7 @@ def persist_registered_followup_snapshots(
                         'MARKET_OBSERVATION_V1',
                         'bsc',
                         'geckoterminal_followup',
-                        ?,?,?,?,?,?,?,?,?,?,?,
-                        COALESCE(
-                            ?,
-                            strftime(
-                                '%Y-%m-%dT%H:%M:%fZ',
-                                'now'
-                            )
-                        ),
+                        ?,?,?,?,?,?,?,?,?,?,?,?,
                         strftime(
                             '%Y-%m-%dT%H:%M:%fZ',
                             'now'
@@ -220,7 +220,10 @@ def persist_registered_followup_snapshots(
                         row.get("fdv"),
                         row.get("market_cap"),
                         row.get("created_at"),
-                        row.get("observed_at"),
+                        (
+                            row.get("observed_at")
+                            or fallback_observed_at
+                        ),
                     ),
                 )
                 history += 1

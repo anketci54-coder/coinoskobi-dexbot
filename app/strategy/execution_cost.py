@@ -16,6 +16,52 @@ def _number(value):
     return value
 
 
+def _nested_expected_mev_loss_usd(context):
+    direct = _number(
+        context.get(
+            "mev_expected_loss_usd"
+        )
+    )
+
+    if direct is not None:
+        return direct, "DIRECT_USD"
+
+    expected = context.get(
+        "mev_expected_loss"
+    )
+
+    if isinstance(expected, dict):
+        nested = _number(
+            expected.get(
+                "expected_mev_loss_usd"
+            )
+        )
+
+        if nested is not None:
+            return nested, "EXPECTED_LOSS_PAYLOAD"
+
+    mev_result = context.get(
+        "mev_result"
+    )
+
+    if isinstance(mev_result, dict):
+        nested_payload = mev_result.get(
+            "expected_loss"
+        )
+
+        if isinstance(nested_payload, dict):
+            nested = _number(
+                nested_payload.get(
+                    "expected_mev_loss_usd"
+                )
+            )
+
+            if nested is not None:
+                return nested, "MEV_ANALYZER_PAYLOAD"
+
+    return None, None
+
+
 class ExecutionCostEngine:
     """
     Execution Cost v1.
@@ -41,8 +87,9 @@ class ExecutionCostEngine:
     Fixed gas cost:
     - gas_cost_usd
 
-    Gas can be converted to percentage only when
-    trade_size_usd is also known.
+    MEV may be supplied either as an already measured percentage or as
+    expected monetary loss. Monetary loss is converted to percentage only
+    when trade_size_usd is known. No missing MEV cost is treated as zero.
     """
 
     REQUIRED_PERCENT_FIELDS = (
@@ -77,13 +124,52 @@ class ExecutionCostEngine:
         percent_values = {}
 
         for field in (
-            self.REQUIRED_PERCENT_FIELDS
+            "buy_tax_pct",
+            "sell_tax_pct",
+            "swap_fee_pct",
+            "slippage_pct",
         ):
             percent_values[field] = (
                 _number(
                     context.get(field)
                 )
             )
+
+        direct_mev_cost_pct = _number(
+            context.get(
+                "mev_cost_pct"
+            )
+        )
+
+        expected_mev_loss_usd, mev_loss_source = (
+            _nested_expected_mev_loss_usd(
+                context
+            )
+        )
+
+        mev_cost_pct = direct_mev_cost_pct
+        mev_cost_source = (
+            "DIRECT_PERCENT"
+            if direct_mev_cost_pct is not None
+            else None
+        )
+
+        if (
+            mev_cost_pct is None
+            and expected_mev_loss_usd is not None
+            and trade_size_usd is not None
+            and trade_size_usd > 0
+        ):
+            mev_cost_pct = (
+                expected_mev_loss_usd
+                / trade_size_usd
+                * 100.0
+            )
+            mev_cost_source = mev_loss_source
+
+        percent_values[
+            "mev_cost_pct"
+        ] = mev_cost_pct
 
         known_percent_cost = sum(
             value
@@ -100,6 +186,23 @@ class ExecutionCostEngine:
             ) in percent_values.items()
             if value is None
         ]
+
+        if (
+            direct_mev_cost_pct is None
+            and expected_mev_loss_usd is not None
+            and (
+                trade_size_usd is None
+                or trade_size_usd <= 0
+            )
+        ):
+            if "mev_cost_pct" in unknown_components:
+                unknown_components.remove(
+                    "mev_cost_pct"
+                )
+
+            unknown_components.append(
+                "trade_size_usd_for_mev"
+            )
 
         gas_cost_pct = None
 
@@ -153,13 +256,6 @@ class ExecutionCostEngine:
                     - known_total_cost_pct
                 )
 
-        # --------------------------------------------------------
-        # Feasibility
-        #
-        # Without complete cost evidence and expected edge,
-        # we refuse to pretend the economics are known.
-        # --------------------------------------------------------
-
         if not cost_complete:
             feasibility = "UNKNOWN_COST"
 
@@ -209,6 +305,10 @@ class ExecutionCostEngine:
             is not None
         )
 
+        coverage[
+            "mev_expected_loss_usd"
+        ] = expected_mev_loss_usd is not None
+
         known_count = sum(
             bool(value)
             for (
@@ -216,7 +316,10 @@ class ExecutionCostEngine:
                 value,
             ) in coverage.items()
             if key
-            != "expected_gross_edge_pct"
+            not in {
+                "expected_gross_edge_pct",
+                "mev_expected_loss_usd",
+            }
         )
 
         cost_input_count = 7
@@ -242,6 +345,14 @@ class ExecutionCostEngine:
                     gas_cost_pct
                 ),
             },
+
+            "mev_expected_loss_usd": (
+                expected_mev_loss_usd
+            ),
+
+            "mev_cost_source": (
+                mev_cost_source
+            ),
 
             "gas_cost_usd": (
                 gas_cost_usd

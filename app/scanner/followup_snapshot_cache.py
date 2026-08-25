@@ -194,7 +194,7 @@ def persist_registered_followup_snapshots(
                         'MARKET_OBSERVATION_V1',
                         'bsc',
                         'geckoterminal_followup',
-                        ?,?,?,?,?,?,?,?,?,?,?,?,
+                        ?,?,?,?,?,?,?,?,?,?,?,
                         COALESCE(
                             ?,
                             strftime(

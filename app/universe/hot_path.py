@@ -3,6 +3,7 @@ from app.universe.schema import DEX_PANCAKESWAP_V2
 
 
 BASE_TOKEN_SET = frozenset(str(value).strip().lower() for value in BASE_TOKENS)
+BOOTSTRAP_NATIVE_WSS_LIMIT = 16
 
 
 class HotDeepPathRouter:
@@ -44,7 +45,7 @@ class HotDeepPathRouter:
 
     def _bootstrap_candidates(self, *, limit):
         """Bounded WARM/COLD V2 coverage while no verified HOT V2 target exists."""
-        limit = int(limit)
+        limit = min(int(limit), BOOTSTRAP_NATIVE_WSS_LIMIT)
         if limit < 1:
             raise ValueError("positive bootstrap candidate limit required")
         db = getattr(self.registry, "db", None)
@@ -118,11 +119,13 @@ class HotDeepPathRouter:
             return hot_targets
 
         # Bootstrap/restart guard: the registry can contain many COLD rows
-        # before the robust classifier has its minimum history. Keep bounded
-        # native V2 observation alive until a verified HOT V2 target exists.
+        # before the robust classifier has its minimum history. Keep a small,
+        # ranked native V2 radar alive without turning bootstrap membership
+        # verification into an unbounded synchronous RPC burst.
+        bootstrap_limit = min(limit, BOOTSTRAP_NATIVE_WSS_LIMIT)
         return self._verified_native_targets(
-            self._bootstrap_candidates(limit=limit),
-            limit=limit,
+            self._bootstrap_candidates(limit=bootstrap_limit),
+            limit=bootstrap_limit,
             selection_reason="UNIVERSE_BOOTSTRAP",
         )
 
@@ -136,10 +139,14 @@ class HotDeepPathRouter:
             "v3_snapshot_deep_only": sum(
                 row["dex"] != DEX_PANCAKESWAP_V2 for row in candidates
             ),
+            "bootstrap_native_limit": BOOTSTRAP_NATIVE_WSS_LIMIT,
             "bounded": True, "decision_authority": False,
             "paper_authority": False, "live_authority": False,
             "wallet_authority": False, "execution_authority": False,
         }
 
 
-__all__ = ["HotDeepPathRouter"]
+__all__ = [
+    "BOOTSTRAP_NATIVE_WSS_LIMIT",
+    "HotDeepPathRouter",
+]

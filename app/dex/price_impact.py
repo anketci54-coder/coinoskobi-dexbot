@@ -19,6 +19,77 @@ def _finite_positive(value):
     return value
 
 
+def _fee_fraction(value):
+    try:
+        value = float(value)
+    except (TypeError, ValueError):
+        return None
+
+    if not 0.0 <= value < 1.0:
+        return None
+
+    return value
+
+
+def max_input_for_price_impact(
+    *,
+    reserve_in,
+    fee_fraction,
+    max_price_impact_fraction,
+):
+    """Invert V2 x*y=k impact to obtain a gross-input capacity.
+
+    The impact bound is an input, not a hidden policy constant. This
+    function only converts a caller-provided risk bound into an exact
+    reserve-aware capacity.
+    """
+    x = _finite_positive(reserve_in)
+    fee = _fee_fraction(fee_fraction)
+
+    try:
+        impact = float(max_price_impact_fraction)
+    except (TypeError, ValueError):
+        impact = None
+
+    if (
+        x is None
+        or fee is None
+        or impact is None
+        or not 0.0 < impact < 1.0
+    ):
+        return {
+            "state": "UNKNOWN",
+            "max_amount_in": None,
+            "decision_authority": False,
+            "execution_authority": False,
+        }
+
+    effective_capacity = (
+        x * impact
+        / (1.0 - impact)
+    )
+
+    gross_capacity = (
+        effective_capacity
+        / (1.0 - fee)
+    )
+
+    return {
+        "state": "READY",
+        "model": "CONSTANT_PRODUCT_V2_INVERSE_IMPACT",
+        "reserve_in": x,
+        "fee_fraction": fee,
+        "max_price_impact_fraction": impact,
+        "max_effective_amount_in": effective_capacity,
+        "max_amount_in": gross_capacity,
+        "decision_authority": False,
+        "paper_authority": False,
+        "live_authority": False,
+        "wallet_authority": False,
+        "execution_authority": False,
+    }
+
+
 def constant_product_quote(
     *,
     reserve_in,
@@ -35,18 +106,13 @@ def constant_product_quote(
     x = _finite_positive(reserve_in)
     y = _finite_positive(reserve_out)
     dx = _finite_positive(amount_in)
-
-    try:
-        fee = float(fee_fraction)
-    except (TypeError, ValueError):
-        fee = None
+    fee = _fee_fraction(fee_fraction)
 
     if (
         x is None
         or y is None
         or dx is None
         or fee is None
-        or not 0.0 <= fee < 1.0
     ):
         return {
             "state": "UNKNOWN",
@@ -148,6 +214,7 @@ def analyze_price_impact(
     reserve_out=None,
     amount_in=None,
     fee_fraction=None,
+    max_price_impact_fraction=None,
 ):
     trade_size = _positive(
         trade_size_usd
@@ -185,6 +252,14 @@ def analyze_price_impact(
         fee_fraction=fee_fraction,
     )
 
+    capacity = max_input_for_price_impact(
+        reserve_in=reserve_in,
+        fee_fraction=fee_fraction,
+        max_price_impact_fraction=(
+            max_price_impact_fraction
+        ),
+    )
+
     return {
         "trade_size_usd": trade_size,
         "liquidity_usd": liquidity,
@@ -193,6 +268,10 @@ def analyze_price_impact(
         "exact_amm": exact,
         "exact_amm_ready": (
             exact.get("state") == "READY"
+        ),
+        "impact_capacity": capacity,
+        "impact_capacity_ready": (
+            capacity.get("state") == "READY"
         ),
         "decision_authority": False,
         "paper_authority": False,

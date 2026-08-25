@@ -59,6 +59,8 @@ from app.dex.flow_spread import flow_spread
 from app.dex.runtime_actor_intelligence import RuntimeActorIntelligence
 from app.scanner.adapters.source_router import normalize_source_rows
 from app.scanner.gecko_scanner import GeckoScanner
+from app.universe.hot_path import HotDeepPathRouter
+from app.universe.registry import UniverseRegistry
 
 from app.config.scanner import (
     ANALYZER_WORKERS,
@@ -774,6 +776,11 @@ class PipelineEngine:
                 ),
             )
         )
+        self.universe_registry = UniverseRegistry()
+        self.hot_deep_path = HotDeepPathRouter(
+            self.universe_registry,
+            pair_membership_verifier=self.pair_membership_verifier,
+        )
 
     def configure_native_market_flow(
         self,
@@ -788,6 +795,12 @@ class PipelineEngine:
         )
 
     def native_wss_targets(self, max_pairs=256):
+        hot_targets = self.hot_deep_path.native_wss_targets(
+            limit=max(1, int(max_pairs))
+        )
+        if hot_targets or self.universe_registry.count() > 0:
+            return hot_targets
+
         normalized = normalize_source_rows(
             "geckoterminal",
             "bsc",
@@ -853,6 +866,11 @@ class PipelineEngine:
                 break
 
         return targets
+
+    def hot_deep_candidates(self, max_candidates=256):
+        return self.hot_deep_path.candidates(
+            limit=max(1, int(max_candidates))
+        )
 
     def confirm_native_market_flow(
         self,

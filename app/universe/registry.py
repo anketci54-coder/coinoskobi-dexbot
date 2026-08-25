@@ -468,6 +468,29 @@ class UniverseRegistry:
         )).fetchall()
         return [dict(row) for row in reversed(rows)]
 
+    def hot_pools(self, *, limit):
+        limit = int(limit)
+        if limit < 1:
+            raise ValueError("positive HOT pool limit required")
+        rows = self.db.execute("""
+            SELECT registry.*,
+                   COALESCE((
+                       SELECT score
+                       FROM universe_seismic_evaluation_v1 AS seismic
+                       WHERE seismic.chain=registry.chain
+                         AND seismic.dex=registry.dex
+                         AND seismic.pool=registry.pool
+                       ORDER BY seismic.observed_at DESC, seismic.id DESC
+                       LIMIT 1
+                   ), 0) AS seismic_score
+            FROM universe_pool_registry AS registry
+            WHERE market_state='HOT'
+            ORDER BY seismic_score DESC, latest_snapshot_at DESC,
+                     creation_block DESC
+            LIMIT ?
+        """, (limit,)).fetchall()
+        return [dict(row) for row in rows]
+
     def apply_seismic_evaluation(self, evaluation):
         values = dict(evaluation)
         values["chain"] = canonical_chain(values.get("chain", "bsc"))

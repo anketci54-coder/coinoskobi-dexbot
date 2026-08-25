@@ -4,14 +4,100 @@ import time
 from collections import OrderedDict
 
 
+_ORIGIN_EVIDENCE_MAX = 16384
+_ORIGIN_EVIDENCE = OrderedDict()
+_ORIGIN_EVIDENCE_LOCK = threading.RLock()
+
+
+def _normalize_hash(transaction_hash):
+    return str(transaction_hash or "").strip().lower()
+
+
+def _normalize_address(address):
+    value = str(address or "").strip().lower()
+    return value or None
+
+
+def remember_transaction_origin(transaction_hash, address):
+    """
+    Process-local bounded evidence bridge.
+
+    Stores only an already-resolved tx.from fact. It never fetches,
+    guesses, or treats a Swap sender as a wallet identity.
+    """
+    tx_hash = _normalize_hash(transaction_hash)
+    address = _normalize_address(address)
+
+    if not tx_hash or not address:
+        return False
+
+    with _ORIGIN_EVIDENCE_LOCK:
+        _ORIGIN_EVIDENCE.pop(tx_hash, None)
+        _ORIGIN_EVIDENCE[tx_hash] = address
+
+        while len(_ORIGIN_EVIDENCE) > _ORIGIN_EVIDENCE_MAX:
+            _ORIGIN_EVIDENCE.popitem(last=False)
+
+    return True
+
+
+def resolved_transaction_origin(transaction_hash):
+    """Return a previously proven tx.from value, or None."""
+    tx_hash = _normalize_hash(transaction_hash)
+
+    if not tx_hash:
+        return None
+
+    with _ORIGIN_EVIDENCE_LOCK:
+        address = _ORIGIN_EVIDENCE.get(tx_hash)
+
+        if address is not None:
+            _ORIGIN_EVIDENCE.move_to_end(tx_hash)
+
+        return address
+
+
+def forget_transaction_origin(transaction_hash):
+    tx_hash = _normalize_hash(transaction_hash)
+
+    if not tx_hash:
+        return False
+
+    with _ORIGIN_EVIDENCE_LOCK:
+        return _ORIGIN_EVIDENCE.pop(tx_hash, None) is not None
+
+
+def transaction_origin_evidence_status():
+    with _ORIGIN_EVIDENCE_LOCK:
+        return {
+            "state": "READY",
+            "size": len(_ORIGIN_EVIDENCE),
+            "max_entries": _ORIGIN_EVIDENCE_MAX,
+            "bounded": True,
+            "identity_source": "TRANSACTION_FROM_ONLY",
+            "swap_sender_is_wallet": False,
+            "decision_authority": False,
+            "execution_authority": False,
+        }
+
+
 class TransactionOriginResolver:
     """Bounded tx-hash -> tx.from resolver with timeout and negative TTL."""
 
-    def __init__(self, max_entries=8192, fetcher=None, timeout_seconds=1.5, negative_ttl_seconds=5.0):
+    def __init__(
+        self,
+        max_entries=8192,
+        fetcher=None,
+        timeout_seconds=1.5,
+        negative_ttl_seconds=5.0,
+    ):
         self.max_entries = max(1, int(max_entries))
         self.fetcher = fetcher or self._default_fetcher
         self.timeout_seconds = max(0.05, float(timeout_seconds))
-        self.negative_ttl_seconds = max(0.0, float(negative_ttl_seconds))
+        self.negative_ttl_seconds = max(
+            0.0,
+            float(negative_ttl_seconds),
+        )
         self._cache = OrderedDict()
         self._negative = OrderedDict()
         self._lock = threading.RLock()
@@ -29,11 +115,14 @@ class TransactionOriginResolver:
     def _negative_hit(self, tx_hash):
         now = time.monotonic()
         expiry = self._negative.get(tx_hash)
+
         if expiry is None:
             return False
+
         if expiry <= now:
             self._negative.pop(tx_hash, None)
             return False
+
         self._negative.move_to_end(tx_hash)
         self.negative_hits += 1
         return True
@@ -41,59 +130,124 @@ class TransactionOriginResolver:
     def _remember_negative(self, tx_hash):
         if self.negative_ttl_seconds <= 0:
             return
-        self._negative[tx_hash] = time.monotonic() + self.negative_ttl_seconds
+
+        self._negative[tx_hash] = (
+            time.monotonic()
+            + self.negative_ttl_seconds
+        )
         self._negative.move_to_end(tx_hash)
+
         while len(self._negative) > self.max_entries:
             self._negative.popitem(last=False)
 
     async def resolve(self, transaction_hash):
-        tx_hash = str(transaction_hash or "").strip().lower()
+        tx_hash = _normalize_hash(transaction_hash)
+
         if not tx_hash:
-            return self._out("UNKNOWN", None, None, "TX_HASH_MISSING")
+            return self._out(
+                "UNKNOWN",
+                None,
+                None,
+                "TX_HASH_MISSING",
+            )
 
         with self._lock:
             cached = self._cache.get(tx_hash)
+
             if cached is not None:
                 self._cache.move_to_end(tx_hash)
                 self.cache_hits += 1
-                return self._out("READY", tx_hash, cached, "CACHE")
+                remember_transaction_origin(
+                    tx_hash,
+                    cached,
+                )
+                return self._out(
+                    "READY",
+                    tx_hash,
+                    cached,
+                    "CACHE",
+                )
+
             if self._negative_hit(tx_hash):
-                return self._out("UNKNOWN", tx_hash, None, "NEGATIVE_TTL")
+                return self._out(
+                    "UNKNOWN",
+                    tx_hash,
+                    None,
+                    "NEGATIVE_TTL",
+                )
 
         try:
             result = await asyncio.wait_for(
-                asyncio.to_thread(self.fetcher, tx_hash),
+                asyncio.to_thread(
+                    self.fetcher,
+                    tx_hash,
+                ),
                 timeout=self.timeout_seconds,
             )
+
             with self._lock:
                 self.provider_calls += 1
+
         except Exception as exc:
             with self._lock:
                 self.provider_calls += 1
                 self.resolve_failures += 1
                 self._remember_negative(tx_hash)
-            return self._out("UNKNOWN", tx_hash, None, f"PROVIDER_ERROR:{type(exc).__name__}")
+
+            return self._out(
+                "UNKNOWN",
+                tx_hash,
+                None,
+                f"PROVIDER_ERROR:{type(exc).__name__}",
+            )
 
         address = self._extract_from(result)
+
         if not address:
             with self._lock:
                 self.resolve_failures += 1
                 self._remember_negative(tx_hash)
-            return self._out("UNKNOWN", tx_hash, None, "TX_FROM_MISSING")
+
+            return self._out(
+                "UNKNOWN",
+                tx_hash,
+                None,
+                "TX_FROM_MISSING",
+            )
 
         with self._lock:
             self._negative.pop(tx_hash, None)
-            if tx_hash not in self._cache and len(self._cache) >= self.max_entries:
+
+            if (
+                tx_hash not in self._cache
+                and len(self._cache) >= self.max_entries
+            ):
                 self._cache.popitem(last=False)
                 self.evictions += 1
+
             self._cache[tx_hash] = address
             self._cache.move_to_end(tx_hash)
-        return self._out("READY", tx_hash, address, "PROVIDER")
+
+        remember_transaction_origin(
+            tx_hash,
+            address,
+        )
+
+        return self._out(
+            "READY",
+            tx_hash,
+            address,
+            "PROVIDER",
+        )
 
     def forget(self, transaction_hash):
-        tx_hash = str(transaction_hash or "").strip().lower()
+        tx_hash = _normalize_hash(transaction_hash)
+
         if not tx_hash:
             return False
+
+        forget_transaction_origin(tx_hash)
+
         with self._lock:
             self._negative.pop(tx_hash, None)
             return self._cache.pop(tx_hash, None) is not None
@@ -106,14 +260,18 @@ class TransactionOriginResolver:
                 "negative_size": len(self._negative),
                 "max_entries": self.max_entries,
                 "timeout_seconds": self.timeout_seconds,
-                "negative_ttl_seconds": self.negative_ttl_seconds,
+                "negative_ttl_seconds": (
+                    self.negative_ttl_seconds
+                ),
                 "provider_calls": self.provider_calls,
                 "cache_hits": self.cache_hits,
                 "negative_hits": self.negative_hits,
                 "resolve_failures": self.resolve_failures,
                 "evictions": self.evictions,
                 "bounded": True,
-                "wallet_identity_source": "TRANSACTION_FROM_ONLY",
+                "wallet_identity_source": (
+                    "TRANSACTION_FROM_ONLY"
+                ),
                 "swap_sender_is_wallet": False,
                 "decision_authority": False,
                 "paper_authority": False,
@@ -126,18 +284,19 @@ class TransactionOriginResolver:
     def _extract_from(result):
         if result is None:
             return None
+
         if isinstance(result, dict):
             value = result.get("from")
         else:
             value = getattr(result, "from", None)
+
             if value is None:
                 try:
                     value = result["from"]
                 except Exception:
                     value = None
-        if not value:
-            return None
-        return str(value).strip().lower() or None
+
+        return _normalize_address(value)
 
     @staticmethod
     def _default_fetcher(transaction_hash):

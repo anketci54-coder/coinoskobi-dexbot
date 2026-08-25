@@ -54,6 +54,7 @@ class CandidateAdmissionQueue:
         self.cooldown_skipped = 0
         self.overflow_rejected = 0
         self.evicted_low_priority = 0
+        self.cold_skipped = 0
 
         self.heap_compactions = 0
         self.cooldown_prunes = 0
@@ -72,11 +73,15 @@ class CandidateAdmissionQueue:
 
     @classmethod
     def identity_key(cls, row):
+        pool = cls.normalize_token(
+            row.get("pool")
+        )
+
         token = cls.normalize_token(
             row.get("token")
         )
 
-        if not token:
+        if not token and not pool:
             return None
 
         chain = str(
@@ -86,11 +91,28 @@ class CandidateAdmissionQueue:
         if not chain:
             chain = "bsc"
 
-        return f"{chain}:{token}"
+        if pool:
+            return f"{chain}:pool:{pool}"
+
+        return f"{chain}:token:{token}"
 
     @staticmethod
     def priority(row):
+        state = str(
+            row.get("market_state") or ""
+        ).strip().upper()
+
+        heat_rank = {
+            "HOT": 2,
+            "WARM": 1,
+        }.get(state, 0)
+
         return (
+            heat_rank,
+            float(
+                row.get("seismic_score")
+                or 0
+            ),
             float(
                 row.get("liquidity")
                 or 0
@@ -169,11 +191,13 @@ class CandidateAdmissionQueue:
         version,
         first_seen,
     ):
-        liquidity, volume, buys = priority
+        heat, seismic, liquidity, volume, buys = priority
 
         heapq.heappush(
             self._best_heap,
             (
+                -heat,
+                -seismic,
                 -liquidity,
                 -volume,
                 -buys,
@@ -186,6 +210,8 @@ class CandidateAdmissionQueue:
         heapq.heappush(
             self._worst_heap,
             (
+                heat,
+                seismic,
                 liquidity,
                 volume,
                 buys,
@@ -202,7 +228,7 @@ class CandidateAdmissionQueue:
         for identity, entry in (
             self._entries.items()
         ):
-            liquidity, volume, buys = (
+            heat, seismic, liquidity, volume, buys = (
                 entry["priority"]
             )
 
@@ -216,6 +242,8 @@ class CandidateAdmissionQueue:
 
             best.append(
                 (
+                    -heat,
+                    -seismic,
                     -liquidity,
                     -volume,
                     -buys,
@@ -227,6 +255,8 @@ class CandidateAdmissionQueue:
 
             worst.append(
                 (
+                    heat,
+                    seismic,
                     liquidity,
                     volume,
                     buys,
@@ -394,6 +424,8 @@ class CandidateAdmissionQueue:
             return None
 
         (
+            heat,
+            seismic,
             liquidity,
             volume,
             buys,
@@ -410,6 +442,8 @@ class CandidateAdmissionQueue:
 
         return (
             (
+                heat,
+                seismic,
                 liquidity,
                 volume,
                 buys,
@@ -427,6 +461,10 @@ class CandidateAdmissionQueue:
         )
 
         if not token or not identity:
+            return False
+
+        if str(row.get("market_state") or "").strip().upper() == "COLD":
+            self.cold_skipped += 1
             return False
 
         now = time.monotonic()
@@ -549,6 +587,8 @@ class CandidateAdmissionQueue:
                 _,
                 _,
                 _,
+                _,
+                _,
                 version,
                 identity,
             ) = heapq.heappop(
@@ -573,6 +613,7 @@ class CandidateAdmissionQueue:
         self,
         token,
         chain="bsc",
+        pool=None,
     ):
         normalized = self.normalize_token(
             token
@@ -581,10 +622,17 @@ class CandidateAdmissionQueue:
         if not normalized:
             return
 
-        identity = (
-            f"{str(chain).strip().lower()}:"
-            f"{normalized}"
-        )
+        normalized_pool = self.normalize_token(pool)
+        if normalized_pool:
+            identity = (
+                f"{str(chain).strip().lower()}:"
+                f"pool:{normalized_pool}"
+            )
+        else:
+            identity = (
+                f"{str(chain).strip().lower()}:"
+                f"token:{normalized}"
+            )
 
         now = time.monotonic()
 
@@ -637,6 +685,7 @@ class CandidateAdmissionQueue:
             "evicted_low_priority": (
                 self.evicted_low_priority
             ),
+            "cold_skipped": self.cold_skipped,
             "best_heap_size": (
                 len(self._best_heap)
             ),

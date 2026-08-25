@@ -203,3 +203,58 @@ def test_chain_aware_cooldown_does_not_block_other_chain():
         "volume_24h": 5000,
         "buys_24h": 20,
     })
+
+
+def test_explicit_cold_pool_never_enters_deep_analysis_queue():
+    queue = CandidateAdmissionQueue()
+    candidate = {
+        **row(1), "pool": f"0x{101:040x}",
+        "market_state": "COLD", "seismic_score": 99,
+    }
+    assert queue.enqueue(candidate) is False
+    assert queue.pending_count == 0
+    assert queue.stats()["cold_skipped"] == 1
+
+
+def test_hot_precedes_warm_even_when_market_profile_is_smaller():
+    queue = CandidateAdmissionQueue()
+    warm = {
+        **row(1, liquidity=9_000_000), "pool": f"0x{101:040x}",
+        "market_state": "WARM", "seismic_score": 50,
+    }
+    hot = {
+        **row(2, liquidity=100), "pool": f"0x{102:040x}",
+        "market_state": "HOT", "seismic_score": 5,
+    }
+    assert queue.enqueue(warm)
+    assert queue.enqueue(hot)
+    assert queue.pop()["pool"] == hot["pool"]
+
+
+def test_seismic_score_orders_candidates_within_same_heat_state():
+    queue = CandidateAdmissionQueue()
+    lower = {
+        **row(1, liquidity=9_000_000), "pool": f"0x{101:040x}",
+        "market_state": "WARM", "seismic_score": 3,
+    }
+    higher = {
+        **row(2, liquidity=100), "pool": f"0x{102:040x}",
+        "market_state": "WARM", "seismic_score": 8,
+    }
+    queue.enqueue_many([lower, higher])
+    assert queue.pop()["pool"] == higher["pool"]
+
+
+def test_same_token_in_distinct_pools_has_distinct_identity_and_cooldown():
+    queue = CandidateAdmissionQueue(cooldown_seconds=60)
+    first = {**row(1), "pool": f"0x{101:040x}", "market_state": "WARM"}
+    second = {**row(1), "pool": f"0x{102:040x}", "market_state": "WARM"}
+    assert queue.enqueue(first)
+    assert queue.enqueue(second)
+    selected = queue.pop()
+    queue.mark_analyzed(
+        selected["token"], pool=selected["pool"], chain="bsc"
+    )
+    assert queue.enqueue(selected) is False
+    remaining = second if selected["pool"] == first["pool"] else first
+    assert queue.enqueue(remaining)

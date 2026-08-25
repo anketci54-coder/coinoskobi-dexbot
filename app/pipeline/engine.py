@@ -4062,6 +4062,7 @@ class PipelineEngine:
                 self.candidate_queue.mark_analyzed(
                     token,
                     chain=row.get("chain", "bsc"),
+                    pool=row.get("pool"),
                 )
 
         scheduler_result = self.work_scheduler.process_queue(

@@ -1,7 +1,14 @@
 import sqlite3
+import threading
+import time
+
 from app.universe.discovery import PANCAKE_FACTORY_STREAMS, PAIR_CREATED_TOPIC
 from app.universe.registry import UniverseRegistry
-from app.universe.runtime import FullUniverseObservationRuntime, bind_shadow_runtime
+from app.universe.runtime import (
+    FullUniverseObservationRuntime,
+    UniverseShadowService,
+    bind_shadow_runtime,
+)
 
 
 def address(value): return "0x" + f"{value:040x}"
@@ -78,18 +85,69 @@ def test_shadow_runtime_requires_explicit_start_blocks_and_bounded_batches():
             raise AssertionError("invalid shadow bound accepted")
 
 
-def test_shadow_binding_uses_single_runner_and_has_no_authority():
+def test_shadow_binding_uses_background_service_and_not_scheduler():
     calls = []
     class Scheduler:
         def every(self, **kwargs): calls.append(kwargs)
     class Runner:
         scheduler = Scheduler()
+        services = []
     class Runtime:
         def run_once(self): return {"state": "SHADOW_READY"}
-    runtime_instance = Runtime()
-    result = bind_shadow_runtime(Runner(), runtime_instance, interval=1)
-    assert len(calls) == 1
-    assert calls[0]["name"] == "full_universe_shadow"
-    assert calls[0]["func"].__self__ is runtime_instance
+    runner = Runner()
+    result = bind_shadow_runtime(runner, Runtime(), interval=1)
+    assert calls == []
+    assert len(runner.services) == 1
+    assert isinstance(runner.services[0], UniverseShadowService)
     assert result["state"] == "BOUND"
+    assert result["mode"] == "BACKGROUND_SERVICE"
     assert result["decision_authority"] is False
+
+
+def test_shadow_service_uses_spawned_runtime_and_stops_cleanly():
+    ran = threading.Event()
+    template_called = []
+    spawn_threads = []
+
+    class WorkerRuntime:
+        def run_once(self):
+            ran.set()
+            return {"state": "SHADOW_READY"}
+
+    class TemplateRuntime:
+        def spawn_isolated(self):
+            spawn_threads.append(threading.current_thread().name)
+            return WorkerRuntime()
+        def run_once(self):
+            template_called.append(True)
+
+    service = UniverseShadowService(TemplateRuntime(), interval=60)
+    assert service.start() is True
+    assert ran.wait(1.0) is True
+    assert service.stop() is True
+    assert template_called == []
+    assert spawn_threads == ["coinoskobi-universe-shadow"]
+    status = service.status()
+    assert status["running"] is False
+    assert status["cycles"] >= 1
+    assert status["decision_authority"] is False
+
+
+def test_slow_shadow_cycle_does_not_block_caller_thread():
+    entered = threading.Event()
+    release = threading.Event()
+
+    class SlowRuntime:
+        def run_once(self):
+            entered.set()
+            release.wait(1.0)
+            return {"state": "SHADOW_READY"}
+
+    service = UniverseShadowService(SlowRuntime(), interval=60)
+    started = time.monotonic()
+    assert service.start() is True
+    assert entered.wait(0.5) is True
+    elapsed = time.monotonic() - started
+    assert elapsed < 0.5
+    release.set()
+    assert service.stop() is True

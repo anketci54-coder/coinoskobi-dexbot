@@ -78,28 +78,13 @@ def test_positive_downgrade_up_is_missed_opportunity():
     )
 
     assert result["outcome_class"] == "MISSED_OPPORTUNITY"
-
-    # MISSED_OPPORTUNITY is a price-direction
-    # counterfactual label only. It must never be
-    # presented as verified net realizable profit.
-    assert result["outcome_scope"] == (
-        "PRICE_DIRECTION_ONLY"
-    )
+    assert result["outcome_scope"] == "PRICE_DIRECTION_ONLY"
     assert result["net_profit_verified"] is False
-    assert (
-        result["realizable_profit_verified"]
-        is False
-    )
-    assert (
-        result[
-            "evaluation_sellability_verified"
-        ]
-        is False
-    )
-    assert (
-        result["evaluation_costs_verified"]
-        is False
-    )
+    assert result["realizable_profit_verified"] is False
+    assert result[
+        "evaluation_sellability_verified"
+    ] is False
+    assert result["evaluation_costs_verified"] is False
 
 
 def test_store_is_pending_bounded_and_authority_free():
@@ -132,11 +117,8 @@ def test_store_is_pending_bounded_and_authority_free():
     assert status["ram_only"] is True
     assert status["db_write"] is False
     assert status["provider_call"] is False
-    assert status[
-        "automatic_apply_allowed"
-    ] is False
+    assert status["automatic_apply_allowed"] is False
     assert status["execution_authority"] is False
-
 
 
 def test_evaluated_outcomes_are_bounded_in_memory():
@@ -165,19 +147,14 @@ def test_evaluated_outcomes_are_bounded_in_memory():
     status = store.status()
 
     assert len(snapshot) == 1
-    assert snapshot[0]["outcome_class"] == (
-        "EXPECTED_LOSS"
-    )
+    assert snapshot[0]["outcome_class"] == "EXPECTED_LOSS"
     assert snapshot[0]["proposal_only"] is True
-    assert snapshot[0][
-        "automatic_apply_allowed"
-    ] is False
+    assert snapshot[0]["automatic_apply_allowed"] is False
     assert status["outcome_size"] == 1
     assert status["outcome_counts"] == {
         "EXPECTED_LOSS": 1,
     }
     assert status["execution_authority"] is False
-
 
 
 def test_durable_counterfactual_horizons_use_paper_db(
@@ -194,6 +171,7 @@ def test_durable_counterfactual_horizons_use_paper_db(
         horizon_seconds=300,
         ttl_seconds=900,
         db_path=db_path,
+        cache_db_path=None,
     )
 
     recorded = store.record(
@@ -204,6 +182,7 @@ def test_durable_counterfactual_horizons_use_paper_db(
         candidate_action="DOWNGRADE",
         observed_at=1000,
         context={
+            "paper": "WATCH",
             "reason": "PLAN_BLOCKED",
             "plan_blockers": [
                 "NO_VERIFIED_PERSISTENT_LIQUIDITY",
@@ -216,6 +195,7 @@ def test_durable_counterfactual_horizons_use_paper_db(
 
     assert recorded["state"] == "RECORDED"
     assert recorded["durable_id"] is not None
+    assert recorded["reevaluation_eligible"] is True
 
     evaluated = store.observe(
         token="0xdurable",
@@ -230,23 +210,28 @@ def test_durable_counterfactual_horizons_use_paper_db(
         current_price=1.20,
         evaluated_at=1900,
     )
-
     store.observe_durable(
         token="0xdurable",
         current_price=0.90,
         evaluated_at=2800,
     )
-
     store.observe_durable(
         token="0xdurable",
         current_price=1.50,
         evaluated_at=4600,
     )
-
-    rows = store.durable_snapshot(
-        limit=10,
+    store.observe_durable(
+        token="0xdurable",
+        current_price=2.00,
+        evaluated_at=22600,
+    )
+    store.observe_durable(
+        token="0xdurable",
+        current_price=3.00,
+        evaluated_at=87400,
     )
 
+    rows = store.durable_snapshot(limit=10)
     assert len(rows) == 1
 
     row = rows[0]
@@ -255,19 +240,23 @@ def test_durable_counterfactual_horizons_use_paper_db(
     assert row["price_15m"] == 1.20
     assert row["price_30m"] == 0.90
     assert row["price_60m"] == 1.50
+    assert row["price_6h"] == 2.00
+    assert row["price_24h"] == 3.00
 
     assert round(row["return_5m"], 6) == 0.10
     assert round(row["return_15m"], 6) == 0.20
     assert round(row["return_30m"], 6) == -0.10
     assert round(row["return_60m"], 6) == 0.50
+    assert round(row["return_6h"], 6) == 1.00
+    assert round(row["return_24h"], 6) == 2.00
 
-    assert row["max_price"] == 1.50
+    assert row["max_price"] == 3.00
     assert row["min_price"] == 0.90
-    assert row["completed_at"] == 4600
+    assert round(row["mfe_24h"], 6) == 2.00
+    assert round(row["mae_24h"], 6) == -0.10
+    assert row["completed_at"] == 87400
 
-    context = json.loads(
-        row["context_json"]
-    )
+    context = json.loads(row["context_json"])
 
     assert context["reason"] == "PLAN_BLOCKED"
     assert context["plan_blockers"] == [
@@ -282,6 +271,16 @@ def test_durable_counterfactual_horizons_use_paper_db(
     assert status["ram_only"] is False
     assert status["db_write"] is True
     assert status["durable_tracking"] is True
+    assert status["durable_horizons_seconds"] == (
+        300,
+        900,
+        1800,
+        3600,
+        21600,
+        86400,
+    )
+    assert status["reevaluation_window_seconds"] == 86400
+    assert status["permanent_reject"] is False
     assert status["provider_call"] is False
     assert status["decision_authority"] is False
     assert status["paper_authority"] is False

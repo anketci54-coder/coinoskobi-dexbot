@@ -14,67 +14,64 @@ Temel ilke:
 
 ## Current Project State
 
-- **Phase 13 — Paper Outcome Learning & Calibration: CLOSED**
-- **Phase 14 — Command Center & AI Analyst: CLOSED**
-- **Phase 15 — Final Operational Validation & Controlled Micro-Live: CLOSED**
-- Numbered roadmap **Phase 0–15 is complete**.
-- Final Phase 15 regression at roadmap closure: **966 passed / 0 failed**.
-- Current post-roadmap full regression baseline: **1011 passed / 0 failed**.
-- Current synchronized integration commit: `6ef4c57` — Complete unified entry admission integration.
-- Root E2E: **21 passed**.
-- Application/runtime: **16 passed**.
-- Paper/learning: **28 passed**.
-- Risk/safety: **33 passed**.
-- Phase 14 + Phase 15 contract validation: **47 passed**.
-- Active paper DB: integrity `ok`, quick check `ok`, foreign-key errors `0`.
-- Phase 15 validation introduced no production-code or DB mutation.
-- Learning/calibration remains proposal-only; roadmap closure creates no implicit
-  live, wallet, signing, AI or execution authority.
-- Phase 16 / Era / V2 / V3 is not automatically opened.
+- **Phase 0–15: CLOSED**
+- **Phase 16: NOT OPENED**
+- Current mode: **post-roadmap operation / maintenance**
+- Current production focus: **BNB Chain (BSC) + PancakeSwap**
+- Token/pair universe size is dynamic and MUST NOT be hardcoded.
+- Current canonical functional commit before this documentation sync:
+  `cd6348e64c23559334a04c967c805646bf4045ae`
+- Final VUR_KAC reconciliation full regression:
+  **1005 passed / 0 failed**
+- Final maintenance critical audit:
+  **51 passed / 0 failed**
+- New paper positions default to **VUR_KAC**.
+- Raw market observation history is append-only.
+- EWMA/CUSUM streaming math is isolated by pool and source.
+- Calibration is derived from observed history and remains authority-free.
+- Live execution authority: **0**
+- Wallet/signing authority: **0**
+- AI trade authority: **0**
+- Paper runtime acceptance after integration: **PASS**
+- Panel remained running and was not restarted during paper deployment.
 
 ## Post-Roadmap Integration Status
 
-After Phase 0–15 closure, development continued without opening
-Phase 16.
+Current integrated maintenance includes:
 
-Current integrated post-roadmap state includes:
+- exact AMM / price-impact mathematics
+- empirical exit-capacity evidence
+- Beta-Binomial flow estimation
+- HHI / Shannon wallet concentration measurements
+- expected MEV-loss evidence
+- rug feature evidence
+- empirical ES/CVaR
+- data-derived fractional Kelly sizing
+- pool/source isolated streaming state
+- append-only raw market history
+- history-derived EWMA/CUSUM calibration
+- canonical VUR_KAC paper-policy binding
 
-- paper accounting and risk hardening
-- hybrid exit runtime binding
-- native market-flow to hybrid paper-exit binding
-- unified score and unified decision integration
-- two-stage entry evaluation
-- bounded deep sellability work only for qualified local candidates
-- final paper admission after deep-risk evidence
-- hard risk remains dominant
-- provider/network sellability failure remains UNKNOWN rather than conviction
-- no live-trade authority
-- no wallet/signing authority
-- no execution-authority escalation
+Current observation expansion is intentionally focused on the dynamic
+**BSC + PancakeSwap** universe.
 
-The current entry flow is:
+Future observation enrichment may include real provider-backed:
 
-1. cheap/local RiskGate
-2. local strategy prequalification for bounded deep-work budgeting
-3. bounded sellability analysis when justified
-4. RiskGate re-evaluation after deep evidence
-5. TrapRisk and MEVRisk
-6. final UnifiedScore
-7. final UnifiedDecision
-8. conservative paper admission
+- market cap
+- price
+- age
+- transactions
+- volume
+- traders
+- 5m / 1h / 6h / 24h movement
+- liquidity
+- gainers / losers
 
-Stage-1 prequalification does not grant paper or live execution authority.
-Final paper admission requires the final unified candidate state, no hard
-block, and positively ready sellability evidence.
+The whole universe must not be processed at expensive hot-path frequency.
+Broad COLD observation, moving WARM candidates and anomalous HOT candidates
+are the intended operating model.
 
-Current verified repository baseline:
-
-- branch: `main`
-- integration commit: `6ef4c57`
-- Python compile: PASS
-- full pytest regression: **1011 passed / 0 failed**
-- worktree after validation: CLEAN
-- local and `origin/main`: synchronized
+See `PROJECT_STATE.md` for the canonical continuation checkpoint.
 
 ---
 

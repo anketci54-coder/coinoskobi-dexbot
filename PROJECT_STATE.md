@@ -1,6 +1,6 @@
 # COINOSKOBI CANONICAL PROJECT STATE
 
-Updated: 2026-08-24
+Updated: 2026-08-25
 
 ## CANONICAL SOURCE
 
@@ -14,237 +14,328 @@ Updated: 2026-08-24
 - Panel runtime: `coinoskobi-panel-api.service`
 - Panel port: `8098`
 
-The active canonical HEAD must always be read from:
+Canonical HEAD before this documentation-only sync:
+
+`cd6348e64c23559334a04c967c805646bf4045ae`
+
+Always verify the current value with:
 
 `git rev-parse HEAD`
 
-and must match:
+and:
 
 `git rev-parse origin/main`
 
-Do not infer HEAD from chat memory.
+Do not infer current HEAD from chat memory.
 
 ## GOVERNANCE
 
-- No Phase 16.
-- No new Era.
-- No V2/V3 replacement architecture.
+- Phase 0–15: CLOSED.
+- Phase 16: NOT OPENED.
+- No new Era or V2/V3 replacement architecture.
 - No side/test panel architecture.
-- No patch/bak/old/diff junk.
-- Modify canonical files in place.
-- No fake panel/runtime data.
+- Canonical files are modified in place.
+- No fake runtime/panel data.
 - Missing evidence remains UNKNOWN.
 - AI authority = 0.
 - Live execution authority = 0.
 - Wallet/signing authority = 0.
-- Paper runtime may trade only through existing paper contracts.
-- Do not delete historical paper DB rows for cosmetic reasons.
+- Paper runtime only uses paper execution contracts.
+- Historical paper DB rows are preserved.
+- Hot path must remain fast and bounded.
+- Slow/auxiliary providers must not unnecessarily stall the hot path.
+- Explicit proven danger may veto.
+- UNKNOWN auxiliary evidence is not automatically treated as danger.
 
-## LAST SEALED FUNCTIONAL BASE
+## CURRENT PRODUCTION SCOPE
 
-Mathematical Vur-Kac base seal:
+Current development/observation universe:
 
-`45902f16b6e5b4cc58f79ed2d6f59d4283078560`
+**BNB Chain (BSC) + PancakeSwap**
 
-At that seal:
+The universe size is dynamic.
 
-- fixed profit percentage = false
-- fixed Vur-Kac time window = false
-- post-entry price momentum = bound
-- native flow momentum = bound
-- native flow acceleration = bound
-- continuation edge = bound
-- TP1 = minimum measured-risk neutralization
-- TP2 = minimum principal recovery
-- runner = persistent exhaustion exit
+A value such as 25,406 tokens/pairs is only an observed snapshot and MUST NOT
+be hardcoded as the universe size.
 
-## LAST VERIFIED RUNTIME OBSERVATION BEFORE DIAGNOSTIC FIX
+Other networks/DEX abstractions may remain in the repository, but current
+development effort is focused on BSC + PancakeSwap.
 
-Paper runtime was active and fault-free.
+## CURRENT PROVIDER ROLES
 
-Observed after Vur-Kac activation:
+- Alchemy: on-chain truth / BNB WSS radar / RPC support
+- GeckoTerminal: discovery
+- DexScreener: fast indexed market snapshot / market-observation enrichment
+- GoPlus: sellability / security / LP evidence
+- Honeypot.is: secondary/fallback/dispute evidence
 
-- runtime cycles observed: 13
-- open paper positions: 0
-- closed PAPER_10K_V2 positions: 26 total
-- active panel period: ID 16+
-- active-period trades: 11
-- active-period wins: 4
-- active-period losses: 7
-- active-period realized net PnL: approximately -863.8687580557469 USDT
-- global Vur-Kac runtime state observed: 0
-- Vur-Kac exit observed: 0
+Provider votes are not blindly averaged.
 
-This does NOT mean Vur-Kac failed.
-There was no open position available to exercise it.
+Explicit negative security evidence remains dominant.
+Measured on-chain facts remain canonical where directly observable.
 
-## CURRENT DIAGNOSTIC CORRECTION
+## MATHEMATICAL / RISK MAINTENANCE COMPLETED
 
-The prior runtime collapsed two different failures into:
+The post-roadmap maintenance branch
+`maintenance/canonical-risk-math`
+was fully audited and fast-forwarded into `main`.
 
-`MATHEMATICAL_PLAN_BLOCKED`
+Final maintenance integration commit before documentation:
 
-Canonical runtime now separates:
+`cd6348e64c23559334a04c967c805646bf4045ae`
 
-- `PLAN_BLOCKED`
-- `POSITION_SIZING_BLOCKED`
-- defensive `SELLABILITY_NOT_OK`
+Maintenance branch relative to old main at final audit:
 
-For WATCH decisions it exposes separately:
+- ahead: 39 commits
+- behind: 0
+- merge base: old canonical main
+- final audit: PASS
 
-- plan blockers
-- plan unknowns
-- sizing blockers
-- sizing reason
-- resulting entry amount
-- safe quote reserve
-- empirical risk distance
-- empirical gap multiplier
-- empirical cost uncertainty
-- effective edge
+Completed maintenance includes:
 
-Admission mathematics is NOT relaxed by this diagnostic correction.
+- removal of proven dead/disconnected legacy risk/runner mechanics
+- Beta-Binomial flow estimation
+- wallet concentration HHI / Shannon measurements
+- exact fee-aware constant-product AMM price-impact/capacity math
+- empirical exit-capacity reserve floor
+- expected MEV-loss plumbing
+- evidence-only rug feature vector
+- empirical expected shortfall / CVaR
+- data-derived fractional Kelly sizing
+- pool/source isolated runtime price state
+- pool/source isolated EWMA/CUSUM streaming state
+- append-only raw market observation history
+- history-derived EWMA/CUSUM calibration
+- source identity protection
+- UNKNOWN preservation
+- no invented probabilities
+- no invented calibration constants presented as measured truth
 
-## COUNTERFACTUAL SEMANTICS
+## RAW MARKET OBSERVATION HISTORY
 
-`MISSED_OPPORTUNITY` is a counterfactual price-direction label.
+`GeckoCache` now preserves append-only market history in the existing cache DB
+instead of retaining only the latest snapshot.
 
-It means only that the later observed mark price was higher under the
-counterfactual classification contract.
+Canonical observation identity includes:
 
-It does NOT prove:
+- chain
+- source
+- dex
+- pool
+- token
+- quote token
+- observation time
 
-- net trade profit
-- executable profit
-- sellability at evaluation time
-- profit after gas/tax/slippage/route friction
-- realizable Vur-Kac profit
+Stored market facts include:
 
-Never use the count alone to loosen admission.
+- price
+- liquidity
+- volume
+- buys
+- FDV
+- market cap
+- pool age / creation time where available
 
-## CURRENT LOCAL WSS LIFECYCLE CORRECTION
+Historical evidence is not deleted when the latest scanner cache is pruned.
 
-Root cause found from real runtime observation:
+## STREAMING MATH
 
-- scanner/runtime continued for 134 cycles
-- candidate analysis continued
-- runtime process had no established TCP connection at audit time
-- repeated candidates successfully accumulated price history
-- repeated candidates successfully accumulated LP persistence
-- market-quality evidence remained not ready
-- participation evidence remained unknown
+Streaming mathematical state is isolated by:
 
-The canonical local correction therefore changes only WSS lifecycle:
+`chain + dex + pair + source + stream-math version`
 
-1. An idle websocket receive window is no longer treated as a transport failure.
-2. Websocket ping/pong remains responsible for connection liveness.
-3. A previously-started WSS service whose worker thread has died is restarted by the normal pair refresh path.
-4. An unchanged pair list also self-heals a dead previously-started service.
-5. Admission thresholds, mathematical trade planning, sizing, Vur-Kac, wallet authority and live authority are unchanged.
+Cross-source history contamination is prohibited.
 
-This correction is not considered sealed until:
+Current streaming math includes:
 
-- targeted tests pass
-- full test suite passes
-- paper runtime is restarted once
-- panel PID remains unchanged
-- persistent WSS/TCP connectivity is observed
-- runtime fatal scan passes
+- price log changes
+- EWMA variance
+- liquidity log changes
+- two-sided CUSUM
+- history-derived calibration
+- WARMING / READY / UNCALIBRATED style evidence states
 
-WSS lifecycle and broad native observation scope were validated together against the real Alchemy BNB WebSocket runtime.
+Calibration remains evidence/math support and does not independently gain
+paper, live, wallet or execution authority.
 
-## NATIVE WSS OBSERVATION SCOPE
+## PAPER POSITION POLICY
 
-Canonical behavior:
+New canonical paper positions now default to:
 
-- Alchemy BNB is the active WSS provider.
-- Native WSS observation is independent from ingress admission.
-- Current verified Pancake V2 scanner pools are observed before they
-  become decision-eligible.
-- Pair membership verification remains mandatory.
-- WSS target count remains bounded to 256.
-- Admission, mathematical planning, position sizing, Vur-Kac and all
-  authority locks remain unchanged.
-- Missing market evidence remains UNKNOWN and cannot authorize entry.
+`VUR_KAC`
+
+The engine writes VUR_KAC policy consistently to both:
+
+- opening context
+- paper trade row
+
+NORMAL and VUR_KAC lifecycle paths remain separately implemented.
+
+VUR_KAC behavior remains mathematical rather than fixed-profit based:
+
+- fixed profit percentage: false
+- fixed holding-time window: false
+- dynamic stop behavior
+- momentum / flow continuation evidence
+- TP1: minimum amount required to neutralize measured initial risk
+- TP2: minimum amount required to recover principal
+- remaining inventory: runner
+- runner exit: persistent deterioration / mathematical VUR_KAC exit
+- hard safety exit remains dominant
+
+A large percentage gain alone is NOT an exit command.
+
+The intended asymmetric behavior is:
+
+**keep downside bounded while allowing a healthy winner to continue running.**
+
+## FINAL TEST EVIDENCE
+
+Final VUR_KAC reconciliation:
+
+- targeted regression: 40 passed
+- full regression: 1005 passed
+- failed: 0
+- known warning: 1 upstream `websockets.legacy` deprecation warning
+- reconciliation commit:
+  `cd6348e64c23559334a04c967c805646bf4045ae`
+
+Final maintenance audit:
+
+- critical regression: 51 passed
+- final audit: PASS
+- local VUR_KAC state preserved during audit
+- old main preserved until deliberate fast-forward
+
+## VPS / GITHUB INTEGRATION
+
+Maintenance was fast-forwarded into canonical `main`.
+
+VPS synchronization result:
+
+- VPS HEAD:
+  `cd6348e64c23559334a04c967c805646bf4045ae`
+- origin/main:
+  `cd6348e64c23559334a04c967c805646bf4045ae`
+- worktree: CLEAN
+- VUR_KAC canonical source guard: PASS
+
+No force push was used.
+
+## VERIFIED RUNTIME ACCEPTANCE — 2026-08-25
+
+A single controlled paper-runtime restart was performed after integration.
+
+Observed:
+
+- old paper PID: `293487`
+- new paper PID: `437659`
+- panel PID before: `4118606`
+- panel PID after: `4118606`
+- panel restart: FALSE
+- paper runtime: ACTIVE
+- panel runtime: ACTIVE
+- paper DB integrity_check: ok
+- fatal runtime scan: PASS
+- runner started successfully
+- scanner job started successfully
+
+Result:
+
+`VPS_GITHUB_RUNTIME_SYNC=PASS`
+
+The panel remained untouched by the paper-runtime deployment.
+
+## NEXT DATA / OBSERVATION WORK
+
+Do NOT open Phase 16.
+
+The next post-roadmap work is an extension of the canonical observation/data
+layer for the dynamic BSC + PancakeSwap universe.
+
+Planned observation model:
+
+- COLD: broad universe, cheap periodic observation
+- WARM: tokens showing meaningful movement
+- HOT: mathematically anomalous / rapidly moving subset with higher-frequency
+  observation and native WSS evidence
+
+The universe count is discovered dynamically and changes over time.
+
+Useful market-observation fields to add when backed by real providers include:
+
+- token / pair
+- market cap
+- price
+- age
+- transaction count
+- volume
+- trader count
+- 5m change
+- 1h change
+- 6h change
+- 24h change
+- liquidity
+- gainers / losers classification
+
+The dataset must contain both winners and losers to avoid survivor bias.
+
+Future derived labels may include:
+
+- forward 5m / 15m / 1h / 6h / 24h return
+- maximum rise
+- maximum drawdown
+- time to 2x / 5x / 10x
+- liquidity withdrawal / rug evidence
+- sellability / realized exit capacity
+
+Raw facts and derived features remain separate.
+
+## PANEL
+
+Panel redesign remains deferred until backend/math/data/runtime work is ready.
+
+There remains one canonical panel only:
+
+**İŞLEM MERKEZİ**
+
+No V2/V3/test panel or additional panel service/port is to be created.
+
+Future panel data must come from real backend/database evidence.
 
 ## CURRENT OPEN WORK
 
-Numbered roadmap status:
-
-- Phase 0–15: CLOSED
-- Phase 16: NOT OPENED
-- Current mode: post-roadmap operation / maintenance
-
-Latest functional code seal before this state sync:
-
-`42f14a9faeb57e7a729f3fc660f2296b5ba959eb`
-
-Current canonical HEAD must still be read from:
-
-`git rev-parse HEAD`
-
-and must match:
-
-`git rev-parse origin/main`
-
-Recent canonical maintenance seals:
-
-1. `e8b9ab61cb4e197a863179c9565504eaaad64f21`
-   - runtime price history isolated by token, pool and source family
-   - TOKEN_CACHE and PAIR_ONCHAIN observations cannot contaminate the same return history
-   - source-transition extreme-return artifact was not observed after restart
-   - full regression: 1081 PASS / 0 FAIL
-
-2. `42f14a9faeb57e7a729f3fc660f2296b5ba959eb`
-   - panel runtime candidate parser preserves complete blocker lists
-   - panel exposes real plan/sizing blocker reasons
-   - duplicate candidate feed removed from Intelligence Center
-   - canonical panel HTTP route smoke: PASS
-   - real runtime blocker parsing: PASS
-
-Final operational acceptance at this seal:
-
-- local HEAD = origin/main
-- worktree clean
-- paper runtime active
-- panel runtime active
-- unexpected restart: false
-- paper runtime was not restarted by panel acceptance
-- panel remains read-only
-- live execution authority = 0
-- wallet/signing authority = 0
-
-The blocker-distribution and price-source diagnostic work is closed.
-
-Current operational task:
-
-1. Keep the canonical paper runtime operating naturally.
-2. Observe the next natural new paper OPEN.
-3. Verify real `vur_kac_*` state creation for that position.
-4. Verify persisted mathematical state from entry through close.
-5. If profitable momentum weakens, verify:
-   - TP1 minimum risk neutralization
-   - TP2 minimum principal recovery
-   - runner behavior / mathematical Vur-Kac exit
-6. Compare the real lifecycle with persisted entry evidence and counterfactual outcome evidence.
-7. Do not loosen admission, sizing or safety gates without new runtime evidence.
-8. Do not open Phase 16, Era, V2/V3 or a replacement architecture.
+1. Documentation sync and handoff closure.
+2. Continue natural PAPER runtime observation.
+3. Verify the next natural new PAPER OPEN is created with `VUR_KAC`.
+4. Verify persisted VUR_KAC mathematical state through its actual lifecycle.
+5. Then extend raw observation coverage for the dynamic
+   BSC + PancakeSwap universe.
+6. Add real txns / traders / multi-window movement / liquidity observations
+   only from verified data sources.
+7. Use COLD / WARM / HOT prioritization so the whole universe does not incur
+   expensive hot-path/provider work.
+8. Keep data collection useful for future AI training without granting AI
+   decision/trade authority.
+9. Do not loosen admission/sizing/safety rules merely because a historical
+   token later became a large winner.
+10. Do not open Phase 16 / Era / V2 / V3.
 
 ## NEW CHAT CONTINUATION
 
-In a new ChatGPT conversation, say:
+In a new ChatGPT conversation say:
 
-`Coinoskobi reposundaki PROJECT_STATE.md dosyasını oku, VPS gerçek durumunu kontrol et ve CURRENT OPEN WORK bölümünden devam et.`
+`Coinoskobi reposundaki PROJECT_STATE.md dosyasını baştan sona oku. VPS gerçek durumunu kontrol et. CURRENT OPEN WORK bölümünden sırayla devam et; yeni Phase/Era/V açma.`
 
-Before changing anything, verify:
+Before changing anything verify:
 
-- current branch
+- branch = main
 - local HEAD
-- origin branch HEAD
-- clean/dirty worktree
+- origin/main HEAD
+- worktree clean/dirty state
 - paper service state
 - panel service state
-- DB quick_check
+- paper DB integrity
 - latest runtime cycles
 
-The VPS/runtime/DB are the source of truth for current operational state.
+Repository + VPS + runtime DB are the source of truth.

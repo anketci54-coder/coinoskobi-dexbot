@@ -926,3 +926,62 @@ Entry-admission semantic validation established:
 The earlier **966 passed / 0 failed** result remains the historical Phase 15
 roadmap-closure regression. It is not the current repository-wide regression
 count.
+
+---
+
+# Post-Roadmap Canonical Risk/Math Maintenance Closure — 2026-08-25
+
+Status: ✅ PASS / INTEGRATED
+
+Canonical functional commit before this documentation sync:
+
+`cd6348e64c23559334a04c967c805646bf4045ae`
+
+## VUR_KAC Reconciliation
+
+- targeted regression: 40 passed
+- full regression: 1005 passed
+- failures: 0
+- known warning: 1 dependency-owned `websockets.legacy` deprecation warning
+- new paper positions default to VUR_KAC
+- opening context policy: VUR_KAC
+- paper trade row policy: VUR_KAC
+- NORMAL and VUR_KAC manager paths remain separate
+
+## Final Maintenance Audit
+
+- maintenance branch ahead of old main: 39 commits
+- behind old main: 0
+- merge-base: old canonical main
+- critical final regression: 51 passed
+- final audit: PASS
+- integration method: fast-forward
+- force update: FALSE
+
+## VPS / GitHub Synchronization
+
+- VPS HEAD = origin/main
+- synchronized functional commit:
+  `cd6348e64c23559334a04c967c805646bf4045ae`
+- worktree clean after synchronization
+- local duplicate VUR_KAC patch reconciled into canonical main
+
+## Controlled Runtime Acceptance
+
+- paper runtime restart: controlled / one time
+- old paper PID: 293487
+- new paper PID: 437659
+- paper runtime active: PASS
+- panel PID before: 4118606
+- panel PID after: 4118606
+- panel preserved: PASS
+- paper DB integrity_check: ok
+- fatal runtime scan: PASS
+- Runner start observed: PASS
+- scanner job start observed: PASS
+
+Final result:
+
+`VPS_GITHUB_RUNTIME_SYNC=PASS`
+
+No Phase 16 / Era / V2 / V3 was opened.

@@ -74,6 +74,17 @@ class UniverseObservationScheduler:
 
         return self.registry.due_observations(now=now, limit=limit)
 
+    def reschedule_for_state(self, row, *, state):
+        state = str(state or "").upper()
+        if state not in self.intervals:
+            raise ValueError("known market state required")
+        next_at = self._iso(
+            self.now_func()
+            + timedelta(seconds=int(self.intervals[state]))
+        )
+        self.registry.schedule_observations([(row, next_at)])
+        return next_at
+
     def run_once(self, *, limit=DEXSCREENER_MAX_BATCH):
         limit = int(limit)
         if limit < 1 or limit > DEXSCREENER_MAX_BATCH:

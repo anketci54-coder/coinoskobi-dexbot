@@ -126,6 +126,11 @@ class FullUniverseObservationRuntime:
                 pool=pool, market_state=registry_row["market_state"], history=history,
             )
             self.registry.apply_seismic_evaluation(evaluation)
+            if evaluation["next_state"] != evaluation["previous_state"]:
+                self.observer.reschedule_for_state(
+                    registry_row,
+                    state=evaluation["next_state"],
+                )
             evaluations.append(evaluation)
         self.cycles += 1
         return {

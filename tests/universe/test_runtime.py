@@ -128,6 +128,8 @@ def test_backfill_batches_keep_each_rpc_span_bounded_and_tail_current():
     assert existing["last_scanned_block"] == 15
     assert new["last_scanned_block"] == 20
     assert len(result["discovery"]["existing_batches"]) == 3
+    assert result["discovery"]["existing"]["state"] == "PARTIAL"
+    assert result["discovery"]["existing"]["to_block"] == 15
     assert result["decision_authority"] is False
 
 

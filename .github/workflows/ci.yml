@@ -47,6 +47,7 @@ jobs:
           tests/test_application_market_flow_binding.py
           tests/test_application_dynamic_wss_pairs.py
           tests/test_application_paper_lifecycle.py
+          tests/test_panel_premium_command_center.py
 
   full:
     if: ${{ github.event_name == 'push' && contains(github.event.head_commit.message, '[full]') }}

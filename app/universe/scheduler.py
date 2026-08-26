@@ -29,6 +29,7 @@ class UniverseObservationScheduler:
         if self.missing_retry_seconds < 1:
             raise ValueError("positive missing retry required")
         self.now_func = now_func or (lambda: datetime.now(timezone.utc))
+        self._prefer_depth = True
 
     @staticmethod
     def _iso(value):
@@ -36,13 +37,51 @@ class UniverseObservationScheduler:
             value = value.replace(tzinfo=timezone.utc)
         return value.astimezone(timezone.utc).isoformat()
 
+    def _due_with_history(self, *, now, limit):
+        db = getattr(self.registry, "db", None)
+        if db is None:
+            return []
+        rows = db.execute("""
+            SELECT *
+            FROM universe_pool_registry
+            WHERE latest_snapshot_at IS NOT NULL
+              AND next_observation_at IS NOT NULL
+              AND next_observation_at <= ?
+            ORDER BY
+                CASE market_state
+                    WHEN 'HOT' THEN 0
+                    WHEN 'WARM' THEN 1
+                    ELSE 2
+                END,
+                next_observation_at,
+                latest_snapshot_at,
+                creation_block
+            LIMIT ?
+        """, (now, int(limit))).fetchall()
+        return [dict(row) for row in rows]
+
+    def _select_due(self, *, now, limit):
+        # Alternate depth and breadth so a million-row unseen backlog cannot
+        # permanently starve the repeated samples required by the seismic
+        # classifier, while full-universe first-pass coverage still advances.
+        prefer_depth = self._prefer_depth
+        self._prefer_depth = not self._prefer_depth
+
+        if prefer_depth:
+            due = self._due_with_history(now=now, limit=limit)
+            if due:
+                return due
+
+        return self.registry.due_observations(now=now, limit=limit)
+
     def run_once(self, *, limit=DEXSCREENER_MAX_BATCH):
         limit = int(limit)
         if limit < 1 or limit > DEXSCREENER_MAX_BATCH:
             raise ValueError("scheduler limit must be between 1 and 30")
 
         now = self.now_func()
-        due = self.registry.due_observations(now=self._iso(now), limit=limit)
+        now_iso = self._iso(now)
+        due = self._select_due(now=now_iso, limit=limit)
         if not due:
             return {
                 "state": "IDLE", "requested": 0, "observed": 0,

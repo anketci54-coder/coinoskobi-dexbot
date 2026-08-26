@@ -45,7 +45,8 @@ def runtime(registry, reader):
         start_blocks={"pancakeswap_v2": 1, "pancakeswap_v3": 1},
         registry=registry, log_reader=reader, finalized_block_reader=lambda: 20,
         snapshot_client=SnapshotClient(), confirmation_depth=0,
-        discovery_block_span=10, observation_batches_per_cycle=1,
+        discovery_block_span=10, discovery_batches_per_cycle=1,
+        observation_batches_per_cycle=1,
     )
 
 
@@ -73,18 +74,61 @@ def test_shadow_runtime_round_robins_v2_and_v3():
 
 
 def test_shadow_runtime_requires_explicit_start_blocks_and_bounded_batches():
-    for blocks, batches in (({"pancakeswap_v2": 1}, 1),
-                            ({"pancakeswap_v2": 1, "pancakeswap_v3": 1}, 5)):
+    cases = (
+        ({"pancakeswap_v2": 1}, 1, 1),
+        ({"pancakeswap_v2": 1, "pancakeswap_v3": 1}, 0, 1),
+        ({"pancakeswap_v2": 1, "pancakeswap_v3": 1}, 9, 1),
+        ({"pancakeswap_v2": 1, "pancakeswap_v3": 1}, 1, 5),
+    )
+    for blocks, discovery_batches, observation_batches in cases:
         try:
             FullUniverseObservationRuntime(
                 start_blocks=blocks, registry=object(), log_reader=lambda **kwargs: [],
                 finalized_block_reader=lambda: 1, snapshot_client=object(),
-                observation_batches_per_cycle=batches,
+                discovery_batches_per_cycle=discovery_batches,
+                observation_batches_per_cycle=observation_batches,
             )
         except ValueError:
             pass
         else:
             raise AssertionError("invalid shadow bound accepted")
+
+
+def test_backfill_batches_keep_each_rpc_span_bounded_and_tail_current():
+    registry = UniverseRegistry(connection=sqlite3.connect(":memory:"))
+    reader = LogReader()
+    subject = FullUniverseObservationRuntime(
+        start_blocks={"pancakeswap_v2": 1, "pancakeswap_v3": 1},
+        registry=registry,
+        log_reader=reader,
+        finalized_block_reader=lambda: 20,
+        snapshot_client=SnapshotClient(),
+        confirmation_depth=0,
+        discovery_block_span=5,
+        discovery_batches_per_cycle=3,
+        observation_batches_per_cycle=1,
+    )
+
+    result = subject.run_once()
+    stream = PANCAKE_FACTORY_STREAMS[0]
+    existing = registry.checkpoint(
+        "bsc", stream["dex"], stream["factory"], stream["event_kind"], "EXISTING"
+    )
+    new = registry.checkpoint(
+        "bsc", stream["dex"], stream["factory"], stream["event_kind"], "NEW"
+    )
+
+    existing_calls = reader.calls[:3]
+    assert [(row["from_block"], row["to_block"]) for row in existing_calls] == [
+        (1, 5), (6, 10), (11, 15)
+    ]
+    assert all(row["to_block"] - row["from_block"] + 1 <= 5 for row in existing_calls)
+    assert reader.calls[3]["from_block"] == 20
+    assert reader.calls[3]["to_block"] == 20
+    assert existing["last_scanned_block"] == 15
+    assert new["last_scanned_block"] == 20
+    assert len(result["discovery"]["existing_batches"]) == 3
+    assert result["decision_authority"] is False
 
 
 def test_spawn_isolated_uses_worker_owned_rpc(monkeypatch, tmp_path):
@@ -124,6 +168,7 @@ def test_spawn_isolated_uses_worker_owned_rpc(monkeypatch, tmp_path):
     assert isolated.discovery.log_reader.web3 is worker_web3
     assert isolated.finalized_block_reader() == 123
     assert isolated.registry is not template.registry
+    assert isolated.discovery_batches_per_cycle == template.discovery_batches_per_cycle
 
 
 def test_shadow_binding_uses_background_service_and_not_scheduler():

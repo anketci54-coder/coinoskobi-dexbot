@@ -1,4 +1,5 @@
 import argparse
+import asyncio
 import json
 import math
 import sqlite3
@@ -246,6 +247,7 @@ class Collector:
         self.actors = RuntimeActorIntelligence(chain="bsc", max_pairs=MAX_ACTIVE_V2, max_events_per_pair=2048)
         self.wss = None
         self.wss_pairs = []
+        self.actor_event_counts = {}
 
     def token_quote(self, row):
         t0 = str(row.get("token0") or "").lower()
@@ -339,8 +341,14 @@ class Collector:
     async def on_event(self, event):
         result = self.flow.observe_event(event)
         direction = result.get("direction", "UNKNOWN")
-        actor = await self.actors.observe_event(event, direction=direction)
-        self.rec.record_native(event, direction, actor.get("wallet_id"))
+        pool = str(event.get("address") or "").lower()
+        count = self.actor_event_counts.get(pool, 0)
+        wallet_id = None
+        if count < 64:
+            actor = await self.actors.observe_event(event, direction=direction)
+            wallet_id = actor.get("wallet_id")
+            self.actor_event_counts[pool] = count + 1
+        self.rec.record_native(event, direction, wallet_id)
         return True
 
     async def on_retraction(self, event):
@@ -390,6 +398,9 @@ def main():
     ap.add_argument("--duration-hours", type=float, default=8.0)
     args = ap.parse_args()
     collector = Collector(args.cache_db, args.output_db)
+    if collector.rec.get_meta_int("last_eval_id", 0) == 0:
+        row = collector.cache.execute("SELECT COALESCE(MAX(id),0) FROM universe_seismic_evaluation_v1").fetchone()
+        collector.rec.set_meta("last_eval_id", int(row[0] if row else 0))
     collector.rec.set_meta("started_at", utc_now())
     collector.rec.set_meta("authority", "OBSERVATION_ONLY")
     deadline = time.monotonic() + max(0.01, args.duration_hours) * 3600.0

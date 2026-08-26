@@ -37,6 +37,7 @@ class FullUniverseObservationRuntime:
     def __init__(self, *, start_blocks, registry=None, log_reader=None,
                  finalized_block_reader=None, snapshot_client=None,
                  confirmation_depth=12, discovery_block_span=2000,
+                 discovery_batches_per_cycle=8,
                  observation_batches_per_cycle=4):
         required = {stream["dex"] for stream in PANCAKE_FACTORY_STREAMS}
         self.start_blocks = {dex: int(value) for dex, value in dict(start_blocks).items()}
@@ -52,6 +53,9 @@ class FullUniverseObservationRuntime:
         self.discovery = PancakeUniverseDiscovery(
             self.registry, log_reader, max_block_span=discovery_block_span
         )
+        self.discovery_batches_per_cycle = int(discovery_batches_per_cycle)
+        if not 1 <= self.discovery_batches_per_cycle <= 8:
+            raise ValueError("discovery batches per cycle must be 1..8")
         self.observer = UniverseObservationScheduler(
             self.registry, snapshot_client or DexScreenerSnapshotClient()
         )
@@ -74,6 +78,7 @@ class FullUniverseObservationRuntime:
             snapshot_client=DexScreenerSnapshotClient(),
             confirmation_depth=self.confirmation_depth,
             discovery_block_span=self.discovery.max_block_span,
+            discovery_batches_per_cycle=self.discovery_batches_per_cycle,
             observation_batches_per_cycle=self.observation_batches_per_cycle,
         )
 
@@ -83,10 +88,17 @@ class FullUniverseObservationRuntime:
             self._stream_cursor % len(PANCAKE_FACTORY_STREAMS)
         ]
         self._stream_cursor += 1
-        existing = self.discovery.scan(
-            stream, start_block=self.start_blocks[stream["dex"]],
-            finalized_block=finalized, branch="EXISTING",
-        )
+
+        existing_batches = []
+        for _ in range(self.discovery_batches_per_cycle):
+            existing = self.discovery.scan(
+                stream, start_block=self.start_blocks[stream["dex"]],
+                finalized_block=finalized, branch="EXISTING",
+            )
+            existing_batches.append(existing)
+            if existing["state"] == "CAUGHT_UP":
+                break
+
         tail = self.discovery.scan(
             stream, start_block=finalized, finalized_block=finalized, branch="NEW",
         )
@@ -118,7 +130,11 @@ class FullUniverseObservationRuntime:
         self.cycles += 1
         return {
             "state": "SHADOW_READY", "cycle": self.cycles,
-            "discovery": {"existing": existing, "new": tail},
+            "discovery": {
+                "existing": existing_batches[-1],
+                "existing_batches": existing_batches,
+                "new": tail,
+            },
             "observation_batches": observation_results,
             "observed": len(observed_pools), "evaluated": len(evaluations),
             "universe_size": self.registry.count(),

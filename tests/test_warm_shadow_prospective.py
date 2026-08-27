@@ -58,9 +58,6 @@ def test_transient_window_failure_is_fail_soft(tmp_path):
     collector = object.__new__(module.ProspectiveCollector)
     collector.rec = module.ProspectiveRecorder(tmp_path / "prospective.db")
 
-    class BrokenBase:
-        pass
-
     original = module.BaseCollector.process_windows
 
     try:
@@ -79,6 +76,27 @@ def test_transient_window_failure_is_fail_soft(tmp_path):
     finally:
         module.BaseCollector.process_windows = original
         collector.rec.db.close()
+
+
+def test_sellability_is_not_serially_blocked_by_membership():
+    text = MODULE_PATH.read_text()
+
+    assert "membership_future = self.enrichment_pool.submit(" in text
+    assert "sellability_future = self.sellability_pool.submit(" in text
+    assert text.index("membership_future = self.enrichment_pool.submit(") < text.index(
+        "sellability_future = self.sellability_pool.submit("
+    )
+    assert "future = self.sellability_pool.submit(" not in text.split(
+        "def _enrich_episode", 1
+    )[1].split("def process_transitions", 1)[0]
+
+
+def test_shutdown_waits_for_started_observation_workers():
+    text = MODULE_PATH.read_text()
+
+    close_body = text.split("def close(self):", 1)[1].split("def main():", 1)[0]
+    assert "shutdown(wait=True, cancel_futures=False)" in close_body
+    assert "shutdown(wait=False" not in close_body
 
 
 def test_prospective_has_no_trade_authority():

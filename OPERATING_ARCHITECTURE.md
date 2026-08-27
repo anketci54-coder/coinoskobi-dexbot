@@ -1,350 +1,437 @@
-# COINOSKOBI — FOUR-ENGINE OPERATING ARCHITECTURE
+# COINOSKOBI — PHASE 0–15 MODULE INTEGRATION ARCHITECTURE
 
-Status: POST-ROADMAP OPERATING MODEL
+Status: EXISTING ROADMAP MODIFICATION MAP
 
-This document does not open Phase 16. It defines the post-roadmap operating architecture for research, paper simulation, data collection and future AI training.
+This document does not create a new Phase, Era, V2/V3, Engine, service family, parallel runtime or second architecture.
 
-## Program doctrine
+Coinoskobi remains one canonical system whose numbered architecture is PHASE 0–15. New capability is added by strengthening the phase where that responsibility already belongs.
 
-- 1 September 2026 target: research/test platform readiness only.
-- Earliest planned real-money transition: 1 January 2027, subject to separate proof and human approval.
-- Live execution, wallet signing and private-key authority remain disabled.
-- Raw evidence is preserved. Derived features, scores and labels are stored separately.
-- Missing data is never silently treated as zero or valid evidence.
-- Every training-relevant record must retain provenance, timestamps, schema/policy version and quality state.
-- No hindsight reconstruction is allowed to masquerade as an observed outcome.
+## Non-negotiable doctrine
 
----
-
-# ENGINE 1 — UNIVERSE / MARKET LAB
-
-Purpose: discover and continuously observe the existing + new token universe, classify market state, run paper simulations and produce deterministic forward outcomes.
-
-Core responsibilities:
-
-- full-universe registry
-- COLD / WARM / HOT state machine
-- price, liquidity, volume, transaction and change windows
-- native WSS / on-chain event evidence
-- risk / sellability / MEV observations
-- paper trade lifecycle
-- counterfactual non-entry tracking
-- 5m / 15m / 30m / 1h / 6h / 24h outcomes
-- MFE / MAE and milestone events
-- entry / exit / rejection reasons
-- gas, slippage and execution-cost estimates
-
-Canonical identity:
-
-- token: chain + token
-- pool: chain + dex + pool
-- observation: source + chain + dex + pool + observed_at
-
-Training rule:
-
-No row is training-eligible unless its required identity, provenance and timing fields are valid and its quality state is explicit.
+- PHASE 16 is not opened.
+- No new Era is opened.
+- No new top-level Engine is opened.
+- No duplicate pipeline is opened.
+- No duplicate panel/runtime is opened.
+- Existing PHASE 0–15 modules are modified in place.
+- 1 September 2026 is the research/test readiness target, not live-money readiness.
+- 1 January 2027 is only the earliest planned live-money transition and still requires separate proof and human approval.
+- Live execution, wallet signing and private-key authority remain disabled during the research/test period.
+- Raw evidence, derived features, decisions and outcome labels remain separately traceable.
+- Missing evidence is explicit; it is never silently converted to zero, success or safe evidence.
+- Hindsight reconstruction may not masquerade as an observation.
 
 ---
 
-# ENGINE 2 — EXTERNAL INTELLIGENCE
+# THE FOUR REQUESTED CAPABILITY GROUPS ARE NOT NEW ARCHITECTURAL MODULES
 
-Purpose: monitor the external information environment and convert heterogeneous news/social/economic events into normalized evidence.
+The user-facing system can be understood in four capability groups, but implementation stays inside PHASE 0–15.
 
-## 2A Major market context
+## Capability group A — token universe, observation and paper research
 
-- BTC/USDT
-- ETH/USDT
-- current price
-- 24h percentage change
-- source and freshness
+Implemented by strengthening PHASE 0, 1, 2, 3, 5, 7, 8, 11, 12, 13 and 15.
 
-## 2B Economic pulse
+Required behavior:
 
-- major macro calendar events
-- central-bank events
-- inflation / employment / GDP / liquidity-relevant releases
-- expected / actual / previous where available
-- importance and timing
+- existing + newly created token universe
+- COLD / WARM / HOT observation
+- price, liquidity, volume, transactions and change windows
+- DEX-native and WSS evidence
+- paper buy/sell simulation
+- rejected/watched-candidate counterfactual follow-up
+- exact 5m / 15m / 30m / 1h / 6h / 24h outcomes
+- MFE / MAE
+- entry, rejection, exit and missed-opportunity reasons
+- gas, slippage and MEV/execution-cost evidence
+- training-quality classification for every record
 
-## 2C Launch / distribution intelligence
+## Capability group B — external information and market context
 
-- airdrop
-- ICO
-- IDO
-- launchpad
-- listing / delisting
-- token unlock / distribution events where relevant
+Implemented by strengthening PHASE 3, 5, 7, 8 and 10. It is not a separate news Engine.
 
-## 2D Token research intelligence
+Required behavior:
 
-Potential sources:
-
-- official web site
-- X
-- Telegram
-- Discord
-- CoinMarketCap / equivalent reference sources
-- project documentation / announcements
-
-Every item must preserve source provenance and verification state. Social claims are not equivalent to verified operational facts.
-
-## 2E Exchange / protocol operations and security
-
-Highest-priority external event class:
-
+- BTC/USDT and ETH/USDT real price + 24h percentage change
+- economic calendar / economic pulse
+- airdrop / ICO / IDO / launchpad / listing / delisting / unlock events
+- project web site / X / Telegram / Discord / CoinMarketCap-style reference research
 - DEX / CEX / NEX operational incidents
-- hacks / exploits
-- bridge incidents
-- withdrawals paused
-- deposits paused
-- chain outages
-- contract migrations
-- emergency maintenance
-- delistings / forced market changes
+- hacks, exploits, bridge incidents, withdrawal/deposit pauses, outages and emergency maintenance
+- source provenance, publication time, ingestion time, verification state and confidence
 
-Normalized event minimum:
+## Capability group C — whale, wallet and money-flow intelligence
+
+Implemented primarily by strengthening PHASE 9 and PHASE 14, with PHASE 5/7 consuming the evidence and PHASE 11/13 measuring its forward usefulness.
+
+Required behavior:
+
+- large-holder / whale cohorts
+- related-wallet evidence graph
+- related sub-wallets only when evidence supports the relationship
+- successful DEX-wallet cohort from measurable on-chain history
+- DEX analytics + BscScan-derived evidence where appropriate
+- accumulation / distribution / inflow / outflow
+- CEX / bridge interaction context when observable
+- wallet identity and relationship confidence
+- wallet-at-entry identity bound to later paper/outcome records
+
+## Capability group D — VEZIR setup
+
+VEZIR is not a new Engine or Phase. VEZIR is the final cross-phase composition of the evidence already produced by PHASE 0–15.
+
+VEZIR is anchored in PHASE 15 as the final shadow composition/readmodel, while its mathematical inputs and learning memory remain owned by their existing phases.
+
+Initial VEZIR mode:
+
+- SHADOW
+- READ-ONLY
+- PAPER comparison only
+- no signing
+- no wallet authority
+- no live execution authority
+
+---
+
+# PHASE-BY-PHASE MODIFICATION MAP
+
+## PHASE 0 — Critical Bug Fixes / Data Integrity
+
+Add all cross-cutting correctness repairs here, including the current horizon-integrity P0 work.
+
+Responsibilities to strengthen:
+
+- exact token+pool outcome identity
+- no scheduler starvation for due checkpoints
+- malformed/ambiguous records fail closed
+- incomplete historical rows receive explicit quarantine state
+- silent data corruption is a blocker
+
+Current PR #21 belongs here.
+
+## PHASE 1 — Core Infrastructure / Durable Evidence Storage
+
+Strengthen the existing SQLite/WAL/storage foundation instead of introducing a new data platform.
+
+Add common evidence metadata where applicable:
 
 - event_id
-- event_type
-- entity / exchange / chain / token references
+- entity identity
 - source
+- source_record_id
 - published_at
 - observed_at
 - ingested_at
-- verification_state
-- confidence
-- severity
-- raw_hash
 - schema_version
-
----
-
-# ENGINE 3 — WALLET / MONEY-FLOW INTELLIGENCE
-
-Purpose: determine where capital is moving and whether observed market moves are supported by whale, smart-money or broader wallet behavior.
-
-## 3A Whale inventory
-
-- wallets above configurable asset/value thresholds
-- asset concentration
-- inflow / outflow
-- accumulation / distribution
-- bridge / exchange interaction
-
-## 3B Related-wallet graph
-
-Relationship states:
-
-- KNOWN
-- STRONG_LINK
-- WEAK_LINK
-- UNKNOWN
-
-No identity guess is promoted to fact without evidence.
-
-## 3C Successful DEX-wallet cohort
-
-Candidate discovery sources may include DEX analytics and BscScan-derived on-chain evidence.
-
-Wallet quality is measured from observed history, not reputation labels alone:
-
-- realized / marked outcomes where measurable
-- consistency
-- drawdown
-- holding time
-- token-selection behavior
-- entry timing
-- exit timing
-- repeat participation
-
-## 3D Money-flow output
-
-Primary question:
-
-"Where is capital moving, how fast, through which wallets/entities, and with what confidence?"
-
-Outputs are evidence only; they do not create execution authority.
-
----
-
-# ENGINE 4 — VEZIR FUSION / DECISION SCIENCE
-
-Purpose: fuse evidence from Engines 1-3 and produce a scientifically auditable shadow decision packet.
-
-Initial mode: SHADOW / READ-ONLY / NO EXECUTION AUTHORITY.
-
-Pipeline:
-
-RAW EVENTS
--> NORMALIZATION
--> QUALITY + PROVENANCE
--> FEATURE LAYER
--> VEZIR FUSION
--> DECISION PACKET
--> PAPER SIMULATION
--> FORWARD OUTCOMES
--> TRAINING LABELS
-
-## Decision packet
-
-Minimum fields:
-
-- candidate identity
-- evidence timestamp
-- opportunity score
-- confidence
-- estimated success probability
-- expected gross return
-- expected gas
-- expected slippage
-- expected MEV / adverse execution risk
-- expected net edge
-- downside estimate
-- recommended paper position size
-- entry zone
-- stop-loss policy
-- take-profit / exit policy
-- invalidation conditions
-- evidence references
-- model / formula version
-- shadow_only=true
-
-## Core mathematical principles
-
-Example net-edge form:
-
-Net Edge = Expected Return - Gas - Slippage - MEV Cost - Failure/Risk Cost
-
-Example position-sizing form:
-
-Position Size = Capital x Risk Budget x Confidence x Liquidity Factor x Edge Factor
-
-Coefficients and thresholds must be calibrated from observed Coinoskobi data. They are not invented from hindsight.
-
-## Exit policy families
-
-### VUR_KAC
-
-Enter only when measured momentum / flow / acceleration evidence supports it. Exit when the expected move is achieved or the supporting indicators decelerate / reverse.
-
-### CAPITAL_RECOVERY_RUNNER
-
-Recover principal + measured execution costs first when conditions permit; keep the remaining profit-funded position under trailing / flow / regime conditions.
-
-### CLASSIC_RISK_PLAN
-
-Mathematical stop, staged targets and optional trailing logic.
-
-Vezir may compare these policies in shadow simulation before any future authority discussion.
-
----
-
-# SHARED DATA CONTRACT
-
-Every training-relevant raw/event record should carry, where applicable:
-
-- event_id
-- entity_id / token / pool / wallet
-- chain
-- dex / venue
-- source
-- source_record_id when available
-- published_at when applicable
-- observed_at
-- ingested_at
-- schema_version
-- policy_version
+- policy/formula version
 - quality_state
 - confidence
 - raw_hash
 
-Quality states must be explicit. Suggested baseline vocabulary:
+Raw evidence, derived feature rows and training labels remain logically separate.
 
-- VALID
-- NOT_APPLICABLE
-- NOT_YET_DUE
-- PROVIDER_MISSING
-- FETCH_FAILED
-- STALE
-- AMBIGUOUS
-- INTERNAL_GAP
-- LEGACY_QUARANTINE
+## PHASE 2 — Performance & Scalable Pipeline Core
 
-Silent NULL is not sufficient for training eligibility.
+Owns full-universe transport and scheduling.
+
+Strengthen:
+
+- full existing + new pool universe
+- bounded discovery and revisit scheduling
+- COLD/WARM/HOT observation scheduling
+- provider-aware fairness
+- exact chain/dex/pool identity
+- bounded external-source admission where later phases need it
+- no hot-path AI/network blocking that can starve market observation
+
+## PHASE 3 — Risk, Opportunity & Entry Feasibility
+
+Owns pre-entry mathematics.
+
+Strengthen:
+
+- opportunity score
+- score confidence / evidence coverage
+- expected gross return
+- gas estimate
+- slippage estimate
+- MEV/adverse-execution estimate
+- liquidity/position-size feasibility
+- expected net edge
+- downside/risk budget
+- paper position sizing
+- entry zone and invalidation conditions
+
+External catalyst/security evidence may influence confidence or risk here only after it has been normalized by its owning observation phase.
+
+Hard safety remains above mathematical score.
+
+## PHASE 4 — Position Lifecycle
+
+Owns capital management after paper entry.
+
+Strengthen existing lifecycle policies rather than creating a new strategy service:
+
+- CLASSIC_RISK_PLAN
+- multi-stage TP
+- monotonic protective stop
+- runner
+- CAPITAL_RECOVERY_RUNNER: when mathematically justified, recover principal + measured costs first and continue with profit-funded exposure
+- allocation conservation and auditability
+
+## PHASE 5 — DEX Market Intelligence
+
+This remains the primary real-time market observation module and is expanded to hold market-context evidence needed beside DEX-native evidence.
+
+Strengthen:
+
+- pool price/liquidity/volume/transactions
+- swap flow, participation, reserve and price-impact evidence
+- BTC/USDT and ETH/USDT current price + real 24h percentage change as broad market context
+- normalized catalyst/reference observations needed for a token, including listing/unlock/launch information when available
+- external market facts remain source-tagged and never masquerade as DEX-native facts
+
+## PHASE 6 — Exit Intelligence
+
+Owns dynamic exit reasoning.
+
+Strengthen:
+
+- momentum exhaustion
+- flow deceleration
+- price/flow divergence
+- liquidity deterioration
+- adverse wallet-flow evidence
+- VUR_KAC exit behavior: exit when measured supporting evidence decelerates/reverses or the calculated objective is reached
+- capital-recovery/runner exit context
+
+No live execution authority is added.
+
+## PHASE 7 — DEX Flow Confirmation & Market Regime
+
+Owns confirmation and regime context.
+
+Strengthen:
+
+- trend/chop/conflict/transition regime
+- multi-actor confirmation
+- broad-market BTC/ETH context from PHASE 5
+- economic-calendar event context as an advisory regime modifier
+- expected/actual/previous macro fields where real sources provide them
+- central-bank, inflation, employment, GDP and major liquidity-sensitive event timing
+
+Macro events never fabricate a directional signal; they alter context/confidence only through explicit rules.
+
+## PHASE 8 — Native Event Ingestion & Provider Resilience
+
+Owns resilient ingestion mechanics.
+
+Reuse its bounded provider/reconnect/freshness concepts for approved external feeds where practical instead of opening another ingestion architecture.
+
+Strengthen:
+
+- source health
+- reconnect/backoff
+- freshness/staleness
+- duplicate suppression
+- source outage classification
+- bounded polling/subscription budgets
+- provenance-preserving ingest timestamp
+
+Native DEX hot path remains protected from slower external sources.
+
+## PHASE 9 — Wallet / Entity / Smart-Money Intelligence
+
+This is the canonical home for the requested wallet/whale capability.
+
+Strengthen:
+
+- whale cohorts by configurable measurable holdings/value criteria
+- wallet behavior features
+- related-wallet graph
+- KNOWN / STRONG_LINK / WEAK_LINK / UNKNOWN relation states
+- successful DEX-wallet cohort based on measured outcomes, not labels alone
+- accumulation/distribution
+- inflow/outflow
+- bridge/CEX interaction evidence when observable
+- wallet concentration and multi-wallet participation
+- DEX analytics/BscScan inputs with provenance
+
+No identity guessing becomes fact.
+
+## PHASE 10 — Adversary / Scam / MEV Intelligence
+
+This is the canonical home for the highest-priority operational/security news requested by the user.
+
+Strengthen:
+
+- DEX/CEX/NEX hack and exploit events
+- bridge exploit/incident events
+- withdrawal/deposit freeze
+- chain outage
+- emergency maintenance
+- compromised project/operator evidence
+- malicious actor/adversary relationships
+- MEV/adverse execution context
+- severity, verification and source confidence
+
+Rumor/social evidence stays separate from verified incident evidence.
+
+## PHASE 11 — Learning / Calibration / Outcome Memory
+
+Owns scientific calibration, not execution.
+
+Strengthen:
+
+- feature/outcome calibration
+- formula version registry
+- probability calibration
+- score calibration
+- false positive / false negative memory
+- avoided loss / missed opportunity memory
+- source usefulness calibration
+- wallet-signal usefulness calibration
+- news/macro/security-signal usefulness calibration
+- quality-state aware sample eligibility
+
+No model learns from quarantined/ambiguous data as if it were valid.
+
+## PHASE 12 — Paper Runtime / Paper Lifecycle
+
+All candidate trading policies are compared here before any future live discussion.
+
+Strengthen paper-only comparison of:
+
+- existing canonical policy
+- VUR_KAC behavior
+- CAPITAL_RECOVERY_RUNNER behavior
+- CLASSIC_RISK_PLAN behavior
+- calculated position size
+- entry zone
+- SL/TP/trailing decisions
+- measured gas/slippage/MEV assumptions
+- exact decision reason and evidence references
+
+## PHASE 13 — Counterfactual / Forward Outcome Observation
+
+This is the canonical training-label layer.
+
+Strengthen:
+
+- watched/rejected-candidate follow-up
+- exact token+pool identity
+- checkpoint due/overdue priority
+- 5m / 15m / 30m / 1h / 6h / 24h forward outcomes
+- MFE / MAE
+- milestone timing
+- missed opportunity
+- avoided loss
+- paper-vs-non-entry comparison
+- explicit VALID / NOT_YET_DUE / PROVIDER_MISSING / FETCH_FAILED / STALE / AMBIGUOUS / INTERNAL_GAP / LEGACY_QUARANTINE semantics
+
+No hindsight price backfill is presented as observed truth.
+
+## PHASE 14 — Wallet Identity → Paper/Outcome Binding & Command-Center Evidence
+
+Preserve the existing entry-time wallet identity binding and expand the readmodel/observability side.
+
+Strengthen:
+
+- wallet/entity identity at decision time
+- wallet evidence references persisted with paper entry
+- wallet identity bound to later outcome memory
+- external event references bound to decision time when used
+- panel/readmodel shows source, freshness, confidence and quality state
+- no later identity reconstruction presented as entry-time truth
+
+## PHASE 15 — Final Simulation Drift, Cross-Phase Composition & VEZIR Shadow
+
+PHASE 15 remains the final numbered phase and becomes the canonical final composition point. No PHASE 16 follows it.
+
+VEZIR setup is implemented here by composing existing phase outputs, not by creating another engine.
+
+Input ownership remains:
+
+- PHASE 3: entry/risk/net-edge mathematics
+- PHASE 4: lifecycle/capital policy
+- PHASE 5: market evidence
+- PHASE 6: exit evidence
+- PHASE 7: confirmation/regime
+- PHASE 9: wallet/smart-money evidence
+- PHASE 10: adversary/security/MEV evidence
+- PHASE 11: calibration/memory
+- PHASE 12: paper simulation
+- PHASE 13: forward labels/counterfactuals
+- PHASE 14: decision-time identity/evidence binding
+
+PHASE 15 output is a reproducible SHADOW decision packet containing at minimum:
+
+- exact candidate identity
+- evidence timestamp
+- referenced evidence IDs
+- opportunity score
+- confidence
+- calibrated probability when scientifically available
+- expected gross return
+- gas/slippage/MEV costs
+- expected net edge
+- downside/risk budget
+- recommended paper amount
+- entry zone
+- SL policy
+- TP/runner/VUR_KAC exit policy
+- invalidation conditions
+- formula/model version
+- quality state
+- shadow_only=true
+
+It may compare its shadow decision with canonical paper outcomes but receives no live/wallet/signing authority.
 
 ---
 
-# IMPLEMENTATION ORDER
+# EXTERNAL INFORMATION SOURCE RULES
 
-## Gate 0 — Data integrity closure
+The system may use official sites, X, Telegram, Discord, CoinMarketCap-style references, exchange status/security pages, economic-calendar providers and other approved sources, but every observation must carry provenance and confidence.
 
-Finish and validate PR #21 before changing the VPS runtime. Required:
+Minimum separation:
 
-- due/overdue-first durable follow-up
-- exact token+pool observation identity
-- legacy incomplete outcome quarantine
-- full regression PASS
-- VPS post-apply verification
+- VERIFIED_FACT
+- CORROBORATED_REPORT
+- SINGLE_SOURCE_REPORT
+- SOCIAL_CLAIM
+- UNKNOWN
 
-## Workstream A — Shared evidence contract
-
-Build the common event/provenance/quality contract first so Engines 2 and 3 do not create incompatible datasets.
-
-Acceptance:
-
-- deterministic schema
-- timestamp semantics defined
-- explicit quality states
-- raw/derived separation
-- no execution authority
-
-## Workstream B — External intelligence minimum viable feed
-
-Order:
-
-1. BTC/USDT + ETH/USDT real market context
-2. economic calendar
-3. exchange/protocol operational + hack events
-4. token research / social evidence
-5. ICO/IDO/airdrop radar
-
-Priority rationale: 2E can invalidate risk assumptions fastest, so it is implemented before broad social expansion.
-
-## Workstream C — Wallet / money-flow intelligence
-
-Order:
-
-1. wallet evidence schema
-2. whale threshold cohorts
-3. wallet relation graph
-4. successful DEX-wallet cohort
-5. money-flow aggregation and confidence
-
-## Workstream D — Vezir shadow setup
-
-Order:
-
-1. feature registry
-2. formula/version registry
-3. evidence fusion contract
-4. shadow decision packet
-5. paper-policy comparison
-6. forward-outcome evaluation
-7. calibration dataset export
-
-No AI model training starts until the dataset integrity gate is satisfied.
+A social post is not promoted to verified operational truth without supporting evidence.
 
 ---
 
-# ACCEPTANCE STANDARD
+# DATA/TRAINING ACCEPTANCE
 
-The architecture is considered research-ready only when:
+A future VEZIR training dataset is eligible only when:
 
-- Engines 1-3 produce provenance-complete data
-- missing/failed observations are explicitly classified
-- Vezir consumes evidence without fabricating missing inputs
-- every decision packet is reproducible from stored evidence + formula/model version
-- paper outcomes can be joined to the exact prior decision and exact market entity
-- live/wallet/signing/execution authority remains false
+- identity is exact enough for the record type
+- observation and ingestion timestamps are known
+- source provenance is known
+- schema/policy/formula version is known where applicable
+- quality state is explicit
+- forward label is actually observed rather than hindsight-invented
+- quarantined rows are excluded from normal training
+- raw facts can be traced from a derived feature/decision
+- paper outcome can be joined back to the exact prior decision and evidence snapshot
 
-This operating model is intentionally modular but not microservice-heavy. SQLite and the existing runtime remain preferred until measured load proves a need for a more complex storage or messaging layer.
+SQLite and the current canonical runtime remain preferred until measured load proves they are insufficient.
+
+---
+
+# IMPLEMENTATION ORDER — INSIDE PHASE 0–15 ONLY
+
+1. Close PHASE 0 data-integrity repair represented by PR #21 and verify it on VPS.
+2. Strengthen PHASE 1 shared evidence/provenance/quality contract.
+3. Strengthen PHASE 5 + PHASE 7 market context: BTC/ETH and economic pulse.
+4. Strengthen PHASE 10 operational/security intelligence first because hacks/outages/freezes can invalidate risk assumptions immediately.
+5. Strengthen PHASE 5 token catalyst/research observations: launch/listing/airdrop/ICO/IDO and approved social/reference sources.
+6. Strengthen PHASE 9 wallet/whale/smart-money tracking and PHASE 14 outcome binding/readmodel.
+7. Strengthen PHASE 11/13 training eligibility, calibration and exact forward labels.
+8. Strengthen PHASE 3/4/6/12 mathematical entry, sizing and exit policy comparison.
+9. Complete VEZIR shadow composition in PHASE 15.
+
+At no point does this sequence create a new Phase, Era, Engine, duplicate runtime, duplicate pipeline or live authority.

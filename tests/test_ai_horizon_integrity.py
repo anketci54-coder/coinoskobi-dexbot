@@ -215,9 +215,125 @@ def test_ambiguous_raw_token_fails_closed(tmp_path):
     assert changed == 0
 
 
+def test_paper_promotion_is_bound_to_exact_pool(tmp_path):
+    store = _store(tmp_path)
+    now = 4_500_000.0
+    token = "0xmulti"
+    pool_a = "0xpoola"
+    pool_b = "0xpoolb"
+
+    _insert_pending(
+        store,
+        token=token,
+        pool=pool_a,
+        observed_at=now - 1000,
+    )
+    _insert_pending(
+        store,
+        token=token,
+        pool=pool_b,
+        observed_at=now - 1000,
+    )
+
+    store._db.execute(
+        """
+        INSERT INTO paper_trades(
+            token,
+            pool,
+            entry_price,
+            status
+        ) VALUES(?,?,?,?)
+        """,
+        (token, pool_b, 1.25, "OPEN"),
+    )
+    store._db.commit()
+
+    result = store.observe_durable(
+        token=token,
+        pool=pool_a,
+        current_price=2.0,
+        evaluated_at=now,
+    )
+
+    assert result["state"] == "OBSERVED"
+    assert result["promotion"] is None
+
+    promoted_a = store._db.execute(
+        """
+        SELECT COUNT(*)
+        FROM counterfactual_observations
+        WHERE token=?
+          AND pool=?
+          AND promoted_at IS NOT NULL
+        """,
+        (token, pool_a),
+    ).fetchone()[0]
+    promoted_b = store._db.execute(
+        """
+        SELECT COUNT(*)
+        FROM counterfactual_observations
+        WHERE token=?
+          AND pool=?
+          AND promoted_at IS NOT NULL
+        """,
+        (token, pool_b),
+    ).fetchone()[0]
+
+    assert promoted_a == 0
+    assert promoted_b == 0
+
+    result = store.observe_durable(
+        token=token,
+        pool=pool_b,
+        current_price=2.0,
+        evaluated_at=now + 1,
+    )
+
+    assert result["state"] == "OBSERVED"
+    assert result["promotion"] is not None
+
+    promoted_b = store._db.execute(
+        """
+        SELECT COUNT(*)
+        FROM counterfactual_observations
+        WHERE token=?
+          AND pool=?
+          AND promoted_at IS NOT NULL
+        """,
+        (token, pool_b),
+    ).fetchone()[0]
+    assert promoted_b == 1
+
+
+def test_followup_registry_retains_pool_past_24h_checkpoint(tmp_path):
+    store = _store(tmp_path)
+    observed_at = 5_000_000.0
+    token = "0xretain"
+    pool = "0xretainpool"
+
+    assert store._register_followup(
+        token=token,
+        pool=pool,
+        observed_at=observed_at,
+    ) is True
+
+    db = sqlite3.connect(store._cache_db_path)
+    expires_at = db.execute(
+        """
+        SELECT expires_at
+        FROM candidate_followup_registry
+        WHERE pool=?
+        """,
+        (pool,),
+    ).fetchone()[0]
+    db.close()
+
+    assert expires_at > observed_at + 86400
+
+
 def test_legacy_completed_without_24h_is_quarantined(tmp_path):
     store = _store(tmp_path)
-    now = 5_000_000.0
+    now = 5_500_000.0
 
     _insert_pending(
         store,
@@ -243,5 +359,7 @@ def test_legacy_completed_without_24h_is_quarantined(tmp_path):
         "CHECKPOINT_DUE_OVERDUE_FIRST"
     )
     assert quality["identity_policy"] == "EXACT_TOKEN_POOL"
+    assert quality["promotion_identity_policy"] == "EXACT_TOKEN_POOL"
+    assert quality["followup_retention_grace_seconds"] == 3600
     assert quality["training_authority"] is False
     assert quality["live_authority"] is False

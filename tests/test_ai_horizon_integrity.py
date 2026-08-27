@@ -225,7 +225,7 @@ def test_multi_pool_token_gets_exact_handles_and_no_cross_write(tmp_path):
     assert rows[pool_a]["price_15m"] == 2.0
     assert rows[pool_a]["quality_15m"] == "VALID"
     assert rows[pool_b]["price_5m"] is None
-    assert rows[pool_b]["quality_5m"] is None
+    assert rows[pool_b]["quality_5m"] == "INTERNAL_GAP"
     assert rows[pool_b]["price_15m"] is None
     assert rows[pool_b]["quality_15m"] is None
 

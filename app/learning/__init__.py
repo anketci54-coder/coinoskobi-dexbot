@@ -2,15 +2,15 @@
 
 The durable counterfactual store is hardened at package import so existing
 runtime imports keep the same public class name while gaining checkpoint-first
-scheduling and exact token+pool observation semantics.
+scheduling, exact token+pool identity and scientific horizon-label quality.
 """
 
 from . import counterfactual_observation as _counterfactual_observation
-from .horizon_integrity import IntegrityCounterfactualObservationStore
+from .horizon_quality import ScientificCounterfactualObservationStore
 
 
 _counterfactual_observation.CounterfactualObservationStore = (
-    IntegrityCounterfactualObservationStore
+    ScientificCounterfactualObservationStore
 )
 
-__all__ = ["IntegrityCounterfactualObservationStore"]
+__all__ = ["ScientificCounterfactualObservationStore"]

@@ -328,7 +328,7 @@ def test_followup_registry_retains_pool_past_24h_checkpoint(tmp_path):
     ).fetchone()[0]
     db.close()
 
-    assert expires_at > observed_at + 86400
+    assert expires_at == observed_at + 86400 + 3600
 
 
 def test_legacy_completed_without_24h_is_quarantined(tmp_path):

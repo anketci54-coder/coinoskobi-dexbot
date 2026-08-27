@@ -3,8 +3,8 @@ import sqlite3
 from app.learning.counterfactual_observation import (
     CounterfactualObservationStore,
 )
-from app.learning.horizon_integrity import (
-    IntegrityCounterfactualObservationStore,
+from app.learning.horizon_quality import (
+    ScientificCounterfactualObservationStore,
 )
 from app.paper.schema import ensure_paper_schema
 
@@ -78,9 +78,9 @@ def _insert_pending(
     store._db.commit()
 
 
-def test_public_store_uses_integrity_hardening():
+def test_public_store_uses_scientific_integrity_hardening():
     assert CounterfactualObservationStore is (
-        IntegrityCounterfactualObservationStore
+        ScientificCounterfactualObservationStore
     )
 
 
@@ -158,7 +158,12 @@ def test_multi_pool_token_gets_exact_handles_and_no_cross_write(tmp_path):
 
     rows = store._db.execute(
         """
-        SELECT pool, price_5m, price_15m
+        SELECT
+            pool,
+            price_5m,
+            quality_5m,
+            price_15m,
+            quality_15m
         FROM counterfactual_observations
         WHERE token=?
         ORDER BY pool
@@ -170,10 +175,14 @@ def test_multi_pool_token_gets_exact_handles_and_no_cross_write(tmp_path):
         for row in rows
     }
 
-    assert rows[pool_a]["price_5m"] == 2.0
+    assert rows[pool_a]["price_5m"] is None
+    assert rows[pool_a]["quality_5m"] == "INTERNAL_GAP"
     assert rows[pool_a]["price_15m"] == 2.0
+    assert rows[pool_a]["quality_15m"] == "VALID"
     assert rows[pool_b]["price_5m"] is None
+    assert rows[pool_b]["quality_5m"] is None
     assert rows[pool_b]["price_15m"] is None
+    assert rows[pool_b]["quality_15m"] is None
 
 
 def test_ambiguous_raw_token_fails_closed(tmp_path):
@@ -331,6 +340,89 @@ def test_followup_registry_retains_pool_past_24h_checkpoint(tmp_path):
     assert expires_at == observed_at + 86400 + 3600
 
 
+def test_on_time_horizon_is_valid_and_records_delay(tmp_path):
+    store = _store(tmp_path)
+    now = 5_250_000.0
+    token = "0xvalid"
+    pool = "0xvalidpool"
+
+    _insert_pending(
+        store,
+        token=token,
+        pool=pool,
+        observed_at=now - 420,
+    )
+
+    result = store.observe_durable(
+        token=token,
+        pool=pool,
+        current_price=1.5,
+        evaluated_at=now,
+    )
+
+    assert result["state"] == "OBSERVED"
+    row = store._db.execute(
+        """
+        SELECT price_5m, quality_5m, delay_5m
+        FROM counterfactual_observations
+        WHERE token=? AND pool=?
+        """,
+        (token, pool),
+    ).fetchone()
+
+    assert row["price_5m"] == 1.5
+    assert row["quality_5m"] == "VALID"
+    assert row["delay_5m"] == 120.0
+
+
+def test_stale_24h_checkpoint_is_gap_not_fabricated_price(tmp_path):
+    store = _store(tmp_path)
+    now = 5_400_000.0
+    token = "0xstale"
+    pool = "0xstalepool"
+
+    _insert_pending(
+        store,
+        token=token,
+        pool=pool,
+        observed_at=now - 90000,
+    )
+
+    result = store.observe_durable(
+        token=token,
+        pool=pool,
+        current_price=9.0,
+        evaluated_at=now,
+    )
+
+    assert result["state"] == "OBSERVED"
+    row = store._db.execute(
+        """
+        SELECT
+            price_24h,
+            return_24h,
+            observed_24h_at,
+            quality_24h,
+            delay_24h,
+            completed_at
+        FROM counterfactual_observations
+        WHERE token=? AND pool=?
+        """,
+        (token, pool),
+    ).fetchone()
+
+    assert row["price_24h"] is None
+    assert row["return_24h"] is None
+    assert row["observed_24h_at"] is None
+    assert row["quality_24h"] == "INTERNAL_GAP"
+    assert row["delay_24h"] == 3600.0
+    assert row["completed_at"] == now
+
+    quality = store.training_quality_snapshot()
+    assert quality["internal_gap_counts"]["24h"] == 1
+    assert quality["stale_backfill_allowed"] is False
+
+
 def test_legacy_completed_without_24h_is_quarantined(tmp_path):
     store = _store(tmp_path)
     now = 5_500_000.0
@@ -361,5 +453,9 @@ def test_legacy_completed_without_24h_is_quarantined(tmp_path):
     assert quality["identity_policy"] == "EXACT_TOKEN_POOL"
     assert quality["promotion_identity_policy"] == "EXACT_TOKEN_POOL"
     assert quality["followup_retention_grace_seconds"] == 3600
+    assert quality["scientific_label_policy"] == (
+        "CAPTURE_WINDOW_OR_EXPLICIT_GAP"
+    )
+    assert quality["horizon_capture_window_seconds"] == 300
     assert quality["training_authority"] is False
     assert quality["live_authority"] is False

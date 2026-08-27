@@ -243,14 +243,6 @@ class ProspectiveCollector(BaseCollector):
             tracking_state=tracking,
         )
 
-        future = self.sellability_pool.submit(
-            self._sellability_episode,
-            episode_id,
-            pool,
-            token,
-        )
-        self._track_future(self.sellability_futures, future)
-
     def process_transitions(self):
         last_id = self.rec.get_meta_int("last_eval_id", 0)
         rows = self.cache.execute("""
@@ -306,7 +298,7 @@ class ProspectiveCollector(BaseCollector):
             self.rec.record_trigger_features(episode_id, observation, history)
 
             if tracking == "ENRICHING":
-                future = self.enrichment_pool.submit(
+                membership_future = self.enrichment_pool.submit(
                     self._enrich_episode,
                     episode_id,
                     item["dex"],
@@ -314,7 +306,15 @@ class ProspectiveCollector(BaseCollector):
                     token,
                     quote,
                 )
-                self._track_future(self.enrichment_futures, future)
+                self._track_future(self.enrichment_futures, membership_future)
+
+                sellability_future = self.sellability_pool.submit(
+                    self._sellability_episode,
+                    episode_id,
+                    item["pool"],
+                    token,
+                )
+                self._track_future(self.sellability_futures, sellability_future)
 
             last_id = max(last_id, int(item["id"]))
 
@@ -344,8 +344,10 @@ class ProspectiveCollector(BaseCollector):
     def close(self):
         if self.wss is not None:
             self.wss.stop()
-        self.enrichment_pool.shutdown(wait=False, cancel_futures=True)
-        self.sellability_pool.shutdown(wait=False, cancel_futures=True)
+        # Complete already-started observation tasks before closing SQLite.
+        # This prevents late worker callbacks from writing into a closed DB.
+        self.enrichment_pool.shutdown(wait=True, cancel_futures=False)
+        self.sellability_pool.shutdown(wait=True, cancel_futures=False)
         self.cache.close()
         self.rec.db.close()
 

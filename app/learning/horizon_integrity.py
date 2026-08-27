@@ -1,14 +1,15 @@
-import math
 import sqlite3
 import time
 from pathlib import Path
 
 from app.learning.counterfactual_observation import (
+    DECISION_CHECKPOINT_SECONDS,
     CounterfactualObservationStore as _BaseCounterfactualObservationStore,
 )
 
 
 _HANDLE_SEPARATOR = "::pool::"
+_FOLLOWUP_GRACE_SECONDS = 60 * 60
 
 
 class IntegrityCounterfactualObservationStore(
@@ -20,6 +21,9 @@ class IntegrityCounterfactualObservationStore(
     Guarantees:
     - bounded follow-up is checkpoint-due/overdue first, not newest first;
     - a market price is applied only to the exact token+pool identity;
+    - paper-promotion attribution is exact token+pool, never token-only;
+    - the exact-pool cache-retention window extends beyond the 24h checkpoint
+      so cleanup cannot race the final scheduled observation;
     - ambiguous raw-token observations fail closed instead of cross-writing;
     - legacy rows marked completed without a real 24h observation remain
       visible as quarantined training data and are never backfilled here.
@@ -43,6 +47,63 @@ class IntegrityCounterfactualObservationStore(
             return cls._canonical(value), None
         token, pool = value.split(_HANDLE_SEPARATOR, 1)
         return cls._canonical(token), cls._canonical(pool)
+
+    def _register_followup(
+        self,
+        *,
+        token,
+        pool,
+        observed_at,
+    ):
+        """
+        Preserve the exact pool past the final 24h checkpoint.
+
+        The checkpoint remains exactly 24h.  The extra hour is retention grace
+        only; it is never used as a label horizon or reconstructed outcome.
+        """
+        if not self._cache_db_path:
+            return False
+
+        if not self._ensure_cache_followup_registry():
+            return False
+
+        try:
+            db = sqlite3.connect(
+                self._cache_db_path,
+                timeout=5,
+            )
+            db.execute("PRAGMA busy_timeout=5000;")
+            db.execute(
+                """
+                INSERT INTO candidate_followup_registry(
+                    pool,
+                    token,
+                    expires_at,
+                    updated_at
+                )
+                VALUES(?,?,?,?)
+                ON CONFLICT(pool) DO UPDATE SET
+                    token=excluded.token,
+                    expires_at=MAX(
+                        candidate_followup_registry.expires_at,
+                        excluded.expires_at
+                    ),
+                    updated_at=excluded.updated_at
+                """,
+                (
+                    self._canonical(pool),
+                    self._canonical(token),
+                    float(observed_at)
+                    + DECISION_CHECKPOINT_SECONDS
+                    + _FOLLOWUP_GRACE_SECONDS,
+                    float(observed_at),
+                ),
+            )
+            db.commit()
+            db.close()
+            return True
+        except sqlite3.Error:
+            return False
 
     def _resolve_single_pending_pool(self, token):
         if self._db is None:
@@ -267,6 +328,105 @@ class IntegrityCounterfactualObservationStore(
             current_price=current_price,
         )
 
+    def _persist_paper_promotion_exact(
+        self,
+        *,
+        token,
+        pool,
+        observed_at,
+    ):
+        """Bind PAPER_BUY promotion to the same exact token+pool."""
+        if self._db is None:
+            return None
+
+        token = self._canonical(token)
+        pool = self._canonical(pool)
+        if not token or not pool:
+            return None
+
+        with self._lock:
+            trade = self._db.execute(
+                """
+                SELECT token, pool, entry_price
+                FROM paper_trades
+                WHERE lower(token)=lower(?)
+                  AND lower(pool)=lower(?)
+                  AND status='OPEN'
+                ORDER BY id DESC
+                LIMIT 1
+                """,
+                (token, pool),
+            ).fetchone()
+
+            if trade is None:
+                return None
+
+            price = self._finite_positive(
+                trade["entry_price"]
+            )
+            if price is None:
+                return None
+
+            latest = self._db.execute(
+                """
+                SELECT decision_action
+                FROM candidate_decision_history
+                WHERE lower(token)=lower(?)
+                  AND lower(pool)=lower(?)
+                ORDER BY id DESC
+                LIMIT 1
+                """,
+                (token, pool),
+            ).fetchone()
+
+            if (
+                latest is not None
+                and str(latest["decision_action"]).upper()
+                == "PAPER_BUY"
+            ):
+                return None
+
+        context = {
+            "paper": "PAPER_BUY",
+            "reason": "PAPER_TRADE_OPENED",
+            "promotion_from_prior_non_entry": True,
+            "hindsight_reconstructed": False,
+        }
+
+        transition = self._persist_decision_transition(
+            token=token,
+            pool=pool,
+            entry_price=price,
+            signal_state="POSITIVE",
+            candidate_action="PAPER_BUY",
+            observed_at=observed_at,
+            context=context,
+            promotion=True,
+        )
+
+        if transition["stored"]:
+            with self._lock:
+                self._db.execute(
+                    """
+                    UPDATE counterfactual_observations
+                    SET promoted_at=COALESCE(
+                        promoted_at,
+                        ?
+                    )
+                    WHERE lower(token)=lower(?)
+                      AND lower(pool)=lower(?)
+                      AND completed_at IS NULL
+                    """,
+                    (
+                        float(observed_at),
+                        token,
+                        pool,
+                    ),
+                )
+                self._db.commit()
+
+        return transition
+
     def observe_durable(
         self,
         *,
@@ -314,8 +474,9 @@ class IntegrityCounterfactualObservationStore(
             current_price=price,
         )
 
-        promotion = self._persist_paper_promotion(
+        promotion = self._persist_paper_promotion_exact(
             token=real_token,
+            pool=exact_pool,
             observed_at=now,
         )
 
@@ -457,6 +618,8 @@ class IntegrityCounterfactualObservationStore(
             "legacy_training_disposition": "QUARANTINE",
             "scheduler_policy": "CHECKPOINT_DUE_OVERDUE_FIRST",
             "identity_policy": "EXACT_TOKEN_POOL",
+            "promotion_identity_policy": "EXACT_TOKEN_POOL",
+            "followup_retention_grace_seconds": _FOLLOWUP_GRACE_SECONDS,
             "training_authority": False,
             "paper_authority": False,
             "live_authority": False,

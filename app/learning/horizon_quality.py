@@ -43,6 +43,71 @@ class ScientificCounterfactualObservationStore(
 
         self._db.commit()
 
+    def _classify_expired_horizons(self, *, now):
+        """
+        Mark horizons that can no longer be scientifically captured.
+
+        This path is deliberately local-only: no scanner/provider price is
+        needed because an expired horizon must remain an explicit gap rather
+        than consuming fetch capacity or being hindsight-filled.
+        """
+        if self._db is None:
+            return {
+                "classified": {},
+                "completed": 0,
+            }
+
+        now = float(now)
+        classified = {}
+
+        with self._lock:
+            for seconds, label in self._durable_horizons:
+                cursor = self._db.execute(
+                    f"""
+                    UPDATE counterfactual_observations
+                    SET quality_{label}='INTERNAL_GAP',
+                        delay_{label}=(? - observed_at - ?)
+                    WHERE completed_at IS NULL
+                      AND price_{label} IS NULL
+                      AND quality_{label} IS NULL
+                      AND (? - observed_at - ?) > ?
+                    """,
+                    (
+                        now,
+                        float(seconds),
+                        now,
+                        float(seconds),
+                        float(HORIZON_CAPTURE_WINDOW_SECONDS),
+                    ),
+                )
+                classified[label] = max(
+                    0,
+                    int(cursor.rowcount or 0),
+                )
+
+            completed_cursor = self._db.execute(
+                """
+                UPDATE counterfactual_observations
+                SET completed_at=?
+                WHERE completed_at IS NULL
+                  AND price_24h IS NULL
+                  AND quality_24h='INTERNAL_GAP'
+                """,
+                (now,),
+            )
+            completed = max(
+                0,
+                int(completed_cursor.rowcount or 0),
+            )
+
+            if any(classified.values()) or completed:
+                self._db.commit()
+
+        return {
+            "classified": classified,
+            "completed": completed,
+        }
+
     def _persist_observe_exact(
         self,
         *,
@@ -206,6 +271,11 @@ class ScientificCounterfactualObservationStore(
         limit = max(1, int(max_entries))
         now = float(time.time() if now is None else now)
 
+        # Expired checkpoints can never become VALID. Classify them locally
+        # before building the fetch list so provider capacity is reserved for
+        # horizons still inside their capture window.
+        self._classify_expired_horizons(now=now)
+
         with self._lock:
             rows = self._db.execute(
                 """
@@ -324,6 +394,7 @@ class ScientificCounterfactualObservationStore(
             "horizon_capture_window_seconds": (
                 HORIZON_CAPTURE_WINDOW_SECONDS
             ),
+            "expired_horizon_policy": "LOCAL_GAP_BEFORE_PROVIDER_FETCH",
             "internal_gap_counts": internal_gaps,
             "legacy_unclassified_label_counts": legacy_unclassified,
             "stale_backfill_allowed": False,

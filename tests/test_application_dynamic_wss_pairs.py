@@ -4,8 +4,9 @@ import importlib
 PAIR1 = "0x" + "11" * 20
 PAIR2 = "0x" + "22" * 20
 PAIR3 = "0x" + "33" * 20
-TOKEN = "0x" + "44" * 20
-QUOTE = "0x" + "55" * 20
+PAIR4 = "0x" + "44" * 20
+TOKEN = "0x" + "55" * 20
+QUOTE = "0x" + "66" * 20
 
 
 class Pipeline:
@@ -13,11 +14,27 @@ class Pipeline:
         self.calls = 0
         self.configured = []
         self.sequence = []
+        self.pair_membership_verifier = (
+            lambda pair, token, quote: {
+                "state": "VERIFIED"
+            }
+        )
 
     def native_wss_targets(self):
         self.sequence.append("targets")
         self.calls += 1
-        pairs = [PAIR1] if self.calls == 1 else [PAIR2, PAIR3]
+        if self.calls == 1:
+            pairs = [PAIR1]
+        else:
+            return [
+                {
+                    "pair": PAIR2,
+                    "token": TOKEN,
+                    "quote_token": QUOTE,
+                    "membership_verified": True,
+                    "selection_reason": "UNIVERSE_BOOTSTRAP",
+                }
+            ]
         return [
             {
                 "pair": pair,
@@ -44,6 +61,7 @@ class Pipeline:
         timeout=10.0,
     ):
         self.sequence.append("wait")
+        self.waited_pairs = list(pairs)
         return {
             "state": "READY",
             "requested": len(pairs),
@@ -66,8 +84,20 @@ class Pipeline:
 
         if pre_analysis_hook is not None:
             pre_analysis_hook([
-                {"pool": PAIR2},
-                {"pool": PAIR3},
+                {
+                    "chain": "bsc",
+                    "dex": "pancakeswap_v2",
+                    "pool": PAIR3,
+                    "token": TOKEN,
+                    "quote_token": QUOTE,
+                },
+                {
+                    "chain": "bsc",
+                    "dex": "pancakeswap_v3",
+                    "pool": PAIR4,
+                    "token": TOKEN,
+                    "quote_token": QUOTE,
+                },
             ])
 
         self.sequence.append("analyze")
@@ -102,7 +132,7 @@ class Service:
         return {"state": "NOT_STARTED"}
 
 
-def test_scanner_refresh_rebinds_verified_wss_pairs(monkeypatch):
+def test_scanner_refresh_prioritizes_verified_v2_candidate_wss_pair(monkeypatch):
     module = importlib.import_module("main")
 
     monkeypatch.setattr(module, "WSS_URL", "wss://provider")
@@ -138,5 +168,57 @@ def test_scanner_refresh_rebinds_verified_wss_pairs(monkeypatch):
         < pipeline.sequence.index("analyze")
     )
 
-    assert app["services"][0].pair == [PAIR2, PAIR3]
-    assert app["services"][0].replacements == [[PAIR2, PAIR3]]
+    assert app["services"][0].pair == [PAIR3, PAIR2]
+    assert app["services"][0].replacements == [[PAIR3, PAIR2]]
+    assert pipeline.waited_pairs == [PAIR3]
+    assert PAIR4 not in pipeline.configured
+
+
+def test_candidate_wss_targets_are_bounded(monkeypatch):
+    module = importlib.import_module("main")
+
+    monkeypatch.setattr(module, "WSS_URL", "wss://provider")
+    monkeypatch.setattr(module, "WSS_PAIR", PAIR1)
+    monkeypatch.setattr(module, "WSS_TOKEN", TOKEN)
+
+    pipeline = Pipeline()
+    app = module.build_application(
+        pipeline=pipeline,
+        wss_service_factory=Service,
+    )
+
+    scanner = next(
+        job for job in app["runner"].scheduler.jobs
+        if job["name"] == "scanner"
+    )
+
+    rows = [
+        {
+            "chain": "bsc",
+            "dex": "pancakeswap_v2",
+            "pool": "0x" + f"{index:040x}",
+            "token": TOKEN,
+            "quote_token": QUOTE,
+        }
+        for index in range(1, 40)
+    ]
+
+    original_run_cycle = pipeline.run_cycle
+
+    def run_cycle(*, pre_analysis_hook=None):
+        if pre_analysis_hook is not None:
+            pre_analysis_hook(rows)
+        return {"state": "RAN"}
+
+    pipeline.run_cycle = run_cycle
+    try:
+        assert scanner["func"]() == {"state": "RAN"}
+    finally:
+        pipeline.run_cycle = original_run_cycle
+
+    candidate_pairs = [
+        pair
+        for pair in pipeline.configured
+        if pair not in {PAIR1, PAIR2}
+    ]
+    assert len(set(candidate_pairs)) == module.SCAN_NATIVE_WSS_LIMIT

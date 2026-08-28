@@ -27,6 +27,9 @@ from app.pipeline.engine import (
 )
 
 
+SCAN_NATIVE_WSS_LIMIT = 16
+
+
 def build_application(
     *,
     pipeline=None,
@@ -54,6 +57,99 @@ def build_application(
             scanner_targets,
             max_pairs=256,
         )
+
+    def candidate_wss_targets(
+        candidates,
+    ):
+        verifier = getattr(
+            pipeline,
+            "pair_membership_verifier",
+            None,
+        )
+
+        if not callable(verifier):
+            return []
+
+        targets = []
+        seen = set()
+
+        for row in candidates or []:
+            if len(targets) >= SCAN_NATIVE_WSS_LIMIT:
+                break
+
+            if not isinstance(row, dict):
+                continue
+
+            chain = str(
+                row.get("chain") or ""
+            ).strip().lower()
+            dex = str(
+                row.get("dex") or ""
+            ).strip().lower()
+
+            if chain not in {"", "bsc"}:
+                continue
+
+            if dex not in {
+                "pancakeswap_v2",
+                "pancakeswap-v2",
+            }:
+                continue
+
+            pair = str(
+                row.get("pool") or ""
+            ).strip().lower()
+            token = str(
+                row.get("token")
+                or row.get("base_token")
+                or ""
+            ).strip().lower()
+            quote = str(
+                row.get("quote_token") or ""
+            ).strip().lower()
+
+            if pair.startswith("bsc_"):
+                pair = pair[4:]
+            if token.startswith("bsc_"):
+                token = token[4:]
+            if quote.startswith("bsc_"):
+                quote = quote[4:]
+
+            if (
+                not pair
+                or not token
+                or not quote
+                or token == quote
+                or pair in seen
+            ):
+                continue
+
+            try:
+                membership = verifier(
+                    pair,
+                    token,
+                    quote,
+                )
+            except Exception:
+                continue
+
+            if (
+                not isinstance(membership, dict)
+                or membership.get("state")
+                != "VERIFIED"
+            ):
+                continue
+
+            seen.add(pair)
+            targets.append({
+                "pair": pair,
+                "token": token,
+                "quote_token": quote,
+                "membership_verified": True,
+                "selection_reason": "SCAN_CANDIDATE",
+            })
+
+        return targets
 
     async def on_native_event(event):
         hot_bridge.observe_event(
@@ -335,7 +431,9 @@ def build_application(
             pipeline
         )
 
-    def refresh_native_wss_targets():
+    def refresh_native_wss_targets(
+        candidates=None,
+    ):
         nonlocal base_wss_targets
 
         if not services:
@@ -369,9 +467,28 @@ def build_application(
                 refreshed_targets
             )
 
-        merged = merged_targets(
-            base_wss_targets
+        hot_targets = [
+            target
+            for target in base_wss_targets
+            if str(
+                target.get("selection_reason")
+                or ""
+            ).upper() == "HOT_SEISMIC"
+        ]
+        background_targets = [
+            target
+            for target in base_wss_targets
+            if target not in hot_targets
+        ]
+        scan_targets = candidate_wss_targets(
+            candidates
         )
+
+        merged = merged_targets([
+            *hot_targets,
+            *scan_targets,
+            *background_targets,
+        ])
 
         return apply_wss_targets(
             merged["targets"],
@@ -404,7 +521,9 @@ def build_application(
         candidates=None,
     ):
         binding = (
-            refresh_native_wss_targets()
+            refresh_native_wss_targets(
+                candidates
+            )
         )
 
         verified = {

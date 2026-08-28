@@ -10,12 +10,12 @@ def address(value):
     return "0x" + f"{value:040x}"
 
 
-def pool_row(value, *, dex="pancakeswap_v2"):
+def pool_row(value, *, dex="pancakeswap_v2", branch="EXISTING"):
     return {
         "chain": "bsc", "dex": dex, "pool": address(value),
         "token0": address(100), "token1": address(200),
         "factory": address(300), "creation_block": value,
-        "discovery_branch": "EXISTING",
+        "discovery_branch": branch,
     }
 
 
@@ -128,6 +128,54 @@ def test_depth_and_breadth_alternate_under_large_unseen_backlog(tmp_path):
     assert len(client.calls[1]) == 1
     assert client.calls[0][0]["latest_snapshot_at"] is not None
     assert client.calls[1][0]["latest_snapshot_at"] is None
+
+
+def test_new_unseen_pools_get_first_breadth_pick_newest_first(tmp_path):
+    registry = UniverseRegistry(tmp_path / "cache.db")
+    registry.ingest([
+        pool_row(1, branch="EXISTING"),
+        pool_row(2, branch="EXISTING"),
+        pool_row(100, branch="NEW"),
+        pool_row(101, branch="NEW"),
+    ])
+
+    client = EchoClient()
+    now = datetime(2026, 8, 25, 16, 0, tzinfo=timezone.utc)
+    scheduler = UniverseObservationScheduler(
+        registry, client, now_func=lambda: now
+    )
+
+    result = scheduler.run_once(limit=2)
+
+    assert result["pools"] == [address(101), address(100)]
+    assert [row["discovery_branch"] for row in client.calls[0]] == [
+        "NEW", "NEW"
+    ]
+
+
+def test_existing_unseen_lane_cannot_starve_under_continuous_new_backlog(tmp_path):
+    registry = UniverseRegistry(tmp_path / "cache.db")
+    registry.ingest([
+        pool_row(1, branch="EXISTING"),
+        pool_row(2, branch="EXISTING"),
+        pool_row(100, branch="NEW"),
+        pool_row(101, branch="NEW"),
+        pool_row(102, branch="NEW"),
+    ])
+
+    client = EchoClient()
+    now = datetime(2026, 8, 25, 16, 0, tzinfo=timezone.utc)
+    scheduler = UniverseObservationScheduler(
+        registry, client, now_func=lambda: now
+    )
+
+    first_breadth = scheduler.run_once(limit=1)
+    second_breadth = scheduler.run_once(limit=1)
+
+    assert first_breadth["pools"] == [address(102)]
+    assert second_breadth["pools"] == [address(1)]
+    assert client.calls[0][0]["discovery_branch"] == "NEW"
+    assert client.calls[1][0]["discovery_branch"] == "EXISTING"
 
 
 def test_missing_provider_row_is_deferred_without_fake_history(tmp_path):

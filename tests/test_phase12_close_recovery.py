@@ -1,6 +1,3 @@
-import pytest
-
-
 def test_close_position_is_idempotent_contract():
     from app.paper.database import PaperDatabase
     assert callable(PaperDatabase.close_position)

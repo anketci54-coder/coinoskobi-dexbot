@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta, timezone
 
+from app.universe.display_metadata import persist_snapshot_display_metadata
 from app.universe.snapshot import DEXSCREENER_MAX_BATCH
 
 
@@ -110,6 +111,10 @@ class UniverseObservationScheduler:
             )
         self.registry.record_observations(
             snapshots, next_observation_at=next_times
+        )
+        persist_snapshot_display_metadata(
+            self.registry.db,
+            snapshots,
         )
 
         missing = [row for row in due if row["pool"] not in returned]

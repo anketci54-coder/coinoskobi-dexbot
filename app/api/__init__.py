@@ -5,6 +5,7 @@ from fastapi.responses import HTMLResponse
 # Package bootstrap intentionally registers display-only panel extensions on the
 # canonical FastAPI app without changing paper/runtime/execution authority.
 from . import panel as _panel
+from .panel_display_names import enrich_universe_display_names
 from .panel_universe import universe_panel_payload
 
 
@@ -188,6 +189,12 @@ async def phase14_desktop_responsive_shell(request, call_next):
             1,
         )
 
+    html = html.replace(
+        "shortToken(r.token0)||'POOL'",
+        "r.display_name||shortToken(r.token0)||'POOL'",
+        1,
+    )
+
     return HTMLResponse(
         content=html,
         headers={
@@ -200,4 +207,8 @@ async def phase14_desktop_responsive_shell(request, call_next):
 
 @_panel.app.get("/api/universe-panel")
 def api_universe_panel():
-    return universe_panel_payload(_panel.CACHE_DB)
+    payload = universe_panel_payload(_panel.CACHE_DB)
+    return enrich_universe_display_names(
+        payload,
+        _panel.CACHE_DB,
+    )

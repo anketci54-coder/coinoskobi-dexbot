@@ -7,6 +7,8 @@ from typing import Any
 
 
 ALLOWED_STATES = {"COLD", "WARM", "HOT"}
+DEFAULT_TRANSITION_WINDOW = 1000
+MAX_TRANSITION_WINDOW = 5000
 
 
 def _connect_readonly(path: str | Path) -> sqlite3.Connection:
@@ -104,10 +106,27 @@ def _latest_seismic(
     ).fetchone()
 
 
+def _recent_transition_rows(
+    connection: sqlite3.Connection,
+    *,
+    limit: int,
+) -> list[sqlite3.Row]:
+    return connection.execute(
+        """
+        SELECT id, previous_state, next_state
+        FROM universe_seismic_evaluation_v1
+        ORDER BY id DESC
+        LIMIT ?
+        """,
+        (int(limit),),
+    ).fetchall()
+
+
 def universe_panel_payload(
     cache_db: str | Path,
     *,
     limit: int = 40,
+    transition_limit: int = DEFAULT_TRANSITION_WINDOW,
 ) -> dict[str, Any]:
     """Read-only projection for the premium operations terminal.
 
@@ -117,6 +136,10 @@ def universe_panel_payload(
 
     path = Path(cache_db)
     bounded_limit = max(1, min(int(limit), 100))
+    bounded_transition_limit = max(
+        1,
+        min(int(transition_limit), MAX_TRANSITION_WINDOW),
+    )
 
     if not path.exists():
         return _unavailable("CACHE_DB_MISSING")
@@ -160,16 +183,13 @@ def universe_panel_payload(
             ).fetchall()
         }
 
-        transition_rows = connection.execute(
-            """
-            SELECT previous_state, next_state, COUNT(*) AS n
-            FROM universe_seismic_evaluation_v1
-            WHERE previous_state <> next_state
-              AND previous_state IN ('COLD','WARM','HOT')
-              AND next_state IN ('COLD','WARM','HOT')
-            GROUP BY previous_state, next_state
-            """
-        ).fetchall()
+        # Transition display is operational context, not a training aggregate.
+        # Keep it explicitly bounded to the most recent seismic evaluations so
+        # the read-only panel never scans millions of historical rows.
+        transition_rows = _recent_transition_rows(
+            connection,
+            limit=bounded_transition_limit,
+        )
 
         result_rows = []
         for raw in rows:
@@ -226,8 +246,14 @@ def universe_panel_payload(
 
     transitions = Counter()
     for row in transition_rows:
-        key = f"{row['previous_state']}->{row['next_state']}"
-        transitions[key] = int(row["n"])
+        previous_state = str(row["previous_state"] or "").upper()
+        next_state = str(row["next_state"] or "").upper()
+        if (
+            previous_state in ALLOWED_STATES
+            and next_state in ALLOWED_STATES
+            and previous_state != next_state
+        ):
+            transitions[f"{previous_state}->{next_state}"] += 1
 
     total_count = sum(int(counts.get(state, 0)) for state in ALLOWED_STATES)
 
@@ -241,7 +267,9 @@ def universe_panel_payload(
         },
         "total_count": total_count,
         "visible_count": len(result_rows),
-        "transition_scope": "ALL_RECORDED_SEISMIC_EVALUATIONS",
+        "transition_scope": "RECENT_BOUNDED_SEISMIC_EVALUATIONS",
+        "transition_sample_size": len(transition_rows),
+        "transition_window_limit": bounded_transition_limit,
         "transitions": {
             "COLD_TO_WARM": transitions.get("COLD->WARM", 0),
             "WARM_TO_HOT": transitions.get("WARM->HOT", 0),
@@ -266,6 +294,8 @@ def _unavailable(reason: str) -> dict[str, Any]:
         "total_count": None,
         "visible_count": 0,
         "transition_scope": "UNAVAILABLE",
+        "transition_sample_size": 0,
+        "transition_window_limit": None,
         "transitions": {
             "COLD_TO_WARM": None,
             "WARM_TO_HOT": None,

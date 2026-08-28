@@ -1,4 +1,5 @@
 import sqlite3
+import threading
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -15,32 +16,44 @@ class AnalyzerCache:
             exist_ok=True,
         )
 
+        # Analyzer instances are module-level singletons while candidate
+        # analysis runs inside WorkScheduler worker threads. The cache
+        # connection therefore has to be explicitly shareable, and every
+        # operation on that connection must be serialized by this instance.
+        self._lock = threading.RLock()
+
         self.db = sqlite3.connect(
             self.db_path,
             timeout=5,
+            check_same_thread=False,
         )
 
-        self.db.execute(
-            "PRAGMA journal_mode=WAL"
-        )
-
-        self.db.execute(
-            "PRAGMA synchronous=NORMAL"
-        )
-
-        self.db.execute(
-            """
-            CREATE TABLE IF NOT EXISTS analyzer_cache_v1(
-                namespace TEXT NOT NULL,
-                cache_key TEXT NOT NULL,
-                payload TEXT NOT NULL,
-                updated_at REAL NOT NULL,
-                PRIMARY KEY(namespace, cache_key)
+        with self._lock:
+            self.db.execute(
+                "PRAGMA journal_mode=WAL"
             )
-            """
-        )
 
-        self.db.commit()
+            self.db.execute(
+                "PRAGMA synchronous=NORMAL"
+            )
+
+            self.db.execute(
+                "PRAGMA busy_timeout=5000"
+            )
+
+            self.db.execute(
+                """
+                CREATE TABLE IF NOT EXISTS analyzer_cache_v1(
+                    namespace TEXT NOT NULL,
+                    cache_key TEXT NOT NULL,
+                    payload TEXT NOT NULL,
+                    updated_at REAL NOT NULL,
+                    PRIMARY KEY(namespace, cache_key)
+                )
+                """
+            )
+
+            self.db.commit()
 
         self.hits = 0
         self.misses = 0
@@ -59,39 +72,38 @@ class AnalyzerCache:
         cache_key,
         ttl_seconds,
     ):
-        row = self.db.execute(
-            """
-            SELECT payload, updated_at
-            FROM analyzer_cache_v1
-            WHERE namespace = ?
-              AND cache_key = ?
-            """,
-            (
-                namespace,
-                cache_key,
-            ),
-        ).fetchone()
+        with self._lock:
+            row = self.db.execute(
+                """
+                SELECT payload, updated_at
+                FROM analyzer_cache_v1
+                WHERE namespace = ?
+                  AND cache_key = ?
+                """,
+                (
+                    namespace,
+                    cache_key,
+                ),
+            ).fetchone()
 
-        if row is None:
-            self.misses += 1
-            return None
+            if row is None:
+                self.misses += 1
+                return None
 
-        payload, updated_at = row
+            payload, updated_at = row
+            age = self._now() - float(
+                updated_at
+            )
 
-        age = self._now() - float(
-            updated_at
-        )
+            if age < 0:
+                age = 0
 
-        if age < 0:
-            age = 0
+            if age > ttl_seconds:
+                self.stale += 1
+                return None
 
-        if age > ttl_seconds:
-            self.stale += 1
-            return None
-
-        self.hits += 1
-
-        return payload
+            self.hits += 1
+            return payload
 
     def set(
         self,
@@ -99,57 +111,61 @@ class AnalyzerCache:
         cache_key,
         payload,
     ):
-        self.db.execute(
-            """
-            INSERT INTO analyzer_cache_v1(
-                namespace,
-                cache_key,
-                payload,
-                updated_at
+        with self._lock:
+            self.db.execute(
+                """
+                INSERT INTO analyzer_cache_v1(
+                    namespace,
+                    cache_key,
+                    payload,
+                    updated_at
+                )
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(namespace, cache_key)
+                DO UPDATE SET
+                    payload = excluded.payload,
+                    updated_at = excluded.updated_at
+                """,
+                (
+                    namespace,
+                    cache_key,
+                    payload,
+                    self._now(),
+                ),
             )
-            VALUES (?, ?, ?, ?)
-            ON CONFLICT(namespace, cache_key)
-            DO UPDATE SET
-                payload = excluded.payload,
-                updated_at = excluded.updated_at
-            """,
-            (
-                namespace,
-                cache_key,
-                payload,
-                self._now(),
-            ),
-        )
 
-        self.db.commit()
-        self.writes += 1
+            self.db.commit()
+            self.writes += 1
 
     def delete(
         self,
         namespace,
         cache_key,
     ):
-        self.db.execute(
-            """
-            DELETE FROM analyzer_cache_v1
-            WHERE namespace = ?
-              AND cache_key = ?
-            """,
-            (
-                namespace,
-                cache_key,
-            ),
-        )
+        with self._lock:
+            self.db.execute(
+                """
+                DELETE FROM analyzer_cache_v1
+                WHERE namespace = ?
+                  AND cache_key = ?
+                """,
+                (
+                    namespace,
+                    cache_key,
+                ),
+            )
 
-        self.db.commit()
+            self.db.commit()
 
     def stats(self):
-        return {
-            "hits": self.hits,
-            "misses": self.misses,
-            "stale": self.stale,
-            "writes": self.writes,
-        }
+        with self._lock:
+            return {
+                "hits": self.hits,
+                "misses": self.misses,
+                "stale": self.stale,
+                "writes": self.writes,
+            }
 
     def close(self):
-        self.db.close()
+        with self._lock:
+            self.db.close()

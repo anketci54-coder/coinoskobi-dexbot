@@ -94,6 +94,86 @@ def test_build_market_context_uses_operational_feed():
     )
 
 
+def test_candidate_native_snapshot_is_reused_once_for_same_evaluation():
+    class MutableFeed:
+        def __init__(self):
+            self._events = {}
+            self.calls = 0
+            self.acceleration = 0.25
+
+        def snapshot(self, pair, candidate=None):
+            self.calls += 1
+            return {
+                "state": "READY",
+                "market_intelligence": {
+                    "evidence_ready": True,
+                },
+                "flow_intelligence": {
+                    "evidence_ready": True,
+                    "buy_flow": 7,
+                    "sell_flow": 3,
+                    "prev_spread": 1,
+                    "prev_velocity": 0,
+                    "freshness": "FRESH",
+                    "coverage": 1.0,
+                    "flow_acceleration": self.acceleration,
+                },
+                "synthetic": False,
+            }
+
+    feed = MutableFeed()
+    row = {
+        "pool": PAIR,
+        "token": TOKEN,
+        "liquidity": 1000,
+        "price_usd": 1.0,
+    }
+
+    first = build_market_context(
+        row,
+        runtime_feed=feed,
+    )
+
+    assert feed.calls == 1
+    assert (
+        first["flow_intelligence"][
+            "flow_acceleration"
+        ]
+        == 0.25
+    )
+
+    # Native evidence changes while the same candidate evaluation is
+    # still running. The immediate audit/shadow read must remain atomic.
+    feed.acceleration = -0.50
+
+    frozen = feed.snapshot(
+        PAIR,
+        candidate=row,
+    )
+
+    assert feed.calls == 1
+    assert (
+        frozen["flow_intelligence"][
+            "flow_acceleration"
+        ]
+        == 0.25
+    )
+
+    # The bridge is one-shot. Later lifecycle/scan reads remain live.
+    live = feed.snapshot(
+        PAIR,
+        candidate=row,
+    )
+
+    assert feed.calls == 2
+    assert (
+        live["flow_intelligence"][
+            "flow_acceleration"
+        ]
+        == -0.50
+    )
+
+
 def test_no_feed_preserves_old_contract():
     result = build_market_context({
         "liquidity": 1000,

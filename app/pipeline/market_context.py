@@ -1,8 +1,13 @@
 from collections import Counter
+from copy import deepcopy
+import threading
 
 from app.dex.transaction_origin import (
     resolved_transaction_origin,
 )
+
+
+_CANDIDATE_SNAPSHOT_BRIDGE_LOCK = threading.Lock()
 
 
 def _positive_number(value):
@@ -21,6 +26,137 @@ def _positive_number(value):
         return None
 
     return value
+
+
+def _pair_key(value):
+    value = str(value or "").strip().lower()
+
+    if value.startswith("bsc_"):
+        value = value[4:]
+
+    return value
+
+
+def _install_candidate_snapshot_bridge(runtime_feed):
+    """
+    Make the next same-thread read for a candidate reuse the exact
+    native snapshot that build_market_context admitted.
+
+    WSS ingestion keeps running. The bridge is one-shot and thread-local:
+    a later lifecycle/scan read is live again. This prevents a single
+    candidate evaluation from advancing mutable flow velocity/acceleration
+    state twice and recording a different audit snapshot than the plan used.
+    """
+    if runtime_feed is None:
+        return False
+
+    if getattr(
+        runtime_feed,
+        "_candidate_snapshot_bridge_installed",
+        False,
+    ):
+        return True
+
+    with _CANDIDATE_SNAPSHOT_BRIDGE_LOCK:
+        if getattr(
+            runtime_feed,
+            "_candidate_snapshot_bridge_installed",
+            False,
+        ):
+            return True
+
+        original = getattr(
+            runtime_feed,
+            "snapshot",
+            None,
+        )
+
+        if not callable(original):
+            return False
+
+        local = threading.local()
+
+        def bridged_snapshot(
+            pair,
+            candidate=None,
+        ):
+            pending = getattr(
+                local,
+                "pending",
+                None,
+            )
+
+            if (
+                isinstance(pending, dict)
+                and pending.get("pair")
+                == _pair_key(pair)
+            ):
+                local.pending = None
+                return deepcopy(
+                    pending["snapshot"]
+                )
+
+            return original(
+                pair,
+                candidate=candidate,
+            )
+
+        runtime_feed._candidate_snapshot_bridge_original = (
+            original
+        )
+        runtime_feed._candidate_snapshot_bridge_local = local
+        runtime_feed.snapshot = bridged_snapshot
+        runtime_feed._candidate_snapshot_bridge_installed = True
+
+    return True
+
+
+def _live_candidate_snapshot(
+    runtime_feed,
+    pair,
+    candidate,
+):
+    if not _install_candidate_snapshot_bridge(
+        runtime_feed
+    ):
+        return runtime_feed.snapshot(
+            pair,
+            candidate=candidate,
+        )
+
+    local = runtime_feed._candidate_snapshot_bridge_local
+
+    # A previous non-admitted candidate may have left an unused one-shot
+    # snapshot on this worker thread. Never carry it into a new candidate.
+    local.pending = None
+
+    return runtime_feed.snapshot(
+        pair,
+        candidate=candidate,
+    )
+
+
+def _arm_candidate_snapshot(
+    runtime_feed,
+    pair,
+    snapshot,
+):
+    if not getattr(
+        runtime_feed,
+        "_candidate_snapshot_bridge_installed",
+        False,
+    ):
+        return False
+
+    if not isinstance(snapshot, dict):
+        return False
+
+    local = runtime_feed._candidate_snapshot_bridge_local
+    local.pending = {
+        "pair": _pair_key(pair),
+        "snapshot": deepcopy(snapshot),
+    }
+    return True
 
 
 def _origin_participation(runtime_feed, pair):
@@ -243,9 +379,10 @@ def build_market_context(
     if runtime_feed is None:
         return context
 
-    snapshot = runtime_feed.snapshot(
+    snapshot = _live_candidate_snapshot(
+        runtime_feed,
         row.get("pool"),
-        candidate=row,
+        row,
     )
 
     context[
@@ -302,5 +439,13 @@ def build_market_context(
     context[
         "origin_participation"
     ] = participation
+
+    # Engine.run may later ask the same runtime for VUR_KAC shadow/audit
+    # evidence. Give that same worker exactly this admission snapshot once.
+    _arm_candidate_snapshot(
+        runtime_feed,
+        row.get("pool"),
+        snapshot,
+    )
 
     return context

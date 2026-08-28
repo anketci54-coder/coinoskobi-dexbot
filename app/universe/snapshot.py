@@ -27,6 +27,11 @@ def _integer(value):
     return int(number) if number is not None else None
 
 
+def _text(value):
+    value = str(value or "").strip()
+    return value or None
+
+
 def _window(mapping, name):
     value = mapping.get(name)
     return value if isinstance(value, dict) else {}
@@ -103,6 +108,8 @@ class DexScreenerSnapshotClient:
             liquidity = raw.get("liquidity") if isinstance(raw.get("liquidity"), dict) else {}
             base = raw.get("baseToken") if isinstance(raw.get("baseToken"), dict) else {}
             quote = raw.get("quoteToken") if isinstance(raw.get("quoteToken"), dict) else {}
+            base_symbol = _text(base.get("symbol"))
+            quote_symbol = _text(quote.get("symbol"))
 
             snapshot = {
                 "schema_version": "DEXSCREENER_SNAPSHOT_V1",
@@ -112,6 +119,15 @@ class DexScreenerSnapshotClient:
                 "pool": pool,
                 "base_token": canonical_address(base.get("address"), required=False),
                 "quote_token": canonical_address(quote.get("address"), required=False),
+                "base_symbol": base_symbol,
+                "quote_symbol": quote_symbol,
+                "base_name": _text(base.get("name")),
+                "quote_name": _text(quote.get("name")),
+                "display_name": (
+                    f"{base_symbol} / {quote_symbol}"
+                    if base_symbol and quote_symbol
+                    else base_symbol or quote_symbol
+                ),
                 "price_usd": _number(raw.get("priceUsd")),
                 "liquidity_usd": _number(liquidity.get("usd")),
                 "fdv_usd": _number(raw.get("fdv")),

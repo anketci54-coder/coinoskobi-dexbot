@@ -20,14 +20,34 @@ def _connect_readonly(path: str | Path) -> sqlite3.Connection:
     return connection
 
 
+def _has_index(
+    connection: sqlite3.Connection,
+    *,
+    table: str,
+    index: str,
+) -> bool:
+    return any(
+        str(row[1]) == index
+        for row in connection.execute(
+            f"PRAGMA index_list('{table}')"
+        ).fetchall()
+    )
+
+
 def _recent_registry_candidates(
     connection: sqlite3.Connection,
     *,
     state: str,
     limit: int,
+    use_snapshot_index: bool,
 ) -> list[sqlite3.Row]:
+    indexed_by = (
+        "INDEXED BY idx_universe_snapshot_at"
+        if use_snapshot_index
+        else ""
+    )
     return connection.execute(
-        """
+        f"""
         SELECT
             chain,
             dex,
@@ -43,7 +63,7 @@ def _recent_registry_candidates(
             latest_snapshot_at,
             state_changed_at
         FROM universe_pool_registry
-        INDEXED BY idx_universe_snapshot_at
+        {indexed_by}
         WHERE latest_snapshot_at IS NOT NULL
           AND market_state = ?
         ORDER BY latest_snapshot_at DESC
@@ -105,10 +125,16 @@ def universe_panel_payload(
 
     try:
         connection = _connect_readonly(path)
+        use_snapshot_index = _has_index(
+            connection,
+            table="universe_pool_registry",
+            index="idx_universe_snapshot_at",
+        )
 
-        # Pull only a tiny, index-friendly recent window per state. Keeping the
-        # state batches in HOT -> WARM -> COLD order preserves panel priority
-        # without a multi-million-row CASE/COALESCE sort.
+        # Pull only a tiny recent window per state. On the production universe
+        # DB this explicitly walks the existing latest_snapshot_at index instead
+        # of sorting millions of rows. HOT -> WARM -> COLD batch order preserves
+        # operator priority without creating a new DB index or write migration.
         candidates = []
         for state in ("HOT", "WARM", "COLD"):
             candidates.extend(
@@ -116,6 +142,7 @@ def universe_panel_payload(
                     connection,
                     state=state,
                     limit=bounded_limit,
+                    use_snapshot_index=use_snapshot_index,
                 )
             )
 

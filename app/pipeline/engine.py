@@ -3274,6 +3274,32 @@ class PipelineEngine:
                 "sizing_reason": summary.get(
                     "sizing_reason"
                 ),
+                "entry_amount_usdt": summary.get(
+                    "entry_amount_usdt"
+                ),
+                "sizing_diagnostics": dict(
+                    summary.get(
+                        "sizing_diagnostics"
+                    )
+                    or {}
+                ),
+                "mathematical_plan": summary.get(
+                    "mathematical_plan"
+                ),
+                "vur_kac_entry_shadow": dict(
+                    summary.get(
+                        "vur_kac_entry_shadow"
+                    )
+                    or {}
+                ),
+                "economic_provenance_version": (
+                    "CANDIDATE_DECISION_V1"
+                    if summary.get(
+                        "mathematical_plan"
+                    )
+                    is not None
+                    else None
+                ),
                 "hindsight_reconstructed": False,
             },
         )
@@ -3923,6 +3949,17 @@ class PipelineEngine:
                         paper.get(
                             "entry_amount_usdt"
                         )
+                    ),
+                    "mathematical_plan": (
+                        paper.get(
+                            "mathematical_plan"
+                        )
+                    ),
+                    "sizing_diagnostics": (
+                        paper.get(
+                            "sizing_diagnostics"
+                        )
+                        or {}
                     ),
                     "vur_kac_entry_shadow": (
                         paper.get(

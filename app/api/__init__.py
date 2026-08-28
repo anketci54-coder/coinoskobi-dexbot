@@ -25,6 +25,9 @@ PHASE14_DESKTOP_RESPONSIVE_STYLE = """
   .middle{grid-template-columns:270px minmax(0,1fr) minmax(250px,.82fr)}
   .radar-grid,.radar-row{grid-template-columns:60px minmax(115px,1.15fr) 56px 68px 68px 58px 68px 70px minmax(125px,1fr);gap:5px}
   .tab{padding:0 9px}
+  .healthintel{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+  .healthintel>.panel,.grid6,.box{min-width:0}
+  .grid6{grid-template-columns:repeat(3,minmax(0,1fr))}
 }
 @media (max-height:820px) and (min-width:1220px) {
   .app{grid-template-rows:64px 1fr 36px}
@@ -41,6 +44,40 @@ PHASE14_DESKTOP_RESPONSIVE_STYLE = """
   .edge-big{font-size:22px}
   .edge-caption{font-size:11px}
   .kv{padding:5px 0}
+}
+@media (max-height:700px) and (min-width:1220px) {
+  .app{grid-template-rows:60px 1fr 30px;gap:5px;padding:5px}
+  .topbar,.content,.left,.right,.middle,.lower,.healthintel{gap:5px}
+  .left{grid-template-rows:minmax(210px,1fr) 112px 80px 58px}
+  .right{grid-template-rows:minmax(176px,.78fr) minmax(146px,.62fr) 92px}
+  .head{height:30px;padding:0 9px}
+  .title{font-size:11px}
+  .meta{font-size:7px}
+  .radar{grid-template-rows:30px 28px minmax(0,1fr) 22px}
+  .radar-head{padding:0 8px}
+  .radar-grid{padding:0 8px}
+  .radar-row{min-height:26px;padding:0 8px}
+  .distribution{padding:0 8px}
+  .flow-body,.ledger-body,.wallet-body,.edge-body,.health-body,.intel-body,.mini-body{padding:7px}
+  .flow-row{margin:5px 0}
+  .mini{grid-template-rows:28px 1fr}
+  .mini .head{height:28px}
+  .timeline{padding:3px 7px;grid-template-rows:14px 1fr}
+  .timeline-title{font-size:7px}
+  .step{height:27px;padding:2px}
+  .step small{margin-top:2px}
+  .vezir{grid-template-rows:58px 28px 1fr 34px}
+  .vezir-head{grid-template-columns:48px 1fr;padding:4px 8px}
+  .vezir-img{width:44px;height:44px}
+  .vezir-name{font-size:16px}
+  .quick{padding:4px 7px}
+  .chat{padding:7px}
+  .bubble{padding:6px;font-size:8px}
+  .chatbar{padding:5px 7px}
+  .healthintel>.panel{grid-template-rows:30px 1fr}
+  .grid6{gap:4px}
+  .box{padding:5px;min-height:42px}
+  .footer{padding:0 8px;font-size:7px}
 }
 </style>
 """.strip()

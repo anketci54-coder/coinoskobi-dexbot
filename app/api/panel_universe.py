@@ -7,7 +7,6 @@ from typing import Any
 
 
 ALLOWED_STATES = {"COLD", "WARM", "HOT"}
-DISPLAY_PRIORITY = {"HOT": 0, "WARM": 1, "COLD": 2}
 
 
 def _connect_readonly(path: str | Path) -> sqlite3.Connection:
@@ -107,9 +106,9 @@ def universe_panel_payload(
     try:
         connection = _connect_readonly(path)
 
-        # Pull only a tiny, index-friendly recent window per state. This keeps
-        # HOT/WARM visible even when the full universe is overwhelmingly COLD,
-        # while avoiding a multi-million-row CASE/COALESCE sort.
+        # Pull only a tiny, index-friendly recent window per state. Keeping the
+        # state batches in HOT -> WARM -> COLD order preserves panel priority
+        # without a multi-million-row CASE/COALESCE sort.
         candidates = []
         for state in ("HOT", "WARM", "COLD"):
             candidates.extend(
@@ -119,14 +118,6 @@ def universe_panel_payload(
                     limit=bounded_limit,
                 )
             )
-
-        candidates.sort(
-            key=lambda row: (
-                DISPLAY_PRIORITY.get(str(row["market_state"]), 99),
-                str(row["latest_snapshot_at"] or ""),
-            ),
-            reverse=False,
-        )
 
         rows = candidates[:bounded_limit]
 

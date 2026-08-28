@@ -5,7 +5,7 @@ from app.universe.discovery import PANCAKE_FACTORY_STREAMS, PancakeUniverseDisco
 from app.universe.registry import UniverseRegistry
 from app.universe.scheduler import UniverseObservationScheduler
 from app.universe.seismic import SeismicClassifier
-from app.universe.snapshot import DexScreenerSnapshotClient
+from app.universe.snapshot import ProviderStickySnapshotClient
 
 
 def _new_bsc_web3():
@@ -57,7 +57,7 @@ class FullUniverseObservationRuntime:
         if not 1 <= self.discovery_batches_per_cycle <= 8:
             raise ValueError("discovery batches per cycle must be 1..8")
         self.observer = UniverseObservationScheduler(
-            self.registry, snapshot_client or DexScreenerSnapshotClient()
+            self.registry, snapshot_client or ProviderStickySnapshotClient()
         )
         self.classifier = SeismicClassifier()
         self.confirmation_depth = max(0, int(confirmation_depth))
@@ -75,7 +75,7 @@ class FullUniverseObservationRuntime:
             registry=UniverseRegistry(),
             log_reader=Web3LogReader(worker_web3),
             finalized_block_reader=lambda: worker_web3.eth.block_number,
-            snapshot_client=DexScreenerSnapshotClient(),
+            snapshot_client=ProviderStickySnapshotClient(),
             confirmation_depth=self.confirmation_depth,
             discovery_block_span=self.discovery.max_block_span,
             discovery_batches_per_cycle=self.discovery_batches_per_cycle,

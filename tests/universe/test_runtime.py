@@ -133,7 +133,7 @@ def test_backfill_batches_keep_each_rpc_span_bounded_and_tail_current():
     assert result["decision_authority"] is False
 
 
-def test_spawn_isolated_uses_worker_owned_rpc(monkeypatch, tmp_path):
+def test_spawn_isolated_uses_worker_owned_rpc_and_sticky_provider(monkeypatch):
     class Eth:
         block_number = 123
     class WorkerWeb3:
@@ -155,7 +155,7 @@ def test_spawn_isolated_uses_worker_owned_rpc(monkeypatch, tmp_path):
     )
     monkeypatch.setattr(
         runtime_module,
-        "DexScreenerSnapshotClient",
+        "ProviderStickySnapshotClient",
         SnapshotClient,
     )
 
@@ -170,6 +170,7 @@ def test_spawn_isolated_uses_worker_owned_rpc(monkeypatch, tmp_path):
     assert isolated.discovery.log_reader.web3 is worker_web3
     assert isolated.finalized_block_reader() == 123
     assert isolated.registry is not template.registry
+    assert isinstance(isolated.observer.snapshot_client, SnapshotClient)
     assert isolated.discovery_batches_per_cycle == template.discovery_batches_per_cycle
 
 

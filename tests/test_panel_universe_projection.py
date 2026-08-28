@@ -79,7 +79,9 @@ def test_universe_panel_projection_is_real_and_read_only(tmp_path):
     assert payload["counts"] == {"COLD": 1, "WARM": 1, "HOT": 1}
     assert payload["total_count"] == 3
     assert payload["visible_count"] == 3
-    assert payload["transition_scope"] == "ALL_RECORDED_SEISMIC_EVALUATIONS"
+    assert payload["transition_scope"] == "RECENT_BOUNDED_SEISMIC_EVALUATIONS"
+    assert payload["transition_sample_size"] == 4
+    assert payload["transition_window_limit"] == 1000
     assert payload["transitions"] == {
         "COLD_TO_WARM": 2,
         "WARM_TO_HOT": 1,
@@ -113,6 +115,22 @@ def test_universe_panel_limit_preserves_hot_then_warm_priority(tmp_path):
     assert payload["visible_count"] == 2
     assert [row["state"] for row in payload["rows"]] == ["HOT", "WARM"]
     assert payload["rows"][0]["seismic"]["reason"] == "hot acceleration"
+
+
+def test_universe_panel_transition_summary_is_bounded(tmp_path):
+    path = tmp_path / "cache.db"
+    _seed(path)
+
+    payload = universe_panel_payload(path, transition_limit=2)
+
+    assert payload["transition_scope"] == "RECENT_BOUNDED_SEISMIC_EVALUATIONS"
+    assert payload["transition_sample_size"] == 2
+    assert payload["transition_window_limit"] == 2
+    assert payload["transitions"] == {
+        "COLD_TO_WARM": 1,
+        "WARM_TO_HOT": 0,
+        "HOT_TO_COLD": 1,
+    }
 
 
 def test_universe_panel_projection_fails_closed_when_db_missing(tmp_path):

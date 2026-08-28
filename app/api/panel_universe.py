@@ -122,6 +122,52 @@ def _recent_transition_rows(
     ).fetchall()
 
 
+def _gecko_display_names(
+    connection: sqlite3.Connection,
+    rows: list[sqlite3.Row],
+) -> dict[str, str]:
+    """Resolve readable names only for the already-bounded panel rows.
+
+    The lookup is display-only and fail-soft. A missing/legacy Gecko cache must
+    never make the universe readmodel unavailable.
+    """
+
+    pools = list(dict.fromkeys(
+        str(row["pool"] or "").strip().lower()
+        for row in rows
+        if str(row["pool"] or "").strip()
+    ))
+
+    if not pools:
+        return {}
+
+    marks = ",".join("?" for _ in pools)
+
+    try:
+        matches = connection.execute(
+            f"""
+            SELECT pool, name
+            FROM gecko_pool_cache
+            WHERE lower(pool) IN ({marks})
+              AND NULLIF(TRIM(name), '') IS NOT NULL
+            """,
+            tuple(pools),
+        ).fetchall()
+    except sqlite3.Error:
+        return {}
+
+    return {
+        str(row["pool"] or "").strip().lower(): str(
+            row["name"] or ""
+        ).strip()
+        for row in matches
+        if (
+            str(row["pool"] or "").strip()
+            and str(row["name"] or "").strip()
+        )
+    }
+
+
 def universe_panel_payload(
     cache_db: str | Path,
     *,
@@ -170,6 +216,10 @@ def universe_panel_payload(
             )
 
         rows = candidates[:bounded_limit]
+        display_names = _gecko_display_names(
+            connection,
+            rows,
+        )
 
         counts = {
             str(row["market_state"]): int(row["n"])
@@ -197,6 +247,10 @@ def universe_panel_payload(
             state = str(row.get("market_state") or "").upper()
             if state not in ALLOWED_STATES:
                 continue
+
+            pool_key = str(
+                row.get("pool") or ""
+            ).strip().lower()
 
             seismic_row = _latest_seismic(
                 connection,
@@ -226,6 +280,7 @@ def universe_panel_payload(
                 "pool": row.get("pool"),
                 "token0": row.get("token0"),
                 "token1": row.get("token1"),
+                "display_name": display_names.get(pool_key),
                 "state": state,
                 "liquidity_usd": row.get("latest_liquidity_usd"),
                 "volume_24h_usd": row.get("latest_volume_24h"),

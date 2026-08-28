@@ -17,16 +17,16 @@ Updated: 2026-08-28
 - Panel runtime: `coinoskobi-panel-api.service`
 - Panel port: `8098`
 
-Repository, VPS working tree, runtime services and runtime databases together form production truth. Never infer a current production SHA from historical chat text; verify it directly before apply.
+Repository, VPS working tree, runtime services and runtime databases together form production truth. Always verify the current SHA directly before apply.
 
 ## GOVERNANCE
 
-- The only canonical architecture classification is **PHASE 0–15**.
-- Phase 0–15 are CLOSED.
+- The only canonical architecture classification is **PHASE 0-15**.
+- Phase 0-15 are CLOSED.
 - Phase 15 is the final roadmap phase.
-- Phase 16 is not opened.
-- Do not create ERA, V2/V3, OCR/R-number, post-roadmap, experiment or other parallel roadmap chains.
-- Maintenance and bug fixes are assigned to the existing Phase 0–15 owner.
+- Do not create Phase 16, ERA, architecture V2/V3, OCR/R-number, post-roadmap, experiment or other parallel roadmap chains.
+- PancakeSwap protocol V2/V3 names remain valid where they describe the actual DEX protocol version.
+- Maintenance and bug fixes are assigned to the existing Phase 0-15 owner.
 - No side/test panel architecture.
 - No fake runtime or panel data.
 - Missing evidence remains `UNKNOWN`.
@@ -34,7 +34,6 @@ Repository, VPS working tree, runtime services and runtime databases together fo
 - Live execution authority = 0.
 - Wallet/signing authority = 0.
 - Paper execution remains isolated from live execution.
-- Historical paper/database evidence is preserved unless an explicit migration requires otherwise.
 - Hot-path work remains fast and bounded.
 - Heavy/provider work belongs on bounded slow-path/worker paths.
 
@@ -42,26 +41,23 @@ Canonical ownership details live in `ROADMAP.md`.
 
 ## CURRENT PRODUCTION SCOPE
 
-Current observation/development focus:
-
-**BNB Chain (BSC) + PancakeSwap**
-
-Universe size is dynamic and must never be hardcoded.
+Production focus: **BNB Chain (BSC) + PancakeSwap**.
 
 Canonical identity rules:
 
 - token identity is chain-aware
 - pool identity is chain + dex + pool
 - readable symbols/names are display metadata and never replace identity
+- universe size is dynamic and must never be hardcoded
 
-## PROVIDER ROLES
+Provider roles:
 
-- RPC/WSS provider: on-chain truth and native event observation
+- RPC/WSS: on-chain truth and native event observation
 - GeckoTerminal: discovery and bounded indexed market evidence
 - DexScreener: bounded universe market snapshots and readable base/quote metadata
 - GoPlus / Honeypot.is: sellability/security evidence
 
-Provider votes are not blindly averaged. Explicit proven danger may veto. Provider failure or missing evidence is not converted into safe evidence.
+Provider failure or missing evidence is never converted into safe evidence.
 
 ## PHASE OWNERSHIP CHECKPOINT
 
@@ -82,73 +78,88 @@ Provider votes are not blindly averaged. Explicit proven danger may veto. Provid
 - Phase 14 — canonical Command Center, panel and readable display metadata
 - Phase 15 — final operational validation and explicit-approval micro-live boundary
 
-## CURRENT INTEGRATION CANDIDATE
+## 2026-08-28 CANONICAL CLEANUP AND TOKEN-NAME CLOSURE
 
-PR #27: `fix/phase14-token-names-and-readable-density`
+PR #27 was merged into `main` after canonical smoke/E2E and full repository regression passed.
 
-Purpose:
+Accepted implementation/runtime code SHA:
 
-1. Repair readable universe token/pair display names using real bounded provider metadata.
-2. Keep pool/token identity unchanged.
-3. Keep panel read-only and authority-free.
-4. Fold legacy parallel architecture/workstream labels into Phase 0–15.
-5. Remove obsolete standalone experiment/policy/architecture files where their canonical rules already exist in `ROADMAP.md`.
-6. Preserve useful regression coverage under Phase-scoped test names.
+`c0dfb5aab8af75cb5b0944a670e9982585c5ad70`
 
-Production evidence that motivated the display-name repair:
+The merge:
 
-- visible universe rows checked: 40
-- `gecko_pool_cache` readable-name matches: 0
-- Gecko cache therefore cannot be the canonical full-universe display-name source
+- repaired readable universe token/pair display names using real bounded DexScreener metadata
+- kept pool/token identity unchanged
+- kept panel read-only and authority-free
+- folded legacy parallel architecture/workstream labels into Phase 0-15 ownership
+- removed the standalone full-universe architecture document
+- removed the standalone panel UI policy document
+- removed standalone WARM research scripts and their script-only tests
+- renamed retained OCR/runtime-repair regression coverage under Phase 12 ownership
 
-The existing bounded DexScreener universe snapshot path already receives `baseToken` / `quoteToken` symbol/name facts. Those facts belong to Phase 5 market metadata and are projected read-only by Phase 14.
+No replacement disposable script or parallel roadmap was added.
 
-## CLEANUP STATE
+## VPS RUNTIME ACCEPTANCE
 
-The integration candidate removes active parallel-roadmap artifacts including:
+The production VPS was fast-forwarded cleanly to accepted implementation SHA `c0dfb5aab8af75cb5b0944a670e9982585c5ad70`.
 
-- standalone full-universe architecture document
-- standalone panel UI policy document
-- standalone WARM research scripts and their script-only tests
-- obsolete OCR/runtime-repair test filenames
+Acceptance evidence:
 
-Useful OCR/runtime-repair regression behavior is retained under Phase 12 test ownership rather than discarded.
+- branch: `main`
+- worktree: clean
+- paper runtime: active
+- panel runtime: active
+- universe shadow: enabled
+- PancakeSwap V2/V3 start blocks: configured
+- WSS: configured
+- display metadata table: created by canonical universe observation path
+- display metadata rows at acceptance: 32
+- named metadata rows at acceptance: 32
+- visible panel universe rows: 40
+- readable display-name matches: 36
+- readable display-name coverage: 90.00%
+- display source: `UNIVERSE_POOL_DISPLAY_METADATA_V1`
+- frontend display contract: PASS
+- `data/cache/cache.db`: integrity/quick check `ok`
+- `data/paper_trades.db`: integrity/quick check `ok`
 
-Historical phase-scoped validation reports may remain as audit evidence. They are not active roadmap chains.
+The remaining unnamed visible rows are not filled with fabricated names; they remain fallback/unknown until real provider metadata is observed.
 
-## VALIDATION GATE
+## REPOSITORY CLEANUP SEAL
 
-Required order before production synchronization:
+After runtime acceptance, obsolete remote branches were audited against `main` and removed. The final remote-branch audit reported:
 
-1. candidate branch targeted tests
-2. canonical smoke/E2E
-3. full repository regression
-4. PR mergeability check
-5. merge into `main`
-6. verify final `origin/main` SHA
-7. VPS preflight: branch/main, HEAD, origin/main, clean worktree, service states, DB health
-8. fast-forward VPS to exact final main SHA
-9. apply only required migration/runtime change
-10. verify paper runtime, panel runtime, DB integrity and real panel data
-11. seal VPS HEAD = origin/main and clean worktree
+- non-main remote branches: 0
+- canonical remote branch: `main` only
+- production worktree: clean
+- paper runtime: active
+- panel runtime: active
 
-No production apply is allowed before the GitHub validation gate is green.
+Closed/merged historical pull requests and historical phase-scoped validation reports remain audit history, not active architecture branches or roadmap chains.
 
 ## CURRENT STATUS
 
-- PR #27 is the active integration candidate.
-- Cleanup/phase-ownership rewrite is included in that candidate.
-- Canonical smoke/E2E has passed on the cleanup line before the final documentation sync.
-- A full repository regression is required on the final candidate head.
-- VPS has not yet been synchronized to PR #27.
-- Do not restart or alter production services merely to test an unmerged candidate.
+- No active integration candidate.
+- No open pull request is required for the accepted runtime state.
+- Canonical architecture is Phase 0-15 only.
+- Runtime acceptance for the token-name repair is PASS.
+- Repository branch cleanup is PASS.
+- Production services are active.
+- Display-name repair is live with real provider-backed metadata.
 
-## NEXT ACTION AFTER GREEN CI
+This documentation seal is non-runtime. If its commit advances `main` beyond the accepted implementation SHA, the VPS needs only a clean `git pull --ff-only` synchronization; no service restart is required for this documentation-only change.
 
-When the final candidate head is fully green:
+## NEXT MAINTENANCE RULE
 
-- merge PR #27 into `main`
-- record the exact final main SHA
-- run one controlled VPS preflight/synchronization block
-- verify real display-name coverage and runtime health
-- update this checkpoint only if production facts changed
+For any future work:
+
+1. assign it to the existing Phase 0-15 owner
+2. make a targeted change
+3. run targeted tests
+4. run canonical smoke/E2E
+5. run full regression when the scope warrants it
+6. merge to `main`
+7. fast-forward the VPS only after GitHub is green
+8. verify runtime/DB evidence before sealing
+
+Do not reopen a parallel roadmap or create disposable persistent scripts.

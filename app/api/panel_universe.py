@@ -7,6 +7,7 @@ from typing import Any
 
 
 ALLOWED_STATES = {"COLD", "WARM", "HOT"}
+DISPLAY_PRIORITY = {"HOT": 0, "WARM": 1, "COLD": 2}
 
 
 def _connect_readonly(path: str | Path) -> sqlite3.Connection:
@@ -18,6 +19,70 @@ def _connect_readonly(path: str | Path) -> sqlite3.Connection:
     )
     connection.row_factory = sqlite3.Row
     return connection
+
+
+def _recent_registry_candidates(
+    connection: sqlite3.Connection,
+    *,
+    state: str,
+    limit: int,
+) -> list[sqlite3.Row]:
+    return connection.execute(
+        """
+        SELECT
+            chain,
+            dex,
+            pool,
+            token0,
+            token1,
+            market_state,
+            latest_liquidity_usd,
+            latest_volume_24h,
+            latest_price_usd,
+            latest_txns_5m,
+            latest_change_5m,
+            latest_snapshot_at,
+            state_changed_at
+        FROM universe_pool_registry
+        INDEXED BY idx_universe_snapshot_at
+        WHERE latest_snapshot_at IS NOT NULL
+          AND market_state = ?
+        ORDER BY latest_snapshot_at DESC
+        LIMIT ?
+        """,
+        (state, int(limit)),
+    ).fetchall()
+
+
+def _latest_seismic(
+    connection: sqlite3.Connection,
+    *,
+    chain: str,
+    dex: str,
+    pool: str,
+) -> sqlite3.Row | None:
+    return connection.execute(
+        """
+        SELECT
+            score,
+            price_z,
+            volume_z,
+            txns_z,
+            liquidity_ratio,
+            evidence_count,
+            reason,
+            previous_state,
+            next_state,
+            observed_at
+        FROM universe_seismic_evaluation_v1
+        WHERE chain = ?
+          AND dex = ?
+          AND pool = ?
+        ORDER BY observed_at DESC, id DESC
+        LIMIT 1
+        """,
+        (chain, dex, pool),
+    ).fetchone()
 
 
 def universe_panel_payload(
@@ -42,55 +107,28 @@ def universe_panel_payload(
     try:
         connection = _connect_readonly(path)
 
-        rows = connection.execute(
-            """
-            SELECT
-                r.chain,
-                r.dex,
-                r.pool,
-                r.token0,
-                r.token1,
-                r.market_state,
-                r.latest_liquidity_usd,
-                r.latest_volume_24h,
-                r.latest_price_usd,
-                r.latest_txns_5m,
-                r.latest_change_5m,
-                r.latest_snapshot_at,
-                r.state_changed_at,
-                e.score AS seismic_score,
-                e.price_z AS seismic_price_z,
-                e.volume_z AS seismic_volume_z,
-                e.txns_z AS seismic_txns_z,
-                e.liquidity_ratio AS seismic_liquidity_ratio,
-                e.evidence_count AS seismic_evidence_count,
-                e.reason AS seismic_reason,
-                e.previous_state AS seismic_previous_state,
-                e.next_state AS seismic_next_state,
-                e.observed_at AS seismic_observed_at
-            FROM universe_pool_registry AS r
-            LEFT JOIN universe_seismic_evaluation_v1 AS e
-              ON e.id = (
-                  SELECT e2.id
-                  FROM universe_seismic_evaluation_v1 AS e2
-                  WHERE e2.chain = r.chain
-                    AND e2.dex = r.dex
-                    AND e2.pool = r.pool
-                  ORDER BY e2.observed_at DESC, e2.id DESC
-                  LIMIT 1
-              )
-            WHERE r.market_state IN ('COLD','WARM','HOT')
-            ORDER BY
-                CASE r.market_state
-                    WHEN 'HOT' THEN 0
-                    WHEN 'WARM' THEN 1
-                    ELSE 2
-                END,
-                COALESCE(r.latest_snapshot_at, r.state_changed_at) DESC
-            LIMIT ?
-            """,
-            (bounded_limit,),
-        ).fetchall()
+        # Pull only a tiny, index-friendly recent window per state. This keeps
+        # HOT/WARM visible even when the full universe is overwhelmingly COLD,
+        # while avoiding a multi-million-row CASE/COALESCE sort.
+        candidates = []
+        for state in ("HOT", "WARM", "COLD"):
+            candidates.extend(
+                _recent_registry_candidates(
+                    connection,
+                    state=state,
+                    limit=bounded_limit,
+                )
+            )
+
+        candidates.sort(
+            key=lambda row: (
+                DISPLAY_PRIORITY.get(str(row["market_state"]), 99),
+                str(row["latest_snapshot_at"] or ""),
+            ),
+            reverse=False,
+        )
+
+        rows = candidates[:bounded_limit]
 
         counts = {
             str(row["market_state"]): int(row["n"])
@@ -115,6 +153,52 @@ def universe_panel_payload(
             """
         ).fetchall()
 
+        result_rows = []
+        for raw in rows:
+            row = dict(raw)
+            state = str(row.get("market_state") or "").upper()
+            if state not in ALLOWED_STATES:
+                continue
+
+            seismic_row = _latest_seismic(
+                connection,
+                chain=str(row.get("chain") or ""),
+                dex=str(row.get("dex") or ""),
+                pool=str(row.get("pool") or ""),
+            )
+
+            seismic = None
+            if seismic_row is not None:
+                seismic = {
+                    "score": seismic_row["score"],
+                    "price_z": seismic_row["price_z"],
+                    "volume_z": seismic_row["volume_z"],
+                    "txns_z": seismic_row["txns_z"],
+                    "liquidity_ratio": seismic_row["liquidity_ratio"],
+                    "evidence_count": seismic_row["evidence_count"],
+                    "reason": seismic_row["reason"],
+                    "previous_state": seismic_row["previous_state"],
+                    "next_state": seismic_row["next_state"],
+                    "observed_at": seismic_row["observed_at"],
+                }
+
+            result_rows.append({
+                "chain": row.get("chain"),
+                "dex": row.get("dex"),
+                "pool": row.get("pool"),
+                "token0": row.get("token0"),
+                "token1": row.get("token1"),
+                "state": state,
+                "liquidity_usd": row.get("latest_liquidity_usd"),
+                "volume_24h_usd": row.get("latest_volume_24h"),
+                "price_usd": row.get("latest_price_usd"),
+                "txns_5m": row.get("latest_txns_5m"),
+                "change_5m_pct": row.get("latest_change_5m"),
+                "snapshot_at": row.get("latest_snapshot_at"),
+                "state_changed_at": row.get("state_changed_at"),
+                "seismic": seismic,
+            })
+
     except sqlite3.Error as exc:
         return _unavailable(type(exc).__name__)
 
@@ -126,45 +210,6 @@ def universe_panel_payload(
     for row in transition_rows:
         key = f"{row['previous_state']}->{row['next_state']}"
         transitions[key] = int(row["n"])
-
-    result_rows = []
-    for raw in rows:
-        row = dict(raw)
-        state = str(row.get("market_state") or "").upper()
-        if state not in ALLOWED_STATES:
-            continue
-
-        seismic = None
-        if row.get("seismic_observed_at") is not None:
-            seismic = {
-                "score": row.get("seismic_score"),
-                "price_z": row.get("seismic_price_z"),
-                "volume_z": row.get("seismic_volume_z"),
-                "txns_z": row.get("seismic_txns_z"),
-                "liquidity_ratio": row.get("seismic_liquidity_ratio"),
-                "evidence_count": row.get("seismic_evidence_count"),
-                "reason": row.get("seismic_reason"),
-                "previous_state": row.get("seismic_previous_state"),
-                "next_state": row.get("seismic_next_state"),
-                "observed_at": row.get("seismic_observed_at"),
-            }
-
-        result_rows.append({
-            "chain": row.get("chain"),
-            "dex": row.get("dex"),
-            "pool": row.get("pool"),
-            "token0": row.get("token0"),
-            "token1": row.get("token1"),
-            "state": state,
-            "liquidity_usd": row.get("latest_liquidity_usd"),
-            "volume_24h_usd": row.get("latest_volume_24h"),
-            "price_usd": row.get("latest_price_usd"),
-            "txns_5m": row.get("latest_txns_5m"),
-            "change_5m_pct": row.get("latest_change_5m"),
-            "snapshot_at": row.get("latest_snapshot_at"),
-            "state_changed_at": row.get("state_changed_at"),
-            "seismic": seismic,
-        })
 
     total_count = sum(int(counts.get(state, 0)) for state in ALLOWED_STATES)
 

@@ -37,8 +37,16 @@ def pair(pool, **overrides):
         "chainId": "bsc",
         "dexId": "pancakeswap",
         "pairAddress": pool,
-        "baseToken": {"address": address(100)},
-        "quoteToken": {"address": address(200)},
+        "baseToken": {
+            "address": address(100),
+            "symbol": "ALPHA",
+            "name": "Alpha Token",
+        },
+        "quoteToken": {
+            "address": address(200),
+            "symbol": "WBNB",
+            "name": "Wrapped BNB",
+        },
         "priceUsd": "1.25",
         "liquidity": {"usd": 5000},
         "fdv": 9000,
@@ -76,6 +84,11 @@ def test_fetch_is_one_bounded_exact_pool_request_and_normalizes_facts():
     assert rows[0]["volume_m5_usd"] == 100.0
     assert rows[0]["change_h1"] == 3.0
     assert rows[0]["observed_at"] == "2026-08-25T15:00:00+00:00"
+    assert rows[0]["base_symbol"] == "ALPHA"
+    assert rows[0]["quote_symbol"] == "WBNB"
+    assert rows[0]["base_name"] == "Alpha Token"
+    assert rows[0]["quote_name"] == "Wrapped BNB"
+    assert rows[0]["display_name"] == "ALPHA / WBNB"
 
 
 def test_batch_limit_is_strict_and_makes_no_provider_call():

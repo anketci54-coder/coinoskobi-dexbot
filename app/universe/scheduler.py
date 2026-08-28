@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta, timezone
 
 from app.universe.display_metadata import persist_snapshot_display_metadata
+from app.universe.schema import DEX_PANCAKESWAP_V2, DEX_PANCAKESWAP_V3
 from app.universe.snapshot import DEXSCREENER_MAX_BATCH
 
 
@@ -10,6 +11,7 @@ DEFAULT_STATE_INTERVAL_SECONDS = {
     "HOT": 15,
 }
 DEFAULT_MISSING_RETRY_SECONDS = 60
+_UNIVERSE_DEXES = (DEX_PANCAKESWAP_V2, DEX_PANCAKESWAP_V3)
 
 
 class UniverseObservationScheduler:
@@ -31,6 +33,7 @@ class UniverseObservationScheduler:
             raise ValueError("positive missing retry required")
         self.now_func = now_func or (lambda: datetime.now(timezone.utc))
         self._prefer_depth = True
+        self._prefer_new_breadth = True
 
     @staticmethod
     def _iso(value):
@@ -61,6 +64,70 @@ class UniverseObservationScheduler:
         """, (now, int(limit))).fetchall()
         return [dict(row) for row in rows]
 
+    def _due_unseen_branch(self, *, now, limit, branch):
+        db = getattr(self.registry, "db", None)
+        limit = int(limit)
+        if db is None or limit < 1:
+            return []
+
+        branch = str(branch or "").upper()
+        if branch not in {"NEW", "EXISTING"}:
+            raise ValueError("known discovery branch required")
+
+        # idx_universe_dex_block is already canonical registry schema. Query
+        # each Pancake protocol lane through that index so NEW priority never
+        # degenerates into a multi-million-row full-table sort.
+        direction = "DESC" if branch == "NEW" else "ASC"
+        candidates = []
+        for dex in _UNIVERSE_DEXES:
+            rows = db.execute(f"""
+                SELECT *
+                FROM universe_pool_registry INDEXED BY idx_universe_dex_block
+                WHERE dex = ?
+                  AND latest_snapshot_at IS NULL
+                  AND discovery_branch = ?
+                  AND (
+                      next_observation_at IS NULL
+                      OR next_observation_at <= ?
+                  )
+                ORDER BY creation_block {direction}
+                LIMIT ?
+            """, (dex, branch, now, limit)).fetchall()
+            candidates.extend(dict(row) for row in rows)
+
+        if branch == "NEW":
+            candidates.sort(
+                key=lambda row: (-int(row["creation_block"]), row["pool"])
+            )
+        else:
+            candidates.sort(
+                key=lambda row: (int(row["creation_block"]), row["pool"])
+            )
+        return candidates[:limit]
+
+    def _due_breadth(self, *, now, limit):
+        # NEW pools must not sit behind the historical unseen backlog, while a
+        # continuous NEW stream must not starve EXISTING first-pass coverage.
+        # Alternate which lane receives first pick; fill unused capacity from
+        # the other lane. Every provider call remains bounded by the same limit.
+        prefer_new = self._prefer_new_breadth
+        self._prefer_new_breadth = not self._prefer_new_breadth
+
+        first_branch = "NEW" if prefer_new else "EXISTING"
+        second_branch = "EXISTING" if prefer_new else "NEW"
+
+        first = self._due_unseen_branch(
+            now=now, limit=limit, branch=first_branch
+        )
+        remaining = int(limit) - len(first)
+        if remaining <= 0:
+            return first
+
+        second = self._due_unseen_branch(
+            now=now, limit=remaining, branch=second_branch
+        )
+        return first + second
+
     def _select_due(self, *, now, limit):
         # Alternate depth and breadth so a million-row unseen backlog cannot
         # permanently starve the repeated samples required by the seismic
@@ -73,7 +140,7 @@ class UniverseObservationScheduler:
             if due:
                 return due
 
-        return self.registry.due_observations(now=now, limit=limit)
+        return self._due_breadth(now=now, limit=limit)
 
     def reschedule_for_state(self, row, *, state):
         state = str(state or "").upper()

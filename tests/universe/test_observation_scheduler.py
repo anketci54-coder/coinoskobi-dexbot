@@ -178,6 +178,24 @@ def test_existing_unseen_lane_cannot_starve_under_continuous_new_backlog(tmp_pat
     assert client.calls[1][0]["discovery_branch"] == "EXISTING"
 
 
+def test_new_unseen_missing_row_keeps_retry_contract(tmp_path):
+    registry = UniverseRegistry(tmp_path / "cache.db")
+    registry.ingest([pool_row(100, branch="NEW")])
+    now = datetime(2026, 8, 25, 16, 0, tzinfo=timezone.utc)
+
+    result = UniverseObservationScheduler(
+        registry, Client([]), now_func=lambda: now
+    ).run_once(limit=1)
+
+    row = registry.get_pool("bsc", "pancakeswap_v2", address(100))
+    assert result["missing"] == 1
+    assert row["next_observation_at"] == "2026-08-25T16:01:00+00:00"
+    assert row["latest_snapshot_at"] is None
+    assert registry.db.execute(
+        "SELECT COUNT(*) FROM universe_market_observation_v1"
+    ).fetchone()[0] == 0
+
+
 def test_missing_provider_row_is_deferred_without_fake_history(tmp_path):
     registry = UniverseRegistry(tmp_path / "cache.db")
     registry.ingest([pool_row(1)])

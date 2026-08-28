@@ -188,6 +188,12 @@ async def phase14_desktop_responsive_shell(request, call_next):
             1,
         )
 
+    html = html.replace(
+        "shortToken(r.token0)||'POOL'",
+        "r.display_name||shortToken(r.token0)||'POOL'",
+        1,
+    )
+
     return HTMLResponse(
         content=html,
         headers={

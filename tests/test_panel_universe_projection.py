@@ -103,6 +103,18 @@ def test_universe_panel_projection_is_real_and_read_only(tmp_path):
     assert payload["execution_authority"] is False
 
 
+def test_universe_panel_limit_preserves_hot_then_warm_priority(tmp_path):
+    path = tmp_path / "cache.db"
+    _seed(path)
+
+    payload = universe_panel_payload(path, limit=2)
+
+    assert payload["available"] is True
+    assert payload["visible_count"] == 2
+    assert [row["state"] for row in payload["rows"]] == ["HOT", "WARM"]
+    assert payload["rows"][0]["seismic"]["reason"] == "hot acceleration"
+
+
 def test_universe_panel_projection_fails_closed_when_db_missing(tmp_path):
     payload = universe_panel_payload(tmp_path / "missing.db")
 

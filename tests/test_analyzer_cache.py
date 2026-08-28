@@ -1,4 +1,5 @@
 import sqlite3
+from concurrent.futures import ThreadPoolExecutor
 
 import app.cache.analyzer_cache as cache_module
 from app.cache.analyzer_cache import AnalyzerCache
@@ -226,5 +227,54 @@ def test_cache_delete(tmp_path):
         )
         is None
     )
+
+    cache.close()
+
+
+def test_cache_is_safe_across_worker_threads(tmp_path):
+    cache = AnalyzerCache(
+        tmp_path / "cache.db"
+    )
+
+    def write_and_read(index):
+        key = f"key-{index}"
+        value = f"value-{index}"
+
+        cache.set(
+            "sellability",
+            key,
+            value,
+        )
+
+        return cache.get(
+            "sellability",
+            key,
+            ttl_seconds=60,
+        )
+
+    with ThreadPoolExecutor(
+        max_workers=8,
+    ) as executor:
+        values = list(
+            executor.map(
+                write_and_read,
+                range(32),
+            )
+        )
+
+    assert values == [
+        f"value-{index}"
+        for index in range(32)
+    ]
+
+    rows = cache.db.execute(
+        """
+        SELECT COUNT(*)
+        FROM analyzer_cache_v1
+        WHERE namespace='sellability'
+        """
+    ).fetchone()[0]
+
+    assert rows == 32
 
     cache.close()

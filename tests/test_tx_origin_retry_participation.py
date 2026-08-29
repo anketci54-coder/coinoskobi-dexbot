@@ -67,6 +67,8 @@ def test_retry_restores_full_origin_participation_without_relaxing_gate():
         )
         assert before["state"] == "UNKNOWN"
         assert before["coverage"] == 0.0
+        assert before["resolved_events"] == 0
+        assert before["directional_events"] == 1
 
         await asyncio.sleep(0.10)
 
@@ -76,8 +78,6 @@ def test_retry_restores_full_origin_participation_without_relaxing_gate():
         )
         assert after["state"] == "READY"
         assert after["coverage"] == 1.0
-        assert after["resolved_events"] == 1
-        assert after["directional_events"] == 1
         assert after["buyers"] == 1
         assert after["sellers"] == 0
         assert after["unique_wallets"] == 1

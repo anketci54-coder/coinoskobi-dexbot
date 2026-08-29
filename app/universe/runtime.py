@@ -12,6 +12,10 @@ from app.universe.snapshot import ProviderStickySnapshotClient
 log = logging.getLogger(__name__)
 
 
+def _safe_error(exc):
+    return type(exc).__name__
+
+
 def _new_bsc_web3():
     """Create a worker-owned HTTP provider with bounded failover."""
     from app.chains.bsc import build_bsc_web3
@@ -92,7 +96,7 @@ class FullUniverseObservationRuntime:
             "registered": 0,
             "provider_call": True,
             "error_class": type(exc).__name__,
-            "error": str(exc)[:300],
+            "error": _safe_error(exc),
         }
 
     def run_once(self):
@@ -119,10 +123,9 @@ class FullUniverseObservationRuntime:
                 discovery_errors.append(existing)
                 existing_failed = True
                 log.warning(
-                    "Universe discovery failed dex=%s branch=EXISTING error=%s: %s",
+                    "Universe discovery failed dex=%s branch=EXISTING error=%s",
                     stream["dex"],
-                    type(exc).__name__,
-                    str(exc)[:300],
+                    _safe_error(exc),
                 )
             existing_batches.append(existing)
             if existing_failed or existing["state"] == "CAUGHT_UP":
@@ -150,10 +153,9 @@ class FullUniverseObservationRuntime:
                 )
                 discovery_errors.append(tail)
                 log.warning(
-                    "Universe discovery failed dex=%s branch=NEW error=%s: %s",
+                    "Universe discovery failed dex=%s branch=NEW error=%s",
                     stream["dex"],
-                    type(exc).__name__,
-                    str(exc)[:300],
+                    _safe_error(exc),
                 )
 
         observation_results, observed_pools = [], []
@@ -246,7 +248,7 @@ class UniverseShadowService:
             with self._lock:
                 self._runtime = runtime
         except Exception as exc:
-            message = f"{type(exc).__name__}: {exc}"
+            message = _safe_error(exc)
             with self._lock:
                 self.failure_count += 1
                 self.last_error = message
@@ -262,7 +264,7 @@ class UniverseShadowService:
                     self.last_result = result
                     self.last_error = None
             except Exception as exc:
-                message = f"{type(exc).__name__}: {exc}"
+                message = _safe_error(exc)
                 with self._lock:
                     self.failure_count += 1
                     self.last_error = message

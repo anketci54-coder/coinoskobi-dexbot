@@ -161,10 +161,12 @@ def _arm_candidate_snapshot(
 
 def _origin_participation(runtime_feed, pair):
     """
-    Build participant evidence only from already-resolved transaction.from.
+    Build conservative participant evidence from resolved transaction.from.
 
     Direction remains native Swap amount evidence. Identity never falls
-    back to the Pair Swap sender. Partial identity coverage stays UNKNOWN.
+    back to the Pair Swap sender. Partial coverage is retained as a truthful
+    lower bound: unresolved events are never invented as wallets and can only
+    increase the true participant count later.
     """
     pair_key = str(pair or "").strip().lower()
 
@@ -222,13 +224,16 @@ def _origin_participation(runtime_feed, pair):
 
     coverage = len(resolved) / len(directional)
 
-    if coverage < 1.0:
+    if not resolved:
         return {
             "state": "UNKNOWN",
             "coverage": coverage,
-            "resolved_events": len(resolved),
+            "resolved_events": 0,
+            "unresolved_events": len(directional),
             "directional_events": len(directional),
             "identity_source": "TRANSACTION_FROM_ONLY",
+            "identity_complete": False,
+            "counts_are_lower_bounds": True,
             "swap_sender_is_wallet": False,
         }
 
@@ -249,23 +254,36 @@ def _origin_participation(runtime_feed, pair):
         for _, origin in resolved
     )
 
-    total = len(resolved)
+    resolved_total = len(resolved)
 
     largest_actor_share = (
-        max(actor_counts.values()) / total
-        if actor_counts and total > 0
+        max(actor_counts.values()) / resolved_total
+        if actor_counts and resolved_total > 0
         else None
     )
 
+    complete = coverage >= 1.0
+
     return {
-        "state": "READY",
+        "state": (
+            "READY"
+            if complete
+            else "PARTIAL"
+        ),
         "coverage": coverage,
         "buyers": len(buyers),
         "sellers": len(sellers),
         "unique_wallets": len(actor_counts),
-        "tx_count": total,
+        "tx_count": resolved_total,
+        "resolved_events": resolved_total,
+        "unresolved_events": (
+            len(directional) - resolved_total
+        ),
+        "directional_events": len(directional),
         "largest_actor_share": largest_actor_share,
         "identity_source": "TRANSACTION_FROM_ONLY",
+        "identity_complete": complete,
+        "counts_are_lower_bounds": not complete,
         "swap_sender_is_wallet": False,
     }
 
@@ -285,7 +303,12 @@ def _bind_origin_participation(
     market = dict(market or {})
     flow = dict(flow or {})
 
-    if participant.get("state") == "READY":
+    state = participant.get("state")
+
+    if state in {"READY", "PARTIAL"}:
+        # These are resolved transaction.from wallet counts only. Under
+        # PARTIAL coverage they are conservative lower bounds; unresolved
+        # events are not guessed and are not counted as participants.
         market["buyers"] = participant["buyers"]
         market["sellers"] = participant["sellers"]
         market["participant_identity_source"] = (
@@ -294,11 +317,20 @@ def _bind_origin_participation(
         market["participant_identity_coverage"] = (
             participant["coverage"]
         )
+        market["participant_identity_state"] = state
+        market["participant_identity_complete"] = (
+            participant["identity_complete"]
+        )
+        market["participant_counts_are_lower_bounds"] = (
+            participant["counts_are_lower_bounds"]
+        )
 
         flow["unique_wallets"] = (
             participant["unique_wallets"]
         )
-        flow["tx_count"] = participant["tx_count"]
+        flow["resolved_identity_tx_count"] = (
+            participant["resolved_events"]
+        )
         flow["largest_actor_share"] = (
             participant["largest_actor_share"]
         )
@@ -308,6 +340,19 @@ def _bind_origin_participation(
         flow["participant_identity_coverage"] = (
             participant["coverage"]
         )
+        flow["participant_identity_state"] = state
+        flow["participant_identity_complete"] = (
+            participant["identity_complete"]
+        )
+        flow["participant_counts_are_lower_bounds"] = (
+            participant["counts_are_lower_bounds"]
+        )
+
+        # Preserve the native flow transaction count when identity is
+        # partial. Only a fully resolved identity set may replace it with
+        # the equivalent resolved count.
+        if state == "READY":
+            flow["tx_count"] = participant["tx_count"]
 
     else:
         # Sender-derived participant counts are not wallet evidence.
@@ -316,6 +361,7 @@ def _bind_origin_participation(
         market.pop("sellers", None)
         flow.pop("unique_wallets", None)
         flow.pop("largest_actor_share", None)
+        flow.pop("resolved_identity_tx_count", None)
 
         market["participant_identity_source"] = (
             "TRANSACTION_FROM_ONLY"
@@ -323,12 +369,18 @@ def _bind_origin_participation(
         market["participant_identity_coverage"] = (
             participant.get("coverage", 0.0)
         )
+        market["participant_identity_state"] = "UNKNOWN"
+        market["participant_identity_complete"] = False
+        market["participant_counts_are_lower_bounds"] = True
         flow["participant_identity_source"] = (
             "TRANSACTION_FROM_ONLY"
         )
         flow["participant_identity_coverage"] = (
             participant.get("coverage", 0.0)
         )
+        flow["participant_identity_state"] = "UNKNOWN"
+        flow["participant_identity_complete"] = False
+        flow["participant_counts_are_lower_bounds"] = True
 
     return market, flow, participant
 
@@ -343,7 +395,8 @@ def build_market_context(
     Scanner evidence is real candidate/source evidence.
     Native flow direction/count is real WSS evidence.
     Participant identity is accepted only from resolved transaction.from.
-    Missing evidence stays UNKNOWN/absent.
+    Missing evidence stays UNKNOWN/absent; partial identity is explicit and
+    conservative rather than being discarded as if no identity existed.
     """
     row = row or {}
 

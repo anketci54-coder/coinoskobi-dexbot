@@ -85,10 +85,11 @@ class TransactionOriginResolver:
     """
     Bounded tx-hash -> tx.from resolver.
 
-    The hot path performs one immediate bounded provider attempt. A failed
-    provider lookup may schedule exactly one bounded follow-up after the
-    negative TTL. The follow-up can only publish a proven transaction.from
-    value into the existing evidence bridge and grants no trade authority.
+    Production/default provider lookups are dispatched to a bounded
+    background task so native WSS delivery never waits on HTTP RPC.
+    Custom fetchers retain synchronous-await semantics for deterministic
+    callers/tests. A failed lookup gets at most one delayed follow-up.
+    Only a proven transaction.from is published into the evidence bridge.
     """
 
     def __init__(
@@ -101,6 +102,7 @@ class TransactionOriginResolver:
         max_pending_retries=64,
     ):
         self.max_entries = max(1, int(max_entries))
+        self._default_provider_mode = fetcher is None
         self.fetcher = fetcher or self._default_fetcher
         self.timeout_seconds = max(0.05, float(timeout_seconds))
         self.negative_ttl_seconds = max(
@@ -122,6 +124,7 @@ class TransactionOriginResolver:
         self._cache = OrderedDict()
         self._negative = OrderedDict()
         self._retry_tasks = OrderedDict()
+        self._background_tasks = OrderedDict()
         self._lock = threading.RLock()
         self.provider_calls = 0
         self.cache_hits = 0
@@ -134,6 +137,9 @@ class TransactionOriginResolver:
         self.retry_failures = 0
         self.retry_dropped = 0
         self.retry_cancelled = 0
+        self.background_scheduled = 0
+        self.background_dropped = 0
+        self.background_cancelled = 0
 
     @property
     def size(self):
@@ -167,6 +173,82 @@ class TransactionOriginResolver:
 
         while len(self._negative) > self.max_entries:
             self._negative.popitem(last=False)
+
+    def _schedule_background_resolution(self, tx_hash):
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            return False
+
+        with self._lock:
+            existing = self._background_tasks.get(tx_hash)
+
+            if existing is not None and not existing.done():
+                return True
+
+            if len(self._background_tasks) >= self.max_pending_retries:
+                self.background_dropped += 1
+                return False
+
+            task = loop.create_task(
+                self._background_resolution(tx_hash)
+            )
+            self._background_tasks[tx_hash] = task
+            self._background_tasks.move_to_end(tx_hash)
+            self.background_scheduled += 1
+
+        def cleanup(done_task):
+            with self._lock:
+                current = self._background_tasks.get(tx_hash)
+                if current is done_task:
+                    self._background_tasks.pop(tx_hash, None)
+
+        task.add_done_callback(cleanup)
+        return True
+
+    async def _background_resolution(self, tx_hash):
+        try:
+            first = await self.resolve(
+                tx_hash,
+                _allow_background_retry=False,
+                _force_provider=True,
+            )
+
+            if first.get("state") == "READY":
+                return
+
+            with self._lock:
+                self.retry_scheduled += 1
+
+            await asyncio.sleep(self.retry_delay_seconds)
+
+            with self._lock:
+                if tx_hash in self._cache:
+                    return
+
+                self._negative.pop(tx_hash, None)
+                self.retry_attempts += 1
+
+            second = await self.resolve(
+                tx_hash,
+                _allow_background_retry=False,
+                _force_provider=True,
+            )
+
+            with self._lock:
+                if second.get("state") == "READY":
+                    self.retry_successes += 1
+                else:
+                    self.retry_failures += 1
+
+        except asyncio.CancelledError:
+            with self._lock:
+                self.background_cancelled += 1
+            raise
+
+        except Exception:
+            with self._lock:
+                self.retry_failures += 1
 
     def _schedule_retry(self, tx_hash):
         try:
@@ -212,6 +294,7 @@ class TransactionOriginResolver:
             result = await self.resolve(
                 tx_hash,
                 _allow_background_retry=False,
+                _force_provider=True,
             )
 
             with self._lock:
@@ -230,6 +313,7 @@ class TransactionOriginResolver:
         transaction_hash,
         *,
         _allow_background_retry=True,
+        _force_provider=False,
     ):
         tx_hash = _normalize_hash(transaction_hash)
 
@@ -255,13 +339,26 @@ class TransactionOriginResolver:
                     "CACHE",
                 )
 
-            if self._negative_hit(tx_hash):
+            if self._negative_hit(tx_hash) and not _force_provider:
                 return self._out(
                     "UNKNOWN",
                     tx_hash,
                     None,
                     "NEGATIVE_TTL",
                 )
+
+        if self._default_provider_mode and not _force_provider:
+            scheduled = self._schedule_background_resolution(tx_hash)
+            return self._out(
+                "UNKNOWN",
+                tx_hash,
+                None,
+                (
+                    "PROVIDER_LOOKUP_PENDING"
+                    if scheduled
+                    else "PROVIDER_LOOKUP_CAPACITY"
+                ),
+            )
 
         try:
             result = await asyncio.wait_for(
@@ -337,13 +434,19 @@ class TransactionOriginResolver:
 
         with self._lock:
             self._negative.pop(tx_hash, None)
-            task = self._retry_tasks.pop(tx_hash, None)
+            retry_task = self._retry_tasks.pop(tx_hash, None)
+            background_task = self._background_tasks.pop(tx_hash, None)
             removed = self._cache.pop(tx_hash, None) is not None
 
-        if task is not None and not task.done():
-            task.cancel()
+        for task in (retry_task, background_task):
+            if task is not None and not task.done():
+                task.cancel()
 
-        return removed or task is not None
+        return (
+            removed
+            or retry_task is not None
+            or background_task is not None
+        )
 
     def status(self):
         with self._lock:
@@ -357,6 +460,7 @@ class TransactionOriginResolver:
                 "retry_delay_seconds": self.retry_delay_seconds,
                 "max_pending_retries": self.max_pending_retries,
                 "pending_retries": len(self._retry_tasks),
+                "pending_background_lookups": len(self._background_tasks),
                 "provider_calls": self.provider_calls,
                 "cache_hits": self.cache_hits,
                 "negative_hits": self.negative_hits,
@@ -368,6 +472,10 @@ class TransactionOriginResolver:
                 "retry_failures": self.retry_failures,
                 "retry_dropped": self.retry_dropped,
                 "retry_cancelled": self.retry_cancelled,
+                "background_scheduled": self.background_scheduled,
+                "background_dropped": self.background_dropped,
+                "background_cancelled": self.background_cancelled,
+                "default_provider_background": self._default_provider_mode,
                 "bounded": True,
                 "wallet_identity_source": "TRANSACTION_FROM_ONLY",
                 "swap_sender_is_wallet": False,

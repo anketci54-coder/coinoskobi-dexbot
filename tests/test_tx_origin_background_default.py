@@ -102,3 +102,52 @@ def test_default_provider_background_lookup_retries_once_after_miss():
         asyncio.run(scenario())
     finally:
         resolver.forget("0xbackground-retry")
+
+
+def test_default_provider_background_capacity_fails_closed_without_waiting():
+    def fetcher(_):
+        time.sleep(0.15)
+        return {"from": WALLET}
+
+    resolver = TransactionOriginResolver(
+        timeout_seconds=0.5,
+        negative_ttl_seconds=0.01,
+        retry_delay_seconds=0.03,
+        max_pending_retries=1,
+    )
+    resolver.fetcher = fetcher
+
+    async def scenario():
+        first = await resolver.resolve("0xbackground-capacity-a")
+
+        started = time.monotonic()
+        second = await resolver.resolve("0xbackground-capacity-b")
+        elapsed = time.monotonic() - started
+
+        assert first["source"] == "PROVIDER_LOOKUP_PENDING"
+        assert second["state"] == "UNKNOWN"
+        assert second["source"] == "PROVIDER_LOOKUP_CAPACITY"
+        assert elapsed < 0.05
+        assert resolved_transaction_origin(
+            "0xbackground-capacity-b"
+        ) is None
+
+        status = resolver.status()
+        assert status["background_scheduled"] == 1
+        assert status["background_dropped"] == 1
+        assert status["pending_background_lookups"] == 1
+
+        await asyncio.sleep(0.25)
+
+        assert resolved_transaction_origin(
+            "0xbackground-capacity-a"
+        ) == WALLET
+        assert resolved_transaction_origin(
+            "0xbackground-capacity-b"
+        ) is None
+
+    try:
+        asyncio.run(scenario())
+    finally:
+        resolver.forget("0xbackground-capacity-a")
+        resolver.forget("0xbackground-capacity-b")

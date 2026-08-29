@@ -31,9 +31,6 @@ class FailoverHTTPProvider(BaseProvider):
     ):
         super().__init__()
 
-        if not primary_url:
-            raise ValueError("primary_url required")
-
         self.primary = provider_factory(primary_url)
         self.secondary = (
             provider_factory(secondary_url)

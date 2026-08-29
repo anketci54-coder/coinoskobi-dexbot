@@ -1,6 +1,6 @@
 # COINOSKOBI CANONICAL PROJECT STATE
 
-Updated: 2026-08-28
+Updated: 2026-08-29
 
 ## CANONICAL SOURCE
 
@@ -148,6 +148,23 @@ Closed/merged historical pull requests and historical phase-scoped validation re
 - Display-name repair is live with real provider-backed metadata.
 
 This documentation seal is non-runtime. If its commit advances `main` beyond the accepted implementation SHA, the VPS needs only a clean `git pull --ff-only` synchronization; no service restart is required for this documentation-only change.
+
+## DEFERRED INFRASTRUCTURE OPTION / TODO
+
+Dedicated BSC Fast Node is a deferred, need-based infrastructure option under existing provider-resilience/operability ownership; it is **not** a new phase or active migration.
+
+Trigger for reconsideration: provider cost, quota pressure, latency variance or sustained BSC RPC/WSS load becomes materially limiting.
+
+Decision criteria remain:
+
+1. speed / latency
+2. capacity / power
+3. security / resilience
+4. total cost
+
+If activated later, evaluate a private dedicated BSC Fast Node as primary with external providers retained as cold-standby fallbacks. Keep heavy historical/research traffic isolated from the live Coinoskobi node. Do not change the current provider/runtime architecture merely to prepare for this option.
+
+Status: **DEFERRED — NO CURRENT SYSTEM CHANGE**.
 
 ## NEXT MAINTENANCE RULE
 

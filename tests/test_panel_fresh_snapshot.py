@@ -17,5 +17,8 @@ def test_panel_clears_restored_dom_before_live_refresh():
 def test_panel_document_is_served_no_store():
     source = PANEL.read_text(encoding="utf-8")
 
-    assert '"Cache-Control": "no-store, max-age=0"' in source
-    assert '"Pragma": "no-cache"' in source
+    assert '"Cache-Control"' in source
+    assert '"no-store, no-cache, "' in source
+    assert '"must-revalidate, max-age=0"' in source
+    assert '"Pragma"' in source
+    assert '"no-cache"' in source

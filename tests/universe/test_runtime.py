@@ -156,9 +156,11 @@ def test_discovery_failure_does_not_starve_existing_observations(caplog):
         "2026-08-25T15:00:00+00:00",
     )])
 
+    secret = "https://provider.invalid/v2/SECRET_TOKEN"
+
     class FailingLogReader:
         def __call__(self, **request):
-            raise RuntimeError("provider unavailable")
+            raise RuntimeError(secret)
 
     snapshots = SnapshotClient()
     subject = FullUniverseObservationRuntime(
@@ -178,6 +180,7 @@ def test_discovery_failure_does_not_starve_existing_observations(caplog):
 
     assert result["state"] == "SHADOW_DEGRADED"
     assert result["discovery"]["existing"]["state"] == "ERROR"
+    assert result["discovery"]["existing"]["error"] == "RuntimeError"
     assert result["discovery"]["new"]["state"] == "SKIPPED_AFTER_DISCOVERY_ERROR"
     assert result["observed"] == 1
     assert result["evaluated"] == 1
@@ -186,6 +189,7 @@ def test_discovery_failure_does_not_starve_existing_observations(caplog):
         "SELECT latest_snapshot_at FROM universe_pool_registry WHERE pool=?", (pool,)
     ).fetchone()[0] == "2026-08-25T16:00:00+00:00"
     assert "Universe discovery failed" in caplog.text
+    assert secret not in caplog.text
 
 
 def test_spawn_isolated_uses_worker_owned_rpc_and_sticky_provider(monkeypatch):
@@ -279,11 +283,12 @@ def test_shadow_service_uses_spawned_runtime_and_stops_cleanly():
 
 def test_shadow_service_logs_cycle_failures(caplog):
     ran = threading.Event()
+    secret = "https://provider.invalid/v2/SECRET_TOKEN"
 
     class FailingRuntime:
         def run_once(self):
             ran.set()
-            raise RuntimeError("cycle boom")
+            raise RuntimeError(secret)
 
     service = UniverseShadowService(FailingRuntime(), interval=60)
     with caplog.at_level(logging.WARNING):
@@ -297,8 +302,9 @@ def test_shadow_service_logs_cycle_failures(caplog):
 
     status = service.status()
     assert status["failures"] >= 1
-    assert status["last_error"] == "RuntimeError: cycle boom"
+    assert status["last_error"] == "RuntimeError"
     assert "Universe shadow cycle failed" in caplog.text
+    assert secret not in caplog.text
 
 
 def test_slow_shadow_cycle_does_not_block_caller_thread():

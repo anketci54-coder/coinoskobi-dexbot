@@ -523,6 +523,11 @@ def calculate_paper_position_size(
         capital.get("safe_quote_reserve_usd")
     )
 
+    liquidity_capacity_source = str(
+        capital.get("liquidity_capacity_source")
+        or ""
+    ).strip().upper()
+
     risk_log_distance = _positive(
         _find_number(
             plan,
@@ -552,6 +557,16 @@ def calculate_paper_position_size(
     )
 
     blockers = []
+
+    # Repeated reserve observations prove that exit liquidity existed.
+    # They do not prove that LP cannot be withdrawn between observations.
+    # Keep the empirical floor as diagnostics/capacity evidence, but it
+    # must never grant paper-capital authority without verified LP
+    # protection.
+    if liquidity_capacity_source == "EMPIRICAL_RESERVE_FLOOR":
+        blockers.append(
+            "LP_WITHDRAWAL_PROTECTION_UNVERIFIED"
+        )
 
     if raw_amount <= 0:
         blockers.append("PLAN_AMOUNT_ZERO")

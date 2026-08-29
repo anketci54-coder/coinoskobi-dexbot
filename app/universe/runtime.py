@@ -1,3 +1,4 @@
+import logging
 import threading
 import time
 
@@ -6,6 +7,9 @@ from app.universe.registry import UniverseRegistry
 from app.universe.scheduler import UniverseObservationScheduler
 from app.universe.seismic import SeismicClassifier
 from app.universe.snapshot import ProviderStickySnapshotClient
+
+
+log = logging.getLogger(__name__)
 
 
 def _new_bsc_web3():
@@ -78,6 +82,19 @@ class FullUniverseObservationRuntime:
             observation_batches_per_cycle=self.observation_batches_per_cycle,
         )
 
+    @staticmethod
+    def _discovery_failure(*, branch, exc):
+        return {
+            "state": "ERROR",
+            "branch": branch,
+            "from_block": None,
+            "to_block": None,
+            "registered": 0,
+            "provider_call": True,
+            "error_class": type(exc).__name__,
+            "error": str(exc)[:300],
+        }
+
     def run_once(self):
         finalized = max(0, int(self.finalized_block_reader()) - self.confirmation_depth)
         stream = PANCAKE_FACTORY_STREAMS[
@@ -85,19 +102,60 @@ class FullUniverseObservationRuntime:
         ]
         self._stream_cursor += 1
 
+        discovery_errors = []
         existing_batches = []
+        existing_failed = False
         for _ in range(self.discovery_batches_per_cycle):
-            existing = self.discovery.scan(
-                stream, start_block=self.start_blocks[stream["dex"]],
-                finalized_block=finalized, branch="EXISTING",
-            )
+            try:
+                existing = self.discovery.scan(
+                    stream, start_block=self.start_blocks[stream["dex"]],
+                    finalized_block=finalized, branch="EXISTING",
+                )
+            except Exception as exc:
+                existing = self._discovery_failure(
+                    branch="EXISTING",
+                    exc=exc,
+                )
+                discovery_errors.append(existing)
+                existing_failed = True
+                log.warning(
+                    "Universe discovery failed dex=%s branch=EXISTING error=%s: %s",
+                    stream["dex"],
+                    type(exc).__name__,
+                    str(exc)[:300],
+                )
             existing_batches.append(existing)
-            if existing["state"] == "CAUGHT_UP":
+            if existing_failed or existing["state"] == "CAUGHT_UP":
                 break
 
-        tail = self.discovery.scan(
-            stream, start_block=finalized, finalized_block=finalized, branch="NEW",
-        )
+        if existing_failed:
+            tail = {
+                "state": "SKIPPED_AFTER_DISCOVERY_ERROR",
+                "branch": "NEW",
+                "from_block": finalized,
+                "to_block": finalized,
+                "registered": 0,
+                "provider_call": False,
+            }
+        else:
+            try:
+                tail = self.discovery.scan(
+                    stream, start_block=finalized,
+                    finalized_block=finalized, branch="NEW",
+                )
+            except Exception as exc:
+                tail = self._discovery_failure(
+                    branch="NEW",
+                    exc=exc,
+                )
+                discovery_errors.append(tail)
+                log.warning(
+                    "Universe discovery failed dex=%s branch=NEW error=%s: %s",
+                    stream["dex"],
+                    type(exc).__name__,
+                    str(exc)[:300],
+                )
+
         observation_results, observed_pools = [], []
         for _ in range(self.observation_batches_per_cycle):
             result = self.observer.run_once()
@@ -130,11 +188,17 @@ class FullUniverseObservationRuntime:
             evaluations.append(evaluation)
         self.cycles += 1
         return {
-            "state": "SHADOW_READY", "cycle": self.cycles,
+            "state": (
+                "SHADOW_DEGRADED"
+                if discovery_errors
+                else "SHADOW_READY"
+            ),
+            "cycle": self.cycles,
             "discovery": {
                 "existing": existing_batches[-1],
                 "existing_batches": existing_batches,
                 "new": tail,
+                "errors": discovery_errors,
             },
             "observation_batches": observation_results,
             "observed": len(observed_pools), "evaluated": len(evaluations),
@@ -182,9 +246,11 @@ class UniverseShadowService:
             with self._lock:
                 self._runtime = runtime
         except Exception as exc:
+            message = f"{type(exc).__name__}: {exc}"
             with self._lock:
                 self.failure_count += 1
-                self.last_error = f"{type(exc).__name__}: {exc}"
+                self.last_error = message
+            log.error("Universe shadow startup failed: %s", message)
             return
 
         while not self._stop_event.is_set():
@@ -196,9 +262,11 @@ class UniverseShadowService:
                     self.last_result = result
                     self.last_error = None
             except Exception as exc:
+                message = f"{type(exc).__name__}: {exc}"
                 with self._lock:
                     self.failure_count += 1
-                    self.last_error = f"{type(exc).__name__}: {exc}"
+                    self.last_error = message
+                log.warning("Universe shadow cycle failed: %s", message)
 
             elapsed = time.monotonic() - started
             self._stop_event.wait(max(0.0, self.interval - elapsed))

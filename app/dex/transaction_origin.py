@@ -82,7 +82,15 @@ def transaction_origin_evidence_status():
 
 
 class TransactionOriginResolver:
-    """Bounded tx-hash -> tx.from resolver with timeout and negative TTL."""
+    """
+    Bounded tx-hash -> tx.from resolver.
+
+    The hot path performs one immediate bounded provider attempt. A failed
+    provider lookup may schedule exactly one bounded follow-up after the
+    negative TTL. The follow-up can only publish a real transaction.from
+    value into the process-local evidence bridge; it grants no decision,
+    paper, live, wallet or execution authority.
+    """
 
     def __init__(
         self,
@@ -90,6 +98,8 @@ class TransactionOriginResolver:
         fetcher=None,
         timeout_seconds=1.5,
         negative_ttl_seconds=5.0,
+        retry_delay_seconds=None,
+        max_pending_retries=512,
     ):
         self.max_entries = max(1, int(max_entries))
         self.fetcher = fetcher or self._default_fetcher
@@ -98,14 +108,39 @@ class TransactionOriginResolver:
             0.0,
             float(negative_ttl_seconds),
         )
+        self.retry_delay_seconds = max(
+            0.05,
+            float(
+                retry_delay_seconds
+                if retry_delay_seconds is not None
+                else max(
+                    0.10,
+                    self.negative_ttl_seconds + 0.05,
+                )
+            ),
+        )
+        self.max_pending_retries = max(
+            1,
+            min(
+                self.max_entries,
+                int(max_pending_retries),
+            ),
+        )
         self._cache = OrderedDict()
         self._negative = OrderedDict()
+        self._retry_tasks = OrderedDict()
         self._lock = threading.RLock()
         self.provider_calls = 0
         self.cache_hits = 0
         self.negative_hits = 0
         self.resolve_failures = 0
         self.evictions = 0
+        self.retry_scheduled = 0
+        self.retry_attempts = 0
+        self.retry_successes = 0
+        self.retry_failures = 0
+        self.retry_dropped = 0
+        self.retry_cancelled = 0
 
     @property
     def size(self):
@@ -140,7 +175,76 @@ class TransactionOriginResolver:
         while len(self._negative) > self.max_entries:
             self._negative.popitem(last=False)
 
-    async def resolve(self, transaction_hash):
+    def _schedule_retry(self, tx_hash):
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            return False
+
+        with self._lock:
+            existing = self._retry_tasks.get(tx_hash)
+
+            if existing is not None and not existing.done():
+                return False
+
+            if len(self._retry_tasks) >= self.max_pending_retries:
+                self.retry_dropped += 1
+                return False
+
+            task = loop.create_task(
+                self._retry_once(tx_hash)
+            )
+            self._retry_tasks[tx_hash] = task
+            self._retry_tasks.move_to_end(tx_hash)
+            self.retry_scheduled += 1
+
+        def cleanup(done_task):
+            with self._lock:
+                current = self._retry_tasks.get(tx_hash)
+                if current is done_task:
+                    self._retry_tasks.pop(tx_hash, None)
+
+        task.add_done_callback(cleanup)
+        return True
+
+    async def _retry_once(self, tx_hash):
+        try:
+            await asyncio.sleep(
+                self.retry_delay_seconds
+            )
+
+            with self._lock:
+                if tx_hash in self._cache:
+                    return
+
+                # The scheduled delay is deliberately beyond the
+                # negative TTL by default. Clear any stale marker so
+                # the one follow-up performs a real provider lookup.
+                self._negative.pop(tx_hash, None)
+                self.retry_attempts += 1
+
+            result = await self.resolve(
+                tx_hash,
+                _allow_background_retry=False,
+            )
+
+            with self._lock:
+                if result.get("state") == "READY":
+                    self.retry_successes += 1
+                else:
+                    self.retry_failures += 1
+
+        except asyncio.CancelledError:
+            with self._lock:
+                self.retry_cancelled += 1
+            raise
+
+    async def resolve(
+        self,
+        transaction_hash,
+        *,
+        _allow_background_retry=True,
+    ):
         tx_hash = _normalize_hash(transaction_hash)
 
         if not tx_hash:
@@ -194,6 +298,9 @@ class TransactionOriginResolver:
                 self.resolve_failures += 1
                 self._remember_negative(tx_hash)
 
+            if _allow_background_retry:
+                self._schedule_retry(tx_hash)
+
             return self._out(
                 "UNKNOWN",
                 tx_hash,
@@ -207,6 +314,9 @@ class TransactionOriginResolver:
             with self._lock:
                 self.resolve_failures += 1
                 self._remember_negative(tx_hash)
+
+            if _allow_background_retry:
+                self._schedule_retry(tx_hash)
 
             return self._out(
                 "UNKNOWN",
@@ -250,7 +360,13 @@ class TransactionOriginResolver:
 
         with self._lock:
             self._negative.pop(tx_hash, None)
-            return self._cache.pop(tx_hash, None) is not None
+            task = self._retry_tasks.pop(tx_hash, None)
+            removed = self._cache.pop(tx_hash, None) is not None
+
+        if task is not None and not task.done():
+            task.cancel()
+
+        return removed or task is not None
 
     def status(self):
         with self._lock:
@@ -263,11 +379,26 @@ class TransactionOriginResolver:
                 "negative_ttl_seconds": (
                     self.negative_ttl_seconds
                 ),
+                "retry_delay_seconds": (
+                    self.retry_delay_seconds
+                ),
+                "max_pending_retries": (
+                    self.max_pending_retries
+                ),
+                "pending_retries": len(
+                    self._retry_tasks
+                ),
                 "provider_calls": self.provider_calls,
                 "cache_hits": self.cache_hits,
                 "negative_hits": self.negative_hits,
                 "resolve_failures": self.resolve_failures,
                 "evictions": self.evictions,
+                "retry_scheduled": self.retry_scheduled,
+                "retry_attempts": self.retry_attempts,
+                "retry_successes": self.retry_successes,
+                "retry_failures": self.retry_failures,
+                "retry_dropped": self.retry_dropped,
+                "retry_cancelled": self.retry_cancelled,
                 "bounded": True,
                 "wallet_identity_source": (
                     "TRANSACTION_FROM_ONLY"

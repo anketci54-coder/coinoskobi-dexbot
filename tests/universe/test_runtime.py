@@ -1,3 +1,4 @@
+import logging
 import sqlite3
 import threading
 import time
@@ -133,6 +134,60 @@ def test_backfill_batches_keep_each_rpc_span_bounded_and_tail_current():
     assert result["decision_authority"] is False
 
 
+def test_discovery_failure_does_not_starve_existing_observations(caplog):
+    registry = UniverseRegistry(connection=sqlite3.connect(":memory:"))
+    stream = PANCAKE_FACTORY_STREAMS[0]
+    pool = address(100)
+    registry.ingest([{
+        "chain": "bsc",
+        "dex": stream["dex"],
+        "pool": pool,
+        "token0": address(101),
+        "token1": address(102),
+        "factory": stream["factory"],
+        "creation_block": 1,
+        "creation_tx": "0x" + "b" * 64,
+        "discovery_branch": "EXISTING",
+    }])
+    registry.schedule_observations([(
+        dict(registry.db.execute(
+            "SELECT * FROM universe_pool_registry WHERE pool=?", (pool,)
+        ).fetchone()),
+        "2026-08-25T15:00:00+00:00",
+    )])
+
+    class FailingLogReader:
+        def __call__(self, **request):
+            raise RuntimeError("provider unavailable")
+
+    snapshots = SnapshotClient()
+    subject = FullUniverseObservationRuntime(
+        start_blocks={"pancakeswap_v2": 1, "pancakeswap_v3": 1},
+        registry=registry,
+        log_reader=FailingLogReader(),
+        finalized_block_reader=lambda: 20,
+        snapshot_client=snapshots,
+        confirmation_depth=0,
+        discovery_block_span=10,
+        discovery_batches_per_cycle=1,
+        observation_batches_per_cycle=1,
+    )
+
+    with caplog.at_level(logging.WARNING):
+        result = subject.run_once()
+
+    assert result["state"] == "SHADOW_DEGRADED"
+    assert result["discovery"]["existing"]["state"] == "ERROR"
+    assert result["discovery"]["new"]["state"] == "SKIPPED_AFTER_DISCOVERY_ERROR"
+    assert result["observed"] == 1
+    assert result["evaluated"] == 1
+    assert len(snapshots.calls) == 1
+    assert registry.db.execute(
+        "SELECT latest_snapshot_at FROM universe_pool_registry WHERE pool=?", (pool,)
+    ).fetchone()[0] == "2026-08-25T16:00:00+00:00"
+    assert "Universe discovery failed" in caplog.text
+
+
 def test_spawn_isolated_uses_worker_owned_rpc_and_sticky_provider(monkeypatch):
     class Eth:
         block_number = 123
@@ -220,6 +275,30 @@ def test_shadow_service_uses_spawned_runtime_and_stops_cleanly():
     assert status["running"] is False
     assert status["cycles"] >= 1
     assert status["decision_authority"] is False
+
+
+def test_shadow_service_logs_cycle_failures(caplog):
+    ran = threading.Event()
+
+    class FailingRuntime:
+        def run_once(self):
+            ran.set()
+            raise RuntimeError("cycle boom")
+
+    service = UniverseShadowService(FailingRuntime(), interval=60)
+    with caplog.at_level(logging.WARNING):
+        assert service.start() is True
+        assert ran.wait(1.0) is True
+        for _ in range(50):
+            if service.status()["failures"] >= 1:
+                break
+            time.sleep(0.01)
+        assert service.stop() is True
+
+    status = service.status()
+    assert status["failures"] >= 1
+    assert status["last_error"] == "RuntimeError: cycle boom"
+    assert "Universe shadow cycle failed" in caplog.text
 
 
 def test_slow_shadow_cycle_does_not_block_caller_thread():

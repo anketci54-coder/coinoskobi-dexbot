@@ -180,7 +180,10 @@ class RuntimeMarketFlowStore:
 
     def __init__(
         self,
-        max_pairs=256,
+        # WSS active target set is capped at 256. Keep bounded
+        # state headroom so target rotation cannot evict still-active
+        # pair history before the next observation cycle.
+        max_pairs=512,
         max_events_per_pair=2048,
         require_membership_confirmation=False,
         stream_math_calibration=None,

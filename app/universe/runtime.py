@@ -9,14 +9,10 @@ from app.universe.snapshot import ProviderStickySnapshotClient
 
 
 def _new_bsc_web3():
-    """Create a worker-owned HTTP provider instead of sharing app.chains.bsc.w3."""
-    from web3 import Web3
-    from app.config.settings import RPC_URL
+    """Create a worker-owned HTTP provider with bounded failover."""
+    from app.chains.bsc import build_bsc_web3
 
-    if not RPC_URL:
-        raise RuntimeError("RPC_URL required for universe shadow")
-
-    return Web3(Web3.HTTPProvider(RPC_URL))
+    return build_bsc_web3()
 
 
 class Web3LogReader:

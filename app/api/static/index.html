@@ -82,7 +82,7 @@ const price=v=>finite(v)?new Intl.NumberFormat('tr-TR',{maximumSignificantDigits
 const score=v=>finite(v)?new Intl.NumberFormat('tr-TR',{minimumFractionDigits:2,maximumFractionDigits:2}).format(Number(v)):'—';
 const zscore=v=>finite(v)?Number(v).toFixed(2):'—';
 const cls=v=>n(v)>0?'pos':n(v)<0?'neg':'';
-async function getJson(url){const r=await fetch(url,{cache:'no-store'});if(!r.ok)throw new Error(url+' '+r.status);return r.json()}
+async function getJson(url){const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),4000);try{const r=await fetch(url,{cache:'no-store',signal:controller.signal});if(!r.ok)throw new Error(url+' '+r.status);return await r.json()}finally{clearTimeout(timer)}}
 function text(id,value){const x=el(id);if(x)x.textContent=value??'—'}
 function paint(id,value){const x=el(id);if(!x)return;x.classList.remove('pos','neg');const c=cls(value);if(c)x.classList.add(c)}
 function shortToken(v){const s=String(v||'');return s.length>18?s.slice(0,8)+'…'+s.slice(-6):s||'—'}
@@ -110,9 +110,96 @@ function closeAccounting(){el('accountDrawer').classList.remove('open')}
 function askVezir(q){el('vezirInput').value=q;sendVezir()}
 function sendVezir(){const input=el('vezirInput'),q=input.value.trim();if(!q)return;const b=document.createElement('div');b.className='bubble';b.style.marginTop='7px';b.textContent='READ ONLY · Bu sürümde Vezir komut yürütmez. Soru: '+q;el('chatBody').appendChild(b);input.value=''}
 document.querySelectorAll('[data-filter]').forEach(btn=>btn.addEventListener('click',()=>{state.filter=btn.dataset.filter;document.querySelectorAll('[data-filter]').forEach(x=>x.classList.toggle('active',x===btn));state.selected=null;renderRadar();renderTimeline();renderEdge()}));
-async function refresh(){try{const [dashboard,candidates,authority,universe]=await Promise.all([getJson('/api/dashboard'),getJson('/api/runtime-candidates'),getJson('/api/authority'),getJson('/api/universe-panel').catch(()=>null)]);state.dashboard=dashboard;state.candidates=Array.isArray(candidates)?candidates:[];state.authority=authority;state.universe=universe;if(state.selected?.kind==='universe'){const fresh=(universe?.rows||[]).find(r=>r.pool===state.selected.pool);state.selected=fresh?{kind:'universe',pool:fresh.pool,row:fresh}:null}renderTop();renderUniverse();renderEdge();renderLedger();renderSignals();renderIntel();renderHealth();renderTimeline();renderVezir();if(el('accountDrawer').classList.contains('open'))renderAccounting();text('updatedAt',new Date().toLocaleTimeString('tr-TR'))}catch(e){console.error(e);text('updatedAt','VERİ HATASI')}}
-window.addEventListener('pageshow',event=>{if(event.persisted){state.dashboard=null;state.accountingRows=null;clearLiveSnapshot();refresh()}});
-clearLiveSnapshot();refresh();setInterval(refresh,5000);
+let refreshInFlight=false;
+async function refresh(){
+    if(refreshInFlight)return;
+    refreshInFlight=true;
+    try{
+        const results=await Promise.allSettled([
+            getJson('/api/dashboard'),
+            getJson('/api/runtime-candidates'),
+            getJson('/api/authority'),
+            getJson('/api/universe-panel')
+        ]);
+
+        const [dashboardResult,candidatesResult,authorityResult,universeResult]=results;
+        const failed=results.filter(r=>r.status==='rejected').length;
+        let updated=false;
+
+        if(dashboardResult.status==='fulfilled'){
+            state.dashboard=dashboardResult.value;
+            updated=true;
+        }else console.error(dashboardResult.reason);
+
+        if(candidatesResult.status==='fulfilled'){
+            state.candidates=Array.isArray(candidatesResult.value)?candidatesResult.value:[];
+            updated=true;
+        }else console.error(candidatesResult.reason);
+
+        if(authorityResult.status==='fulfilled'){
+            state.authority=authorityResult.value;
+            updated=true;
+        }else console.error(authorityResult.reason);
+
+        if(universeResult.status==='fulfilled'){
+            state.universe=universeResult.value;
+            updated=true;
+        }else console.error(universeResult.reason);
+
+        if(state.selected?.kind==='universe'){
+            const fresh=(state.universe?.rows||[]).find(
+                r=>r.pool===state.selected.pool
+            );
+            state.selected=fresh
+                ?{kind:'universe',pool:fresh.pool,row:fresh}
+                :null;
+        }
+
+        renderTop();
+        renderUniverse();
+        renderEdge();
+        renderLedger();
+        renderSignals();
+        renderIntel();
+        renderHealth();
+        renderTimeline();
+        renderVezir();
+
+        if(el('accountDrawer').classList.contains('open')){
+            renderAccounting();
+        }
+
+        text(
+            'updatedAt',
+            updated
+                ?new Date().toLocaleTimeString('tr-TR')+(failed?' · KISMİ':'')
+                :'VERİ HATASI'
+        );
+    }catch(e){
+        console.error(e);
+        text('updatedAt','VERİ HATASI');
+    }finally{
+        refreshInFlight=false;
+    }
+}
+
+function refreshWhenVisible(){
+    if(document.visibilityState==='visible'){
+        refresh();
+    }
+}
+
+window.addEventListener('pageshow',()=>{
+    state.accountingRows=null;
+    refreshWhenVisible();
+});
+
+window.addEventListener('focus',refreshWhenVisible);
+document.addEventListener('visibilitychange',refreshWhenVisible);
+
+clearLiveSnapshot();
+refresh();
+setInterval(refreshWhenVisible,5000);
 </script>
 </body>
 </html>

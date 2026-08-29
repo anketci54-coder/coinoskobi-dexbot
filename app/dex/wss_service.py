@@ -1,12 +1,12 @@
 import asyncio
 import threading
 
-from app.dex.wss_runtime import NativeWSSRuntime
+from app.dex.wss_failover import FailoverWSSRuntime
 
 
 class NativeWSSService:
     """
-    Application-owned lifecycle wrapper for NativeWSSRuntime.
+    Application-owned lifecycle wrapper for native WSS runtime.
 
     The service:
     - owns one background thread
@@ -40,7 +40,7 @@ class NativeWSSService:
 
         self.runtime_factory = (
             runtime_factory
-            or NativeWSSRuntime
+            or FailoverWSSRuntime
         )
 
         self.on_event = on_event

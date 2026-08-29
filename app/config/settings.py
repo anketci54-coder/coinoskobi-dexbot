@@ -5,7 +5,8 @@ load_dotenv(".env")
 
 APP_NAME = os.getenv("APP_NAME", "CoinoskobiDEX")
 CHAIN = os.getenv("CHAIN", "bsc")
-RPC_URL = os.getenv("RPC_URL", "")
+RPC_URL = os.getenv("RPC_URL", "").strip()
+RPC_URL_SECONDARY = os.getenv("RPC_URL_SECONDARY", "").strip()
 PRIVATE_KEY = os.getenv("PRIVATE_KEY", "")
 WALLET_ADDRESS = os.getenv("WALLET_ADDRESS", "")
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
@@ -13,6 +14,7 @@ LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
 # Native DEX WSS runtime is enabled only when both
 # WSS_URL and WSS_PAIR are explicitly configured.
 WSS_URL = os.getenv("WSS_URL", "").strip()
+WSS_URL_SECONDARY = os.getenv("WSS_URL_SECONDARY", "").strip()
 WSS_PAIR = os.getenv("WSS_PAIR", "").strip()
 
 # Optional target token for semantic native Swap decoding.

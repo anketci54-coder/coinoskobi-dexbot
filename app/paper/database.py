@@ -113,6 +113,27 @@ class PaperDatabase:
                 row is not None
             )
 
+    def has_trade_history(
+        self,
+        token,
+    ):
+        with self._db_lock:
+            row = self.conn.execute(
+                """
+                SELECT 1
+                FROM paper_trades
+                WHERE lower(token)=lower(?)
+                LIMIT 1
+                """,
+                (
+                    token,
+                ),
+            ).fetchone()
+
+            return (
+                row is not None
+            )
+
     def _insert_unlocked(
         self,
         trade,
@@ -210,7 +231,6 @@ class PaperDatabase:
                         SELECT 1
                         FROM paper_trades
                         WHERE lower(token)=lower(?)
-                          AND status='OPEN'
                         LIMIT 1
                         """,
                         (

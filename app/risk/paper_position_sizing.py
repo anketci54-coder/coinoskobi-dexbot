@@ -4,6 +4,11 @@ import sqlite3
 import statistics
 from pathlib import Path
 
+from app.strategy.mathematical_trade_plan import (
+    buy_token_amount,
+    initial_net_risk_usdt,
+)
+
 
 PAPER_CAPITAL_USDT = 10_000.0
 
@@ -350,7 +355,7 @@ def _empirical_outcome_calibration(
             SELECT 1
             FROM sqlite_master
             WHERE type='table' AND name='paper_trades'
-            """
+            """,
         ).fetchone()
 
         if active_exists is None:
@@ -520,6 +525,111 @@ def _zero_result(
         "effective_edge_fraction": effective_edge,
         "cost_complete": cost_complete,
         "kelly_diagnostic_only": True,
+    }
+
+
+def _bind_final_trade_plan(plan, amount, available):
+    if not isinstance(plan, dict):
+        return {
+            "token_amount": 0.0,
+            "initial_sl": None,
+            "initial_net_risk_usdt": None,
+            "tp1_activation_price": None,
+        }
+
+    capital = plan.get("capital")
+    if not isinstance(capital, dict):
+        capital = {}
+        plan["capital"] = capital
+
+    entry = plan.get("entry")
+    if not isinstance(entry, dict):
+        entry = {}
+        plan["entry"] = entry
+
+    position = plan.get("position")
+    if not isinstance(position, dict):
+        position = {}
+        plan["position"] = position
+
+    sl = plan.get("sl")
+    if not isinstance(sl, dict):
+        sl = {}
+        plan["sl"] = sl
+
+    tp1 = plan.get("tp1")
+    if not isinstance(tp1, dict):
+        tp1 = {}
+        plan["tp1"] = tp1
+
+    cost_model = plan.get("cost_model")
+    if not isinstance(cost_model, dict):
+        cost_model = {}
+        plan["cost_model"] = cost_model
+
+    entry_price = _positive(entry.get("price"))
+    initial_sl = _positive(sl.get("initial_price"))
+
+    token_amount = (
+        buy_token_amount(
+            amount,
+            entry_price,
+            cost_model,
+        )
+        if entry_price is not None
+        else 0.0
+    )
+
+    initial_net_risk = (
+        initial_net_risk_usdt(
+            token_amount,
+            amount,
+            initial_sl,
+            cost_model,
+        )
+        if initial_sl is not None
+        else None
+    )
+
+    sell_retention = _number(
+        cost_model.get("sell_retention_known")
+    )
+    sell_gas = max(
+        0.0,
+        _number(cost_model.get("sell_gas_usd")) or 0.0,
+    )
+
+    tp1_activation = None
+    if (
+        token_amount > 0
+        and sell_retention is not None
+        and sell_retention > 0
+        and initial_net_risk is not None
+    ):
+        tp1_activation = (
+            amount
+            + initial_net_risk
+            + sell_gas
+        ) / (
+            token_amount
+            * sell_retention
+        )
+
+    capital["entry_amount_usdt"] = amount
+    capital["position_fraction_of_available"] = (
+        amount / available
+        if available > 0
+        else 0.0
+    )
+    position["token_amount"] = token_amount
+    position["initial_risk_usdt"] = initial_net_risk
+    tp1["activation_price"] = tp1_activation
+
+    return {
+        "token_amount": token_amount,
+        "initial_sl": initial_sl,
+        "initial_net_risk_usdt": initial_net_risk,
+        "tp1_activation_price": tp1_activation,
     }
 
 
@@ -701,6 +811,11 @@ def calculate_paper_position_size(
     )
 
     risk = amount * tail_loss_fraction
+    bound_plan = _bind_final_trade_plan(
+        plan,
+        amount,
+        available,
+    )
 
     return {
         "entry_amount_usdt": amount,
@@ -750,4 +865,12 @@ def calculate_paper_position_size(
         "effective_edge_fraction": effective_edge,
         "cost_complete": cost_complete,
         "kelly_diagnostic_only": True,
+        "canonical_token_amount": bound_plan["token_amount"],
+        "canonical_initial_sl": bound_plan["initial_sl"],
+        "canonical_initial_net_risk_usdt": (
+            bound_plan["initial_net_risk_usdt"]
+        ),
+        "canonical_tp1_activation_price": (
+            bound_plan["tp1_activation_price"]
+        ),
     }

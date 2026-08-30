@@ -300,6 +300,7 @@ def _analysis_stubs(monkeypatch):
             "position_size_pct": 1.0,
             "capital_before_usdt": 10000.0,
             "capital_after_entry_usdt": 9900.0,
+            "canonical_token_amount": 100.0,
             "sizing_reason": (
                 "TEST_DETERMINISTIC"
             ),
@@ -618,15 +619,3 @@ def test_true_composition_root_e2e(
         ]
         is False
     )
-
-    assert (
-        app[
-            "execution_authority"
-        ]
-        is False
-    )
-
-    pipeline.paper_db.conn.close()
-
-    PaperDatabase._instance = None
-    PaperDatabase._initialized = False

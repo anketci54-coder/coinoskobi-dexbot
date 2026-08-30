@@ -78,7 +78,8 @@ def test_universe_panel_projection_is_real_and_read_only(tmp_path):
     assert payload["source"] == "UNIVERSE_CACHE_READ_ONLY"
     assert payload["counts"] == {"COLD": 1, "WARM": 1, "HOT": 1}
     assert payload["total_count"] == 3
-    assert payload["visible_count"] == 3
+    # COLD operator list intentionally excludes non-WBNB/USDT/USDC pairs.
+    assert payload["visible_count"] == 2
     assert payload["transition_scope"] == "RECENT_BOUNDED_SEISMIC_EVALUATIONS"
     assert payload["transition_sample_size"] == 4
     assert payload["transition_window_limit"] == 1000
@@ -87,7 +88,7 @@ def test_universe_panel_projection_is_real_and_read_only(tmp_path):
         "WARM_TO_HOT": 1,
         "HOT_TO_COLD": 1,
     }
-    assert [row["state"] for row in payload["rows"]] == ["HOT", "WARM", "COLD"]
+    assert [row["state"] for row in payload["rows"]] == ["HOT", "WARM"]
 
     hot = payload["rows"][0]
     assert hot["seismic"]["score"] == 9.0

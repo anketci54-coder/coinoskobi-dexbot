@@ -131,8 +131,11 @@ def _calibration_empty(reason):
         "gap_median": None,
         "gap_statistic": None,
         "cost_uncertainty_fraction": None,
+        "account_risk_budget_usdt": None,
+        "account_risk_statistic": None,
         "gap_samples": 0,
         "cost_samples": 0,
+        "account_risk_samples": 0,
     }
 
 
@@ -311,12 +314,25 @@ def _observed_cost_fraction(row):
     return None
 
 
+def _observed_account_loss_usdt(row):
+    net = _number(row["net_pnl_usdt"])
+    if net is None:
+        net = _number(row["net_pnl"])
+
+    if net is None or net >= 0:
+        return None
+
+    loss = -net
+    return loss if math.isfinite(loss) and loss > 0 else None
+
+
 def _empirical_outcome_calibration(
     db_path="data/paper_trades.db",
 ):
     """
-    Learn gap overshoot and cost uncertainty from durable closed paper
-    outcomes only. No fixed risk percentage is introduced.
+    Learn gap overshoot, cost uncertainty, and realized account-loss
+    budget from durable closed paper outcomes only. No fixed risk
+    percentage is introduced.
     """
     path = Path(db_path)
     if not path.exists():
@@ -370,11 +386,19 @@ def _empirical_outcome_calibration(
 
     gap_ratios = []
     cost_residuals = []
+    account_losses = []
 
     for row in rows:
         planned_loss = _planned_loss_fraction(row)
         observed_loss = _observed_market_loss_fraction(row)
         cost_fraction = _observed_cost_fraction(row)
+        account_loss = _observed_account_loss_usdt(row)
+
+        if (
+            account_loss is not None
+            and math.isfinite(account_loss)
+        ):
+            account_losses.append(account_loss)
 
         if (
             cost_fraction is not None
@@ -415,21 +439,39 @@ def _empirical_outcome_calibration(
         else None
     )
 
-    ready = gap_multiplier is not None and gap_multiplier > 0
+    account_risk_budget = (
+        statistics.median(account_losses)
+        if account_losses
+        else None
+    )
+
+    ready = (
+        gap_multiplier is not None
+        and gap_multiplier > 0
+        and account_risk_budget is not None
+        and account_risk_budget > 0
+    )
 
     return {
         "ready": ready,
         "reason": (
             "EMPIRICAL_OUTCOME_CALIBRATION"
             if ready
-            else "GAP_RISK_UNOBSERVED"
+            else "EMPIRICAL_RISK_BUDGET_UNOBSERVED"
         ),
         "gap_multiplier": gap_multiplier,
         "gap_median": gap_median,
-        "gap_statistic": "MAX_OBSERVED" if ready else None,
+        "gap_statistic": "MAX_OBSERVED" if gap_multiplier else None,
         "cost_uncertainty_fraction": cost_uncertainty,
+        "account_risk_budget_usdt": account_risk_budget,
+        "account_risk_statistic": (
+            "MEDIAN_REALIZED_LOSS_USDT"
+            if account_risk_budget is not None
+            else None
+        ),
         "gap_samples": len(gap_ratios),
         "cost_samples": len(positive_costs),
+        "account_risk_samples": len(account_losses),
     }
 
 
@@ -466,6 +508,15 @@ def _zero_result(
             empirical_cost_uncertainty
         ),
         "cost_samples": calibration.get("cost_samples"),
+        "account_risk_budget_usdt": calibration.get(
+            "account_risk_budget_usdt"
+        ),
+        "account_risk_statistic": calibration.get(
+            "account_risk_statistic"
+        ),
+        "account_risk_samples": calibration.get(
+            "account_risk_samples"
+        ),
         "effective_edge_fraction": effective_edge,
         "cost_complete": cost_complete,
         "kelly_diagnostic_only": True,
@@ -555,14 +606,12 @@ def calculate_paper_position_size(
     empirical_cost_uncertainty = _number(
         calibration.get("cost_uncertainty_fraction")
     )
+    account_risk_budget = _positive(
+        calibration.get("account_risk_budget_usdt")
+    )
 
     blockers = []
 
-    # Repeated reserve observations prove that exit liquidity existed.
-    # They do not prove that LP cannot be withdrawn between observations.
-    # Keep the empirical floor as diagnostics/capacity evidence, but it
-    # must never grant paper-capital authority without verified LP
-    # protection.
     if liquidity_capacity_source == "EMPIRICAL_RESERVE_FLOOR":
         blockers.append(
             "LP_WITHDRAWAL_PROTECTION_UNVERIFIED"
@@ -578,6 +627,8 @@ def calculate_paper_position_size(
         blockers.append("EMPIRICAL_RISK_DISTANCE_UNKNOWN")
     if gap_multiplier is None:
         blockers.append("GAP_RISK_UNOBSERVED")
+    if account_risk_budget is None:
+        blockers.append("ACCOUNT_RISK_BUDGET_UNOBSERVED")
 
     if cost_complete:
         effective_edge = full_edge
@@ -614,7 +665,11 @@ def calculate_paper_position_size(
     stop_loss_fraction = 1.0 - risk_retention
 
     base_risk_notional = min(raw_amount, available)
-    stop_risk_budget = base_risk_notional * stop_loss_fraction
+    raw_stop_risk_budget = base_risk_notional * stop_loss_fraction
+    capped_stop_risk_budget = min(
+        raw_stop_risk_budget,
+        account_risk_budget,
+    )
 
     tail_loss_fraction = min(
         1.0,
@@ -622,7 +677,7 @@ def calculate_paper_position_size(
     )
 
     tail_risk_amount_cap = (
-        stop_risk_budget / tail_loss_fraction
+        capped_stop_risk_budget / tail_loss_fraction
         if tail_loss_fraction > 0
         else 0.0
     )
@@ -670,7 +725,16 @@ def calculate_paper_position_size(
         "safe_quote_reserve_usd": safe_quote_reserve,
         "risk_log_distance": risk_log_distance,
         "risk_retention": risk_retention,
-        "stop_risk_budget_usdt": stop_risk_budget,
+        "raw_stop_risk_budget_usdt": raw_stop_risk_budget,
+        "stop_risk_budget_usdt": raw_stop_risk_budget,
+        "capped_stop_risk_budget_usdt": capped_stop_risk_budget,
+        "account_risk_budget_usdt": account_risk_budget,
+        "account_risk_statistic": calibration.get(
+            "account_risk_statistic"
+        ),
+        "account_risk_samples": calibration.get(
+            "account_risk_samples"
+        ),
         "tail_loss_fraction": tail_loss_fraction,
         "tail_risk_amount_cap_usdt": tail_risk_amount_cap,
         "risk_adjusted_exit_capacity_usdt": (

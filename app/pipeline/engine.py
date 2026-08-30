@@ -2065,15 +2065,14 @@ class PipelineEngine:
                         )
                     )
 
-                    # CANONICAL_PAPER_EXECUTION_INVENTORY_V1
-                    token_amount = (
-                        entry_amount_usdt
-                        / float(price)
-                        if (
-                            entry_amount_usdt > 0
-                            and float(price) > 0
+                    # Canonical inventory comes from the same sizing
+                    # calculation that binds entry risk and exits.
+                    token_amount = float(
+                        sizing.get(
+                            "canonical_token_amount",
+                            0.0,
                         )
-                        else 0.0
+                        or 0.0
                     )
 
                     plan_blockers = sorted(
@@ -2674,14 +2673,11 @@ class PipelineEngine:
                             or 0.0
                         )
 
-                        opening_token_amount = (
-                            opening_entry_amount
-                            / opening_entry_price
-                            if (
-                                opening_entry_amount > 0
-                                and opening_entry_price > 0
+                        opening_token_amount = float(
+                            trade_row.get(
+                                "token_amount"
                             )
-                            else 0.0
+                            or 0.0
                         )
 
                         trade_row[

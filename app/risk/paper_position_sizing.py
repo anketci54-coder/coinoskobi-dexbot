@@ -666,7 +666,7 @@ def calculate_paper_position_size(
 
     base_risk_notional = min(raw_amount, available)
     raw_stop_risk_budget = base_risk_notional * stop_loss_fraction
-    stop_risk_budget = min(
+    capped_stop_risk_budget = min(
         raw_stop_risk_budget,
         account_risk_budget,
     )
@@ -677,7 +677,7 @@ def calculate_paper_position_size(
     )
 
     tail_risk_amount_cap = (
-        stop_risk_budget / tail_loss_fraction
+        capped_stop_risk_budget / tail_loss_fraction
         if tail_loss_fraction > 0
         else 0.0
     )
@@ -726,7 +726,8 @@ def calculate_paper_position_size(
         "risk_log_distance": risk_log_distance,
         "risk_retention": risk_retention,
         "raw_stop_risk_budget_usdt": raw_stop_risk_budget,
-        "stop_risk_budget_usdt": stop_risk_budget,
+        "stop_risk_budget_usdt": raw_stop_risk_budget,
+        "capped_stop_risk_budget_usdt": capped_stop_risk_budget,
         "account_risk_budget_usdt": account_risk_budget,
         "account_risk_statistic": calibration.get(
             "account_risk_statistic"

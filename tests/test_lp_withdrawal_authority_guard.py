@@ -9,6 +9,9 @@ def _calibration():
         "gap_median": 1.0,
         "gap_statistic": "MAX_OBSERVED",
         "cost_uncertainty_fraction": 0.0,
+        "account_risk_budget_usdt": 10.0,
+        "account_risk_statistic": "MEDIAN_REALIZED_LOSS_USDT",
+        "account_risk_samples": 1,
         "gap_samples": 1,
         "cost_samples": 1,
     }
@@ -69,4 +72,6 @@ def test_verified_lp_protection_preserves_paper_sizing(monkeypatch):
 
     assert result["entry_amount_usdt"] > 0.0
     assert result["risk_amount_usdt"] > 0.0
+    assert result["risk_amount_usdt"] <= 10.0
+    assert result["account_risk_budget_usdt"] == 10.0
     assert result["blockers"] == []

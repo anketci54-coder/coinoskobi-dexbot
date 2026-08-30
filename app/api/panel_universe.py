@@ -10,6 +10,15 @@ ALLOWED_STATES = {"COLD", "WARM", "HOT"}
 DEFAULT_TRANSITION_WINDOW = 1000
 MAX_TRANSITION_WINDOW = 5000
 
+# BSC quote assets allowed in the operator-facing COLD list.
+# Discovery remains full-universe; this is panel/read-model filtering only.
+COLD_QUOTE_TOKENS = {
+    "0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c",  # WBNB
+    "0x55d398326f99059ff775485246999027b3197955",  # USDT
+    "0x8ac76a51cc950d9822d68b83fe1ad97b32cd580d",  # USDC
+}
+COLD_SCAN_MULTIPLIER = 5
+
 
 def _connect_readonly(path: str | Path) -> sqlite3.Connection:
     db_path = Path(path)
@@ -48,6 +57,23 @@ def _recent_registry_candidates(
         if use_snapshot_index
         else ""
     )
+    quote_filter = ""
+    params: list[Any] = [state]
+
+    if state == "COLD":
+        quotes = sorted(COLD_QUOTE_TOKENS)
+        marks = ",".join("?" for _ in quotes)
+        quote_filter = f"""
+          AND (
+              lower(token0) IN ({marks})
+              OR lower(token1) IN ({marks})
+          )
+        """
+        params.extend(quotes)
+        params.extend(quotes)
+
+    params.append(int(limit))
+
     return connection.execute(
         f"""
         SELECT
@@ -68,10 +94,11 @@ def _recent_registry_candidates(
         {indexed_by}
         WHERE latest_snapshot_at IS NOT NULL
           AND market_state = ?
+          {quote_filter}
         ORDER BY latest_snapshot_at DESC
         LIMIT ?
         """,
-        (state, int(limit)),
+        tuple(params),
     ).fetchall()
 
 
@@ -206,16 +233,21 @@ def universe_panel_payload(
         # operator priority without creating a new DB index or write migration.
         candidates = []
         for state in ("HOT", "WARM", "COLD"):
+            state_limit = (
+                bounded_limit * COLD_SCAN_MULTIPLIER
+                if state == "COLD"
+                else bounded_limit
+            )
             candidates.extend(
                 _recent_registry_candidates(
                     connection,
                     state=state,
-                    limit=bounded_limit,
+                    limit=state_limit,
                     use_snapshot_index=use_snapshot_index,
                 )
             )
 
-        rows = candidates[:bounded_limit]
+        rows = candidates
         display_names = _gecko_display_names(
             connection,
             rows,
@@ -291,6 +323,46 @@ def universe_panel_payload(
                 "state_changed_at": row.get("state_changed_at"),
                 "seismic": seismic,
             })
+
+        state_priority = {
+            "HOT": 0,
+            "WARM": 1,
+            "COLD": 2,
+        }
+
+        def row_rank(item):
+            state = str(item.get("state") or "").upper()
+            seismic = item.get("seismic") or {}
+
+            try:
+                liquidity_ratio = float(
+                    seismic.get("liquidity_ratio") or 0.0
+                )
+            except (TypeError, ValueError):
+                liquidity_ratio = 0.0
+
+            try:
+                liquidity_usd = float(
+                    item.get("liquidity_usd") or 0.0
+                )
+            except (TypeError, ValueError):
+                liquidity_usd = 0.0
+
+            if state == "COLD":
+                return (
+                    state_priority[state],
+                    -liquidity_ratio,
+                    -liquidity_usd,
+                )
+
+            return (
+                state_priority.get(state, 9),
+                0.0,
+                -liquidity_usd,
+            )
+
+        result_rows.sort(key=row_rank)
+        result_rows = result_rows[:bounded_limit]
 
     except sqlite3.Error as exc:
         return _unavailable(type(exc).__name__)

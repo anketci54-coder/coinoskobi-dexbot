@@ -68,6 +68,47 @@ def test_atomic_cap_rejects_duplicate_token():
     ) is False
 
 
+def test_closed_token_cannot_open_second_trade():
+    db = make_db()
+
+    assert db.insert_if_below_open_limit(
+        {"token": "0xsingle", "status": "OPEN"},
+        30,
+    ) is True
+
+    db.conn.execute(
+        """
+        UPDATE paper_trades
+        SET status='CLOSED'
+        WHERE lower(token)=lower(?)
+        """,
+        ("0xsingle",),
+    )
+    db.conn.commit()
+
+    assert db.has_open_position(
+        "0xsingle"
+    ) is False
+    assert db.has_trade_history(
+        "0xsingle"
+    ) is True
+
+    assert db.insert_if_below_open_limit(
+        {"token": "0xsingle", "status": "OPEN"},
+        30,
+    ) is False
+
+    count = db.conn.execute(
+        """
+        SELECT COUNT(*)
+        FROM paper_trades
+        WHERE lower(token)=lower(?)
+        """,
+        ("0xsingle",),
+    ).fetchone()[0]
+
+    assert count == 1
+
 
 def test_available_capital_uses_realized_account_truth():
     db = make_db()

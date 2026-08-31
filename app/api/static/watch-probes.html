@@ -34,7 +34,7 @@ h1{font-size:22px;margin:0}
 .sub{color:var(--muted);font-size:13px;margin-top:5px}
 .cards{
   display:grid;
-  grid-template-columns:repeat(5,1fr);
+  grid-template-columns:repeat(7,1fr);
   gap:10px;
   margin-bottom:14px
 }
@@ -93,6 +93,8 @@ a{color:#6bdcff;text-decoration:none}
   <div class="card"><div class="label">GİRİŞ TOPLAMI</div><div class="value" id="entry">$0.00</div></div>
   <div class="card"><div class="label">GÜNCEL DEĞER</div><div class="value" id="value">$0.00</div></div>
   <div class="card"><div class="label">PROBE PNL</div><div class="value" id="pnl">$0.00</div></div>
+  <div class="card"><div class="label">ENTRY SNAPSHOT</div><div class="value" id="snapshotCount">0</div></div>
+  <div class="card"><div class="label">SHADOW EXIT</div><div class="value" id="shadowCount">0</div></div>
 </div>
 
 <div class="panel">
@@ -101,6 +103,11 @@ a{color:#6bdcff;text-decoration:none}
 <tr>
 <th>Token</th>
 <th>Pool</th>
+<th>Decision</th>
+<th>Snapshot</th>
+<th>Volatilite</th>
+<th>Likidite</th>
+<th>Volume</th>
 <th>Giriş</th>
 <th>Son</th>
 <th>Değer</th>
@@ -108,6 +115,11 @@ a{color:#6bdcff;text-decoration:none}
 <th>PnL %</th>
 <th>MFE %</th>
 <th>MAE %</th>
+<th>TP2X</th>
+<th>TP5X</th>
+<th>Trail25</th>
+<th>60m</th>
+<th>6h</th>
 <th>Durum</th>
 </tr>
 </thead>
@@ -123,6 +135,25 @@ const pct=v=>(Number(v||0)>=0?"+":"")+Number(v||0).toFixed(2)+"%";
 
 function cls(v){return Number(v)>=0?"good":"bad"}
 
+function shadowState(r,key){
+  const x=(r.shadow_exits||{})[key];
+  if(!x)return "—";
+  if(x.state==="TRIGGERED"){
+    const ret=x.return_pct;
+    return "TRG"+(ret==null?"":" "+pct(ret));
+  }
+  return x.state||"—";
+}
+
+function shadowCls(r,key){
+  const x=(r.shadow_exits||{})[key];
+  if(!x)return "muted";
+  if(x.state==="TRIGGERED"){
+    return Number(x.return_pct||0)>=0?"good":"bad";
+  }
+  return "muted";
+}
+
 async function load(){
   const res=await fetch("/api/watch-probes",{cache:"no-store"});
   const data=await res.json();
@@ -136,10 +167,26 @@ async function load(){
   pnl.textContent=money(s.pnl_usdt)+" · "+pct(s.pnl_pct);
   pnl.className="value "+cls(s.pnl_usdt);
 
-  rows.innerHTML=(data.rows||[]).map(r=>`
+  snapshotCount.textContent=s.entry_snapshots||0;
+  shadowCount.textContent=s.shadow_exit_rows||0;
+
+  rows.innerHTML=(data.rows||[]).map(r=>{
+    const snap=r.entry_snapshot||{};
+    const vol=snap.volatility_state==="ZERO"
+      ? "0"
+      : snap.volatility_state==="KNOWN"
+        ? Number(snap.ewma_volatility||0).toFixed(6)
+        : "UNKNOWN";
+
+    return `
     <tr>
       <td title="${r.token}">${short(r.token)}</td>
       <td title="${r.pool}">${short(r.pool)}</td>
+      <td>${r.decision_history_id??"—"}</td>
+      <td class="${r.entry_snapshot_available?"good":"muted"}">${r.entry_snapshot_available?"VAR":"—"}</td>
+      <td class="${vol==="UNKNOWN"?"muted":""}">${vol}</td>
+      <td>${snap.liquidity_usd==null?"—":money(snap.liquidity_usd)}</td>
+      <td>${snap.volume_usd==null?"—":money(snap.volume_usd)}</td>
       <td>${money(r.entry_price)}</td>
       <td>${money(r.last_price)}</td>
       <td>${money(r.current_value_usdt)}</td>
@@ -147,9 +194,15 @@ async function load(){
       <td class="${cls(r.pnl_pct)}">${pct(r.pnl_pct)}</td>
       <td class="${cls(r.mfe_pct)}">${pct(r.mfe_pct)}</td>
       <td class="${cls(r.mae_pct)}">${pct(r.mae_pct)}</td>
+      <td class="${shadowCls(r,"TP_2X")}">${shadowState(r,"TP_2X")}</td>
+      <td class="${shadowCls(r,"TP_5X")}">${shadowState(r,"TP_5X")}</td>
+      <td class="${shadowCls(r,"TRAIL_25")}">${shadowState(r,"TRAIL_25")}</td>
+      <td class="${shadowCls(r,"TIME_60M")}">${shadowState(r,"TIME_60M")}</td>
+      <td class="${shadowCls(r,"TIME_6H")}">${shadowState(r,"TIME_6H")}</td>
       <td>${r.status||"—"}</td>
     </tr>
-  `).join("");
+  `;
+  }).join("");
 
   updated.textContent=new Date().toLocaleTimeString("tr-TR");
 }

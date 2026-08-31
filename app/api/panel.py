@@ -1581,6 +1581,13 @@ def api_watch_probes() -> dict[str, Any]:
             "rows": [],
         }
 
+    snapshot_available = table_exists(
+        "watch_probe_entry_snapshots"
+    )
+    shadow_available = table_exists(
+        "watch_probe_shadow_exits"
+    )
+
     rows = query(
         """
         SELECT
@@ -1603,6 +1610,105 @@ def api_watch_probes() -> dict[str, Any]:
         LIMIT 250
         """
     )
+
+    snapshot_by_probe = {}
+
+    if snapshot_available:
+        snapshot_rows = query(
+            """
+            SELECT
+                probe_id,
+                decision_history_id,
+                captured_at,
+                version,
+                liquidity_usd,
+                volume_usd,
+                volume_turnover,
+                buys,
+                participant_identity_coverage,
+                origin_participation_coverage,
+                flow_coverage,
+                native_event_count,
+                market_regime,
+                flow_confirmation,
+                flow_quality,
+                flow_divergence,
+                liquidity_state,
+                volatility_state,
+                ewma_volatility,
+                price_log_return,
+                liquidity_log_change
+            FROM watch_probe_entry_snapshots
+            ORDER BY id DESC
+            """
+        )
+
+        for item in snapshot_rows:
+            probe_id = item.get("probe_id")
+
+            if probe_id not in snapshot_by_probe:
+                snapshot_by_probe[probe_id] = item
+
+    shadow_by_probe = {}
+
+    if shadow_available:
+        shadow_rows = query(
+            """
+            SELECT
+                probe_id,
+                strategy,
+                state,
+                triggered_at,
+                trigger_price,
+                return_pct,
+                reason
+            FROM watch_probe_shadow_exits
+            ORDER BY id DESC
+            """
+        )
+
+        for item in shadow_rows:
+            probe_id = item.get("probe_id")
+            strategy = item.get("strategy")
+
+            if probe_id is None or not strategy:
+                continue
+
+            bucket = shadow_by_probe.setdefault(
+                probe_id,
+                {}
+            )
+
+            if strategy not in bucket:
+                bucket[strategy] = item
+
+    for row in rows:
+        probe_id = row.get("id")
+        snapshot = snapshot_by_probe.get(probe_id)
+        shadow = shadow_by_probe.get(probe_id, {})
+
+        row["entry_snapshot"] = snapshot
+        row["entry_snapshot_available"] = bool(snapshot)
+
+        if (
+            row.get("decision_history_id") is None
+            and snapshot
+            and snapshot.get("decision_history_id") is not None
+        ):
+            row["decision_history_id"] = snapshot.get(
+                "decision_history_id"
+            )
+
+        row["shadow_exits"] = {
+            strategy: shadow.get(strategy)
+            for strategy in (
+                "TP_2X",
+                "TP_5X",
+                "TRAIL_25",
+                "TIME_60M",
+                "TIME_6H",
+            )
+        }
 
     entry_total = 0.0
     current_total = 0.0
@@ -1685,6 +1791,19 @@ def api_watch_probes() -> dict[str, Any]:
                 pnl_total / entry_total * 100.0
                 if entry_total > 0
                 else 0.0
+            ),
+            "entry_snapshots": sum(
+                1
+                for row in rows
+                if row.get("entry_snapshot_available")
+            ),
+            "shadow_exit_rows": sum(
+                1
+                for row in rows
+                for item in (
+                    row.get("shadow_exits") or {}
+                ).values()
+                if item is not None
             ),
         },
         "rows": rows,

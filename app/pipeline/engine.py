@@ -3288,6 +3288,18 @@ class PipelineEngine:
                     )
                     or {}
                 ),
+                "market_context": dict(
+                    summary.get(
+                        "market_context"
+                    )
+                    or {}
+                ),
+                "runtime_intelligence": dict(
+                    summary.get(
+                        "runtime_intelligence"
+                    )
+                    or {}
+                ),
                 "economic_provenance_version": (
                     "CANDIDATE_DECISION_V1"
                     if summary.get(
@@ -3975,6 +3987,14 @@ class PipelineEngine:
                         ).get("status")
                     ),
                     "command_center": command_center,
+                    "market_context": (
+                        data.get("market_context")
+                        or {}
+                    ),
+                    "runtime_intelligence": (
+                        data.get("runtime_intelligence")
+                        or {}
+                    ),
                 }
 
                 counterfactual = (

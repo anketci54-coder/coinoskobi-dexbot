@@ -51,6 +51,37 @@ class WatchProbeStore:
                 """
             )
 
+            # Additive V2 migration only.
+            # Existing WATCH probe rows remain canonical and untouched.
+            columns = {
+                row["name"]
+                for row in self._db.execute(
+                    "PRAGMA table_info(watch_probe_trades)"
+                ).fetchall()
+            }
+
+            additions = {
+                "mark_return_pct": "REAL",
+                "mfe_pct": "REAL",
+                "mae_pct": "REAL",
+                "peak_drawdown_pct": "REAL",
+                "realizable_exit_usdt": "REAL",
+                "realizable_return_pct": "REAL",
+                "exit_state": "TEXT NOT NULL DEFAULT 'UNVERIFIED'",
+                "exit_quality": "TEXT",
+                "exit_reason": "TEXT",
+                "closed_at": "REAL",
+                "last_exit_probe_at": "REAL",
+                "context_version": "TEXT",
+            }
+
+            for name, declaration in additions.items():
+                if name not in columns:
+                    self._db.execute(
+                        f"ALTER TABLE watch_probe_trades "
+                        f"ADD COLUMN {name} {declaration}"
+                    )
+
             self._db.execute(
                 """
                 CREATE INDEX IF NOT EXISTS
@@ -221,6 +252,35 @@ class WatchProbeStore:
                     price,
                 )
 
+                entry_row = self._db.execute(
+                    """
+                    SELECT entry_price
+                    FROM watch_probe_trades
+                    WHERE id=?
+                    """,
+                    (int(row["id"]),),
+                ).fetchone()
+
+                entry_price = float(
+                    entry_row["entry_price"]
+                )
+
+                mark_return_pct = (
+                    (price / entry_price) - 1.0
+                ) * 100.0
+
+                mfe_pct = (
+                    (max_price / entry_price) - 1.0
+                ) * 100.0
+
+                mae_pct = (
+                    (min_price / entry_price) - 1.0
+                ) * 100.0
+
+                peak_drawdown_pct = (
+                    (price / max_price) - 1.0
+                ) * 100.0
+
                 self._db.execute(
                     """
                     UPDATE watch_probe_trades
@@ -228,7 +288,11 @@ class WatchProbeStore:
                         last_observed_at=?,
                         last_price=?,
                         max_price=?,
-                        min_price=?
+                        min_price=?,
+                        mark_return_pct=?,
+                        mfe_pct=?,
+                        mae_pct=?,
+                        peak_drawdown_pct=?
                     WHERE id=?
                     """,
                     (
@@ -236,6 +300,10 @@ class WatchProbeStore:
                         price,
                         max_price,
                         min_price,
+                        mark_return_pct,
+                        mfe_pct,
+                        mae_pct,
+                        peak_drawdown_pct,
                         int(row["id"]),
                     ),
                 )

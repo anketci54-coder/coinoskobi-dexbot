@@ -1,5 +1,7 @@
 import math
 import sqlite3
+
+from datetime import datetime, timezone
 from pathlib import Path
 
 from app.learning.horizon_quality import (
@@ -9,6 +11,33 @@ from app.learning.horizon_quality import (
 
 
 PROBE_ENTRY_USDT = 1.0
+
+
+def _observation_epoch(value):
+    if value is None:
+        return None
+
+    if isinstance(value, (int, float)):
+        result = float(value)
+        return result if math.isfinite(result) else None
+
+    text = str(value).strip()
+    if not text:
+        return None
+
+    try:
+        result = float(text)
+    except ValueError:
+        try:
+            normalized = text[:-1] + "+00:00" if text.endswith("Z") else text
+            parsed = datetime.fromisoformat(normalized)
+            if parsed.tzinfo is None:
+                parsed = parsed.replace(tzinfo=timezone.utc)
+            result = parsed.timestamp()
+        except (TypeError, ValueError, OverflowError):
+            return None
+
+    return result if math.isfinite(result) else None
 
 
 def economic_capacity_probe_1usdt(
@@ -115,40 +144,50 @@ class EconomicProbeCounterfactualObservationStore(_ScientificStore):
                 timeout=5,
             )
             db.row_factory = sqlite3.Row
-            row = db.execute(
+            rows = db.execute(
                 """
                 SELECT observed_at, liquidity_usd
                 FROM market_observation_history
                 WHERE lower(pool)=lower(?)
                   AND liquidity_usd IS NOT NULL
-                ORDER BY ABS(observed_at - ?)
-                LIMIT 1
                 """,
-                (pool, float(now)),
-            ).fetchone()
+                (pool,),
+            ).fetchall()
             db.close()
         except sqlite3.Error:
             return None
 
-        if row is None:
-            return None
+        target = float(now)
+        nearest = None
+        nearest_distance = None
 
-        try:
-            observed_at = float(row["observed_at"])
-            liquidity = float(row["liquidity_usd"])
-        except (TypeError, ValueError):
-            return None
+        for row in rows:
+            observed_at = _observation_epoch(row["observed_at"])
+            try:
+                liquidity = float(row["liquidity_usd"])
+            except (TypeError, ValueError):
+                continue
+
+            if (
+                observed_at is None
+                or not math.isfinite(liquidity)
+                or liquidity <= 0
+            ):
+                continue
+
+            distance = abs(observed_at - target)
+            if nearest_distance is None or distance < nearest_distance:
+                nearest = liquidity
+                nearest_distance = distance
 
         if (
-            not math.isfinite(observed_at)
-            or not math.isfinite(liquidity)
-            or liquidity <= 0
-            or abs(observed_at - float(now))
-            > HORIZON_CAPTURE_WINDOW_SECONDS
+            nearest is None
+            or nearest_distance is None
+            or nearest_distance > HORIZON_CAPTURE_WINDOW_SECONDS
         ):
             return None
 
-        return liquidity
+        return nearest
 
     def _persist_observe_exact(
         self,

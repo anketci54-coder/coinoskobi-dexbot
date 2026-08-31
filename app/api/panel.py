@@ -1566,6 +1566,131 @@ def api_status() -> dict[str, Any]:
     }
 
 
+@app.get("/api/watch-probes")
+def api_watch_probes() -> dict[str, Any]:
+    if not table_exists("watch_probe_trades"):
+        return {
+            "summary": {
+                "count": 0,
+                "open": 0,
+                "entry_usdt_total": 0.0,
+                "current_value_usdt": 0.0,
+                "pnl_usdt": 0.0,
+                "pnl_pct": 0.0,
+            },
+            "rows": [],
+        }
+
+    rows = query(
+        """
+        SELECT
+            id,
+            token,
+            pool,
+            opened_at,
+            entry_price,
+            entry_usdt,
+            token_amount,
+            last_observed_at,
+            last_price,
+            max_price,
+            min_price,
+            status,
+            decision_history_id
+        FROM watch_probe_trades
+        WHERE token != '0xtoken'
+        ORDER BY id DESC
+        LIMIT 250
+        """
+    )
+
+    entry_total = 0.0
+    current_total = 0.0
+    open_count = 0
+
+    for row in rows:
+        entry_usdt = number(
+            row.get("entry_usdt")
+        )
+        token_amount = number(
+            row.get("token_amount")
+        )
+        last_price = number(
+            row.get("last_price")
+        )
+        entry_price = number(
+            row.get("entry_price")
+        )
+        max_price = number(
+            row.get("max_price")
+        )
+        min_price = number(
+            row.get("min_price")
+        )
+
+        current_value = (
+            token_amount * last_price
+            if token_amount > 0
+            and last_price > 0
+            else entry_usdt
+        )
+
+        pnl_usdt = current_value - entry_usdt
+
+        pnl_pct = (
+            (last_price / entry_price - 1.0) * 100.0
+            if entry_price > 0
+            and last_price > 0
+            else 0.0
+        )
+
+        mfe_pct = (
+            (max_price / entry_price - 1.0) * 100.0
+            if entry_price > 0
+            and max_price > 0
+            else 0.0
+        )
+
+        mae_pct = (
+            (min_price / entry_price - 1.0) * 100.0
+            if entry_price > 0
+            and min_price > 0
+            else 0.0
+        )
+
+        row["current_value_usdt"] = current_value
+        row["pnl_usdt"] = pnl_usdt
+        row["pnl_pct"] = pnl_pct
+        row["mfe_pct"] = mfe_pct
+        row["mae_pct"] = mae_pct
+
+        entry_total += entry_usdt
+        current_total += current_value
+
+        if str(
+            row.get("status") or ""
+        ).upper() == "OPEN":
+            open_count += 1
+
+    pnl_total = current_total - entry_total
+
+    return {
+        "summary": {
+            "count": len(rows),
+            "open": open_count,
+            "entry_usdt_total": entry_total,
+            "current_value_usdt": current_total,
+            "pnl_usdt": pnl_total,
+            "pnl_pct": (
+                pnl_total / entry_total * 100.0
+                if entry_total > 0
+                else 0.0
+            ),
+        },
+        "rows": rows,
+    }
+
+
 @app.get("/api/positions")
 def api_positions() -> list[dict[str, Any]]:
     return paper_rows(active_only=True)

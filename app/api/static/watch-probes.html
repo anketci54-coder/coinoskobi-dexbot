@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Coinoskobi WATCH Probes</title>
+<style>
+:root{
+  color-scheme:dark;
+  --bg:#071018;
+  --panel:#0d1822;
+  --line:#1e3949;
+  --text:#eaf3f7;
+  --muted:#8198a5;
+  --good:#42e58d;
+  --bad:#ff6470;
+  --warn:#ffc857;
+}
+*{box-sizing:border-box}
+body{
+  margin:0;
+  background:var(--bg);
+  color:var(--text);
+  font-family:Inter,system-ui,sans-serif;
+}
+.wrap{max-width:1500px;margin:auto;padding:22px}
+header{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  margin-bottom:18px
+}
+h1{font-size:22px;margin:0}
+.sub{color:var(--muted);font-size:13px;margin-top:5px}
+.cards{
+  display:grid;
+  grid-template-columns:repeat(5,1fr);
+  gap:10px;
+  margin-bottom:14px
+}
+.card{
+  background:var(--panel);
+  border:1px solid var(--line);
+  border-radius:10px;
+  padding:13px
+}
+.label{font-size:11px;color:var(--muted)}
+.value{font-size:20px;font-weight:700;margin-top:5px}
+.panel{
+  background:var(--panel);
+  border:1px solid var(--line);
+  border-radius:10px;
+  overflow:auto
+}
+table{
+  width:100%;
+  border-collapse:collapse;
+  font-size:12px
+}
+th,td{
+  padding:10px;
+  border-bottom:1px solid #132936;
+  text-align:right;
+  white-space:nowrap
+}
+th{color:var(--muted);font-weight:600}
+th:first-child,td:first-child,
+th:nth-child(2),td:nth-child(2){text-align:left}
+.good{color:var(--good)}
+.bad{color:var(--bad)}
+.muted{color:var(--muted)}
+a{color:#6bdcff;text-decoration:none}
+@media(max-width:900px){
+  .cards{grid-template-columns:repeat(2,1fr)}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <div>
+    <h1>WATCH PROBES · 1 USDT</h1>
+    <div class="sub">
+      İzole deneysel paper takip · Normal PAPER_10K hesabına dahil değildir
+    </div>
+  </div>
+  <div class="muted" id="updated">—</div>
+</header>
+
+<div class="cards">
+  <div class="card"><div class="label">PROBE</div><div class="value" id="count">0</div></div>
+  <div class="card"><div class="label">AÇIK</div><div class="value" id="open">0</div></div>
+  <div class="card"><div class="label">GİRİŞ TOPLAMI</div><div class="value" id="entry">$0.00</div></div>
+  <div class="card"><div class="label">GÜNCEL DEĞER</div><div class="value" id="value">$0.00</div></div>
+  <div class="card"><div class="label">PROBE PNL</div><div class="value" id="pnl">$0.00</div></div>
+</div>
+
+<div class="panel">
+<table>
+<thead>
+<tr>
+<th>Token</th>
+<th>Pool</th>
+<th>Giriş</th>
+<th>Son</th>
+<th>Değer</th>
+<th>PnL</th>
+<th>PnL %</th>
+<th>MFE %</th>
+<th>MAE %</th>
+<th>Durum</th>
+</tr>
+</thead>
+<tbody id="rows"></tbody>
+</table>
+</div>
+</div>
+
+<script>
+const short=v=>v ? v.slice(0,8)+"…"+v.slice(-6) : "—";
+const money=v=>"$"+Number(v||0).toFixed(4);
+const pct=v=>(Number(v||0)>=0?"+":"")+Number(v||0).toFixed(2)+"%";
+
+function cls(v){return Number(v)>=0?"good":"bad"}
+
+async function load(){
+  const res=await fetch("/api/watch-probes",{cache:"no-store"});
+  const data=await res.json();
+  const s=data.summary||{};
+
+  count.textContent=s.count||0;
+  open.textContent=s.open||0;
+  entry.textContent=money(s.entry_usdt_total);
+  value.textContent=money(s.current_value_usdt);
+
+  pnl.textContent=money(s.pnl_usdt)+" · "+pct(s.pnl_pct);
+  pnl.className="value "+cls(s.pnl_usdt);
+
+  rows.innerHTML=(data.rows||[]).map(r=>`
+    <tr>
+      <td title="${r.token}">${short(r.token)}</td>
+      <td title="${r.pool}">${short(r.pool)}</td>
+      <td>${money(r.entry_price)}</td>
+      <td>${money(r.last_price)}</td>
+      <td>${money(r.current_value_usdt)}</td>
+      <td class="${cls(r.pnl_usdt)}">${money(r.pnl_usdt)}</td>
+      <td class="${cls(r.pnl_pct)}">${pct(r.pnl_pct)}</td>
+      <td class="${cls(r.mfe_pct)}">${pct(r.mfe_pct)}</td>
+      <td class="${cls(r.mae_pct)}">${pct(r.mae_pct)}</td>
+      <td>${r.status||"—"}</td>
+    </tr>
+  `).join("");
+
+  updated.textContent=new Date().toLocaleTimeString("tr-TR");
+}
+
+load();
+setInterval(load,5000);
+</script>
+</body>
+</html>

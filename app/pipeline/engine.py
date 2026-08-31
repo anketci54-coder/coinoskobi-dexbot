@@ -49,6 +49,9 @@ from app.learning.runtime_outcome_feed import RuntimeLearningOutcomeFeed
 from app.learning.counterfactual_observation import (
     CounterfactualObservationStore,
 )
+from app.learning.watch_probe_store import (
+    WatchProbeStore,
+)
 from app.learning.entry_context import (
     build_entry_signal_attribution,
     build_exit_baseline,
@@ -3197,6 +3200,16 @@ class PipelineEngine:
             store = CounterfactualObservationStore(db_path=PAPER_DB)
             self.counterfactual_store = store
 
+        probe_store = getattr(
+            self,
+            "watch_probe_store",
+            None,
+        )
+
+        if probe_store is None:
+            probe_store = WatchProbeStore(PAPER_DB)
+            self.watch_probe_store = probe_store
+
         token = row.get("token")
         pool = row.get("pool")
         price = row.get("price_usd")
@@ -3207,13 +3220,30 @@ class PipelineEngine:
             evaluated_at=now,
         )
 
+        probe_observation = probe_store.observe(
+            token=token,
+            current_price=price,
+            observed_at=now,
+        )
+
         action = summary.get("paper")
 
         if action == "WATCH":
             signal_state = "POSITIVE"
             candidate_action = "DOWNGRADE"
 
+            probe_open = probe_store.open_probe(
+                token=token,
+                pool=pool,
+                entry_price=price,
+                opened_at=now,
+            )
+
         elif action == "REJECT":
+            probe_open = {
+                "state": "NOT_WATCH",
+                "created": False,
+            }
             signal_state = "NEGATIVE"
             candidate_action = "BLOCK"
 
@@ -3223,6 +3253,11 @@ class PipelineEngine:
                 "record": {
                     "state": "NOT_ELIGIBLE",
                     "stored": False,
+                },
+                "probe_observation": probe_observation,
+                "probe_open": {
+                    "state": "NOT_ELIGIBLE",
+                    "created": False,
                 },
                 "status": store.status(),
             }
@@ -3327,6 +3362,8 @@ class PipelineEngine:
         return {
             "evaluation": evaluation,
             "record": record,
+            "probe_observation": probe_observation,
+            "probe_open": probe_open,
             "status": store.status(),
         }
 

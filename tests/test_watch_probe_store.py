@@ -77,6 +77,7 @@ def test_watch_probe_observation_updates_price_extremes(tmp_path):
 
     result = store.observe(
         token="0xabc",
+        pool="0xdef",
         current_price=1.5,
         observed_at=1010.0,
     )
@@ -109,12 +110,14 @@ def test_watch_probe_v2_schema_is_additive_and_metrics_update(tmp_path):
 
     store.observe(
         token="0xabc",
+        pool="0xdef",
         current_price=2.0,
         observed_at=1010.0,
     )
 
     store.observe(
         token="0xabc",
+        pool="0xdef",
         current_price=1.5,
         observed_at=1020.0,
     )
@@ -224,12 +227,14 @@ def test_watch_probe_shadow_exit_tp_and_trailing(tmp_path):
 
     store.observe(
         token="0xabc",
+        pool="0xdef",
         current_price=2.1,
         observed_at=1100.0,
     )
 
     store.observe(
         token="0xabc",
+        pool="0xdef",
         current_price=1.5,
         observed_at=1200.0,
     )
@@ -266,6 +271,7 @@ def test_watch_probe_shadow_exit_time_rules(tmp_path):
 
     store.observe(
         token="0xabc",
+        pool="0xdef",
         current_price=1.2,
         observed_at=4700.0,
     )
@@ -290,3 +296,41 @@ def test_watch_probe_shadow_exit_time_rules(tmp_path):
     ).fetchone()
 
     assert row["state"] == "ARMED"
+
+
+def test_watch_probe_observation_is_exact_pool_isolated(tmp_path):
+    store = WatchProbeStore(tmp_path / "paper.db")
+
+    store.open_probe(
+        token="0xabc",
+        pool="0xpool1",
+        entry_price=1.0,
+        opened_at=1000.0,
+    )
+
+    store.open_probe(
+        token="0xabc",
+        pool="0xpool2",
+        entry_price=10.0,
+        opened_at=1000.0,
+    )
+
+    result = store.observe(
+        token="0xabc",
+        pool="0xpool1",
+        current_price=2.0,
+        observed_at=1100.0,
+    )
+
+    assert result["updated"] == 1
+
+    rows = {
+        r["pool"]: r
+        for r in store.snapshot(10)
+    }
+
+    assert rows["0xpool1"]["last_price"] == 2.0
+    assert rows["0xpool1"]["mark_return_pct"] == 100.0
+
+    assert rows["0xpool2"]["last_price"] == 10.0
+    assert rows["0xpool2"]["mark_return_pct"] is None

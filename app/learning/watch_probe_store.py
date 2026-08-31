@@ -350,13 +350,15 @@ class WatchProbeStore:
         self,
         *,
         token,
+        pool,
         current_price,
         observed_at=None,
     ):
         token = self._canonical(token)
+        pool = self._canonical(pool)
         price = self._positive_float(current_price)
 
-        if not token or price is None:
+        if not token or not pool or price is None:
             return {
                 "state": "INVALID",
                 "updated": 0,
@@ -379,9 +381,10 @@ class WatchProbeStore:
                     min_price
                 FROM watch_probe_trades
                 WHERE lower(token)=lower(?)
+                  AND lower(pool)=lower(?)
                   AND status='OPEN'
                 """,
-                (token,),
+                (token, pool),
             ).fetchall()
 
             updated = 0

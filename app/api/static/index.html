@@ -26,7 +26,15 @@
 <section class="panel metric"><div class="label">TOPLAM PNL</div><div class="metric-value" id="totalPnl">—</div><div class="sub" id="totalPnlPct">—</div></section>
 <section class="panel metric"><div class="label">AÇIK POZİSYON</div><div class="metric-value" id="openCount">—</div><div class="sub" id="openInvestment">—</div></section>
 <section class="panel metric"><div class="label">KULLANILAN RİSK</div><div class="metric-value" id="riskUsed">—</div><div class="sub" id="riskAmount">—</div></section>
-<section class="panel controls"><button class="ctrl active" id="autoModeButton">OTOMATİK</button><button class="ctrl" id="manualModeButton">MANUEL</button><button class="ctrl" disabled>CÜZDAN KAPALI</button><button class="ctrl" onclick="openAccounting()">MUHASEBE</button><div class="statusline"><span class="dot"></span>READ ONLY</div><div class="statusline">PAPER</div></section>
+<section class="panel controls"><button class="ctrl active" id="autoModeButton">OTOMATİK</button><button class="ctrl" id="manualModeButton">MANUEL</button><button class="ctrl" disabled>CÜZDAN KAPALI</button><button class="ctrl" onclick="openAccounting()">MUHASEBE</button>
+<button
+  type="button"
+  onclick="window.open('/static/watch-probes.html','watchProbes','noopener,noreferrer')"
+  title="1 USDT izole WATCH probe sonuçlarını aç"
+>
+  WATCH PROBES
+</button>
+<div class="statusline"><span class="dot"></span>READ ONLY</div><div class="statusline">PAPER</div></section>
 </header>
 
 <main class="content">

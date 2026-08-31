@@ -84,6 +84,30 @@ class WatchProbeStore:
 
             self._db.execute(
                 """
+                CREATE TABLE IF NOT EXISTS watch_probe_shadow_exits (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    probe_id INTEGER NOT NULL,
+                    strategy TEXT NOT NULL,
+                    triggered_at REAL,
+                    trigger_price REAL,
+                    return_pct REAL,
+                    state TEXT NOT NULL DEFAULT 'ARMED',
+                    reason TEXT,
+                    UNIQUE(probe_id, strategy)
+                )
+                """
+            )
+
+            self._db.execute(
+                """
+                CREATE INDEX IF NOT EXISTS
+                idx_watch_probe_shadow_exits_probe
+                ON watch_probe_shadow_exits(probe_id)
+                """
+            )
+
+            self._db.execute(
+                """
                 CREATE INDEX IF NOT EXISTS
                 idx_watch_probe_trades_status
                 ON watch_probe_trades(status)
@@ -207,6 +231,121 @@ class WatchProbeStore:
                     ),
                 }
 
+    def _ensure_shadow_exit_rows(self, probe_id):
+        strategies = (
+            "TP_2X",
+            "TP_5X",
+            "TRAIL_25",
+            "TIME_60M",
+            "TIME_6H",
+        )
+
+        for strategy in strategies:
+            self._db.execute(
+                """
+                INSERT OR IGNORE INTO watch_probe_shadow_exits(
+                    probe_id,
+                    strategy
+                )
+                VALUES(?,?)
+                """,
+                (
+                    int(probe_id),
+                    strategy,
+                ),
+            )
+
+    def _update_shadow_exits(
+        self,
+        *,
+        row,
+        price,
+        observed_at,
+        max_price,
+    ):
+        probe_id = int(row["id"])
+        entry_price = float(row["entry_price"])
+        opened_at = float(row["opened_at"])
+
+        self._ensure_shadow_exit_rows(probe_id)
+
+        elapsed = float(observed_at) - opened_at
+        mark_return_pct = (
+            (float(price) / entry_price) - 1.0
+        ) * 100.0
+
+        drawdown_from_peak_pct = (
+            (float(price) / float(max_price)) - 1.0
+        ) * 100.0
+
+        rules = {
+            "TP_2X": (
+                mark_return_pct >= 100.0,
+                "TARGET_2X",
+            ),
+            "TP_5X": (
+                mark_return_pct >= 400.0,
+                "TARGET_5X",
+            ),
+            "TRAIL_25": (
+                max_price > entry_price
+                and drawdown_from_peak_pct <= -25.0,
+                "PEAK_DRAWDOWN_25",
+            ),
+            "TIME_60M": (
+                elapsed >= 3600.0,
+                "TIME_60M",
+            ),
+            "TIME_6H": (
+                elapsed >= 21600.0,
+                "TIME_6H",
+            ),
+        }
+
+        for strategy, (triggered, reason) in rules.items():
+            if not triggered:
+                continue
+
+            existing = self._db.execute(
+                """
+                SELECT state
+                FROM watch_probe_shadow_exits
+                WHERE probe_id=? AND strategy=?
+                """,
+                (
+                    probe_id,
+                    strategy,
+                ),
+            ).fetchone()
+
+            if (
+                existing is None
+                or existing["state"] == "TRIGGERED"
+            ):
+                continue
+
+            self._db.execute(
+                """
+                UPDATE watch_probe_shadow_exits
+                SET
+                    triggered_at=?,
+                    trigger_price=?,
+                    return_pct=?,
+                    state='TRIGGERED',
+                    reason=?
+                WHERE probe_id=?
+                  AND strategy=?
+                """,
+                (
+                    float(observed_at),
+                    float(price),
+                    mark_return_pct,
+                    reason,
+                    probe_id,
+                    strategy,
+                ),
+            )
+
     def observe(
         self,
         *,
@@ -232,7 +371,12 @@ class WatchProbeStore:
         with self._lock:
             rows = self._db.execute(
                 """
-                SELECT id, max_price, min_price
+                SELECT
+                    id,
+                    opened_at,
+                    entry_price,
+                    max_price,
+                    min_price
                 FROM watch_probe_trades
                 WHERE lower(token)=lower(?)
                   AND status='OPEN'
@@ -252,17 +396,8 @@ class WatchProbeStore:
                     price,
                 )
 
-                entry_row = self._db.execute(
-                    """
-                    SELECT entry_price
-                    FROM watch_probe_trades
-                    WHERE id=?
-                    """,
-                    (int(row["id"]),),
-                ).fetchone()
-
                 entry_price = float(
-                    entry_row["entry_price"]
+                    row["entry_price"]
                 )
 
                 mark_return_pct = (
@@ -280,6 +415,13 @@ class WatchProbeStore:
                 peak_drawdown_pct = (
                     (price / max_price) - 1.0
                 ) * 100.0
+
+                self._update_shadow_exits(
+                    row=row,
+                    price=price,
+                    observed_at=now,
+                    max_price=max_price,
+                )
 
                 self._db.execute(
                     """

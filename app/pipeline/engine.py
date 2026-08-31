@@ -52,6 +52,9 @@ from app.learning.counterfactual_observation import (
 from app.learning.watch_probe_store import (
     WatchProbeStore,
 )
+from app.learning.watch_probe_entry_snapshot import (
+    WatchProbeEntrySnapshotStore,
+)
 from app.learning.entry_context import (
     build_entry_signal_attribution,
     build_exit_baseline,
@@ -3210,6 +3213,20 @@ class PipelineEngine:
             probe_store = WatchProbeStore(PAPER_DB)
             self.watch_probe_store = probe_store
 
+        snapshot_store = getattr(
+            self,
+            "watch_probe_entry_snapshot_store",
+            None,
+        )
+
+        if snapshot_store is None:
+            snapshot_store = WatchProbeEntrySnapshotStore(
+                PAPER_DB
+            )
+            self.watch_probe_entry_snapshot_store = (
+                snapshot_store
+            )
+
         token = row.get("token")
         pool = row.get("pool")
         price = row.get("price_usd")
@@ -3238,6 +3255,54 @@ class PipelineEngine:
                 entry_price=price,
                 opened_at=now,
             )
+
+            if (
+                probe_open.get("state") == "OPENED"
+                and probe_open.get("id") is not None
+            ):
+                decision_history_id = summary.get(
+                    "decision_history_id"
+                )
+
+                snapshot_store.capture(
+                    probe_id=probe_open["id"],
+                    decision_history_id=(
+                        decision_history_id
+                    ),
+                    context={
+                        "confidence": summary.get(
+                            "confidence"
+                        ),
+                        "score": summary.get("score"),
+                        "strategy": summary.get(
+                            "strategy"
+                        ),
+                        "unified": summary.get(
+                            "unified"
+                        ),
+                        "paper": summary.get("paper"),
+                        "reason": summary.get(
+                            "reason"
+                        ),
+                        "sellability": summary.get(
+                            "sellability"
+                        ),
+                        "hard_block": summary.get(
+                            "hard_block"
+                        ),
+                        "market_context": summary.get(
+                            "market_context"
+                        )
+                        or {},
+                        "runtime_intelligence": (
+                            summary.get(
+                                "runtime_intelligence"
+                            )
+                            or {}
+                        ),
+                    },
+                    captured_at=now,
+                )
 
         elif action == "REJECT":
             probe_open = {

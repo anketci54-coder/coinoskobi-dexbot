@@ -128,3 +128,116 @@ def test_reject_does_not_open_watch_probe(
     assert result["probe_open"]["created"] is False
 
     assert pipeline.watch_probe_store.snapshot(10) == []
+
+
+def test_watch_probe_open_captures_immutable_entry_snapshot(
+    monkeypatch,
+    tmp_path,
+):
+    from app.learning.watch_probe_entry_snapshot import (
+        WatchProbeEntrySnapshotStore,
+    )
+
+    db_path = tmp_path / "paper.db"
+
+    monkeypatch.setattr(
+        engine_module,
+        "PAPER_DB",
+        Path(db_path),
+    )
+
+    pipeline = object.__new__(PipelineEngine)
+
+    pipeline.counterfactual_store = (
+        FakeCounterfactualStore()
+    )
+    pipeline.watch_probe_store = WatchProbeStore(
+        db_path
+    )
+    pipeline.watch_probe_entry_snapshot_store = (
+        WatchProbeEntrySnapshotStore(db_path)
+    )
+
+    row = {
+        "token": "0xabc",
+        "pool": "0xdef",
+        "price_usd": 1.0,
+    }
+
+    summary = {
+        "paper": "WATCH",
+        "strategy": "WATCH",
+        "unified": "WATCH",
+        "reason": None,
+        "confidence": 33.33,
+        "score": 33.33,
+        "decision_history_id": 123,
+        "market_context": {
+            "liquidity_usd": 20000.0,
+            "market_intelligence": {
+                "volume_usd": 40000.0,
+                "buys": 30,
+                "participant_identity_coverage": 0.5,
+            },
+            "origin_participation": {
+                "coverage": 0.4,
+            },
+            "runtime_market_flow": {
+                "native_event_count": 8,
+                "flow_intelligence": {
+                    "coverage": 0.7,
+                    "participant_identity_coverage": 0.6,
+                },
+                "stream_math": {
+                    "state": "INSUFFICIENT",
+                    "ewma": {
+                        "ewma_volatility": None,
+                    },
+                },
+            },
+        },
+        "runtime_intelligence": {
+            "market_quality": {
+                "volume_turnover": 2.0,
+                "liquidity_state": "STABLE_OR_UNKNOWN",
+                "market_evidence_ready": False,
+                "participant_evidence_ready": False,
+            },
+            "market_regime": {
+                "market_regime": "UNKNOWN",
+            },
+            "flow_confirmation": {
+                "confirmation": "UNKNOWN",
+            },
+            "flow_quality": {
+                "flow_quality": "UNKNOWN",
+            },
+            "flow_divergence": {
+                "divergence_state": "UNKNOWN",
+            },
+        },
+    }
+
+    result = pipeline.observe_counterfactual_candidate(
+        row,
+        summary,
+        now=1000.0,
+    )
+
+    assert result["probe_open"]["state"] == "OPENED"
+
+    rows = (
+        pipeline.watch_probe_entry_snapshot_store
+        .snapshot(10)
+    )
+
+    assert len(rows) == 1
+
+    snap = rows[0]
+
+    assert snap["probe_id"] == result["probe_open"]["id"]
+    assert snap["decision_history_id"] == 123
+    assert snap["liquidity_usd"] == 20000.0
+    assert snap["volume_usd"] == 40000.0
+    assert snap["buys"] == 30
+    assert snap["volatility_state"] == "UNKNOWN"

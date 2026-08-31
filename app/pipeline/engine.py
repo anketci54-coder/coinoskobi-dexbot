@@ -3250,66 +3250,7 @@ class PipelineEngine:
             signal_state = "POSITIVE"
             candidate_action = "DOWNGRADE"
 
-            probe_open = probe_store.open_probe(
-                token=token,
-                pool=pool,
-                entry_price=price,
-                opened_at=now,
-            )
-
-            if (
-                probe_open.get("state") == "OPENED"
-                and probe_open.get("id") is not None
-            ):
-                decision_history_id = summary.get(
-                    "decision_history_id"
-                )
-
-                snapshot_store.capture(
-                    probe_id=probe_open["id"],
-                    decision_history_id=(
-                        decision_history_id
-                    ),
-                    context={
-                        "confidence": summary.get(
-                            "confidence"
-                        ),
-                        "score": summary.get("score"),
-                        "strategy": summary.get(
-                            "strategy"
-                        ),
-                        "unified": summary.get(
-                            "unified"
-                        ),
-                        "paper": summary.get("paper"),
-                        "reason": summary.get(
-                            "reason"
-                        ),
-                        "sellability": summary.get(
-                            "sellability"
-                        ),
-                        "hard_block": summary.get(
-                            "hard_block"
-                        ),
-                        "market_context": summary.get(
-                            "market_context"
-                        )
-                        or {},
-                        "runtime_intelligence": (
-                            summary.get(
-                                "runtime_intelligence"
-                            )
-                            or {}
-                        ),
-                    },
-                    captured_at=now,
-                )
-
         elif action == "REJECT":
-            probe_open = {
-                "state": "NOT_WATCH",
-                "created": False,
-            }
             signal_state = "NEGATIVE"
             candidate_action = "BLOCK"
 
@@ -3424,6 +3365,50 @@ class PipelineEngine:
                 ),
             },
         )
+
+        decision_history_id = record.get("decision_id")
+
+        if action == "WATCH":
+            probe_open = probe_store.open_probe(
+                token=token,
+                pool=pool,
+                entry_price=price,
+                opened_at=now,
+                decision_history_id=decision_history_id,
+            )
+
+            if (
+                probe_open.get("state") == "OPENED"
+                and probe_open.get("id") is not None
+            ):
+                snapshot_store.capture(
+                    probe_id=probe_open["id"],
+                    decision_history_id=decision_history_id,
+                    context={
+                        "confidence": summary.get("confidence"),
+                        "score": summary.get("score"),
+                        "strategy": summary.get("strategy"),
+                        "unified": summary.get("unified"),
+                        "paper": summary.get("paper"),
+                        "reason": summary.get("reason"),
+                        "sellability": summary.get("sellability"),
+                        "hard_block": summary.get("hard_block"),
+                        "market_context": (
+                            summary.get("market_context")
+                            or {}
+                        ),
+                        "runtime_intelligence": (
+                            summary.get("runtime_intelligence")
+                            or {}
+                        ),
+                    },
+                    captured_at=now,
+                )
+        else:
+            probe_open = {
+                "state": "NOT_WATCH",
+                "created": False,
+            }
 
         return {
             "evaluation": evaluation,

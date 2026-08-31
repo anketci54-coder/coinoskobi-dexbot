@@ -236,8 +236,93 @@ def test_watch_probe_open_captures_immutable_entry_snapshot(
     snap = rows[0]
 
     assert snap["probe_id"] == result["probe_open"]["id"]
-    assert snap["decision_history_id"] == 123
+    assert snap["decision_history_id"] == result["record"].get(
+        "decision_id"
+    )
     assert snap["liquidity_usd"] == 20000.0
     assert snap["volume_usd"] == 40000.0
     assert snap["buys"] == 30
     assert snap["volatility_state"] == "UNKNOWN"
+
+
+def test_watch_probe_links_real_decision_history_id(
+    monkeypatch,
+    tmp_path,
+):
+    from app.learning.watch_probe_entry_snapshot import (
+        WatchProbeEntrySnapshotStore,
+    )
+
+    db_path = tmp_path / "paper.db"
+
+    monkeypatch.setattr(
+        engine_module,
+        "PAPER_DB",
+        Path(db_path),
+    )
+
+    pipeline = object.__new__(PipelineEngine)
+
+    class LinkedCounterfactualStore:
+        def observe(self, **kwargs):
+            return {"state": "OBSERVED"}
+
+        def record(self, **kwargs):
+            return {
+                "stored": True,
+                "decision_id": 777,
+                "transition_from": None,
+            }
+
+        def status(self):
+            return {"state": "READY"}
+
+    pipeline.counterfactual_store = LinkedCounterfactualStore()
+    pipeline.watch_probe_store = WatchProbeStore(db_path)
+    pipeline.watch_probe_entry_snapshot_store = (
+        WatchProbeEntrySnapshotStore(db_path)
+    )
+
+    row = {
+        "token": "0xabc",
+        "pool": "0xdef",
+        "price_usd": 1.0,
+    }
+
+    summary = {
+        "paper": "WATCH",
+        "strategy": "WATCH",
+        "unified": "WATCH",
+        "reason": None,
+        "confidence": 33.33,
+        "score": 33.33,
+        "market_context": {},
+        "runtime_intelligence": {},
+    }
+
+    result = pipeline.observe_counterfactual_candidate(
+        row,
+        summary,
+        now=1000.0,
+    )
+
+    assert result["record"]["decision_id"] == 777
+
+    probe_id = result["probe_open"]["id"]
+
+    probe = pipeline.watch_probe_store._db.execute(
+        """
+        SELECT decision_history_id
+        FROM watch_probe_trades
+        WHERE id=?
+        """,
+        (probe_id,),
+    ).fetchone()
+
+    snap = (
+        pipeline.watch_probe_entry_snapshot_store
+        .snapshot(1)[0]
+    )
+
+    assert probe["decision_history_id"] == 777
+    assert snap["decision_history_id"] == 777

@@ -3309,6 +3309,18 @@ class PipelineEngine:
                     else None
                 ),
                 "hindsight_reconstructed": False,
+                "watch_probe": (
+                    {
+                        "probe_kind": "WATCH_PROBE_1USDT",
+                        "probe_entry_usdt": 1.0,
+                        "probe_accounting": "ISOLATED",
+                        "normal_trade_authority": False,
+                        "paper_trade_authority": False,
+                        "live_trade_authority": False,
+                    }
+                    if action == "WATCH"
+                    else None
+                ),
             },
         )
 

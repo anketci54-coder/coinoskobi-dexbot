@@ -3239,6 +3239,7 @@ class PipelineEngine:
 
         probe_observation = probe_store.observe(
             token=token,
+            pool=pool,
             current_price=price,
             observed_at=now,
         )

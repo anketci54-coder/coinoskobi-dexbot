@@ -334,3 +334,27 @@ def test_watch_probe_observation_is_exact_pool_isolated(tmp_path):
 
     assert rows["0xpool2"]["last_price"] == 10.0
     assert rows["0xpool2"]["mark_return_pct"] is None
+
+
+def test_watch_probe_rejects_token_pool_collision(tmp_path):
+    store = WatchProbeStore(tmp_path / "paper.db")
+
+    address = "0x1111111111111111111111111111111111111111"
+
+    result = store.open_probe(
+        token=address,
+        pool=address,
+        entry_price=0.01,
+    )
+
+    assert result["state"] == "INVALID"
+    assert result["created"] is False
+
+    observed = store.observe(
+        token=address,
+        pool=address,
+        current_price=0.02,
+    )
+
+    assert observed["state"] == "INVALID"
+    assert observed["updated"] == 0

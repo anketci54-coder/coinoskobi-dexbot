@@ -146,7 +146,12 @@ class WatchProbeStore:
         pool = self._canonical(pool)
         price = self._positive_float(entry_price)
 
-        if not token or not pool or price is None:
+        if (
+            not token
+            or not pool
+            or token == pool
+            or price is None
+        ):
             return {
                 "state": "INVALID",
                 "created": False,
@@ -358,7 +363,12 @@ class WatchProbeStore:
         pool = self._canonical(pool)
         price = self._positive_float(current_price)
 
-        if not token or not pool or price is None:
+        if (
+            not token
+            or not pool
+            or token == pool
+            or price is None
+        ):
             return {
                 "state": "INVALID",
                 "updated": 0,

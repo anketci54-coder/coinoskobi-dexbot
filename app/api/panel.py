@@ -1771,7 +1771,23 @@ def api_watch_probes() -> dict[str, Any]:
         row["mae_pct"] = mae_pct
 
         entry_total += entry_usdt
-        current_total += current_value
+
+        # Raw mark remains visible per probe, but only a verified
+        # realizable exit may contribute to aggregate performance.
+        exit_state = str(
+            row.get("exit_state") or "UNVERIFIED"
+        ).upper()
+
+        realizable_exit_usdt = number(
+            row.get("realizable_exit_usdt")
+        )
+
+        if (
+            exit_state == "VERIFIED"
+            and realizable_exit_usdt > 0
+        ):
+            current_total += realizable_exit_usdt
+            open_count += 1
 
         if str(
             row.get("status") or ""

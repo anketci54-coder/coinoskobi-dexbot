@@ -1,6 +1,6 @@
 # COINOSKOBI CANONICAL PROJECT STATE
 
-Updated: 2026-08-29
+Updated: 2026-09-01
 
 ## CANONICAL SOURCE
 
@@ -17,166 +17,156 @@ Updated: 2026-08-29
 - Panel runtime: `coinoskobi-panel-api.service`
 - Panel port: `8098`
 
-Repository, VPS working tree, runtime services and runtime databases together form production truth. Always verify the current SHA directly before apply.
+Repository, VPS working tree, runtime services and runtime databases together form production truth. Current SHA must be verified directly before any apply/restart.
 
 ## GOVERNANCE
 
-- The only canonical architecture classification is **PHASE 0-15**.
-- Phase 0-15 are CLOSED.
-- Phase 15 is the final roadmap phase.
-- Do not create Phase 16, ERA, architecture V2/V3, OCR/R-number, post-roadmap, experiment or other parallel roadmap chains.
-- PancakeSwap protocol V2/V3 names remain valid where they describe the actual DEX protocol version.
-- Maintenance and bug fixes are assigned to the existing Phase 0-15 owner.
-- No side/test panel architecture.
-- No fake runtime or panel data.
+- Only canonical architecture classification: **PHASE 0–15**.
+- Phase 0–15 are CLOSED; Phase 15 is final roadmap phase.
+- No Phase 16, ERA, architecture V2/V3, OCR/R-number, post-roadmap or parallel roadmap chain.
+- PancakeSwap V2/V3 remains valid only as actual DEX protocol naming.
+- Maintenance is assigned to an existing Phase 0–15 owner.
+- No side/test panel architecture and no fake runtime/panel data.
 - Missing evidence remains `UNKNOWN`.
 - AI trade authority = 0.
 - Live execution authority = 0.
 - Wallet/signing authority = 0.
 - Paper execution remains isolated from live execution.
-- Hot-path work remains fast and bounded.
-- Heavy/provider work belongs on bounded slow-path/worker paths.
-
-Canonical ownership details live in `ROADMAP.md`.
+- Hot path remains fast/bounded; heavy provider work remains bounded slow-path/worker work.
 
 ## CURRENT PRODUCTION SCOPE
 
 Production focus: **BNB Chain (BSC) + PancakeSwap**.
 
-Canonical identity rules:
+Identity:
+- token = chain-aware address
+- pool = chain + dex + pool
+- readable names are display metadata only
+- universe size is dynamic
 
-- token identity is chain-aware
-- pool identity is chain + dex + pool
-- readable symbols/names are display metadata and never replace identity
-- universe size is dynamic and must never be hardcoded
-
-Provider roles:
-
-- RPC/WSS: on-chain truth and native event observation
+External roles:
+- RPC/WSS: on-chain truth/native events through canonical provider broker
 - GeckoTerminal: discovery and bounded indexed market evidence
-- DexScreener: bounded universe market snapshots and readable base/quote metadata
-- GoPlus / Honeypot.is: sellability/security evidence
+- DexScreener: bounded market snapshots/display metadata
+- GoPlus/Honeypot.is: sellability/security evidence
 
 Provider failure or missing evidence is never converted into safe evidence.
 
+## CANONICAL PROVIDER ARCHITECTURE
+
+Provider maintenance belongs to existing **Phase 8**; runtime operability/quota budget belongs to **Phase 12**; bounded counterfactual provider pressure belongs to **Phase 13**.
+
+Canonical code boundaries:
+- `app/chains/bsc.py` — BSC Web3 composition
+- `app/dex/provider_broker.py` — HTTP/WSS broker
+- `app/dex/provider_resilience.py` — failure classification/policy
+- `app/dex/wss_service.py` — application WSS lifecycle
+
+Broker contract:
+- PRIMARY / SECONDARY / TERTIARY / QUATERNARY optional provider slots
+- duplicate configured URLs collapsed
+- heavy RPC methods distributed across healthy providers
+- rate-limit/quota/403 circuit cooldown
+- transient transport cooldown
+- all-circuits-open fail-fast without another provider request
+- bounded exact-request cache and in-flight coalescing
+- bounded primary-first WSS fallback
+- no provider URL/secret exposure in broker status
+- decision/paper/live/wallet/execution authority all false
+
+Legacy parallel `FailoverHTTPProvider`, `FailoverWSSRuntime`, `choose_provider` and `failover_allowed` contracts are removed from the candidate branch.
+
+## ACTIVE INTEGRATION CANDIDATE — PR #61
+
+Branch: `phase13/provider-broker`
+
+Purpose: consolidate provider resilience and quota protection without opening a new architecture tree.
+
+Functional provider commit after rebase:
+`7abd0af74a0af3fbdcb74392332ca82d74ebc2b0`
+
+CI gate commit:
+`85c52daaab972684ff2f7775b8ae5d1ec5ba4797`
+
+Validated evidence before documentation sync:
+- local targeted provider/pressure/E2E: **24 passed**
+- local full regression: **1155 passed / 0 failed**
+- post-rebase targeted acceptance: **9 passed / 0 failed**
+- dead-code audit: PASS
+- GitHub PR smoke/E2E run #462: SUCCESS
+- GitHub push `[full]` run #461: SUCCESS
+- canonical smoke now explicitly includes `tests/test_provider_broker.py`
+- runtime restarted: FALSE
+- `.env` changed: FALSE
+
+Documentation commits after the green functional/CI checkpoint do not alter runtime behavior. PR #61 must receive its normal GitHub CI result again after documentation changes before merge.
+
+## PROVIDER PRESSURE CONTEXT
+
+Observed provider exhaustion that motivated the maintenance:
+- active primary/secondary RPC capacity was exhausted/rate-limited during observation
+- failover itself worked but could not succeed when both configured providers were blocked
+- strategy quality must not be inferred from WATCH/PAPER_BUY counts collected during provider outage
+
+No provider secret is stored in this document.
+
+Deferred capacity options remain ordinary Phase 8/12 infrastructure choices, not new phases. Additional external providers may fill tertiary/quaternary slots when needed. A dedicated BSC node remains a need-based future option only if quota/cost/latency/load justifies its operational burden.
+
+## COUNTERFACTUAL PRESSURE BOUND
+
+Phase 13 bounded observation contract:
+- pending counterfactual Gecko fetch: max 30 pools per scanner refresh
+- one bounded multi-pool request for that batch
+- remaining pending observations wait for later normal refreshes
+
+This reduces external pressure without changing decision authority or outcome semantics.
+
 ## PHASE OWNERSHIP CHECKPOINT
 
-- Phase 0 — early critical fixes and cleanup
-- Phase 1 — core infrastructure, SQLite/schema/concurrency/recovery
-- Phase 2 — bounded pipeline, queue, UniverseRegistry and discovery
-- Phase 3 — risk, sellability, execution cost and entry feasibility
-- Phase 4 — deterministic position lifecycle
-- Phase 5 — DEX market intelligence and bounded market snapshots
+- Phase 0 — critical fixes/cleanup
+- Phase 1 — core infrastructure/DB/recovery
+- Phase 2 — bounded pipeline/universe/discovery
+- Phase 3 — risk/sellability/entry feasibility
+- Phase 4 — position lifecycle
+- Phase 5 — DEX market intelligence
 - Phase 6 — exit intelligence
-- Phase 7 — flow confirmation, regime and COLD/WARM/HOT seismic state
-- Phase 8 — native WSS ingestion, reconnect/reorg/provider resilience
-- Phase 9 — wallet/entity/smart-money intelligence
+- Phase 7 — flow/regime/seismic state
+- Phase 8 — native ingestion/provider broker/resilience
+- Phase 9 — wallet/entity/smart-money/whale intelligence
 - Phase 10 — adversary/scam/MEV intelligence
-- Phase 11 — learning/calibration/outcome memory; proposal-only
-- Phase 12 — operational paper runtime, restart/recovery and cross-phase E2E
-- Phase 13 — paper/counterfactual outcome calibration and data integrity
-- Phase 14 — canonical Command Center, panel and readable display metadata
-- Phase 15 — final operational validation and explicit-approval micro-live boundary
+- Phase 11 — learning/calibration/outcome memory
+- Phase 12 — operational paper runtime/provider operability/E2E
+- Phase 13 — paper/counterfactual calibration and bounded observation pressure
+- Phase 14 — canonical Command Center/AI operator support
+- Phase 15 — final operational validation/explicit-approval micro-live boundary
 
-## 2026-08-28 CANONICAL CLEANUP AND TOKEN-NAME CLOSURE
+## NEXT MAINTENANCE TARGETS
 
-PR #27 was merged into `main` after canonical smoke/E2E and full repository regression passed.
+All remain inside existing Phase 0–15:
+- successful-wallet tracking → Phase 9
+- whale tracking → Phase 9
+- news/market intelligence → Phase 5/7 ownership
+- Vezir chatbot/operator support → Phase 14
+- security hardening → Phase 1/3/10 according to concern
 
-Accepted implementation/runtime code SHA:
+No new phase/era/version tree is permitted for these items.
 
-`c0dfb5aab8af75cb5b0944a670e9982585c5ad70`
+## MERGE / RUNTIME RULE
 
-The merge:
+Before PR #61 merge:
+1. documentation-updated PR smoke/E2E must be green
+2. review final PR diff and authority boundaries
+3. merge to `main`
+4. verify post-merge main SHA/CI
+5. fast-forward VPS cleanly
+6. do not restart runtime merely for documentation
+7. runtime restart/provider env change only with a separate explicit operational need
 
-- repaired readable universe token/pair display names using real bounded DexScreener metadata
-- kept pool/token identity unchanged
-- kept panel read-only and authority-free
-- folded legacy parallel architecture/workstream labels into Phase 0-15 ownership
-- removed the standalone full-universe architecture document
-- removed the standalone panel UI policy document
-- removed standalone WARM research scripts and their script-only tests
-- renamed retained OCR/runtime-repair regression coverage under Phase 12 ownership
+## CANONICAL DOCUMENTS
 
-No replacement disposable script or parallel roadmap was added.
+- `README.md` — stable project contract
+- `ROADMAP.md` — Phase 0–15 ownership map
+- `PROJECT_STATE.md` — current continuation checkpoint
+- `TEST_RESULTS.md` — historical validation evidence
 
-## VPS RUNTIME ACCEPTANCE
-
-The production VPS was fast-forwarded cleanly to accepted implementation SHA `c0dfb5aab8af75cb5b0944a670e9982585c5ad70`.
-
-Acceptance evidence:
-
-- branch: `main`
-- worktree: clean
-- paper runtime: active
-- panel runtime: active
-- universe shadow: enabled
-- PancakeSwap V2/V3 start blocks: configured
-- WSS: configured
-- display metadata table: created by canonical universe observation path
-- display metadata rows at acceptance: 32
-- named metadata rows at acceptance: 32
-- visible panel universe rows: 40
-- readable display-name matches: 36
-- readable display-name coverage: 90.00%
-- display source: `UNIVERSE_POOL_DISPLAY_METADATA_V1`
-- frontend display contract: PASS
-- `data/cache/cache.db`: integrity/quick check `ok`
-- `data/paper_trades.db`: integrity/quick check `ok`
-
-The remaining unnamed visible rows are not filled with fabricated names; they remain fallback/unknown until real provider metadata is observed.
-
-## REPOSITORY CLEANUP SEAL
-
-After runtime acceptance, obsolete remote branches were audited against `main` and removed. The final remote-branch audit reported:
-
-- non-main remote branches: 0
-- canonical remote branch: `main` only
-- production worktree: clean
-- paper runtime: active
-- panel runtime: active
-
-Closed/merged historical pull requests and historical phase-scoped validation reports remain audit history, not active architecture branches or roadmap chains.
-
-## CURRENT STATUS
-
-- No active integration candidate.
-- No open pull request is required for the accepted runtime state.
-- Canonical architecture is Phase 0-15 only.
-- Runtime acceptance for the token-name repair is PASS.
-- Repository branch cleanup is PASS.
-- Production services are active.
-- Display-name repair is live with real provider-backed metadata.
-
-This documentation seal is non-runtime. If its commit advances `main` beyond the accepted implementation SHA, the VPS needs only a clean `git pull --ff-only` synchronization; no service restart is required for this documentation-only change.
-
-## DEFERRED INFRASTRUCTURE OPTION / TODO
-
-Dedicated BSC Fast Node is a deferred, need-based infrastructure option under existing provider-resilience/operability ownership; it is **not** a new phase or active migration.
-
-Trigger for reconsideration: provider cost, quota pressure, latency variance or sustained BSC RPC/WSS load becomes materially limiting.
-
-Decision criteria remain:
-
-1. speed / latency
-2. capacity / power
-3. security / resilience
-4. total cost
-
-If activated later, evaluate a private dedicated BSC Fast Node as primary with external providers retained as cold-standby fallbacks. Keep heavy historical/research traffic isolated from the live Coinoskobi node. Do not change the current provider/runtime architecture merely to prepare for this option.
-
-Status: **DEFERRED — NO CURRENT SYSTEM CHANGE**.
-
-## NEXT MAINTENANCE RULE
-
-For any future work:
-
-1. assign it to the existing Phase 0-15 owner
-2. make a targeted change
-3. run targeted tests
-4. run canonical smoke/E2E
-5. run full regression when the scope warrants it
-6. merge to `main`
-7. fast-forward the VPS only after GitHub is green
-8. verify runtime/DB evidence before sealing
-
-Do not reopen a parallel roadmap or create disposable persistent scripts.
+Historical reports remain evidence, not active architecture.

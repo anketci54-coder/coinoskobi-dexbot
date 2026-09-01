@@ -262,3 +262,8 @@ def _out(state, **payload):
         "signing_authority": False,
         "execution_authority": False,
     }
+
+
+# Single in-process observation store shared by collectors and market-context
+# readers. Bounded by construction; it carries no trade or execution authority.
+DEFAULT_NEWS_EVIDENCE_STORE = NewsEvidenceStore()

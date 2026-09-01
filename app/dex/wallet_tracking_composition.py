@@ -1,6 +1,6 @@
 from app.dex.successful_wallet import SuccessfulWalletTracker
 from app.dex.wallet_holdings import WalletHoldingsReadModel
-from app.dex.related_wallet import evaluate_related_wallet
+from app.dex.related_wallet_evidence import related_wallet_evidence
 
 
 class WalletTrackingComposition:
@@ -30,7 +30,7 @@ class WalletTrackingComposition:
         )
 
     def related_wallet(self, wallet_a, wallet_b, **evidence):
-        return evaluate_related_wallet(wallet_a, wallet_b, **evidence)
+        return related_wallet_evidence(wallet_a, wallet_b, **evidence)
 
     def snapshot(self, wallet_id):
         return {

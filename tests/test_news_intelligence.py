@@ -1,3 +1,5 @@
+import pytest
+
 from app.dex.news_intelligence import NewsEvidenceStore, normalize_source_event
 
 
@@ -77,7 +79,7 @@ def test_social_sources_without_provenance_do_not_fake_corroboration():
 
     assert row["independent_source_count"] == 1
     assert len(row["sources"]) == 2
-    assert row["confidence"] == 0.55
+    assert row["confidence"] == pytest.approx(0.55)
 
 
 def test_distinct_social_origin_keys_can_corroborate():
@@ -100,7 +102,7 @@ def test_distinct_social_origin_keys_can_corroborate():
     )
 
     assert row["independent_source_count"] == 2
-    assert row["confidence"] == 0.60
+    assert row["confidence"] == pytest.approx(0.60)
 
 
 def test_low_trust_second_source_does_not_reduce_existing_confidence():

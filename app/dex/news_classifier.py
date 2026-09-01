@@ -1,5 +1,7 @@
 import re
 
+from app.dex.news_intelligence import EVENT_TYPES
+
 
 _RULES = (
     ("EXPLOIT", (r"\bexploit(ed|ing)?\b", r"\bhack(ed|ing)?\b", r"\bdrain(ed|ing)?\b")),
@@ -19,12 +21,15 @@ _RULES = (
 def classify_news_event(text, *, explicit_event_type=None):
     """Deterministically classify market/news text without external IO or AI.
 
-    Explicit trusted upstream labels win when they are non-empty. Otherwise
-    bounded regex rules classify known events. No class grants trade authority.
+    Explicit upstream labels are accepted only when they belong to the
+    canonical EVENT_TYPES contract. Unknown labels never bypass validation.
+    No class grants trade authority.
     """
     explicit = str(explicit_event_type or "").strip().upper()
     if explicit:
-        return _out("CLASSIFIED", explicit, 1.0, "EXPLICIT")
+        if explicit in EVENT_TYPES:
+            return _out("CLASSIFIED", explicit, 1.0, "EXPLICIT")
+        return _out("UNKNOWN", None, 0.0, "INVALID_EXPLICIT")
 
     normalized = " ".join(str(text or "").lower().split())
     if not normalized:

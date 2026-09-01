@@ -13,7 +13,15 @@ _RULES = (
     ("TGE", (r"\btge\b", r"\btoken generation event\b")),
     ("LISTING", (r"\blist(ed|ing)?\b", r"\bspot trading\b", r"\btrading pair\b")),
     ("PARTNERSHIP", (r"\bpartner(ship|ed)?\b", r"\bcollaborat(e|ion|ing)\b")),
-    ("REGULATORY", (r"\bsec\b", r"\bregulat(or|ory|ion)\b", r"\blicen[cs]e\b")),
+    (
+        "REGULATORY",
+        (
+            r"\bsecurities and exchange commission\b",
+            r"\bsec\s+(charges?|charged|lawsuit|sues?|sued|investigat(?:e|es|ed|ion|ing)|enforcement|filing|complaint|settlement)\b",
+            r"\bregulat(or|ory|ion)\b",
+            r"\blicen[cs]e\b",
+        ),
+    ),
     ("MAINNET_UPGRADE", (r"\bmainnet\b", r"\bnetwork upgrade\b", r"\bhard fork\b")),
 )
 

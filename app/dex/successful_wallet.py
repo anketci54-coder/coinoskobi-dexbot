@@ -49,8 +49,21 @@ class SuccessfulWalletTracker:
         win_rate = wins / sample if sample else 0.0
         avg_return = sum(values) / sample if sample else None
 
-        # Reputation requires repetition; one moonshot cannot qualify a wallet.
-        if len(realized) >= 20 and win_rate >= 0.60 and (avg_return or 0) > 0:
+        realized_wins = sum(v > 0 for v in realized)
+        realized_losses = sum(v < 0 for v in realized)
+        realized_sample = len(realized)
+        realized_win_rate = realized_wins / realized_sample if realized_sample else 0.0
+        realized_avg_return = (
+            sum(realized) / realized_sample if realized_sample else None
+        )
+
+        # Reputation requires repeated closed outcomes. Unrealized marks remain
+        # useful observations but cannot qualify a wallet as SUCCESSFUL.
+        if (
+            realized_sample >= 20
+            and realized_win_rate >= 0.60
+            and (realized_avg_return or 0) > 0
+        ):
             state = "SUCCESSFUL"
         elif sample >= 5:
             state = "OBSERVED"
@@ -61,11 +74,15 @@ class SuccessfulWalletTracker:
             state,
             wallet_id=wallet_id,
             sample_size=sample,
-            realized_sample_size=len(realized),
+            realized_sample_size=realized_sample,
             wins=wins,
             losses=losses,
             win_rate=win_rate,
             average_return_pct=avg_return,
+            realized_wins=realized_wins,
+            realized_losses=realized_losses,
+            realized_win_rate=realized_win_rate,
+            realized_average_return_pct=realized_avg_return,
             bounded=True,
         )
 

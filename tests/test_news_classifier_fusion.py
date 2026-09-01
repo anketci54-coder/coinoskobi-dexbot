@@ -19,6 +19,41 @@ def test_classifies_airdrop_ido_ico_tge():
     assert classify_news_event("TGE scheduled for Friday")["event_type"] == "TGE"
 
 
+def test_valid_explicit_event_type_wins():
+    out = classify_news_event(
+        "This text would otherwise look like an exploit",
+        explicit_event_type="listing",
+    )
+    assert out["state"] == "CLASSIFIED"
+    assert out["event_type"] == "LISTING"
+    assert out["classification_confidence"] == 1.0
+    assert out["classification_source"] == "EXPLICIT"
+
+
+def test_invalid_explicit_event_type_is_rejected_not_rule_fallback():
+    out = classify_news_event(
+        "Official airdrop claim window opens tomorrow",
+        explicit_event_type="SUPER_BULLISH",
+    )
+    assert out["state"] == "UNKNOWN"
+    assert out["event_type"] is None
+    assert out["classification_confidence"] == 0.0
+    assert out["classification_source"] == "INVALID_EXPLICIT"
+    assert out["trade_signal"] is False
+    assert out["decision_authority"] is False
+    assert out["execution_authority"] is False
+
+
+def test_blank_explicit_event_type_uses_rule_classifier():
+    out = classify_news_event(
+        "Official airdrop claim window opens tomorrow",
+        explicit_event_type="   ",
+    )
+    assert out["state"] == "CLASSIFIED"
+    assert out["event_type"] == "AIRDROP"
+    assert out["classification_source"] == "RULE"
+
+
 def test_negative_security_event_has_no_authority():
     out = classify_news_event("Protocol exploit detected and funds drained")
     assert out["event_type"] == "EXPLOIT"

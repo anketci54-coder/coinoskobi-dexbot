@@ -1,3 +1,4 @@
+from datetime import datetime
 import time
 
 import requests
@@ -36,7 +37,7 @@ class TelegramCollector:
                 "FETCH_ERROR",
                 "TELEGRAM",
                 [],
-                error=f"{type(exc).__name__}: {exc}",
+                error=_safe_error(exc, secret=self.bot_token),
             )
 
         if payload.get("ok") is not True:
@@ -53,16 +54,20 @@ class TelegramCollector:
             msg = update.get("channel_post") or update.get("message") or {}
             chat = dict(msg.get("chat") or {})
             text = msg.get("text") or msg.get("caption")
-            if not text:
+            published_at = _unix_timestamp(msg.get("date"))
+            if not text or published_at is None:
                 continue
 
+            forwarded_from = _telegram_forward_origin(msg)
             messages.append(
                 {
                     "source_id": str(chat.get("id") or "telegram"),
                     "channel_name": chat.get("title") or chat.get("username"),
                     "message_id": msg.get("message_id"),
                     "text": text,
-                    "published_at": float(msg.get("date") or time.time()),
+                    "published_at": published_at,
+                    "forwarded_from": forwarded_from,
+                    "origin_key": forwarded_from,
                     "source_trust": 0.5,
                     "official": False,
                     "verified": False,
@@ -106,15 +111,25 @@ class DiscordCollector:
                 "FETCH_ERROR",
                 "DISCORD",
                 [],
-                error=f"{type(exc).__name__}: {exc}",
+                error=_safe_error(exc, secret=self.bot_token),
             )
 
         messages = []
         for row in list(payload or [])[:100]:
             text = str(row.get("content") or "").strip()
-            if not text:
+            published_at = _iso_timestamp(row.get("timestamp"))
+            if not text or published_at is None:
                 continue
+
             author = dict(row.get("author") or {})
+            reference = dict(row.get("message_reference") or {})
+            origin_key = _join_origin(
+                "discord",
+                reference.get("guild_id"),
+                reference.get("channel_id"),
+                reference.get("message_id"),
+            )
+
             messages.append(
                 {
                     "source_id": channel_id,
@@ -122,10 +137,13 @@ class DiscordCollector:
                     "message_id": row.get("id"),
                     "author_id": author.get("id"),
                     "text": text,
-                    "published_at": _iso_timestamp(row.get("timestamp")),
+                    "published_at": published_at,
+                    "origin_key": origin_key,
                     "source_trust": 0.5,
                     "official": False,
-                    "verified": bool(author.get("verified", False)),
+                    # Discord user payload does not provide a trustworthy
+                    # project/source verification bit for this purpose.
+                    "verified": False,
                 }
             )
 
@@ -146,7 +164,7 @@ class XCollector:
         params = {
             "query": query,
             "max_results": max(10, min(int(max_results), 100)),
-            "tweet.fields": "created_at,public_metrics,author_id",
+            "tweet.fields": "created_at,public_metrics,author_id,referenced_tweets",
         }
         if next_token:
             params["next_token"] = str(next_token)
@@ -165,22 +183,26 @@ class XCollector:
                 "FETCH_ERROR",
                 "X",
                 [],
-                error=f"{type(exc).__name__}: {exc}",
+                error=_safe_error(exc, secret=self.bearer_token),
             )
 
         messages = []
         for row in list(payload.get("data") or [])[:100]:
             metrics = dict(row.get("public_metrics") or {})
             text = str(row.get("text") or "").strip()
-            if not text:
+            published_at = _iso_timestamp(row.get("created_at"))
+            if not text or published_at is None:
                 continue
+
+            origin_key = _x_origin_key(row)
             messages.append(
                 {
                     "source_id": str(row.get("author_id") or "x"),
                     "account_id": row.get("author_id"),
                     "post_id": row.get("id"),
                     "text": text,
-                    "published_at": _iso_timestamp(row.get("created_at")),
+                    "published_at": published_at,
+                    "origin_key": origin_key,
                     "reply_count": metrics.get("reply_count"),
                     "repost_count": metrics.get("retweet_count"),
                     "like_count": metrics.get("like_count"),
@@ -199,14 +221,61 @@ class XCollector:
         )
 
 
+def _telegram_forward_origin(msg):
+    origin = dict(msg.get("forward_origin") or {})
+    if not origin:
+        return None
+
+    chat = dict(origin.get("chat") or {})
+    sender_user = dict(origin.get("sender_user") or {})
+    sender_chat = dict(origin.get("sender_chat") or {})
+    return _join_origin(
+        "telegram",
+        origin.get("type"),
+        chat.get("id") or sender_chat.get("id") or sender_user.get("id"),
+        origin.get("message_id"),
+    )
+
+
+def _x_origin_key(row):
+    for ref in list(row.get("referenced_tweets") or []):
+        ref_type = str(ref.get("type") or "").strip().lower()
+        ref_id = str(ref.get("id") or "").strip()
+        if ref_type in {"retweeted", "quoted"} and ref_id:
+            return f"x:{ref_type}:{ref_id}"
+    return None
+
+
+def _join_origin(*parts):
+    values = [str(value).strip().lower() for value in parts if value not in (None, "")]
+    return ":".join(values) if len(values) > 1 else None
+
+
+def _unix_timestamp(value):
+    try:
+        value = float(value)
+    except (TypeError, ValueError):
+        return None
+    return value if value > 0 else None
+
+
 def _iso_timestamp(value):
     if not value:
-        return time.time()
+        return None
     try:
-        from datetime import datetime
-        return datetime.fromisoformat(str(value).replace("Z", "+00:00")).timestamp()
-    except (TypeError, ValueError):
-        return time.time()
+        return datetime.fromisoformat(
+            str(value).replace("Z", "+00:00")
+        ).timestamp()
+    except (TypeError, ValueError, OverflowError):
+        return None
+
+
+def _safe_error(exc, *, secret):
+    text = f"{type(exc).__name__}: {exc}"
+    secret = str(secret or "")
+    if secret:
+        text = text.replace(secret, "[REDACTED]")
+    return text[:500]
 
 
 def _result(state, source_type, messages, *, cursor=None, error=None):

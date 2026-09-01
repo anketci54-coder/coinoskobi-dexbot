@@ -54,6 +54,26 @@ def test_blank_explicit_event_type_uses_rule_classifier():
     assert out["classification_source"] == "RULE"
 
 
+def test_regulatory_sec_requires_regulatory_context():
+    for text in (
+        "SEC charges exchange over unregistered securities",
+        "SEC lawsuit targets crypto issuer",
+        "Securities and Exchange Commission opens a case",
+    ):
+        assert classify_news_event(text)["event_type"] == "REGULATORY"
+
+
+def test_bare_sec_does_not_create_regulatory_event():
+    for text in (
+        "wait a sec before launch",
+        "block time is one sec",
+        "sec performance metric improved",
+    ):
+        out = classify_news_event(text)
+        assert out["state"] == "UNKNOWN"
+        assert out["event_type"] is None
+
+
 def test_negative_security_event_has_no_authority():
     out = classify_news_event("Protocol exploit detected and funds drained")
     assert out["event_type"] == "EXPLOIT"

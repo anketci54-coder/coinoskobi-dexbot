@@ -148,6 +148,8 @@ def normalize_source_event(source_type, payload):
 def _confidence(*, sources, freshness, event_type):
     scores = []
     origins = set()
+    unproven_social = False
+
     for row in sources:
         trust = _clamp01(row.get("source_trust")) or 0.0
         score = trust
@@ -162,11 +164,15 @@ def _confidence(*, sources, freshness, event_type):
         if source_type in SOCIAL_SOURCE_TYPES:
             if origin_key:
                 origins.add(("SOCIAL_ORIGIN", origin_key))
+            else:
+                # Multiple repost-capable social sources without provenance
+                # form one conservative evidence origin, never corroboration.
+                unproven_social = True
         else:
             origins.add((source_type, row.get("source_id")))
 
+    independent_origins = len(origins) + (1 if unproven_social else 0)
     confidence = max(scores, default=0.0)
-    independent_origins = len(origins)
     confidence = min(
         1.0,
         confidence + min(0.20, max(0, independent_origins - 1) * 0.05),

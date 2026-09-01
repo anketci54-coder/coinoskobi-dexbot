@@ -65,6 +65,7 @@ def _normalize_social(source_type, message):
         "source_trust": message.get("source_trust", 0.0),
         "verified": bool(message.get("verified", False)),
         "official": bool(message.get("official", False)),
+        "origin_key": message.get("origin_key"),
         "metadata": _metadata(source_type, message),
     }
 
@@ -75,9 +76,24 @@ def _metadata(source_type, message):
     metadata = dict(message.get("metadata") or {})
 
     aliases = {
-        "TELEGRAM": ("message_id", "channel_name", "forwarded_from"),
-        "DISCORD": ("message_id", "guild_id", "channel_name", "author_id"),
-        "X": ("post_id", "account_handle", "reply_count", "repost_count", "like_count"),
+        "TELEGRAM": (
+            "message_id",
+            "channel_name",
+            "forwarded_from",
+        ),
+        "DISCORD": (
+            "message_id",
+            "guild_id",
+            "channel_name",
+            "author_id",
+        ),
+        "X": (
+            "post_id",
+            "account_handle",
+            "reply_count",
+            "repost_count",
+            "like_count",
+        ),
         "WEB": ("url", "domain", "author"),
         "RSS": ("url", "feed_id", "guid"),
     }

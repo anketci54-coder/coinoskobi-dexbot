@@ -21,9 +21,38 @@ def test_repeated_realized_success_can_qualify():
         )
     assert result["state"] == "SUCCESSFUL"
     assert result["realized_sample_size"] == 20
+    assert result["realized_win_rate"] == 0.65
     assert result["win_rate"] == 0.65
     assert result["decision_authority"] is False
     assert result["wallet_authority"] is False
+
+
+def test_unrealized_marks_cannot_inflate_successful_qualification():
+    tracker = SuccessfulWalletTracker(max_outcomes_per_wallet=64)
+    wallet = "bsc:0xabc"
+
+    for i in range(20):
+        tracker.observe_outcome(
+            wallet,
+            f"bsc:0xrealized{i}",
+            2.0 if i < 10 else -2.0,
+            realized=True,
+        )
+
+    result = None
+    for i in range(20):
+        result = tracker.observe_outcome(
+            wallet,
+            f"bsc:0xmark{i}",
+            100.0,
+            realized=False,
+        )
+
+    assert result["win_rate"] == 0.75
+    assert result["realized_win_rate"] == 0.50
+    assert result["state"] == "OBSERVED"
+    assert result["trade_signal"] is False
+    assert result["execution_authority"] is False
 
 
 def test_tracker_is_bounded():

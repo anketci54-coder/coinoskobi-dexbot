@@ -1607,7 +1607,7 @@ def api_watch_probes() -> dict[str, Any]:
         FROM watch_probe_trades
         WHERE token != '0xtoken'
         ORDER BY id DESC
-        LIMIT 250
+        LIMIT 1000
         """
     )
 

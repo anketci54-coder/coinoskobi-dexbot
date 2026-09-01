@@ -1,5 +1,5 @@
 from email.utils import parsedate_to_datetime
-import time
+import ipaddress
 from urllib.parse import urlparse
 import xml.etree.ElementTree as ET
 
@@ -9,8 +9,8 @@ import requests
 class NewsWebRSSCollector:
     """Bounded Web/RSS fetcher for the news observation plane.
 
-    Fetches only caller-configured HTTP(S) URLs, uses short timeouts, caps
-    response size and item count, and returns normalized raw messages for
+    Fetches only caller-configured public HTTP(S) URLs, uses short timeouts,
+    caps response size and item count, and returns normalized raw messages for
     NewsCollectorRuntime. No trade or execution authority exists here.
     """
 
@@ -56,13 +56,11 @@ class NewsWebRSSCollector:
                 title = _text(node.find("title"))
                 description = _text(node.find("description"))
                 link = _text(node.find("link"))
-                published = _timestamp(
-                    _text(node.find("pubDate"))
-                )
+                published = _timestamp(_text(node.find("pubDate")))
                 text = " ".join(
                     part for part in (title, description) if part
                 )
-                if not text:
+                if not text or published is None:
                     continue
                 items.append(
                     self._message(
@@ -94,7 +92,7 @@ class NewsWebRSSCollector:
                 text = " ".join(
                     part for part in (title, summary) if part
                 )
-                if not text:
+                if not text or published is None:
                     continue
                 items.append(
                     self._message(
@@ -121,6 +119,10 @@ class NewsWebRSSCollector:
         verified=False,
         published_at=None,
     ):
+        published = _timestamp(published_at)
+        if published is None:
+            return _result("MISSING_PUBLISHED_AT")
+
         response = self._get(url)
         if response["state"] != "READY":
             return response
@@ -136,14 +138,13 @@ class NewsWebRSSCollector:
             official=official,
             verified=verified,
             text=text,
-            published_at=published_at,
+            published_at=published,
             metadata={"url": url},
         )
         return _result("READY", messages=[message])
 
     def _get(self, url):
-        parsed = urlparse(str(url or ""))
-        if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        if not _safe_public_url(url):
             return _result("INVALID_URL")
 
         try:
@@ -159,7 +160,7 @@ class NewsWebRSSCollector:
         except requests.RequestException as exc:
             return _result(
                 "FETCH_ERROR",
-                error=f"{type(exc).__name__}: {exc}",
+                error=f"{type(exc).__name__}: {exc}"[:500],
             )
 
         content = response.content
@@ -186,16 +187,38 @@ class NewsWebRSSCollector:
         return {
             "source_id": source_id or host,
             "text": text,
-            "published_at": (
-                float(published_at)
-                if published_at is not None
-                else time.time()
-            ),
+            "published_at": float(published_at),
             "source_trust": source_trust,
             "official": bool(official),
             "verified": bool(verified),
             "metadata": dict(metadata or {}),
         }
+
+
+def _safe_public_url(value):
+    parsed = urlparse(str(value or ""))
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        return False
+    if parsed.username or parsed.password:
+        return False
+
+    host = str(parsed.hostname or "").strip().lower().rstrip(".")
+    if not host or host == "localhost" or host.endswith(".localhost"):
+        return False
+
+    try:
+        address = ipaddress.ip_address(host)
+    except ValueError:
+        return True
+
+    return not (
+        address.is_private
+        or address.is_loopback
+        or address.is_link_local
+        or address.is_multicast
+        or address.is_reserved
+        or address.is_unspecified
+    )
 
 
 def _text(node):
@@ -206,16 +229,17 @@ def _text(node):
 
 
 def _timestamp(value):
-    if not value:
-        return time.time()
+    if value in (None, ""):
+        return None
     try:
-        return parsedate_to_datetime(value).timestamp()
+        return parsedate_to_datetime(str(value)).timestamp()
     except (TypeError, ValueError, OverflowError):
         pass
     try:
-        return float(value)
+        value = float(value)
     except (TypeError, ValueError):
-        return time.time()
+        return None
+    return value if value > 0 else None
 
 
 def _result(state, *, messages=None, text=None, error=None):

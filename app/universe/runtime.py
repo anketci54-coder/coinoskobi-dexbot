@@ -324,7 +324,7 @@ class UniverseShadowService:
             }
 
 
-def bind_shadow_runtime(runner, runtime, *, interval=1):
+def bind_shadow_runtime(runner, runtime, *, interval=5):
     service = UniverseShadowService(runtime, interval=interval)
     runner.services.append(service)
     return {

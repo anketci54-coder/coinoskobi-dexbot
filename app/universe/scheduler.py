@@ -167,7 +167,24 @@ class UniverseObservationScheduler:
                 "missing": 0, "provider_call": False,
             }
 
-        snapshots = self.snapshot_client.fetch(due)
+        try:
+            snapshots = self.snapshot_client.fetch(due)
+        except Exception as exc:
+            retry_at = self._iso(
+                now + timedelta(seconds=self.missing_retry_seconds)
+            )
+            self.registry.schedule_observations(
+                [(row, retry_at) for row in due]
+            )
+            return {
+                "state": "DEGRADED",
+                "requested": len(due),
+                "observed": 0,
+                "missing": len(due),
+                "provider_call": True,
+                "error_class": type(exc).__name__,
+            }
+
         due_by_pool = {row["pool"]: row for row in due}
         returned = {row["pool"] for row in snapshots}
         next_times = {}

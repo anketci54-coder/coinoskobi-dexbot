@@ -2071,6 +2071,7 @@ class PipelineEngine:
                         )
                     )
 
+                    # CANONICAL_PAPER_EXECUTION_INVENTORY_V1
                     # Canonical inventory comes from the same sizing
                     # calculation that binds entry risk and exits.
                     token_amount = float(

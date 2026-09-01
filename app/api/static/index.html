@@ -197,8 +197,13 @@ function refreshWhenVisible(){
     }
 }
 
-window.addEventListener('pageshow',()=>{
+window.addEventListener('pageshow',event=>{
     state.accountingRows=null;
+    if(event.persisted){
+        state.dashboard=null;
+        clearLiveSnapshot();refresh();
+        return;
+    }
     refreshWhenVisible();
 });
 

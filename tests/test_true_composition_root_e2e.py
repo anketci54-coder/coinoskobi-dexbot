@@ -363,6 +363,20 @@ def test_true_composition_root_e2e(
         )
     )
 
+    # This deterministic E2E owns its WSS fixture.
+    # Do not inherit HOT/bootstrap targets from a durable
+    # host UniverseRegistry database.
+    monkeypatch.setattr(
+        pipeline.hot_deep_path,
+        "native_wss_targets",
+        lambda *, limit: [],
+    )
+    monkeypatch.setattr(
+        pipeline.universe_registry,
+        "count",
+        lambda: 0,
+    )
+
     pipeline.cache = CacheRows()
     pipeline.ingress_gate = PassIngress()
     pipeline.conveyor = PassConveyor()

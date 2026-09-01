@@ -26,11 +26,14 @@ def test_related_wallet_is_evidence_only():
         "bsc:0xbbb",
         direct_funding=True,
         repeated_transfers=4,
-        shared_funder=True,
+        common_funder=True,
         coordinated_entries=3,
         coordinated_exits=2,
     )
-    assert result["state"] in {"STRONG_LINK", "POSSIBLE_LINK"}
+    assert result["state"] in {
+        "STRONG_RELATIONSHIP",
+        "POSSIBLE_RELATIONSHIP",
+    }
     assert result["auto_merge"] is False
     assert result["ownership_claim"] is False
     assert result["decision_authority"] is False

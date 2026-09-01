@@ -5,43 +5,21 @@ import time
 
 
 EVENT_TYPES = {
-    "AIRDROP",
-    "IDO",
-    "ICO",
-    "TGE",
-    "LISTING",
-    "DELISTING",
-    "PARTNERSHIP",
-    "EXPLOIT",
-    "HACK",
-    "TOKEN_UNLOCK",
-    "REGULATORY",
-    "MAINNET_UPGRADE",
-    "SOCIAL_ACCELERATION",
-    "RUMOR",
+    "AIRDROP", "IDO", "ICO", "TGE", "LISTING", "DELISTING",
+    "PARTNERSHIP", "EXPLOIT", "HACK", "TOKEN_UNLOCK", "REGULATORY",
+    "MAINNET_UPGRADE", "SOCIAL_ACCELERATION", "RUMOR",
 }
 
 SOURCE_TYPES = {
-    "WEB",
-    "RSS",
-    "TELEGRAM",
-    "DISCORD",
-    "X",
-    "OFFICIAL_PROJECT",
-    "OFFICIAL_EXCHANGE",
-    "OFFICIAL_LAUNCHPAD",
-    "SECURITY_RESEARCH",
+    "WEB", "RSS", "TELEGRAM", "DISCORD", "X", "OFFICIAL_PROJECT",
+    "OFFICIAL_EXCHANGE", "OFFICIAL_LAUNCHPAD", "SECURITY_RESEARCH",
 }
+
+SOCIAL_SOURCE_TYPES = {"TELEGRAM", "DISCORD", "X"}
 
 
 class NewsEvidenceStore:
-    """Bounded, evidence-only market/news memory for Phase 5/7.
-
-    Collectors normalize external messages into this contract. This component
-    deduplicates, scores source provenance/freshness, and emits intelligence
-    evidence only. It never creates a trade, wallet, signing, or execution
-    authority.
-    """
+    """Bounded evidence-only market/news memory for existing Phase 5/7."""
 
     def __init__(self, max_events=2048, fresh_seconds=3600):
         self.max_events = max(1, int(max_events))
@@ -49,21 +27,10 @@ class NewsEvidenceStore:
         self._events = OrderedDict()
 
     def observe(
-        self,
-        *,
-        source_type,
-        source_id,
-        event_type,
-        text,
-        published_at,
-        observed_at=None,
-        token_id=None,
-        chain=None,
-        entity=None,
-        source_trust=0.0,
-        verified=False,
-        official=False,
-        metadata=None,
+        self, *, source_type, source_id, event_type, text, published_at,
+        observed_at=None, token_id=None, chain=None, entity=None,
+        source_trust=0.0, verified=False, official=False, metadata=None,
+        origin_key=None,
     ):
         source_type = str(source_type or "").strip().upper()
         event_type = str(event_type or "").strip().upper()
@@ -73,6 +40,7 @@ class NewsEvidenceStore:
         observed = _finite(observed_at)
         observed = time.time() if observed is None else observed
         trust = _clamp01(source_trust)
+        origin_key = _id(origin_key)
 
         if (
             source_type not in SOURCE_TYPES
@@ -91,48 +59,30 @@ class NewsEvidenceStore:
             entity=entity,
             text=text,
         )
-
         age_seconds = max(0.0, observed - published)
-        freshness = (
-            "FRESH" if age_seconds <= self.fresh_seconds else "STALE"
-        )
-
-        confidence = trust
-        if official:
-            confidence = min(1.0, confidence + 0.20)
-        if verified:
-            confidence = min(1.0, confidence + 0.20)
-        if freshness != "FRESH":
-            confidence *= 0.50
-        if event_type == "RUMOR":
-            confidence = min(confidence, 0.35)
+        freshness = "FRESH" if age_seconds <= self.fresh_seconds else "STALE"
 
         existing = self._events.get(fingerprint)
-        sources = []
-        if existing:
-            sources = list(existing.get("sources") or [])
-
+        sources = list(existing.get("sources") or []) if existing else []
         source_key = (source_type, source_id)
         known = {
-            (row.get("source_type"), row.get("source_id"))
-            for row in sources
+            (row.get("source_type"), row.get("source_id")) for row in sources
         }
         if source_key not in known:
-            sources.append(
-                {
-                    "source_type": source_type,
-                    "source_id": source_id,
-                    "source_trust": trust,
-                    "official": bool(official),
-                    "verified": bool(verified),
-                }
-            )
+            sources.append({
+                "source_type": source_type,
+                "source_id": source_id,
+                "source_trust": trust,
+                "official": bool(official),
+                "verified": bool(verified),
+                "origin_key": origin_key,
+            })
 
-        # Independent corroboration can raise confidence, but duplicated posts
-        # from one source never count as independent evidence.
-        independent_sources = len(sources)
-        corroboration_bonus = min(0.20, max(0, independent_sources - 1) * 0.05)
-        confidence = min(1.0, confidence + corroboration_bonus)
+        confidence, independent_origins = _confidence(
+            sources=sources,
+            freshness=freshness,
+            event_type=event_type,
+        )
 
         row = {
             "fingerprint": fingerprint,
@@ -148,23 +98,14 @@ class NewsEvidenceStore:
             "freshness": freshness,
             "confidence": confidence,
             "sources": sources,
-            "independent_source_count": independent_sources,
+            "independent_source_count": independent_origins,
             "metadata": dict(metadata or {}),
-            "trade_signal": False,
-            "decision_authority": False,
-            "paper_authority": False,
-            "live_authority": False,
-            "wallet_authority": False,
-            "signing_authority": False,
-            "execution_authority": False,
+            **_authority_false(),
         }
-
         self._events[fingerprint] = row
         self._events.move_to_end(fingerprint)
-
         while len(self._events) > self.max_events:
             self._events.popitem(last=False)
-
         return dict(row)
 
     def snapshot(self, *, token_id=None, limit=100):
@@ -172,7 +113,8 @@ class NewsEvidenceStore:
         rows = list(reversed(self._events.values()))
         if token_id:
             rows = [row for row in rows if row.get("token_id") == token_id]
-        return [dict(row) for row in rows[: max(1, int(limit))]]
+        limit = max(0, int(limit))
+        return [dict(row) for row in rows[:limit]]
 
     def status(self):
         return {
@@ -180,14 +122,11 @@ class NewsEvidenceStore:
             "count": len(self._events),
             "bounded": True,
             "max_events": self.max_events,
-            "trade_signal": False,
-            "decision_authority": False,
-            "execution_authority": False,
+            **_authority_false(),
         }
 
 
 def normalize_source_event(source_type, payload):
-    """Normalize Telegram/Discord/X/web collector payloads without IO."""
     payload = dict(payload or {})
     return {
         "source_type": str(source_type or "").strip().upper(),
@@ -201,13 +140,47 @@ def normalize_source_event(source_type, payload):
         "source_trust": payload.get("source_trust", 0.0),
         "verified": bool(payload.get("verified", False)),
         "official": bool(payload.get("official", False)),
+        "origin_key": payload.get("origin_key"),
         "metadata": dict(payload.get("metadata") or {}),
     }
 
 
+def _confidence(*, sources, freshness, event_type):
+    scores = []
+    origins = set()
+    for row in sources:
+        trust = _clamp01(row.get("source_trust")) or 0.0
+        score = trust
+        if row.get("official"):
+            score = min(1.0, score + 0.20)
+        if row.get("verified"):
+            score = min(1.0, score + 0.20)
+        scores.append(score)
+
+        source_type = str(row.get("source_type") or "").upper()
+        origin_key = _id(row.get("origin_key"))
+        if source_type in SOCIAL_SOURCE_TYPES:
+            if origin_key:
+                origins.add(("SOCIAL_ORIGIN", origin_key))
+        else:
+            origins.add((source_type, row.get("source_id")))
+
+    confidence = max(scores, default=0.0)
+    independent_origins = len(origins)
+    confidence = min(
+        1.0,
+        confidence + min(0.20, max(0, independent_origins - 1) * 0.05),
+    )
+    if freshness != "FRESH":
+        confidence *= 0.50
+    if event_type == "RUMOR":
+        confidence = min(confidence, 0.35)
+    return confidence, independent_origins
+
+
 def _state(confidence, freshness, event_type):
     if freshness != "FRESH":
-        return "STALE"
+        return "UNKNOWN"
     if event_type == "RUMOR":
         return "RUMOR"
     if confidence >= 0.80:
@@ -218,15 +191,13 @@ def _state(confidence, freshness, event_type):
 
 
 def _fingerprint(*, event_type, token_id, chain, entity, text):
-    normalized = "|".join(
-        [
-            event_type,
-            _id(chain) or "",
-            _id(token_id) or "",
-            str(entity or "").strip().lower(),
-            text.strip().lower(),
-        ]
-    )
+    normalized = "|".join([
+        event_type,
+        _id(chain) or "",
+        _id(token_id) or "",
+        str(entity or "").strip().lower(),
+        text.strip().lower(),
+    ])
     return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
 
 
@@ -250,10 +221,8 @@ def _clamp01(value):
     return min(1.0, max(0.0, value))
 
 
-def _out(state, **payload):
+def _authority_false():
     return {
-        "state": state,
-        **payload,
         "trade_signal": False,
         "decision_authority": False,
         "paper_authority": False,
@@ -264,6 +233,8 @@ def _out(state, **payload):
     }
 
 
-# Single in-process observation store shared by collectors and market-context
-# readers. Bounded by construction; it carries no trade or execution authority.
+def _out(state, **payload):
+    return {"state": state, **payload, **_authority_false()}
+
+
 DEFAULT_NEWS_EVIDENCE_STORE = NewsEvidenceStore()

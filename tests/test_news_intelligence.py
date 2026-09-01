@@ -1,3 +1,5 @@
+import pytest
+
 from app.dex.news_intelligence import NewsEvidenceStore, normalize_source_event
 
 
@@ -39,7 +41,7 @@ def test_telegram_discord_x_are_supported_source_boundaries():
         assert normalized["event_type"] == "IDO"
 
 
-def test_duplicate_same_source_does_not_create_independent_confirmation():
+def test_duplicate_same_source_is_one_conservative_origin():
     store = NewsEvidenceStore()
     kwargs = dict(
         source_type="TELEGRAM",
@@ -60,7 +62,7 @@ def test_duplicate_same_source_does_not_create_independent_confirmation():
     assert len(store.snapshot()) == 1
 
 
-def test_independent_sources_corroborate_same_normalized_event():
+def test_social_sources_without_provenance_do_not_fake_corroboration():
     store = NewsEvidenceStore()
     common = dict(
         event_type="TGE",
@@ -75,8 +77,56 @@ def test_independent_sources_corroborate_same_normalized_event():
     store.observe(source_type="X", source_id="account-a", **common)
     row = store.observe(source_type="DISCORD", source_id="server-b", **common)
 
-    assert row["independent_source_count"] == 2
+    assert row["independent_source_count"] == 1
     assert len(row["sources"]) == 2
+    assert row["confidence"] == pytest.approx(0.55)
+
+
+def test_distinct_social_origin_keys_can_corroborate():
+    store = NewsEvidenceStore()
+    common = dict(
+        event_type="TGE",
+        text="Token generation event at 12 UTC",
+        published_at=1000,
+        observed_at=1010,
+        token_id="bsc:0xabc",
+        chain="bsc",
+        source_trust=0.55,
+    )
+
+    store.observe(
+        source_type="X", source_id="account-a", origin_key="origin-a", **common
+    )
+    row = store.observe(
+        source_type="DISCORD", source_id="server-b", origin_key="origin-b", **common
+    )
+
+    assert row["independent_source_count"] == 2
+    assert row["confidence"] == pytest.approx(0.60)
+
+
+def test_low_trust_second_source_does_not_reduce_existing_confidence():
+    store = NewsEvidenceStore()
+    common = dict(
+        event_type="LISTING",
+        text="Spot listing opens tomorrow",
+        published_at=1000,
+        observed_at=1010,
+    )
+    first = store.observe(
+        source_type="OFFICIAL_EXCHANGE",
+        source_id="exchange",
+        source_trust=0.70,
+        official=True,
+        **common,
+    )
+    second = store.observe(
+        source_type="WEB",
+        source_id="low-trust-copy",
+        source_trust=0.10,
+        **common,
+    )
+    assert second["confidence"] >= first["confidence"]
 
 
 def test_rumor_is_capped_and_never_promoted_to_confirmed():
@@ -97,7 +147,7 @@ def test_rumor_is_capped_and_never_promoted_to_confirmed():
     assert row["confidence"] <= 0.35
 
 
-def test_stale_news_degrades_to_stale_evidence():
+def test_stale_news_is_unknown_evidence():
     store = NewsEvidenceStore(fresh_seconds=60)
     row = store.observe(
         source_type="RSS",
@@ -110,9 +160,30 @@ def test_stale_news_degrades_to_stale_evidence():
         verified=True,
     )
 
-    assert row["state"] == "STALE"
+    assert row["state"] == "UNKNOWN"
     assert row["freshness"] == "STALE"
     assert row["trade_signal"] is False
+
+
+def test_snapshot_zero_returns_empty_and_status_has_no_authority():
+    store = NewsEvidenceStore()
+    store.observe(
+        source_type="WEB",
+        source_id="source",
+        event_type="LISTING",
+        text="Listing event",
+        published_at=1000,
+        observed_at=1001,
+        source_trust=0.5,
+    )
+    assert store.snapshot(limit=0) == []
+    status = store.status()
+    for key in (
+        "trade_signal", "decision_authority", "paper_authority",
+        "live_authority", "wallet_authority", "signing_authority",
+        "execution_authority",
+    ):
+        assert status[key] is False
 
 
 def test_store_is_bounded():

@@ -133,6 +133,19 @@ def test_native_wss_targets_observe_all_v2_and_are_bounded(monkeypatch):
 
     monkeypatch.setattr(engine.cache, "all", lambda: rows)
 
+    # This test owns the Gecko-cache fallback contract.
+    # Durable host UniverseRegistry contents must not affect it.
+    monkeypatch.setattr(
+        engine.hot_deep_path,
+        "native_wss_targets",
+        lambda *, limit: [],
+    )
+    monkeypatch.setattr(
+        engine.universe_registry,
+        "count",
+        lambda: 0,
+    )
+
     targets = engine.native_wss_targets(max_pairs=3)
 
     assert len(targets) == 3

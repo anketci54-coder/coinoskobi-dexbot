@@ -3504,8 +3504,11 @@ class PipelineEngine:
                 "execution_authority": False,
             }
 
+        # One bounded GeckoTerminal multi-pool request per scanner
+        # refresh. Remaining counterfactual rows stay pending for the
+        # next normal refresh instead of competing for provider quota.
         pending = pending_reader(
-            max_entries=120,
+            max_entries=30,
         )
 
         if not pending:

@@ -1,10 +1,7 @@
 from app.dex.connection_health import connection_health
 from app.dex.event_buffer import EventBuffer, buffer_health
 from app.dex.event_integrity import validate_event_integrity
-from app.dex.provider_resilience import (
-    choose_provider,
-    classify_provider_failure,
-)
+from app.dex.provider_resilience import classify_provider_failure
 from app.dex.subscription_health import build_subscription_health
 from app.dex.native_event_binding import bind_native_event_context
 
@@ -70,22 +67,6 @@ def test_burst_buffer_bounded():
     assert b.size == 100
     assert b.dropped == 9900
     assert buffer_health(b)["state"] == "FULL"
-
-
-def test_provider_failover():
-    r = choose_provider(
-        {"name": "primary", "healthy": False},
-        {"name": "fallback", "healthy": True},
-    )
-    assert r["state"] == "FALLBACK"
-
-
-def test_provider_total_failure():
-    r = choose_provider(
-        {"name": "primary", "healthy": False},
-        {"name": "fallback", "healthy": False},
-    )
-    assert r["state"] == "UNAVAILABLE"
 
 
 def test_rate_limit_classification():

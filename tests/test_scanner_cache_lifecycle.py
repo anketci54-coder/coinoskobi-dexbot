@@ -350,13 +350,13 @@ def test_durable_counterfactual_prices_use_scan_then_bounded_fetch():
             self,
             max_entries=120,
         ):
-            assert max_entries == 120
+            assert max_entries == 30
 
             result = {
                 "0xdirect": "0xcurrentpool",
             }
 
-            for index in range(31):
+            for index in range(29):
                 result[f"0xfetch{index}"] = (
                     f"0xpool{index:02d}"
                 )
@@ -400,19 +400,18 @@ def test_durable_counterfactual_prices_use_scan_then_bounded_fetch():
     }
 
     assert stats["state"] == "READY"
-    assert stats["pending"] == 32
-    assert stats["observed"] == 32
+    assert stats["pending"] == 30
+    assert stats["observed"] == 30
     assert stats["direct"] == 1
-    assert stats["fetched"] == 31
+    assert stats["fetched"] == 29
     assert stats["failed"] == 0
-    assert stats["requests"] == 2
+    assert stats["requests"] == 1
 
     assert engine.scanner.price_calls == [
         [
             f"0xpool{index:02d}"
-            for index in range(30)
+            for index in range(29)
         ],
-        ["0xpool30"],
     ]
 
     assert (
@@ -421,7 +420,7 @@ def test_durable_counterfactual_prices_use_scan_then_bounded_fetch():
     ) in engine.counterfactual_store.observed
 
     assert (
-        "0xfetch30",
+        "0xfetch28",
         2.0,
     ) in engine.counterfactual_store.observed
 

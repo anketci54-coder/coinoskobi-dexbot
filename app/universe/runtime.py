@@ -17,7 +17,7 @@ def _safe_error(exc):
 
 
 def _new_bsc_web3():
-    """Create a worker-owned HTTP provider with bounded failover."""
+    """Create a worker-owned HTTP provider through the quota-aware broker."""
     from app.chains.bsc import build_bsc_web3
 
     return build_bsc_web3()

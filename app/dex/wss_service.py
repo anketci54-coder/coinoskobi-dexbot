@@ -1,7 +1,7 @@
 import asyncio
 import threading
 
-from app.dex.wss_failover import FailoverWSSRuntime
+from app.dex.provider_broker import ProviderBrokerWSSRuntime
 
 
 class NativeWSSService:
@@ -40,7 +40,7 @@ class NativeWSSService:
 
         self.runtime_factory = (
             runtime_factory
-            or FailoverWSSRuntime
+            or ProviderBrokerWSSRuntime
         )
 
         self.on_event = on_event

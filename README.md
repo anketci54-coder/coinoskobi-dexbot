@@ -11,7 +11,8 @@ Temel ilke:
 - Tek resmi mimari sınıflandırma: **PHASE 0–15**
 - Phase 0–15: **CLOSED**
 - Phase 15: **FINAL ROADMAP PHASE**
-- Yeni Phase 16 / ERA / V2 / V3 / OCR / R-number / post-roadmap zinciri açılmaz.
+- Yeni Phase 16 / ERA / architecture V2/V3 / OCR / R-number / post-roadmap zinciri açılmaz.
+- PancakeSwap V2/V3 adları yalnız gerçek DEX protokol sürümünü ifade eder.
 - Sonraki bakım ve düzeltmeler mevcut Phase 0–15 sahipliğine atanır.
 - Production odağı: **BNB Chain (BSC) + PancakeSwap**
 - Universe büyüklüğü dinamiktir; sabit token/pool sayısı mimari kural olamaz.
@@ -34,11 +35,9 @@ Canonical faz sahipliği ve mimari sınırlar için `ROADMAP.md`, güncel operas
 
 Yan/test/V2/V3 panel veya paralel runtime oluşturulmaz.
 
-## Data Flow
+## Canonical Data Flow
 
-Ana akış:
-
-1. Provider / DEX source
+1. Provider broker / DEX sources
 2. Discovery ve source adapters
 3. Normalization / ingress
 4. Bounded candidate admission
@@ -53,14 +52,37 @@ Ana akış:
 
 External data acquisition, observation, decision, paper, wallet, signing ve live execution authority ayrı sorumluluklardır.
 
-## Provider Roles
+## Provider Architecture
 
-Mevcut mimaride provider rolleri birbirinin yerine rastgele kullanılmaz:
+On-chain RPC/WSS erişiminin canonical giriş noktası **provider broker** katmanıdır.
 
-- On-chain RPC/WSS: zincir gerçekliği ve native event gözlemi
+Canonical dosya sınırları:
+
+- `app/chains/bsc.py` — BSC Web3 composition/root binding
+- `app/dex/provider_broker.py` — HTTP/WSS provider seçimi, bounded failover ve quota control
+- `app/dex/provider_resilience.py` — saf failure classification / cooldown policy
+- `app/dex/wss_service.py` — application-owned WSS lifecycle
+
+Broker kuralları:
+
+- en fazla dört explicit RPC/WSS provider slotu desteklenir
+- aynı URL duplicate provider olarak eklenmez
+- rate-limit/quota/403 ve transient transport hataları sınıflandırılır
+- quota/rate-limit alan provider circuit-breaker ile cooldown süresince devreden çıkarılır
+- tüm circuit'ler açıksa yeni gereksiz RPC üretmeden fail-fast edilir
+- ağır RPC metodları sağlıklı provider'lar arasında bounded dağıtılabilir
+- kısa ömürlü exact-request cache ve in-flight coalescing tekrar çağrıları azaltır
+- WSS fallback bounded ve primary-first çalışır
+- provider URL/secret değerleri status/log çıktısına verilmez
+- provider broker decision, paper, wallet, signing veya execution authority taşımaz
+
+Provider sayısını artırmak, sınırsız trafik izni değildir. Hot path pahalı RPC/history scan beklemez; ağır provider işi bounded slow-path/worker katmanında kalır.
+
+Diğer external provider rolleri:
+
 - GeckoTerminal: discovery ve bounded indexed market data
 - DexScreener: bounded universe market snapshot ve okunabilir base/quote metadata
-- GoPlus / Honeypot.is: sellability/security evidence katmanları
+- GoPlus / Honeypot.is: sellability/security evidence
 
 Provider hatası veya eksik veri `SAFE` anlamına gelmez. Eksik evidence `UNKNOWN` olarak korunur.
 
@@ -74,12 +96,12 @@ Provider hatası veya eksik veri `SAFE` anlamına gelmez. Eksik evidence `UNKNOW
 - **Phase 5:** DEX market intelligence ve bounded market snapshots
 - **Phase 6:** exit intelligence
 - **Phase 7:** flow confirmation, regime ve COLD/WARM/HOT seismic state
-- **Phase 8:** native WSS ingestion, reconnect/reorg/provider resilience
+- **Phase 8:** native WSS ingestion ve canonical provider resilience/broker
 - **Phase 9:** wallet/entity/smart-money intelligence
 - **Phase 10:** adversary/scam/MEV intelligence
 - **Phase 11:** learning/calibration/outcome memory; proposal-only
-- **Phase 12:** operational paper runtime, restart/recovery ve E2E composition
-- **Phase 13:** paper/counterfactual outcome calibration ve data-integrity
+- **Phase 12:** operational paper runtime, restart/recovery, provider operability ve E2E composition
+- **Phase 13:** paper/counterfactual outcome calibration, data-integrity ve bounded observation pressure
 - **Phase 14:** canonical Command Center, panel ve readable token/pool display
 - **Phase 15:** final operational validation ve yalnız explicit approval ile micro-live boundary
 
@@ -129,6 +151,8 @@ Learning/calibration katmanı:
 - threshold/config/source-code değişikliğini otomatik apply edemez
 - trade permission veya execution authority kazanamaz
 
+Counterfactual provider trafiği bounded kalır. Bir scanner refresh içinde pending counterfactual Gecko fetch'i 30 pool ile sınırlandırılır; kalanlar sonraki normal refresh'e bırakılır.
+
 ## Command Center
 
 Tek canonical panel **İŞLEM MERKEZİ**'dir.
@@ -159,12 +183,15 @@ Kalıcı değişiklik sırası:
 9. Fast-forward synchronization
 10. Runtime acceptance
 
+Provider/resilience değişikliklerinde canonical smoke kapısı `tests/test_provider_broker.py` kapsamını da içerir.
+
 Bir PASS tamamlanmadan sonraki riskli adıma geçilmez.
 
 ## Repository Rules
 
 - gereksiz duplicate modül yok
 - disposable script kalıcı mimari değildir
+- provider erişimi için paralel failover katmanları oluşturulmaz
 - hot path pahalı RPC/history scan/AI beklemez
 - ağır işler bounded worker/slow-path üzerinde çalışır
 - queue/cache/readmodel yapıları bounded kalır

@@ -1,16 +1,53 @@
+_PROVIDER_FAILURES = {
+    "TIMEOUT",
+    "RATE_LIMIT",
+    "QUOTA",
+    "FORBIDDEN",
+    "CONNECTION",
+    "SUBSCRIPTION",
+}
+
+
 def classify_provider_failure(error):
     text = str(error or "").lower()
 
     if not text:
         return "UNKNOWN"
 
-    if "timeout" in text:
-        return "TIMEOUT"
-
-    if "limit exceeded" in text or "-32005" in text:
+    if (
+        "429" in text
+        or "too many requests" in text
+        or "rate limit" in text
+        or "limit exceeded" in text
+        or "-32005" in text
+    ):
         return "RATE_LIMIT"
 
-    if "connection" in text or "disconnected" in text:
+    if any(
+        marker in text
+        for marker in (
+            "quota",
+            "credits exhausted",
+            "credit exhausted",
+            "compute units",
+            "capacity exceeded",
+            "request limit",
+            "plan limit",
+        )
+    ):
+        return "QUOTA"
+
+    if "403" in text or "forbidden" in text:
+        return "FORBIDDEN"
+
+    if "timeout" in text or "timed out" in text:
+        return "TIMEOUT"
+
+    if (
+        "connection" in text
+        or "disconnected" in text
+        or "connection reset" in text
+    ):
         return "CONNECTION"
 
     if "subscription" in text:
@@ -19,46 +56,45 @@ def classify_provider_failure(error):
     return "OTHER"
 
 
-def choose_provider(primary, fallback=None):
-    p = primary or {}
-    f = fallback or {}
+def _failure_name(error):
+    normalized = str(
+        error or ""
+    ).strip().upper()
 
-    if p.get("healthy"):
-        return _out("PRIMARY", p.get("name"))
+    if normalized in _PROVIDER_FAILURES:
+        return normalized
 
-    if f.get("healthy"):
-        return _out("FALLBACK", f.get("name"))
-
-    return _out("UNAVAILABLE", None)
-
-
-def failover_allowed(
-    attempts,
-    max_failovers=1,
-    fallback_available=True,
-):
-    attempts = max(0, int(attempts))
-    allowed = bool(
-        fallback_available
-        and attempts < max(1, int(max_failovers))
+    return classify_provider_failure(
+        error
     )
 
-    return {
-        "allowed": allowed,
-        "attempts": attempts,
-        "max_failovers": max(1, int(max_failovers)),
-        "bounded": True,
-        "decision_authority": False,
-        "execution_authority": False,
-    }
 
+def provider_cooldown_seconds(
+    error,
+    *,
+    quota_seconds=300.0,
+    transient_seconds=15.0,
+):
+    failure = _failure_name(error)
 
-def _out(state, provider):
-    return {
-        "state": state,
-        "provider": provider,
-        "paid_provider_required": False,
-        "secret_logging_allowed": False,
-        "decision_authority": False,
-        "execution_authority": False,
-    }
+    if failure in {
+        "RATE_LIMIT",
+        "QUOTA",
+        "FORBIDDEN",
+    }:
+        return max(
+            1.0,
+            float(quota_seconds),
+        )
+
+    if failure in {
+        "TIMEOUT",
+        "CONNECTION",
+        "SUBSCRIPTION",
+    }:
+        return max(
+            1.0,
+            float(transient_seconds),
+        )
+
+    return 0.0

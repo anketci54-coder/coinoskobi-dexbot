@@ -1,3 +1,5 @@
+from itertools import islice
+
 from app.dex.news_collector_runtime import NewsCollectorRuntime
 
 
@@ -20,7 +22,7 @@ class NewsObservationRuntime:
         sources = 0
         states = {}
 
-        for source_type, messages in list(batches or [])[: self.max_sources]:
+        for source_type, messages in islice(batches or (), self.max_sources):
             result = self.collector_runtime.ingest(source_type, messages)
             sources += 1
             accepted += int(result.get("accepted") or 0)
@@ -29,8 +31,15 @@ class NewsObservationRuntime:
             state = str(result.get("state") or "UNKNOWN")
             states[state] = states.get(state, 0) + 1
 
+        if accepted > 0 and classified > 0:
+            runtime_state = "READY"
+        elif sources > 0:
+            runtime_state = "DEGRADED"
+        else:
+            runtime_state = "UNKNOWN"
+
         return {
-            "state": "READY",
+            "state": runtime_state,
             "sources": sources,
             "accepted": accepted,
             "rejected": rejected,

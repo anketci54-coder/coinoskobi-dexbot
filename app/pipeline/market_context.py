@@ -5,6 +5,12 @@ import threading
 from app.dex.transaction_origin import (
     resolved_transaction_origin,
 )
+from app.dex.news_intelligence import (
+    DEFAULT_NEWS_EVIDENCE_STORE,
+)
+from app.pipeline.news_market_context import (
+    bind_news_market_context,
+)
 
 
 _CANDIDATE_SNAPSHOT_BRIDGE_LOCK = threading.Lock()
@@ -388,6 +394,7 @@ def _bind_origin_participation(
 def build_market_context(
     row,
     runtime_feed=None,
+    news_store=None,
 ):
     """
     Candidate execution evidence + operational intelligence.
@@ -429,8 +436,26 @@ def build_market_context(
         ),
     }
 
+    # Preserve the historical no-runtime contract exactly. Tests and callers
+    # that explicitly inject a news store can still request news evidence.
+    if news_store is not None:
+        context = bind_news_market_context(
+            context,
+            row,
+            news_store,
+        )
+
     if runtime_feed is None:
         return context
+
+    # Canonical runtime consumes the shared bounded store. This is a local
+    # readmodel lookup only; no Telegram/Discord/X/web IO occurs here.
+    if news_store is None:
+        context = bind_news_market_context(
+            context,
+            row,
+            DEFAULT_NEWS_EVIDENCE_STORE,
+        )
 
     snapshot = _live_candidate_snapshot(
         runtime_feed,

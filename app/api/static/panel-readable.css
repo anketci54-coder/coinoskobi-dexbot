@@ -1,0 +1,492 @@
+/*
+ Coinoskobi canonical panel readability layer.
+ Visual-only. No authority, runtime or data-path changes.
+*/
+
+:root{
+  --text:#ffffff;
+  --text-2:#e6f0f4;
+  --muted:#afc1ca;
+  --line:#1b4b61;
+  --line2:#28677f;
+}
+
+/* GENERAL */
+html,body{
+  font-size:15px;
+  letter-spacing:.005em;
+}
+
+.panel{
+  border-color:var(--line);
+}
+
+.label{
+  font-size:10px !important;
+  color:#d3e2e9 !important;
+  letter-spacing:.055em;
+}
+
+.sub{
+  font-size:10px !important;
+  color:#a9bdc7 !important;
+}
+
+.meta{
+  font-size:10px !important;
+}
+
+.title{
+  font-size:14px !important;
+  letter-spacing:.015em;
+}
+
+.small{
+  font-size:10px !important;
+  color:#d0dde3 !important;
+}
+
+.empty{
+  font-size:11px !important;
+  color:#a9bdc7 !important;
+  line-height:1.55;
+}
+
+/* BRAND + TOP SUMMARY */
+.brand-title{
+  font-size:19px !important;
+}
+
+.brand-sub{
+  font-size:10px !important;
+}
+
+.ticker-value,
+.metric-value{
+  font-size:18px !important;
+  line-height:1.15;
+}
+
+.statusline{
+  font-size:10px !important;
+}
+
+.ctrl{
+  font-size:10px !important;
+  min-height:27px;
+}
+
+/* RADAR */
+.tab{
+  font-size:10px !important;
+  height:28px;
+}
+
+.radar-grid{
+  font-size:9px !important;
+  color:#abc1cb !important;
+  min-height:38px;
+}
+
+.radar-row{
+  min-height:42px !important;
+}
+
+.token{
+  font-size:12px !important;
+  color:#fff;
+}
+
+.state{
+  font-size:9px !important;
+  min-height:24px;
+  width:58px;
+}
+
+.distribution{
+  font-size:9px !important;
+  color:#abc0ca !important;
+}
+
+.dist-chip{
+  font-size:9px;
+}
+
+/* TABLES */
+.table{
+  font-size:10px !important;
+}
+
+.table th{
+  font-size:9px !important;
+  color:#afc2cb !important;
+  padding:8px 6px !important;
+}
+
+.table td{
+  font-size:10px !important;
+  padding:9px 6px !important;
+  color:#e7f0f4;
+}
+
+.account-table{
+  font-size:10px !important;
+}
+
+.account-table th{
+  font-size:9px !important;
+  color:#afc2cb !important;
+}
+
+.account-table td{
+  font-size:10px !important;
+}
+
+/* FLOW / INFORMATION */
+.flow-row{
+  font-size:10px !important;
+}
+
+.kv{
+  font-size:10px !important;
+  padding:8px 0 !important;
+}
+
+.box small{
+  font-size:9px !important;
+  color:#a9bcc6 !important;
+}
+
+.box b{
+  font-size:13px !important;
+}
+
+/* TIMELINE */
+.timeline-title{
+  font-size:10px !important;
+}
+
+.step b{
+  font-size:9px !important;
+}
+
+.step small{
+  font-size:9px !important;
+  color:#a9bdc7 !important;
+}
+
+/* VEZIR */
+.vezir-name{
+  font-size:21px !important;
+  letter-spacing:.02em;
+}
+
+.vezir-sub{
+  font-size:10px !important;
+  color:#62e3ff !important;
+}
+
+.quick button{
+  font-size:9px !important;
+  min-height:27px;
+}
+
+.bubble{
+  font-size:11px !important;
+  line-height:1.6 !important;
+  color:#edf5f7 !important;
+  border-color:#22556a !important;
+  background:#071824 !important;
+}
+
+.chatbar input{
+  font-size:11px !important;
+  min-height:34px;
+}
+
+.chatbar button{
+  font-size:10px !important;
+}
+
+/* ACCOUNT / DRAWERS */
+.account-row{
+  font-size:11px !important;
+}
+
+.account-stat small{
+  font-size:9px !important;
+}
+
+.account-stat b{
+  font-size:13px !important;
+}
+
+.account-title{
+  font-size:12px !important;
+}
+
+/* FOOTER */
+.footer{
+  font-size:10px !important;
+  color:#b9cbd3;
+}
+
+/* IMPORTANT STATES */
+.pos{color:#43f19a !important}
+.neg{color:#ff6673 !important}
+.warn{color:#ffc04d !important}
+.cold{color:#6fc8ff !important}
+.warm{color:#ffad35 !important}
+.hot{color:#ff5a50 !important}
+
+/* REDUCE VISUAL NOISE */
+.ghost{
+  color:#9bafb9 !important;
+}
+
+@media(max-height:760px){
+  .radar-row{
+    min-height:38px !important;
+  }
+
+  .table td{
+    padding:7px 5px !important;
+  }
+}
+
+/* =========================================================
+   PHASE 14 — VEZIR / OPERATIONS CLARITY
+   ========================================================= */
+
+.vezir{
+  background:
+    radial-gradient(
+      circle at 15% 0%,
+      rgba(57,216,255,.11),
+      transparent 34%
+    ),
+    linear-gradient(
+      180deg,
+      rgba(7,24,35,.99),
+      rgba(4,14,22,.99)
+    );
+}
+
+.vezir-head{
+  min-height:92px;
+  grid-template-columns:78px minmax(0,1fr);
+  padding:11px 13px !important;
+}
+
+.vezir-img{
+  width:74px !important;
+  height:74px !important;
+}
+
+.vezir-name{
+  font-size:24px !important;
+  line-height:1;
+}
+
+.vezir-sub{
+  margin-top:7px !important;
+  font-size:10px !important;
+  letter-spacing:.08em;
+}
+
+.vezir-sub::after{
+  content:"  ·  BAĞLAM CANLI";
+  color:#44e691;
+}
+
+.quick{
+  min-height:42px;
+  padding:7px 10px !important;
+  gap:7px !important;
+}
+
+.quick button{
+  min-height:29px !important;
+  border-color:#245f77 !important;
+  color:#e7f4f8 !important;
+  background:#081a25 !important;
+}
+
+.quick button:hover{
+  border-color:#39d8ff !important;
+  background:#0a2837 !important;
+}
+
+.chat{
+  padding:12px !important;
+}
+
+.bubble{
+  padding:12px !important;
+  border-radius:8px !important;
+  box-shadow:
+    inset 0 0 0 1px rgba(57,216,255,.025);
+}
+
+.bubble::after{
+  content:"";
+  display:block;
+  margin-top:10px;
+  height:1px;
+  background:linear-gradient(
+    90deg,
+    rgba(57,216,255,.35),
+    transparent
+  );
+}
+
+.chatbar{
+  min-height:52px;
+  padding:8px 10px !important;
+  grid-template-columns:minmax(0,1fr) 76px !important;
+}
+
+.chatbar input{
+  border-color:#285c70 !important;
+  color:#fff !important;
+}
+
+.chatbar input::placeholder{
+  color:#829da9;
+}
+
+.chatbar button{
+  min-height:34px;
+  background:#06394c !important;
+  border-color:#22a8d2 !important;
+}
+
+
+/* =========================================================
+   LESS VISUAL NOISE / FEWER REPEATED BOX FEEL
+   ========================================================= */
+
+.panel{
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.015);
+}
+
+.head{
+  background:
+    linear-gradient(
+      90deg,
+      rgba(13,48,64,.22),
+      transparent 55%
+    );
+}
+
+.box{
+  background:#071722;
+}
+
+.grid6{
+  gap:8px !important;
+}
+
+/* Remove excessive tiny-label feeling */
+.label,
+.table th,
+.radar-grid,
+.account-table th{
+  text-transform:none !important;
+}
+
+/* Main information stronger than metadata */
+.metric-value,
+.ticker-value,
+.token,
+.box b,
+.account-stat b{
+  font-weight:900 !important;
+}
+
+.meta,
+.sub,
+.ghost{
+  font-weight:650 !important;
+}
+
+
+/* =========================================================
+   USER-FACING STATUS PILL STYLE
+   ========================================================= */
+
+.statusline{
+  border:1px solid rgba(53,229,141,.20);
+  background:rgba(53,229,141,.04);
+  border-radius:999px;
+  min-height:26px;
+  padding:0 10px;
+}
+
+.state{
+  border-radius:999px !important;
+}
+
+
+/* =========================================================
+   RADAR READABILITY
+   ========================================================= */
+
+.radar-row:hover,
+.radar-row.selected{
+  background:#0a2635 !important;
+}
+
+.radar-row.selected{
+  box-shadow:
+    inset 3px 0 0 #39d8ff;
+}
+
+.radar-grid,
+.radar-row{
+  column-gap:10px !important;
+}
+
+.distribution{
+  min-height:32px;
+}
+
+
+/* =========================================================
+   TABLE ROW READABILITY
+   ========================================================= */
+
+.table tbody tr:hover td,
+.account-table tbody tr:hover td{
+  background:#08202c;
+}
+
+.table td,
+.account-table td{
+  border-color:#123543 !important;
+}
+
+
+/* =========================================================
+   TOP BAR CLEANER
+   ========================================================= */
+
+.topbar .panel{
+  background:
+    linear-gradient(
+      180deg,
+      rgba(8,25,36,.99),
+      rgba(5,16,24,.99)
+    );
+}
+
+.brand-mark{
+  text-shadow:none !important;
+}
+
+.metric .label,
+.ticker .label{
+  color:#b9cbd3 !important;
+}
+

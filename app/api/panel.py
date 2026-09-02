@@ -9,10 +9,16 @@ import re
 import shutil
 import sqlite3
 import subprocess
+import time
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+
+import requests
+
+from app.api.panel_operations import build_operations_payload, build_vezir_context
+from app.config.settings import RPC_URL, RPC_URL_SECONDARY
 
 
 BASE_DIR = Path(__file__).resolve().parents[2]
@@ -2125,3 +2131,254 @@ def api_dashboard() -> dict[str, Any]:
         "health": health,
         "authority": authority,
     }
+
+
+# PHASE14_OPERATIONS_VEZIR_START
+
+def _phase14_watch_summary() -> dict[str, Any]:
+    if not table_exists("watch_probe_trades"):
+        return {
+            "open": 0,
+            "closed": 0,
+            "verified": 0,
+            "limited": 0,
+            "probed": 0,
+        }
+
+    row = query_one(
+        """
+        SELECT
+            SUM(
+                CASE WHEN UPPER(COALESCE(status,''))='OPEN'
+                THEN 1 ELSE 0 END
+            ) AS open_count,
+
+            SUM(
+                CASE WHEN UPPER(COALESCE(status,''))='CLOSED'
+                THEN 1 ELSE 0 END
+            ) AS closed_count,
+
+            SUM(
+                CASE WHEN UPPER(COALESCE(exit_state,''))='VERIFIED'
+                THEN 1 ELSE 0 END
+            ) AS verified_count,
+
+            SUM(
+                CASE WHEN UPPER(COALESCE(exit_state,''))='LIMITED'
+                THEN 1 ELSE 0 END
+            ) AS limited_count,
+
+            SUM(
+                CASE WHEN last_exit_probe_at IS NOT NULL
+                THEN 1 ELSE 0 END
+            ) AS probed_count
+
+        FROM watch_probe_trades
+        """
+    )
+
+    return {
+        "open": int(row.get("open_count") or 0),
+        "closed": int(row.get("closed_count") or 0),
+        "verified": int(row.get("verified_count") or 0),
+        "limited": int(row.get("limited_count") or 0),
+        "probed": int(row.get("probed_count") or 0),
+    }
+
+
+def _phase14_paper_summary() -> dict[str, Any]:
+    if not table_exists("paper_trades"):
+        return {
+            "open": 0,
+            "closed": 0,
+            "net_pnl_usdt": None,
+        }
+
+    row = query_one(
+        """
+        SELECT
+            SUM(
+                CASE WHEN UPPER(COALESCE(status,''))='OPEN'
+                THEN 1 ELSE 0 END
+            ) AS open_count,
+
+            SUM(
+                CASE WHEN UPPER(COALESCE(status,''))='CLOSED'
+                THEN 1 ELSE 0 END
+            ) AS closed_count,
+
+            SUM(
+                CASE
+                WHEN UPPER(COALESCE(status,''))='CLOSED'
+                THEN COALESCE(net_pnl_usdt, net_pnl, 0)
+                ELSE 0
+                END
+            ) AS net_pnl
+
+        FROM paper_trades
+        WHERE paper_account_version='PAPER_10K_V2'
+        """
+    )
+
+    return {
+        "open": int(row.get("open_count") or 0),
+        "closed": int(row.get("closed_count") or 0),
+        "net_pnl_usdt": row.get("net_pnl"),
+    }
+
+
+def _phase14_decision_summary() -> list[dict[str, Any]]:
+    if not table_exists("candidate_decision_history"):
+        return []
+
+    rows = query(
+        """
+        SELECT
+            reason,
+            COUNT(*) AS count
+        FROM candidate_decision_history
+        WHERE observed_at >= (
+            CAST(strftime('%s','now') AS REAL) - 21600
+        )
+          AND reason IS NOT NULL
+          AND TRIM(reason) != ''
+        GROUP BY reason
+        ORDER BY count DESC
+        LIMIT 5
+        """
+    )
+
+    return [
+        {
+            "reason": row.get("reason"),
+            "count": int(row.get("count") or 0),
+        }
+        for row in rows
+    ]
+
+
+_PHASE14_PROVIDER_HEALTH_CACHE = {
+    "checked_at": 0.0,
+    "healthy": False,
+}
+
+_PHASE14_PROVIDER_HEALTH_TTL_SECONDS = 60.0
+
+
+def _phase14_probe_rpc(url: str) -> bool:
+    url = str(url or "").strip()
+
+    if not url:
+        return False
+
+    try:
+        response = requests.post(
+            url,
+            json={
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "eth_chainId",
+                "params": [],
+            },
+            timeout=3.0,
+        )
+
+        if response.status_code != 200:
+            return False
+
+        payload = response.json()
+
+        return bool(
+            isinstance(payload, dict)
+            and payload.get("result")
+            and not payload.get("error")
+        )
+
+    except Exception:
+        return False
+
+
+def _phase14_data_healthy() -> bool:
+    now = time.monotonic()
+
+    cached_at = float(
+        _PHASE14_PROVIDER_HEALTH_CACHE.get(
+            "checked_at"
+        ) or 0.0
+    )
+
+    if (
+        now - cached_at
+        < _PHASE14_PROVIDER_HEALTH_TTL_SECONDS
+    ):
+        return bool(
+            _PHASE14_PROVIDER_HEALTH_CACHE.get(
+                "healthy"
+            )
+        )
+
+    providers = [
+        RPC_URL,
+        RPC_URL_SECONDARY,
+    ]
+
+    configured = [
+        url
+        for url in providers
+        if str(url or "").strip()
+    ]
+
+    healthy = any(
+        _phase14_probe_rpc(url)
+        for url in configured
+    )
+
+    _PHASE14_PROVIDER_HEALTH_CACHE[
+        "checked_at"
+    ] = now
+
+    _PHASE14_PROVIDER_HEALTH_CACHE[
+        "healthy"
+    ] = healthy
+
+    return healthy
+
+
+def _phase14_operations_payload() -> dict[str, Any]:
+    return build_operations_payload(
+        runtime_active=(
+            service_state(
+                "coinoskobi-paper-runtime.service"
+            ) == "active"
+        ),
+        watch=_phase14_watch_summary(),
+        paper=_phase14_paper_summary(),
+        decisions=_phase14_decision_summary(),
+        data_healthy=_phase14_data_healthy(),
+    )
+
+
+@app.get("/api/operations-summary")
+def operations_summary() -> dict[str, Any]:
+    """
+    Human-facing, read-only operational summary.
+
+    No secret values, provider URLs, SQL details,
+    authority escalation or execution controls.
+    """
+    return _phase14_operations_payload()
+
+
+@app.get("/api/vezir-context")
+def vezir_context() -> dict[str, Any]:
+    """
+    Bounded context contract for the panel Vezir.
+
+    This endpoint does not call an LLM and exposes no
+    write/runtime/wallet/signing authority.
+    """
+    return build_vezir_context(
+        _phase14_operations_payload()
+    )
+
+# PHASE14_OPERATIONS_VEZIR_END

@@ -308,7 +308,6 @@ class RuntimeIntelligenceComposition:
             "phase7_flow_regime": True,
             "phase8_native_binding": True,
             "phase9_wallet_readmodel": True,
-            "phase9_wallet_tracking": True,
             "phase10_adversary_readmodel": True,
             "phase10_adversary_bridge": True,
         }

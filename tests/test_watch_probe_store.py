@@ -1,5 +1,6 @@
 import sqlite3
 
+import app.learning.watch_probe_store as watch_probe_store_module
 from app.learning.watch_probe_store import WatchProbeStore
 
 
@@ -85,6 +86,10 @@ def test_watch_probe_observation_updates_price_extremes(tmp_path):
     assert result == {
         "state": "OBSERVED",
         "updated": 1,
+        "exit_candidates": 0,
+        "exit_attempted": 0,
+        "exit_verified": 0,
+        "exit_deferred": 0,
     }
 
     row = store.snapshot(1)[0]
@@ -96,8 +101,20 @@ def test_watch_probe_observation_updates_price_extremes(tmp_path):
     assert row["status"] == "OPEN"
 
 
-def test_watch_probe_v2_schema_is_additive_and_metrics_update(tmp_path):
+def test_watch_probe_v2_schema_is_additive_and_metrics_update(tmp_path, monkeypatch):
     db = tmp_path / "paper.db"
+
+    monkeypatch.setattr(
+        watch_probe_store_module,
+        "probe_watch_exit",
+        lambda **kwargs: {
+            "state": "DEFERRED",
+            "attempted": False,
+            "quality": "BOUNDED",
+            "reason": "TEST",
+            "realizable_exit_usdt": None,
+        },
+    )
 
     store = WatchProbeStore(db)
 
@@ -214,8 +231,19 @@ def test_watch_probe_v2_migrates_existing_table_without_data_loss(tmp_path):
     assert "exit_state" in columns
 
 
-def test_watch_probe_shadow_exit_tp_and_trailing(tmp_path):
+def test_watch_probe_shadow_exit_tp_and_trailing(tmp_path, monkeypatch):
     db = tmp_path / "paper.db"
+    monkeypatch.setattr(
+        watch_probe_store_module,
+        "probe_watch_exit",
+        lambda **kwargs: {
+            "state": "DEFERRED",
+            "attempted": False,
+            "quality": "BOUNDED",
+            "reason": "TEST",
+            "realizable_exit_usdt": None,
+        },
+    )
     store = WatchProbeStore(db)
 
     store.open_probe(
@@ -258,8 +286,19 @@ def test_watch_probe_shadow_exit_tp_and_trailing(tmp_path):
     assert data["TP_5X"]["state"] == "ARMED"
 
 
-def test_watch_probe_shadow_exit_time_rules(tmp_path):
+def test_watch_probe_shadow_exit_time_rules(tmp_path, monkeypatch):
     db = tmp_path / "paper.db"
+    monkeypatch.setattr(
+        watch_probe_store_module,
+        "probe_watch_exit",
+        lambda **kwargs: {
+            "state": "DEFERRED",
+            "attempted": False,
+            "quality": "BOUNDED",
+            "reason": "TEST",
+            "realizable_exit_usdt": None,
+        },
+    )
     store = WatchProbeStore(db)
 
     store.open_probe(
@@ -298,7 +337,125 @@ def test_watch_probe_shadow_exit_time_rules(tmp_path):
     assert row["state"] == "ARMED"
 
 
-def test_watch_probe_observation_is_exact_pool_isolated(tmp_path):
+def test_triggered_watch_probe_verified_exit_closes_same_row(tmp_path, monkeypatch):
+    store = WatchProbeStore(tmp_path / "paper.db")
+    store.open_probe(
+        token="0xabc",
+        pool="0xdef",
+        entry_price=1.0,
+        opened_at=1000.0,
+    )
+
+    calls = []
+
+    def fake_probe(**kwargs):
+        calls.append(kwargs)
+        return {
+            "state": "VERIFIED",
+            "attempted": True,
+            "quality": "SELLABILITY_PLUS_EXACT_ROUTE_QUOTE",
+            "reason": "SIMULATED_EXIT_VERIFIED",
+            "realizable_exit_usdt": 1.8,
+        }
+
+    monkeypatch.setattr(
+        watch_probe_store_module,
+        "probe_watch_exit",
+        fake_probe,
+    )
+
+    result = store.observe(
+        token="0xabc",
+        pool="0xdef",
+        current_price=2.0,
+        observed_at=1100.0,
+    )
+
+    assert len(calls) == 1
+    assert result["exit_candidates"] == 1
+    assert result["exit_attempted"] == 1
+    assert result["exit_verified"] == 1
+
+    row = store.snapshot(1)[0]
+    assert row["status"] == "CLOSED"
+    assert row["exit_state"] == "VERIFIED"
+    assert row["realizable_exit_usdt"] == 1.8
+    assert row["realizable_return_pct"] == 80.0
+    assert row["closed_at"] == 1100.0
+    assert row["last_exit_probe_at"] == 1100.0
+    assert row["context_version"] == "WATCH_PROBE_EXIT_V1"
+
+
+def test_triggered_watch_probe_unverified_stays_open_and_retries_bounded(tmp_path, monkeypatch):
+    store = WatchProbeStore(tmp_path / "paper.db")
+    store.open_probe(
+        token="0xabc",
+        pool="0xdef",
+        entry_price=1.0,
+        opened_at=1000.0,
+    )
+
+    calls = []
+
+    def fake_probe(**kwargs):
+        calls.append(kwargs)
+        return {
+            "state": "UNVERIFIED",
+            "attempted": True,
+            "quality": "PROVIDER_ERROR",
+            "reason": "SELLABILITY_PROBE_FAILED",
+            "realizable_exit_usdt": None,
+        }
+
+    monkeypatch.setattr(
+        watch_probe_store_module,
+        "probe_watch_exit",
+        fake_probe,
+    )
+
+    first = store.observe(
+        token="0xabc",
+        pool="0xdef",
+        current_price=2.0,
+        observed_at=1100.0,
+    )
+    second = store.observe(
+        token="0xabc",
+        pool="0xdef",
+        current_price=1.9,
+        observed_at=1200.0,
+    )
+    third = store.observe(
+        token="0xabc",
+        pool="0xdef",
+        current_price=1.8,
+        observed_at=2101.0,
+    )
+
+    assert first["exit_attempted"] == 1
+    assert second["exit_candidates"] == 0
+    assert third["exit_attempted"] == 1
+    assert len(calls) == 2
+
+    row = store.snapshot(1)[0]
+    assert row["status"] == "OPEN"
+    assert row["exit_state"] == "UNVERIFIED"
+    assert row["realizable_exit_usdt"] is None
+    assert row["last_exit_probe_at"] == 2101.0
+
+
+def test_watch_probe_observation_is_exact_pool_isolated(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        watch_probe_store_module,
+        "probe_watch_exit",
+        lambda **kwargs: {
+            "state": "DEFERRED",
+            "attempted": False,
+            "quality": "BOUNDED",
+            "reason": "TEST",
+            "realizable_exit_usdt": None,
+        },
+    )
     store = WatchProbeStore(tmp_path / "paper.db")
 
     store.open_probe(

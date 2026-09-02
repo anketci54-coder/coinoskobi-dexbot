@@ -1,6 +1,7 @@
 from collections import OrderedDict
 import hashlib
 import math
+import threading
 import time
 
 
@@ -25,6 +26,7 @@ class NewsEvidenceStore:
         self.max_events = max(1, int(max_events))
         self.fresh_seconds = max(1, int(fresh_seconds))
         self._events = OrderedDict()
+        self._lock = threading.RLock()
 
     def observe(
         self, *, source_type, source_id, event_type, text, published_at,
@@ -62,64 +64,68 @@ class NewsEvidenceStore:
         age_seconds = max(0.0, observed - published)
         freshness = "FRESH" if age_seconds <= self.fresh_seconds else "STALE"
 
-        existing = self._events.get(fingerprint)
-        sources = list(existing.get("sources") or []) if existing else []
-        source_key = (source_type, source_id)
-        known = {
-            (row.get("source_type"), row.get("source_id")) for row in sources
-        }
-        if source_key not in known:
-            sources.append({
-                "source_type": source_type,
-                "source_id": source_id,
-                "source_trust": trust,
-                "official": bool(official),
-                "verified": bool(verified),
-                "origin_key": origin_key,
-            })
+        with self._lock:
+            existing = self._events.get(fingerprint)
+            sources = list(existing.get("sources") or []) if existing else []
+            source_key = (source_type, source_id)
+            known = {
+                (row.get("source_type"), row.get("source_id")) for row in sources
+            }
+            if source_key not in known:
+                sources.append({
+                    "source_type": source_type,
+                    "source_id": source_id,
+                    "source_trust": trust,
+                    "official": bool(official),
+                    "verified": bool(verified),
+                    "origin_key": origin_key,
+                })
 
-        confidence, independent_origins = _confidence(
-            sources=sources,
-            freshness=freshness,
-            event_type=event_type,
-        )
+            confidence, independent_origins = _confidence(
+                sources=sources,
+                freshness=freshness,
+                event_type=event_type,
+            )
 
-        row = {
-            "fingerprint": fingerprint,
-            "state": _state(confidence, freshness, event_type),
-            "event_type": event_type,
-            "token_id": _id(token_id),
-            "chain": _id(chain),
-            "entity": str(entity or "").strip() or None,
-            "text": text,
-            "published_at": published,
-            "last_observed_at": observed,
-            "age_seconds": age_seconds,
-            "freshness": freshness,
-            "confidence": confidence,
-            "sources": sources,
-            "independent_source_count": independent_origins,
-            "metadata": dict(metadata or {}),
-            **_authority_false(),
-        }
-        self._events[fingerprint] = row
-        self._events.move_to_end(fingerprint)
-        while len(self._events) > self.max_events:
-            self._events.popitem(last=False)
-        return dict(row)
+            row = {
+                "fingerprint": fingerprint,
+                "state": _state(confidence, freshness, event_type),
+                "event_type": event_type,
+                "token_id": _id(token_id),
+                "chain": _id(chain),
+                "entity": str(entity or "").strip() or None,
+                "text": text,
+                "published_at": published,
+                "last_observed_at": observed,
+                "age_seconds": age_seconds,
+                "freshness": freshness,
+                "confidence": confidence,
+                "sources": sources,
+                "independent_source_count": independent_origins,
+                "metadata": dict(metadata or {}),
+                **_authority_false(),
+            }
+            self._events[fingerprint] = row
+            self._events.move_to_end(fingerprint)
+            while len(self._events) > self.max_events:
+                self._events.popitem(last=False)
+            return _copy_row(row)
 
     def snapshot(self, *, token_id=None, limit=100):
         token_id = _id(token_id)
-        rows = list(reversed(self._events.values()))
-        if token_id:
-            rows = [row for row in rows if row.get("token_id") == token_id]
         limit = max(0, int(limit))
-        return [dict(row) for row in rows[:limit]]
+        with self._lock:
+            rows = list(reversed(self._events.values()))
+            if token_id:
+                rows = [row for row in rows if row.get("token_id") == token_id]
+            return [_copy_row(row) for row in rows[:limit]]
 
     def status(self):
+        with self._lock:
+            count = len(self._events)
         return {
             "state": "READY",
-            "count": len(self._events),
+            "count": count,
             "bounded": True,
             "max_events": self.max_events,
             **_authority_false(),
@@ -165,8 +171,6 @@ def _confidence(*, sources, freshness, event_type):
             if origin_key:
                 origins.add(("SOCIAL_ORIGIN", origin_key))
             else:
-                # Multiple repost-capable social sources without provenance
-                # form one conservative evidence origin, never corroboration.
                 unproven_social = True
         else:
             origins.add((source_type, row.get("source_id")))
@@ -225,6 +229,13 @@ def _clamp01(value):
     if value is None:
         return None
     return min(1.0, max(0.0, value))
+
+
+def _copy_row(row):
+    copied = dict(row)
+    copied["sources"] = [dict(source) for source in row.get("sources") or []]
+    copied["metadata"] = dict(row.get("metadata") or {})
+    return copied
 
 
 def _authority_false():

@@ -22,7 +22,6 @@ class TelegramCollector:
             params["offset"] = int(offset)
 
         url = f"https://api.telegram.org/bot{self.bot_token}/getUpdates"
-
         try:
             response = self.session.get(url, params=params, timeout=self.timeout)
             response.raise_for_status()
@@ -30,17 +29,31 @@ class TelegramCollector:
         except (requests.RequestException, ValueError) as exc:
             return _result("FETCH_ERROR", "TELEGRAM", [], error=_safe_error(exc))
 
+        if not isinstance(payload, dict):
+            return _result("FETCH_ERROR", "TELEGRAM", [], error="INVALID_RESPONSE")
         if payload.get("ok") is not True:
-            return _result("FETCH_ERROR", "TELEGRAM", [])
+            return _result("FETCH_ERROR", "TELEGRAM", [], error="UPSTREAM_REJECTED")
+
+        raw_updates = payload.get("result")
+        if raw_updates is None:
+            raw_updates = []
+        if not isinstance(raw_updates, list):
+            return _result("FETCH_ERROR", "TELEGRAM", [], error="INVALID_RESPONSE")
 
         messages = []
         next_offset = offset
-        for update in list(payload.get("result") or [])[:100]:
+        for update in raw_updates[:100]:
+            if not isinstance(update, dict):
+                continue
             update_id = update.get("update_id")
             if isinstance(update_id, int):
                 next_offset = update_id + 1
             msg = update.get("channel_post") or update.get("message") or {}
-            chat = dict(msg.get("chat") or {})
+            if not isinstance(msg, dict):
+                continue
+            chat = msg.get("chat") or {}
+            if not isinstance(chat, dict):
+                chat = {}
             text = msg.get("text") or msg.get("caption")
             published_at = _unix_timestamp(msg.get("date"))
             if not text or published_at is None:
@@ -86,14 +99,23 @@ class DiscordCollector:
         except (requests.RequestException, ValueError) as exc:
             return _result("FETCH_ERROR", "DISCORD", [], error=_safe_error(exc))
 
+        if not isinstance(payload, list):
+            return _result("FETCH_ERROR", "DISCORD", [], error="INVALID_RESPONSE")
+
         messages = []
-        for row in list(payload or [])[:100]:
+        for row in payload[:100]:
+            if not isinstance(row, dict):
+                continue
             text = str(row.get("content") or "").strip()
             published_at = _iso_timestamp(row.get("timestamp"))
             if not text or published_at is None:
                 continue
-            author = dict(row.get("author") or {})
-            reference = dict(row.get("message_reference") or {})
+            author = row.get("author") or {}
+            if not isinstance(author, dict):
+                author = {}
+            reference = row.get("message_reference") or {}
+            if not isinstance(reference, dict):
+                reference = {}
             origin_key = _join_origin(
                 "discord",
                 reference.get("guild_id"),
@@ -144,9 +166,21 @@ class XCollector:
         except (requests.RequestException, ValueError) as exc:
             return _result("FETCH_ERROR", "X", [], error=_safe_error(exc))
 
+        if not isinstance(payload, dict):
+            return _result("FETCH_ERROR", "X", [], error="INVALID_RESPONSE")
+        raw_data = payload.get("data")
+        if raw_data is None:
+            raw_data = []
+        if not isinstance(raw_data, list):
+            return _result("FETCH_ERROR", "X", [], error="INVALID_RESPONSE")
+
         messages = []
-        for row in list(payload.get("data") or [])[:100]:
-            metrics = dict(row.get("public_metrics") or {})
+        for row in raw_data[:100]:
+            if not isinstance(row, dict):
+                continue
+            metrics = row.get("public_metrics") or {}
+            if not isinstance(metrics, dict):
+                metrics = {}
             text = str(row.get("text") or "").strip()
             published_at = _iso_timestamp(row.get("created_at"))
             if not text or published_at is None:
@@ -166,17 +200,25 @@ class XCollector:
                 "official": False,
                 "verified": False,
             })
-        meta = dict(payload.get("meta") or {})
+        meta = payload.get("meta") or {}
+        if not isinstance(meta, dict):
+            meta = {}
         return _result("READY", "X", messages, cursor=meta.get("next_token"))
 
 
 def _telegram_forward_origin(msg):
-    origin = dict(msg.get("forward_origin") or {})
-    if not origin:
+    origin = msg.get("forward_origin") or {}
+    if not isinstance(origin, dict) or not origin:
         return None
-    chat = dict(origin.get("chat") or {})
-    sender_user = dict(origin.get("sender_user") or {})
-    sender_chat = dict(origin.get("sender_chat") or {})
+    chat = origin.get("chat") or {}
+    sender_user = origin.get("sender_user") or {}
+    sender_chat = origin.get("sender_chat") or {}
+    if not isinstance(chat, dict):
+        chat = {}
+    if not isinstance(sender_user, dict):
+        sender_user = {}
+    if not isinstance(sender_chat, dict):
+        sender_chat = {}
     return _join_origin(
         "telegram",
         origin.get("type"),
@@ -186,7 +228,12 @@ def _telegram_forward_origin(msg):
 
 
 def _x_origin_key(row):
-    for ref in list(row.get("referenced_tweets") or []):
+    refs = row.get("referenced_tweets") or []
+    if not isinstance(refs, list):
+        return None
+    for ref in refs:
+        if not isinstance(ref, dict):
+            continue
         ref_type = str(ref.get("type") or "").strip().lower()
         ref_id = str(ref.get("id") or "").strip()
         if ref_type in {"retweeted", "quoted"} and ref_id:

@@ -17,7 +17,7 @@ from fastapi.staticfiles import StaticFiles
 
 import requests
 
-from app.api.panel_operations import build_operations_payload, build_vezir_context
+from app.api.panel_operations import answer_vezir_query, build_operations_payload, build_vezir_context
 from app.config.settings import RPC_URL, RPC_URL_SECONDARY
 
 
@@ -2382,3 +2382,39 @@ def vezir_context() -> dict[str, Any]:
     )
 
 # PHASE14_OPERATIONS_VEZIR_END
+
+
+# PHASE14_VEZIR_QUERY_ENDPOINT
+
+@app.post("/api/vezir/ask")
+def vezir_ask(
+    payload: dict[str, Any],
+) -> dict[str, Any]:
+    question = str(
+        payload.get("question")
+        or ""
+    ).strip()
+
+    if not question:
+        raise HTTPException(
+            status_code=400,
+            detail="Soru boş olamaz",
+        )
+
+    if len(question) > 500:
+        raise HTTPException(
+            status_code=400,
+            detail="Soru çok uzun",
+        )
+
+    operations = _phase14_operations_payload()
+
+    result = answer_vezir_query(
+        question,
+        operations,
+    )
+
+    return {
+        "question": question,
+        **result,
+    }

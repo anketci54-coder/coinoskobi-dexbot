@@ -137,7 +137,68 @@ function renderAccounting(){const s=state.dashboard?.summary||{},p=state.dashboa
 async function openAccounting(){el('accountDrawer').classList.add('open');el('accountRows').innerHTML='<div class="empty">Muhasebe kayıtları güncelleniyor…</div>';try{state.accountingRows=await getJson('/api/positions')}catch(e){console.error(e);state.accountingRows=null}renderAccounting()}
 function closeAccounting(){el('accountDrawer').classList.remove('open')}
 function askVezir(q){el('vezirInput').value=q;sendVezir()}
-function sendVezir(){const input=el('vezirInput'),q=input.value.trim();if(!q)return;const b=document.createElement('div');b.className='bubble';b.style.marginTop='7px';b.textContent='READ ONLY · Bu sürümde Vezir komut yürütmez. Soru: '+q;el('chatBody').appendChild(b);input.value=''}
+// VEZIR_ENTER_BINDING
+document.addEventListener('DOMContentLoaded',()=>{
+const vi=el('vezirInput');
+if(vi)vi.addEventListener('keydown',e=>{
+if(e.key==='Enter'){
+e.preventDefault();
+sendVezir();
+}
+});
+});
+async function sendVezir(){
+const input=el('vezirInput'),q=input.value.trim();
+if(!q)return;
+
+const chat=el('chatBody');
+
+const user=document.createElement('div');
+user.className='bubble';
+user.style.marginTop='7px';
+user.textContent='SEN · '+q;
+chat.appendChild(user);
+
+input.value='';
+input.disabled=true;
+
+const reply=document.createElement('div');
+reply.className='bubble';
+reply.style.marginTop='7px';
+reply.textContent='VEZİR · değerlendiriyor...';
+chat.appendChild(reply);
+
+try{
+const r=await fetch('/api/vezir/ask',{
+method:'POST',
+headers:{'Content-Type':'application/json'},
+body:JSON.stringify({question:q}),
+cache:'no-store'
+});
+
+if(!r.ok)throw new Error('vezir request failed');
+
+const data=await r.json();
+
+let text='VEZİR · '+(data.answer||'Bu soruyu yanıtlayacak veri yok.');
+
+if(data.technical){
+text+='\n\n'+data.technical;
+}
+
+text+='\n\nSADECE OKUMA';
+
+reply.textContent=text;
+
+}catch(e){
+reply.textContent=
+'VEZİR · Sistem verisini şu anda değerlendiremiyorum. Sahte cevap üretmiyorum.';
+}finally{
+input.disabled=false;
+input.focus();
+chat.scrollTop=chat.scrollHeight;
+}
+}
 document.querySelectorAll('[data-filter]').forEach(btn=>btn.addEventListener('click',()=>{state.filter=btn.dataset.filter;document.querySelectorAll('[data-filter]').forEach(x=>x.classList.toggle('active',x===btn));state.selected=null;renderRadar();renderTimeline();renderEdge()}));
 let refreshInFlight=false;
 async function refresh(){

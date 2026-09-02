@@ -3,6 +3,11 @@ import threading
 import time
 from pathlib import Path
 
+from app.learning.watch_probe_exit import (
+    RETRY_SECONDS,
+    probe_watch_exit,
+)
+
 
 class WatchProbeStore:
     ENTRY_USDT = 1.0
@@ -351,6 +356,80 @@ class WatchProbeStore:
                 ),
             )
 
+    def _exit_probe_due(self, row, now):
+        if str(row["exit_state"] or "").upper() == "VERIFIED":
+            return False
+
+        last = row["last_exit_probe_at"]
+        if last is not None and float(now) - float(last) < RETRY_SECONDS:
+            return False
+
+        triggered = self._db.execute(
+            """
+            SELECT 1
+            FROM watch_probe_shadow_exits
+            WHERE probe_id=?
+              AND state='TRIGGERED'
+            LIMIT 1
+            """,
+            (int(row["id"]),),
+        ).fetchone()
+
+        return triggered is not None
+
+    def _persist_exit_probe_result(self, row, result, now):
+        if not result.get("attempted"):
+            return False
+
+        state = str(result.get("state") or "UNVERIFIED").upper()
+        quality = result.get("quality")
+        reason = result.get("reason")
+        exit_usdt = self._positive_float(
+            result.get("realizable_exit_usdt")
+        )
+
+        entry_usdt = self._positive_float(row["entry_usdt"])
+        return_pct = None
+
+        if exit_usdt is not None and entry_usdt is not None:
+            return_pct = (
+                (exit_usdt / entry_usdt) - 1.0
+            ) * 100.0
+
+        verified = state == "VERIFIED" and exit_usdt is not None
+
+        self._db.execute(
+            """
+            UPDATE watch_probe_trades
+            SET
+                realizable_exit_usdt=?,
+                realizable_return_pct=?,
+                exit_state=?,
+                exit_quality=?,
+                exit_reason=?,
+                last_exit_probe_at=?,
+                status=CASE WHEN ? THEN 'CLOSED' ELSE status END,
+                closed_at=CASE WHEN ? THEN ? ELSE closed_at END,
+                context_version='WATCH_PROBE_EXIT_V1'
+            WHERE id=?
+              AND status='OPEN'
+            """,
+            (
+                exit_usdt,
+                return_pct,
+                state,
+                quality,
+                reason,
+                float(now),
+                1 if verified else 0,
+                1 if verified else 0,
+                float(now),
+                int(row["id"]),
+            ),
+        )
+
+        return verified
+
     def observe(
         self,
         *,
@@ -380,15 +459,23 @@ class WatchProbeStore:
             else time.time()
         )
 
+        exit_candidates = []
+
         with self._lock:
             rows = self._db.execute(
                 """
                 SELECT
                     id,
+                    token,
+                    pool,
                     opened_at,
                     entry_price,
+                    entry_usdt,
+                    token_amount,
                     max_price,
-                    min_price
+                    min_price,
+                    exit_state,
+                    last_exit_probe_at
                 FROM watch_probe_trades
                 WHERE lower(token)=lower(?)
                   AND lower(pool)=lower(?)
@@ -463,13 +550,46 @@ class WatchProbeStore:
                     ),
                 )
 
+                if self._exit_probe_due(row, now):
+                    exit_candidates.append(dict(row))
+
                 updated += 1
 
             self._db.commit()
 
+        exit_attempted = 0
+        exit_verified = 0
+        exit_deferred = 0
+
+        for row in exit_candidates:
+            result = probe_watch_exit(
+                token=row["token"],
+                pool=row["pool"],
+                token_amount=row["token_amount"],
+                now=now,
+            )
+
+            if result.get("attempted"):
+                exit_attempted += 1
+            else:
+                exit_deferred += 1
+
+            with self._lock:
+                if self._persist_exit_probe_result(
+                    row,
+                    result,
+                    now,
+                ):
+                    exit_verified += 1
+                self._db.commit()
+
         return {
             "state": "OBSERVED",
             "updated": updated,
+            "exit_candidates": len(exit_candidates),
+            "exit_attempted": exit_attempted,
+            "exit_verified": exit_verified,
+            "exit_deferred": exit_deferred,
         }
 
     def snapshot(self, limit=20):

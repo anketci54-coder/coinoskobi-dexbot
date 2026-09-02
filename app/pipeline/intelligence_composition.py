@@ -6,6 +6,7 @@ from app.dex.flow_quality import evaluate_flow_quality
 from app.dex.market_regime import classify_market_regime
 
 from app.dex.wallet_readmodel import WalletReadModel
+from app.dex.wallet_tracking_composition import WalletTrackingComposition
 from app.dex.adversary_readmodel import AdversaryReadModel
 from app.dex.adversary_market_bridge import (
     bind_adversary_market_context,
@@ -20,9 +21,15 @@ class RuntimeIntelligenceComposition:
         self,
         wallet_max_entries=4096,
         adversary_max_entries=4096,
+        wallet_tracking=None,
     ):
         self.wallet_readmodel = WalletReadModel(
             wallet_max_entries
+        )
+
+        self.wallet_tracking = (
+            wallet_tracking
+            or WalletTrackingComposition()
         )
 
         self.adversary_readmodel = AdversaryReadModel(
@@ -34,9 +41,73 @@ class RuntimeIntelligenceComposition:
         wallet_id,
         payload,
     ):
+        payload = dict(payload or {})
+        normalized_wallet_id = str(
+            wallet_id or ""
+        ).strip().lower()
+
+        identity_source = str(
+            payload.get("identity_source") or ""
+        ).strip().upper()
+
+        if (
+            normalized_wallet_id
+            and identity_source
+            == "TRANSACTION_FROM_ONLY"
+            and str(
+                payload.get("wallet_id") or ""
+            ).strip().lower()
+            == normalized_wallet_id
+        ):
+            payload["phase9_wallet_tracking"] = (
+                self.wallet_tracking.snapshot(
+                    normalized_wallet_id
+                )
+            )
+
         return self.wallet_readmodel.put(
-            wallet_id,
+            normalized_wallet_id,
             payload,
+        )
+
+    def observe_wallet_outcome(
+        self,
+        wallet_id,
+        token_id,
+        return_pct,
+        *,
+        realized=False,
+    ):
+        return self.wallet_tracking.observe_outcome(
+            wallet_id,
+            token_id,
+            return_pct,
+            realized=realized,
+        )
+
+    def observe_wallet_holding(
+        self,
+        wallet_id,
+        token_id,
+        balance,
+        *,
+        value_usd=None,
+        observed_at=None,
+    ):
+        return self.wallet_tracking.observe_holding(
+            wallet_id,
+            token_id,
+            balance,
+            value_usd=value_usd,
+            observed_at=observed_at,
+        )
+
+    def wallet_tracking_snapshot(
+        self,
+        wallet_id,
+    ):
+        return self.wallet_tracking.snapshot(
+            wallet_id
         )
 
     def update_adversary(

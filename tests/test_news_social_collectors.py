@@ -47,7 +47,7 @@ def test_missing_credentials_make_no_network_calls():
     assert session.calls == []
 
 
-def test_telegram_error_redacts_bot_token():
+def test_telegram_error_exposes_only_generic_error_class():
     token = "secret-telegram-token"
     error = requests.HTTPError(
         f"403 for https://api.telegram.org/bot{token}/getUpdates"
@@ -60,8 +60,34 @@ def test_telegram_error_redacts_bot_token():
     result = collector.fetch_updates()
 
     assert result["state"] == "FETCH_ERROR"
-    assert token not in (result["error"] or "")
-    assert "[REDACTED]" in result["error"]
+    assert result["error"] == "HTTP_ERROR"
+    assert token not in result["error"]
+    assert "403" not in result["error"]
+    assert "api.telegram.org" not in result["error"]
+
+
+def test_social_error_classes_do_not_expose_exception_text():
+    timeout = TelegramCollector(
+        bot_token="t",
+        session=FakeSession(FakeResponse(error=requests.Timeout("secret timeout detail"))),
+    ).fetch_updates()
+    connection = DiscordCollector(
+        bot_token="d",
+        session=FakeSession(FakeResponse(error=requests.ConnectionError("private host detail"))),
+    ).fetch_channel("123")
+    invalid = XCollector(
+        bearer_token="x",
+        session=FakeSession(FakeResponse(payload=object())),
+    )
+    invalid.session.response.json = lambda: (_ for _ in ()).throw(ValueError("raw json body"))
+    invalid_result = invalid.search_recent("listing")
+
+    assert timeout["error"] == "TIMEOUT"
+    assert connection["error"] == "CONNECTION_ERROR"
+    assert invalid_result["error"] == "INVALID_RESPONSE"
+    assert "secret" not in timeout["error"].lower()
+    assert "private" not in connection["error"].lower()
+    assert "raw" not in invalid_result["error"].lower()
 
 
 def test_invalid_timestamps_are_rejected_not_freshened():

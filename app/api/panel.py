@@ -18,6 +18,7 @@ from fastapi.staticfiles import StaticFiles
 import requests
 
 from app.api.panel_operations import answer_vezir_query, build_operations_payload, build_vezir_context
+from app.api.vezir_ai import enhance_vezir_answer
 from app.config.settings import RPC_URL, RPC_URL_SECONDARY
 
 
@@ -2409,9 +2410,14 @@ def vezir_ask(
 
     operations = _phase14_operations_payload()
 
-    result = answer_vezir_query(
+    deterministic = answer_vezir_query(
         question,
         operations,
+    )
+
+    result = enhance_vezir_answer(
+        question=question,
+        deterministic=deterministic,
     )
 
     return {

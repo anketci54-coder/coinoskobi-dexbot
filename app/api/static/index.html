@@ -136,7 +136,12 @@ function accountingTable(title,rows,closed){if(!rows.length)return`<div class="a
 function renderAccounting(){const s=state.dashboard?.summary||{},p=state.dashboard?.performance||{};const source=Array.isArray(state.accountingRows)?state.accountingRows:[...(state.dashboard?.positions||[]),...(state.dashboard?.exits||[])];const open=source.filter(r=>String(r.status||'OPEN').toUpperCase()!=='CLOSED');const closed=source.filter(r=>String(r.status||'').toUpperCase()==='CLOSED');el('accountRows').innerHTML=`<div class="account-summary">${[['Başlangıç',money(s.starting_capital)],['Equity',money(s.equity)],['Toplam PNL',money(s.total_pnl)],['Gerçekleşen net',money(s.realized_net)],['Açık PNL',money(s.open_pnl)],['Açık işlem',String(open.length)],['Kapalı işlem',String(closed.length)],['Kazanma oranı',pct(s.win_rate_pct)],['Profit factor',p.profit_factor==null?'—':Number(p.profit_factor).toFixed(2)]].map(([a,b])=>`<div class="account-stat"><small>${a}</small><b>${b}</b></div>`).join('')}</div>${accountingTable('AÇIK İŞLEMLER',open,false)}${accountingTable('KAPANAN İŞLEMLER',closed,true)}`}
 async function openAccounting(){el('accountDrawer').classList.add('open');el('accountRows').innerHTML='<div class="empty">Muhasebe kayıtları güncelleniyor…</div>';try{state.accountingRows=await getJson('/api/positions')}catch(e){console.error(e);state.accountingRows=null}renderAccounting()}
 function closeAccounting(){el('accountDrawer').classList.remove('open')}
-function askVezir(q){el('vezirInput').value=q;sendVezir()}
+function askVezir(q){
+const input=el('vezirInput');
+if(input.disabled)return;
+input.value=q;
+sendVezir()
+}
 // VEZIR_ENTER_BINDING
 document.addEventListener('DOMContentLoaded',()=>{
 const vi=el('vezirInput');
@@ -149,6 +154,7 @@ sendVezir();
 });
 async function sendVezir(){
 const input=el('vezirInput'),q=input.value.trim();
+if(input.disabled)return;
 if(!q)return;
 
 const chat=el('chatBody');

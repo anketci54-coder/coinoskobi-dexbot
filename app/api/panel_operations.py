@@ -3,517 +3,70 @@ from __future__ import annotations
 from typing import Any
 import unicodedata
 
+_REASON_LABELS={"PLAN_BLOCKED":"İşlem şartları oluşmadı","POSITION_SIZING_BLOCKED":"Uygun işlem büyüklüğü oluşmadı","PAPER_TRADE_OPENED":"Paper işlem açıldı","WATCH":"İzlemeye alındı","REJECT":"Aday elendi"}
+_EXIT_LABELS={"VERIFIED":"Çıkış doğrulandı","LIMITED":"Çıkış kısmen doğrulandı","UNVERIFIED":"Henüz doğrulanmadı","DEFERRED":"Doğrulama sırada"}
 
-_REASON_LABELS = {
-    "PLAN_BLOCKED": "İşlem şartları oluşmadı",
-    "POSITION_SIZING_BLOCKED": "Uygun işlem büyüklüğü oluşmadı",
-    "PAPER_TRADE_OPENED": "Paper işlem açıldı",
-    "WATCH": "İzlemeye alındı",
-    "REJECT": "Aday elendi",
-}
+def reason_label(value:Any)->str:
+    return _REASON_LABELS.get(str(value or '').strip().upper(),'Karar kaydı mevcut')
 
-_EXIT_LABELS = {
-    "VERIFIED": "Çıkış doğrulandı",
-    "LIMITED": "Çıkış kısmen doğrulandı",
-    "UNVERIFIED": "Henüz doğrulanmadı",
-    "DEFERRED": "Doğrulama sırada",
-}
+def exit_label(value:Any)->str:
+    return _EXIT_LABELS.get(str(value or '').strip().upper(),'Henüz doğrulanmadı')
 
+def build_operations_payload(*,runtime_active:bool,watch:dict[str,Any],paper:dict[str,Any],decisions:list[dict[str,Any]],data_healthy:bool=True)->dict[str,Any]:
+    ow=int(watch.get('open') or 0); cw=int(watch.get('closed') or 0); v=int(watch.get('verified') or 0); l=int(watch.get('limited') or 0); p=int(watch.get('probed') or 0)
+    po=int(paper.get('open') or 0); pc=int(paper.get('closed') or 0)
+    if not runtime_active: ss,sl='SAFE','Sistem güvenli beklemede'
+    elif not data_healthy: ss,sl='DEGRADED','Sistem sınırlı veriyle çalışıyor'
+    else: ss,sl='HEALTHY','Sistem çalışıyor'
+    wl=f'{v} çıkış doğrulandı' if v else ('Çıkış doğrulamaları sürüyor' if p else ('İzlenen fırsatlar takip ediliyor' if ow else 'İzlenen fırsat yok'))
+    top=decisions[0] if decisions else None
+    return {'system':{'state':ss,'label':sl},'watch':{'open':ow,'closed':cw,'verified':v,'limited':l,'probed':p,'label':wl},'paper':{'open':po,'closed':pc,'net_pnl_usdt':paper.get('net_pnl_usdt')},'decisions':decisions,'main_reason':({'label':reason_label(top.get('reason')),'count':int(top.get('count') or 0)} if top else None),'presentation':{'technical_details_hidden':True,'fabricated_values':False}}
 
-def reason_label(value: Any) -> str:
-    key = str(value or "").strip().upper()
-    return _REASON_LABELS.get(
-        key,
-        "Karar kaydı mevcut",
-    )
+def build_vezir_context(operations:dict[str,Any])->dict[str,Any]:
+    return {'role':'OPERASYON_ANALISTI','authority':'READ_ONLY','operations':operations,'permissions':{'trade':False,'wallet':False,'signing':False,'database_write':False,'runtime_control':False,'deployment':False},'response_policy':{'technical_by_default':False,'fabricate_missing_data':False,'format':'ozet_neden_ne_yapmali'}}
 
+def _vezir_norm(value:Any)->str:
+    text=str(value or '').strip(); repl={'ı':'i','İ':'I','ş':'s','Ş':'S','ğ':'g','Ğ':'G','ü':'u','Ü':'U','ö':'o','Ö':'O','ç':'c','Ç':'C'}
+    for a,b in repl.items(): text=text.replace(a,b)
+    text=unicodedata.normalize('NFKD',text)
+    return ' '.join(''.join(ch for ch in text if not unicodedata.combining(ch)).lower().split())
 
-def exit_label(value: Any) -> str:
-    key = str(value or "").strip().upper()
-    return _EXIT_LABELS.get(
-        key,
-        "Henüz doğrulanmadı",
-    )
+def _vezir_money(value:Any)->str:
+    try: n=float(value)
+    except (TypeError,ValueError): return 'veri yok'
+    return f"{'+' if n>0 else ''}{n:.2f} USDT"
 
+def _vezir_int(value:Any)->int:
+    try:return int(value or 0)
+    except (TypeError,ValueError):return 0
 
-def build_operations_payload(
-    *,
-    runtime_active: bool,
-    watch: dict[str, Any],
-    paper: dict[str, Any],
-    decisions: list[dict[str, Any]],
-    data_healthy: bool = True,
-) -> dict[str, Any]:
-    open_watch = int(watch.get("open") or 0)
-    closed_watch = int(watch.get("closed") or 0)
-    verified = int(watch.get("verified") or 0)
-    limited = int(watch.get("limited") or 0)
-    probed = int(watch.get("probed") or 0)
-
-    paper_open = int(paper.get("open") or 0)
-    paper_closed = int(paper.get("closed") or 0)
-
-    if not runtime_active:
-        system_state = "SAFE"
-        system_label = "Sistem güvenli beklemede"
-    elif not data_healthy:
-        system_state = "DEGRADED"
-        system_label = "Sistem sınırlı veriyle çalışıyor"
+def answer_vezir_query(question:str,operations:dict[str,Any])->dict[str,Any]:
+    q=_vezir_norm(question); system=dict(operations.get('system') or {}); watch=dict(operations.get('watch') or {}); paper=dict(operations.get('paper') or {}); reason=operations.get('main_reason')
+    ss=str(system.get('state') or 'UNKNOWN').upper(); sl=str(system.get('label') or 'Sistem durumu bilinmiyor'); wo=_vezir_int(watch.get('open')); wv=_vezir_int(watch.get('verified')); wl=_vezir_int(watch.get('limited')); wp=_vezir_int(watch.get('probed')); po=_vezir_int(paper.get('open')); pc=_vezir_int(paper.get('closed')); pnl=paper.get('net_pnl_usdt')
+    tech=any(x in q for x in ('teknik','detay','rpc','provider','neden bozuk')); intent='GENERAL'
+    if q in {'selam','merhaba','selamlar','hey','sa','gunaydin','iyi gunler','iyi aksamlar'}:
+        intent='GREETING'; answer='Selam. Buradayım. Radar, işlemler, risk veya sistemle ilgili neye bakmamı istersin?'
+    elif any(x in q for x in ('nasilsin','naber','ne haber')):
+        intent='SMALLTALK'; answer='İyiyim, sistem verilerini izliyorum. İstersen radarın durumuna veya neden işlem açılmadığına bakalım.'
+    elif any(x in q for x in ('neden islem acmadik','neden islem yok','niye islem acmadik','neden almadik','neden trade yok')):
+        intent='WHY_NO_TRADE'
+        if po: answer=f'Şu anda {po} açık paper işlem var. Sistem tamamen işlemsiz değil.'
+        elif reason:
+            answer=f"Açık paper işlem yok. Son karar kayıtlarında ana neden: {reason.get('label') or 'İşlem şartları oluşmadı'}."; c=_vezir_int(reason.get('count')); answer+=f' Bu durum {c} kayıtta görüldü.' if c else ''; answer+=' Ayrıca veri akışı şu anda sınırlı.' if ss=='DEGRADED' else ''
+        elif ss=='DEGRADED': answer='Açık paper işlem yok. Veri akışı sınırlı; işlem şartlarının doğrulanması zayıflamış olabilir. Kesin karar nedeni için yeterli güncel kayıt yok.'
+        else: answer='Açık paper işlem yok. Bunu açıklayacak yeterli güncel karar nedeni görünmüyor.'
+    elif any(x in q for x in ('risk','sorun','tehlike','problem')):
+        intent='RISK'; answer='Şu an en önemli risk veri akışının sınırlı olması.' if ss=='DEGRADED' else ('Sistem güvenli beklemede.' if ss=='SAFE' else 'Şu anda panel verilerinde öne çıkan kritik bir sistem riski görünmüyor.')
+    elif any(x in q for x in ('firsat','aday','en iyi','guclu')):
+        intent='OPPORTUNITY'; answer=f'{wv} WATCH çıkışı doğrulanmış durumda.' if wv else (f'{wo} fırsat izleniyor; henüz doğrulanmış çıkış yok.' if wo else 'Şu anda doğrulanmış veya aktif izlenen bir fırsat görünmüyor.')
+    elif any(x in q for x in ('watch','izlenen','izleme','probe')):
+        intent='WATCH'; answer=f'{wo} fırsat izleniyor. {wp} çıkış kontrolü, {wv} doğrulanmış çıkış'; answer+=f', {wl} kısmi doğrulama' if wl else ''; answer+='.'
+    elif any(x in q for x in ('islem','pozisyon','paper','pnl','kar zarar')):
+        intent='POSITIONS'; answer=f'Şu anda {po} açık paper işlem var. {pc} işlem kapanmış. Gerçekleşen toplam sonuç {_vezir_money(pnl)}.'
+    elif any(x in q for x in ('sistem','durum','saglik','calisiyor mu')):
+        intent='SYSTEM'; answer=sl+'.'
     else:
-        system_state = "HEALTHY"
-        system_label = "Sistem çalışıyor"
-
-    if verified:
-        watch_label = f"{verified} çıkış doğrulandı"
-    elif probed:
-        watch_label = "Çıkış doğrulamaları sürüyor"
-    elif open_watch:
-        watch_label = "İzlenen fırsatlar takip ediliyor"
-    else:
-        watch_label = "İzlenen fırsat yok"
-
-    top_reason = None
-
-    if decisions:
-        top_reason = decisions[0]
-
-    return {
-        "system": {
-            "state": system_state,
-            "label": system_label,
-        },
-        "watch": {
-            "open": open_watch,
-            "closed": closed_watch,
-            "verified": verified,
-            "limited": limited,
-            "probed": probed,
-            "label": watch_label,
-        },
-        "paper": {
-            "open": paper_open,
-            "closed": paper_closed,
-            "net_pnl_usdt": paper.get("net_pnl_usdt"),
-        },
-        "decisions": decisions,
-        "main_reason": (
-            {
-                "label": reason_label(
-                    top_reason.get("reason")
-                ),
-                "count": int(
-                    top_reason.get("count") or 0
-                ),
-            }
-            if top_reason
-            else None
-        ),
-        "presentation": {
-            "technical_details_hidden": True,
-            "fabricated_values": False,
-        },
-    }
-
-
-def build_vezir_context(
-    operations: dict[str, Any],
-) -> dict[str, Any]:
-    return {
-        "role": "OPERASYON_ANALISTI",
-        "authority": "READ_ONLY",
-        "operations": operations,
-        "permissions": {
-            "trade": False,
-            "wallet": False,
-            "signing": False,
-            "database_write": False,
-            "runtime_control": False,
-            "deployment": False,
-        },
-        "response_policy": {
-            "technical_by_default": False,
-            "fabricate_missing_data": False,
-            "format": "ozet_neden_ne_yapmali",
-        },
-    }
-
-
-def _vezir_norm(value: Any) -> str:
-    text = str(value or "").strip()
-
-    replacements = {
-        "ı": "i",
-        "İ": "I",
-        "ş": "s",
-        "Ş": "S",
-        "ğ": "g",
-        "Ğ": "G",
-        "ü": "u",
-        "Ü": "U",
-        "ö": "o",
-        "Ö": "O",
-        "ç": "c",
-        "Ç": "C",
-    }
-
-    for old, new in replacements.items():
-        text = text.replace(old, new)
-
-    text = unicodedata.normalize("NFKD", text)
-    text = "".join(
-        ch
-        for ch in text
-        if not unicodedata.combining(ch)
-    )
-
-    return " ".join(text.lower().split())
-
-
-def _vezir_money(value: Any) -> str:
-    try:
-        number = float(value)
-    except (TypeError, ValueError):
-        return "veri yok"
-
-    sign = "+" if number > 0 else ""
-
-    return f"{sign}{number:.2f} USDT"
-
-
-def _vezir_int(value: Any) -> int:
-    try:
-        return int(value or 0)
-    except (TypeError, ValueError):
-        return 0
-
-
-def answer_vezir_query(
-    question: str,
-    operations: dict[str, Any],
-) -> dict[str, Any]:
-    """
-    Deterministic read-only Vezir response engine.
-
-    It only interprets the bounded operations payload supplied by
-    the panel backend. It cannot query arbitrary SQL, mutate state,
-    control services, trade, sign or access wallet authority.
-    """
-
-    q = _vezir_norm(question)
-
-    system = dict(
-        operations.get("system")
-        or {}
-    )
-
-    watch = dict(
-        operations.get("watch")
-        or {}
-    )
-
-    paper = dict(
-        operations.get("paper")
-        or {}
-    )
-
-    main_reason = operations.get(
-        "main_reason"
-    )
-
-    system_state = str(
-        system.get("state")
-        or "UNKNOWN"
-    ).upper()
-
-    system_label = str(
-        system.get("label")
-        or "Sistem durumu bilinmiyor"
-    )
-
-    watch_open = _vezir_int(
-        watch.get("open")
-    )
-
-    watch_verified = _vezir_int(
-        watch.get("verified")
-    )
-
-    watch_limited = _vezir_int(
-        watch.get("limited")
-    )
-
-    watch_probed = _vezir_int(
-        watch.get("probed")
-    )
-
-    paper_open = _vezir_int(
-        paper.get("open")
-    )
-
-    paper_closed = _vezir_int(
-        paper.get("closed")
-    )
-
-    pnl = paper.get(
-        "net_pnl_usdt"
-    )
-
-    technical_requested = any(
-        marker in q
-        for marker in (
-            "teknik",
-            "detay",
-            "rpc",
-            "provider",
-            "neden bozuk",
-        )
-    )
-
-    intent = "GENERAL"
-    answer = ""
-
-    if any(
-        marker in q
-        for marker in (
-            "neden islem acmadik",
-            "neden islem yok",
-            "niye islem acmadik",
-            "neden almadik",
-            "neden trade yok",
-        )
-    ):
-        intent = "WHY_NO_TRADE"
-
-        if paper_open > 0:
-            answer = (
-                f"Şu anda {paper_open} açık paper işlem var. "
-                "Bu nedenle sistem tamamen işlemsiz değil."
-            )
-
-        elif main_reason:
-            reason = str(
-                main_reason.get("label")
-                or "İşlem şartları oluşmadı"
-            )
-
-            count = _vezir_int(
-                main_reason.get("count")
-            )
-
-            answer = (
-                f"Açık paper işlem yok. "
-                f"Son karar kayıtlarında ana neden: {reason}."
-            )
-
-            if count:
-                answer += (
-                    f" Bu durum {count} kayıtta görüldü."
-                )
-
-            if system_state == "DEGRADED":
-                answer += (
-                    " Ayrıca sistem şu anda sınırlı veriyle çalışıyor."
-                )
-
-        elif system_state == "DEGRADED":
-            answer = (
-                "Açık paper işlem yok. "
-                "Sistem şu anda sınırlı veriyle çalışıyor; "
-                "bu nedenle işlem şartlarının doğrulanması zayıflamış olabilir. "
-                "Kesin karar nedeni için yeterli güncel kayıt yok."
-            )
-
-        else:
-            answer = (
-                "Açık paper işlem yok. "
-                "Bunu açıklayacak yeterli güncel karar nedeni görünmüyor."
-            )
-
-    elif any(
-        marker in q
-        for marker in (
-            "risk",
-            "sorun",
-            "tehlike",
-            "problem",
-        )
-    ):
-        intent = "RISK"
-
-        if system_state == "DEGRADED":
-            answer = (
-                "Şu an en önemli risk veri akışının sınırlı olması. "
-                "Sistem çalışıyor ancak bazı fırsatları doğrulamakta zorlanabilir."
-            )
-
-        elif system_state == "SAFE":
-            answer = (
-                "Sistem güvenli beklemede. "
-                "Yeni işlem değerlendirmesi normal şekilde ilerlemiyor."
-            )
-
-        elif watch_open > 0 and watch_verified == 0:
-            answer = (
-                f"{watch_open} fırsat izleniyor ancak henüz doğrulanmış "
-                "WATCH çıkışı yok. En önemli belirsizlik çıkış gerçekleşebilirliği."
-            )
-
-        else:
-            answer = (
-                "Şu anda panel verilerinde öne çıkan kritik bir sistem riski görünmüyor."
-            )
-
-    elif any(
-        marker in q
-        for marker in (
-            "firsat",
-            "aday",
-            "en iyi",
-            "guclu",
-        )
-    ):
-        intent = "OPPORTUNITY"
-
-        if watch_verified > 0:
-            answer = (
-                f"{watch_verified} WATCH çıkışı doğrulanmış durumda. "
-                "Bunlar şu anda en güçlü doğrulanmış fırsat kanıtını oluşturuyor."
-            )
-
-        elif watch_open > 0:
-            answer = (
-                f"{watch_open} fırsat izleniyor. "
-                "Henüz doğrulanmış çıkış olmadığı için tek bir adayı "
-                "kesin en güçlü fırsat olarak ilan edemem."
-            )
-
-        else:
-            answer = (
-                "Şu anda doğrulanmış veya aktif izlenen bir fırsat görünmüyor."
-            )
-
-    elif any(
-        marker in q
-        for marker in (
-            "watch",
-            "izlenen",
-            "izleme",
-            "probe",
-        )
-    ):
-        intent = "WATCH"
-
-        answer = (
-            f"{watch_open} fırsat izleniyor. "
-            f"{watch_probed} kayıt için çıkış kontrolü yapılmış, "
-            f"{watch_verified} çıkış doğrulanmış"
-        )
-
-        if watch_limited:
-            answer += (
-                f", {watch_limited} kayıt kısmen doğrulanmış"
-            )
-
-        answer += "."
-
-    elif any(
-        marker in q
-        for marker in (
-            "islem",
-            "pozisyon",
-            "paper",
-            "pnl",
-            "kar zarar",
-        )
-    ):
-        intent = "POSITIONS"
-
-        answer = (
-            f"Şu anda {paper_open} açık paper işlem var. "
-            f"{paper_closed} işlem kapanmış. "
-            f"Gerçekleşen toplam sonuç {_vezir_money(pnl)}."
-        )
-
-    elif any(
-        marker in q
-        for marker in (
-            "sistem",
-            "durum",
-            "saglik",
-            "calisiyor mu",
-        )
-    ):
-        intent = "SYSTEM"
-
-        answer = system_label + "."
-
-        if system_state == "DEGRADED":
-            answer += (
-                " Ana işlevler açık ancak veri doğrulama kapasitesi sınırlı."
-            )
-
-    else:
-        intent = "GENERAL"
-
-        answer = (
-            f"{system_label}. "
-            f"{watch_open} fırsat izleniyor, "
-            f"{paper_open} açık paper işlem var. "
-            f"Gerçekleşen sonuç {_vezir_money(pnl)}."
-        )
-
-        if main_reason:
-            label = str(
-                main_reason.get("label")
-                or ""
-            )
-
-            if label:
-                answer += (
-                    f" Son kararların ana durumu: {label}."
-                )
-
-    technical_note = None
-
-    if technical_requested:
-        if system_state == "DEGRADED":
-            technical_note = (
-                "Teknik özet: panelin veri sağlık kontrolü "
-                "en az bir kullanılabilir RPC sağlayıcı doğrulayamadı."
-            )
-        elif system_state == "HEALTHY":
-            technical_note = (
-                "Teknik özet: panel en az bir kullanılabilir "
-                "veri sağlayıcı doğruladı."
-            )
-        else:
-            technical_note = (
-                "Teknik özet: runtime normal aktif durumda değil."
-            )
-
-    return {
-        "answer": answer,
-        "intent": intent,
-        "authority": "READ_ONLY",
-        "technical": technical_note,
-        "evidence": {
-            "system_state": system_state,
-            "watch_open": watch_open,
-            "watch_verified": watch_verified,
-            "watch_limited": watch_limited,
-            "watch_probed": watch_probed,
-            "paper_open": paper_open,
-            "paper_closed": paper_closed,
-            "main_reason_available": bool(
-                main_reason
-            ),
-        },
-        "permissions": {
-            "trade": False,
-            "wallet": False,
-            "signing": False,
-            "database_write": False,
-            "runtime_control": False,
-            "deployment": False,
-        },
-    }
+        answer='Sorunu mevcut operasyon verisinden güvenilir biçimde yanıtlayamıyorum. Radar, işlem, risk veya sistem durumunu sorabilirsin.'
+    technical=None
+    if tech: technical='Teknik özet: veri sağlayıcı sağlığı sınırlı.' if ss=='DEGRADED' else ('Teknik özet: veri sağlayıcı sağlığı normal.' if ss=='HEALTHY' else 'Teknik özet: runtime normal aktif durumda değil.')
+    return {'answer':answer,'intent':intent,'authority':'READ_ONLY','technical':technical,'evidence':{'system_state':ss,'watch_open':wo,'watch_verified':wv,'watch_limited':wl,'watch_probed':wp,'paper_open':po,'paper_closed':pc,'main_reason_available':bool(reason)},'permissions':{'trade':False,'wallet':False,'signing':False,'database_write':False,'runtime_control':False,'deployment':False}}

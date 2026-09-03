@@ -3,13 +3,19 @@ from __future__ import annotations
 import json
 import math
 import sqlite3
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 from fastapi import HTTPException
 
+from app.paper.manager import PaperManager
 from app.risk.paper_position_sizing import PAPER_CAPITAL_USDT, paper_available_capital_usdt
+from app.strategy.mathematical_trade_plan import decode_plan, exit_net_proceeds
+
+
+MANUAL_QUOTE_MAX_AGE_SECONDS = 300.0
 
 
 def _num(value: Any) -> float | None:
@@ -18,6 +24,25 @@ def _num(value: Any) -> float | None:
     except (TypeError, ValueError):
         return None
     return number if math.isfinite(number) else None
+
+
+def _timestamp(value: Any) -> float | None:
+    number = _num(value)
+    if number is not None:
+        if number > 10_000_000_000:
+            number /= 1000.0
+        return number if number > 0 else None
+
+    text = str(value or "").strip()
+    if not text:
+        return None
+    try:
+        parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.timestamp()
 
 
 def _cache_quote(cache_db: Path, *, pool: str | None, token: str | None) -> dict[str, Any]:
@@ -31,7 +56,7 @@ def _cache_quote(cache_db: Path, *, pool: str | None, token: str | None) -> dict
         if pool:
             row = connection.execute(
                 """
-                SELECT pool, token, name, dex, price_usd
+                SELECT pool, token, name, dex, price_usd, updated_at
                 FROM gecko_pool_cache
                 WHERE lower(pool)=lower(?)
                 ORDER BY updated_at DESC
@@ -42,7 +67,7 @@ def _cache_quote(cache_db: Path, *, pool: str | None, token: str | None) -> dict
         if row is None and token:
             row = connection.execute(
                 """
-                SELECT pool, token, name, dex, price_usd
+                SELECT pool, token, name, dex, price_usd, updated_at
                 FROM gecko_pool_cache
                 WHERE lower(token)=lower(?)
                    OR lower(replace(token,'bsc_',''))=lower(?)
@@ -56,7 +81,34 @@ def _cache_quote(cache_db: Path, *, pool: str | None, token: str | None) -> dict
         connection.close()
 
 
-def _open_position(connection: sqlite3.Connection, *, position_id: Any = None, pool: str | None = None, token: str | None = None):
+def _fresh_quote(
+    cache_db: Path,
+    *,
+    pool: str | None,
+    token: str | None,
+) -> tuple[dict[str, Any], float, float]:
+    quote = _cache_quote(cache_db, pool=pool, token=token)
+    price = _num(quote.get("price_usd"))
+    observed = _timestamp(quote.get("updated_at"))
+    if price is None or price <= 0 or observed is None:
+        raise HTTPException(status_code=409, detail="Güncel referans fiyat yok")
+
+    age = max(0.0, time.time() - observed)
+    if age > MANUAL_QUOTE_MAX_AGE_SECONDS:
+        raise HTTPException(
+            status_code=409,
+            detail="Referans fiyat bayat; provider/cache akışını kontrol et",
+        )
+    return quote, price, age
+
+
+def _open_position(
+    connection: sqlite3.Connection,
+    *,
+    position_id=None,
+    pool=None,
+    token=None,
+):
     if position_id not in (None, ""):
         row = connection.execute(
             "SELECT * FROM paper_trades WHERE id=? AND status='OPEN' LIMIT 1",
@@ -64,7 +116,6 @@ def _open_position(connection: sqlite3.Connection, *, position_id: Any = None, p
         ).fetchone()
         if row is not None:
             return row
-
     if pool:
         row = connection.execute(
             "SELECT * FROM paper_trades WHERE lower(pool)=lower(?) AND status='OPEN' ORDER BY id DESC LIMIT 1",
@@ -72,17 +123,15 @@ def _open_position(connection: sqlite3.Connection, *, position_id: Any = None, p
         ).fetchone()
         if row is not None:
             return row
-
     if token:
         return connection.execute(
             "SELECT * FROM paper_trades WHERE lower(token)=lower(?) AND status='OPEN' ORDER BY id DESC LIMIT 1",
             (token,),
         ).fetchone()
-
     return None
 
 
-def _connect_write(path: Path) -> sqlite3.Connection:
+def _connect(path: Path) -> sqlite3.Connection:
     connection = sqlite3.connect(path, timeout=30)
     connection.row_factory = sqlite3.Row
     connection.execute("PRAGMA busy_timeout=30000")
@@ -101,15 +150,10 @@ def _buy(*, paper_db: Path, cache_db: Path, payload: dict[str, Any]) -> dict[str
     if amount is None or amount <= 0:
         raise HTTPException(status_code=400, detail="Geçerli USDT miktarı gir")
 
-    quote = _cache_quote(cache_db, pool=pool, token=token)
-    price = _num(quote.get("price_usd"))
-    if price is None or price <= 0:
-        raise HTTPException(status_code=409, detail="Güncel referans fiyat yok")
-
-    connection = _connect_write(paper_db)
+    quote, price, age = _fresh_quote(cache_db, pool=pool, token=token)
+    connection = _connect(paper_db)
     try:
         connection.execute("BEGIN IMMEDIATE")
-
         if _open_position(connection, pool=pool, token=token) is not None:
             connection.rollback()
             raise HTTPException(status_code=409, detail="Bu varlıkta zaten açık paper pozisyon var")
@@ -126,20 +170,20 @@ def _buy(*, paper_db: Path, cache_db: Path, payload: dict[str, Any]) -> dict[str
             "manual_confirmed": True,
             "captured_at_entry": True,
             "reference_price": price,
+            "reference_price_age_seconds": age,
             "cost_model_complete": False,
         }
-
         connection.execute(
             """
             INSERT INTO paper_trades(
                 created_at, token, symbol, entry_price, current_price,
-                highest_price, lowest_price, amount_bnb, status, token_amount,
-                pool, dex, opening_context_json, paper_account_version,
-                trade_policy, cost_model_complete, entry_amount_usdt,
-                risk_amount_usdt, capital_before_usdt, capital_after_entry_usdt,
+                highest_price, lowest_price, amount_bnb, status,
+                token_amount, initial_token_amount, pool, dex,
+                opening_context_json, paper_account_version, trade_policy,
+                cost_model_complete, entry_amount_usdt, risk_amount_usdt,
+                capital_before_usdt, capital_after_entry_usdt,
                 position_size_pct, sizing_reason, remaining_cost_basis_usdt
-            )
-            VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             """,
             (
                 now,
@@ -151,6 +195,7 @@ def _buy(*, paper_db: Path, cache_db: Path, payload: dict[str, Any]) -> dict[str
                 price,
                 0.0,
                 "OPEN",
+                token_amount,
                 token_amount,
                 pool,
                 quote.get("dex"),
@@ -169,7 +214,6 @@ def _buy(*, paper_db: Path, cache_db: Path, payload: dict[str, Any]) -> dict[str
         )
         position_id = int(connection.execute("SELECT last_insert_rowid()").fetchone()[0])
         connection.commit()
-
         return {
             "ok": True,
             "side": "BUY",
@@ -177,6 +221,7 @@ def _buy(*, paper_db: Path, cache_db: Path, payload: dict[str, Any]) -> dict[str
             "token": token,
             "pool": pool,
             "reference_price": price,
+            "reference_price_age_seconds": age,
             "amount_usdt": amount,
             "token_amount": token_amount,
             "paper_balance_after": available - amount,
@@ -194,48 +239,74 @@ def _buy(*, paper_db: Path, cache_db: Path, payload: dict[str, Any]) -> dict[str
         connection.close()
 
 
+def _sell_accounting(position: dict[str, Any], price: float) -> dict[str, float]:
+    entry = float(position.get("entry_amount_usdt") or 0.0)
+    tokens = float(position.get("token_amount") or 0.0)
+    realized_gross = float(position.get("realized_gross_proceeds_usdt") or 0.0)
+    realized_net = float(position.get("realized_proceeds_usdt") or 0.0)
+    if entry <= 0 or tokens < 0:
+        raise HTTPException(status_code=409, detail="Pozisyon muhasebesi eksik")
+
+    gross = realized_gross + tokens * price - entry
+    raw_plan = position.get("mathematical_plan_json")
+    if raw_plan:
+        try:
+            plan = decode_plan(raw_plan)
+            cost_model = dict(plan.get("cost_model") or {})
+        except Exception:
+            cost_model = {}
+        if cost_model:
+            exit_net = exit_net_proceeds(tokens, price, cost_model)
+            net = realized_net + exit_net - entry
+            return {
+                "gross": gross,
+                "net": net,
+                "roi": net / entry,
+                "proceeds": tokens * price,
+            }
+
+    if realized_gross or realized_net:
+        raise HTTPException(
+            status_code=409,
+            detail="Kısmi pozisyon maliyet modeli eksik; manuel kapanış güvenli değil",
+        )
+
+    accounting = PaperManager._calculate_accounting(position, price)
+    return {
+        "gross": float(accounting["gross_pnl_usdt"]),
+        "net": float(accounting["net_pnl_usdt"]),
+        "roi": float(accounting["roi"]),
+        "proceeds": tokens * price,
+    }
+
+
 def _sell(*, paper_db: Path, cache_db: Path, payload: dict[str, Any]) -> dict[str, Any]:
     token = str(payload.get("token") or "").strip()
     pool = str(payload.get("pool") or "").strip()
-
-    connection = _connect_write(paper_db)
+    connection = _connect(paper_db)
     try:
         connection.execute("BEGIN IMMEDIATE")
-        position = _open_position(
+        row = _open_position(
             connection,
             position_id=payload.get("position_id"),
             pool=pool or None,
             token=token or None,
         )
-        if position is None:
+        if row is None:
             connection.rollback()
             raise HTTPException(status_code=404, detail="Açık paper pozisyon bulunamadı")
 
-        position = dict(position)
-        quote = _cache_quote(
+        position = dict(row)
+        _, price, age = _fresh_quote(
             cache_db,
             pool=str(position.get("pool") or pool or ""),
             token=str(position.get("token") or token or ""),
         )
-        price = _num(quote.get("price_usd"))
-        if price is None or price <= 0:
-            price = _num(position.get("current_price")) or _num(position.get("entry_price"))
-        if price is None or price <= 0:
-            connection.rollback()
-            raise HTTPException(status_code=409, detail="Satış için güncel referans fiyat yok")
-
+        accounting = _sell_accounting(position, price)
+        gross = accounting["gross"]
+        net = accounting["net"]
+        roi = accounting["roi"]
         entry = float(position.get("entry_amount_usdt") or 0.0)
-        tokens = float(position.get("token_amount") or 0.0)
-        realized_gross = float(position.get("realized_gross_proceeds_usdt") or 0.0)
-        realized_net = float(position.get("realized_proceeds_usdt") or 0.0)
-        if entry <= 0 or tokens < 0:
-            connection.rollback()
-            raise HTTPException(status_code=409, detail="Pozisyon muhasebesi eksik")
-
-        final_mark = tokens * price
-        gross = realized_gross + final_mark - entry
-        net = realized_net + final_mark - entry
-        roi = net / entry if entry > 0 else 0.0
         high = max(float(position.get("highest_price") or price), price)
         low = min(float(position.get("lowest_price") or price), price)
         now = datetime.now(timezone.utc).isoformat()
@@ -271,7 +342,6 @@ def _sell(*, paper_db: Path, cache_db: Path, payload: dict[str, Any]) -> dict[st
         if cursor.rowcount != 1:
             connection.rollback()
             raise HTTPException(status_code=409, detail="Pozisyon kapanamadı")
-
         connection.commit()
         return {
             "ok": True,
@@ -280,7 +350,8 @@ def _sell(*, paper_db: Path, cache_db: Path, payload: dict[str, Any]) -> dict[st
             "token": position.get("token"),
             "pool": position.get("pool"),
             "reference_price": price,
-            "proceeds_usdt": final_mark,
+            "reference_price_age_seconds": age,
+            "proceeds_usdt": accounting["proceeds"],
             "net_pnl_usdt": net,
             "roi_pct": roi * 100.0,
             "paper_only": True,

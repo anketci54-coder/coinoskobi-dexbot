@@ -490,3 +490,43 @@ html,body{
   color:#b9cbd3 !important;
 }
 
+/* =========================================================
+   PHASE 14 — COMPACT VEZIR CHAT
+   Keep recent context visible without a tall message stack.
+   ========================================================= */
+
+#chatBody{
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+  padding:8px !important;
+}
+
+#chatBody .bubble{
+  margin-top:0 !important;
+  padding:8px 10px !important;
+  line-height:1.35 !important;
+}
+
+#chatBody .bubble::after{
+  display:none !important;
+}
+
+#chatBody .bubble:nth-last-child(n+7){
+  display:none;
+}
+
+#chatBody .bubble:nth-child(even){
+  margin-left:28px !important;
+  border-color:#2b657d !important;
+  background:#09202d !important;
+}
+
+#chatBody .bubble:nth-child(odd):not(#vezirSummary){
+  margin-right:18px !important;
+}
+
+#vezirSummary{
+  font-size:10px !important;
+  opacity:.9;
+}

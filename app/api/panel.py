@@ -18,6 +18,7 @@ from fastapi.staticfiles import StaticFiles
 import requests
 
 from app.api.panel_operations import answer_vezir_query, build_operations_payload, build_vezir_context
+from app.api.vezir_ai import route_vezir_question
 from app.config.settings import RPC_URL, RPC_URL_SECONDARY
 
 
@@ -2409,9 +2410,51 @@ def vezir_ask(
 
     operations = _phase14_operations_payload()
 
-    result = answer_vezir_query(
+    baseline = answer_vezir_query(
         question,
         operations,
+    )
+
+    # Known deterministic intents never need AI.
+    # Groq may only route otherwise-unclassified questions.
+    if baseline.get("intent") == "GENERAL":
+        route = route_vezir_question(
+            question=question,
+        )
+
+        if route.get("ai_used"):
+            result = answer_vezir_query(
+                str(route.get("question") or question),
+                operations,
+            )
+        else:
+            result = baseline
+
+    else:
+        route = {
+            "intent": None,
+            "technical": False,
+            "ai_used": False,
+            "ai_provider": None,
+            "ai_model": None,
+            "ai_fallback_reason": "NOT_NEEDED",
+        }
+        result = baseline
+
+    result["ai_used"] = bool(
+        route.get("ai_used")
+    )
+    result["ai_provider"] = route.get(
+        "ai_provider"
+    )
+    result["ai_model"] = route.get(
+        "ai_model"
+    )
+    result["ai_fallback_reason"] = route.get(
+        "ai_fallback_reason"
+    )
+    result["ai_routed_intent"] = route.get(
+        "intent"
     )
 
     return {

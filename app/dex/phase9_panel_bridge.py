@@ -179,43 +179,46 @@ def _write_payload(
             (timestamp, sample_depth, wallet_uid),
         )
 
-        connection.execute(
-            """
-            INSERT OR IGNORE INTO wallet_success_score(
-                wallet_uid,
-                calculated_at,
-                sample_depth,
-                consistency_score,
-                entry_quality_score,
-                exit_quality_score,
-                loss_control_score,
-                risk_adjusted_score,
-                freshness_score,
-                success_score,
-                qualification_state
+        try:
+            connection.execute(
+                """
+                INSERT OR IGNORE INTO wallet_success_score(
+                    wallet_uid,
+                    calculated_at,
+                    sample_depth,
+                    consistency_score,
+                    entry_quality_score,
+                    exit_quality_score,
+                    loss_control_score,
+                    risk_adjusted_score,
+                    freshness_score,
+                    success_score,
+                    qualification_state
+                )
+                SELECT ?,?,?,?,?,?,?,?,?,?,?
+                WHERE NOT EXISTS (
+                    SELECT 1
+                    FROM wallet_success_score
+                    WHERE lower(wallet_uid)=lower(?)
+                )
+                """,
+                (
+                    wallet_uid,
+                    timestamp,
+                    sample_depth,
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    "SUCCESSFUL",
+                    wallet_uid,
+                ),
             )
-            SELECT ?,?,?,?,?,?,?,?,?,?,?
-            WHERE NOT EXISTS (
-                SELECT 1
-                FROM wallet_success_score
-                WHERE lower(wallet_uid)=lower(?)
-            )
-            """,
-            (
-                wallet_uid,
-                timestamp,
-                sample_depth,
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
-                "SUCCESSFUL",
-                wallet_uid,
-            ),
-        )
+        except sqlite3.IntegrityError:
+            pass
 
     whale_ready = payload.get("whale_value_evidence_ready") is True
     whale_state = str(payload.get("whale_state") or "").strip().upper()
@@ -236,33 +239,36 @@ def _write_payload(
             (timestamp, whale_state, direction, wallet_uid),
         )
 
-        connection.execute(
-            """
-            INSERT OR IGNORE INTO whale_activity_snapshot(
-                wallet_uid,
-                generated_at,
-                whale_state,
-                direction,
-                activity_score,
-                evidence_count
+        try:
+            connection.execute(
+                """
+                INSERT OR IGNORE INTO whale_activity_snapshot(
+                    wallet_uid,
+                    generated_at,
+                    whale_state,
+                    direction,
+                    activity_score,
+                    evidence_count
+                )
+                SELECT ?,?,?,?,?,?
+                WHERE NOT EXISTS (
+                    SELECT 1
+                    FROM whale_activity_snapshot
+                    WHERE lower(wallet_uid)=lower(?)
+                )
+                """,
+                (
+                    wallet_uid,
+                    timestamp,
+                    whale_state,
+                    direction,
+                    None,
+                    None,
+                    wallet_uid,
+                ),
             )
-            SELECT ?,?,?,?,?,?
-            WHERE NOT EXISTS (
-                SELECT 1
-                FROM whale_activity_snapshot
-                WHERE lower(wallet_uid)=lower(?)
-            )
-            """,
-            (
-                wallet_uid,
-                timestamp,
-                whale_state,
-                direction,
-                None,
-                None,
-                wallet_uid,
-            ),
-        )
+        except sqlite3.IntegrityError:
+            pass
 
     return True
 
@@ -414,7 +420,7 @@ def _install_trigger(connection: sqlite3.Connection) -> None:
             {wallet},
             NEW.observed_at,
             {realized_sample},
-            NULL,NULL,NULL,NULL,NULL,NULL,NULL,
+            0,0,0,0,0,0,0,
             'SUCCESSFUL'
         WHERE COALESCE({performance_state}, '')='SUCCESSFUL'
           AND NOT EXISTS (
@@ -444,8 +450,8 @@ def _install_trigger(connection: sqlite3.Connection) -> None:
             NEW.observed_at,
             {whale_state},
             {whale_direction},
-            NULL,
-            NULL
+            0,
+            1
         WHERE COALESCE({whale_ready}, 0)=1
           AND COALESCE({whale_state}, '') NOT IN ('', 'UNKNOWN', 'NONE')
           AND NOT EXISTS (

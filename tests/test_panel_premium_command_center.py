@@ -56,6 +56,9 @@ def test_radar_has_requested_columns_filters_and_active_positions_tab():
     for marker in ('data-filter="ALL"', 'data-filter="COLD"', 'data-filter="WARM"', 'data-filter="HOT"', 'data-filter="ACTIVE"'):
         assert marker in markup
     assert "openPositionForRadar" in runtime
+    assert "activePositionRows" in runtime
+    assert "open.map(p=>source.find" in runtime
+    assert "state.filter!=='ACTIVE'&&!state.universe?.available" in runtime
 
 
 def test_radar_uses_readable_pair_name_and_hover_detail():
@@ -109,6 +112,12 @@ def test_vezir_is_single_chat_path_and_reports_provider_system_state():
     assert "/api/operations-summary" in runtime
     assert "sendVezir" in runtime
     assert "provider" in runtime.lower()
+
+
+def test_refresh_never_marks_partial_or_failed_snapshot_fresh():
+    runtime = js()
+    assert "allFresh=results.every(r=>r.status==='fulfilled')" in runtime
+    assert "allFresh?new Date().toLocaleTimeString('tr-TR'):'VERİ HATASI'" in runtime
 
 
 def test_public_tickers_and_canonical_real_data_routes_remain():

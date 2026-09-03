@@ -316,6 +316,7 @@ def _sql_json(path: str) -> str:
     return (
         "CASE WHEN json_valid(NEW.context_json) "
         f"THEN json_extract(NEW.context_json, '{path}') END"
+
     )
 
 
@@ -349,7 +350,7 @@ def _install_trigger(connection: sqlite3.Connection) -> None:
     )
 
     trigger_sql = f"""
-    DROP TRIGGER IF EXISTS {TRIGGER_NAME};
+    DROP TRIGGER IF EXISTS {TRIGGGER_NAME};
 
     CREATE TRIGGER {TRIGGER_NAME}
     AFTER INSERT ON candidate_decision_history
@@ -420,7 +421,7 @@ def _install_trigger(connection: sqlite3.Connection) -> None:
             {wallet},
             NEW.observed_at,
             {realized_sample},
-            0,0,0,0,0,0,0,
+            NULL,NULL,NULL,NULL,NULL,NULL,NULL,
             'SUCCESSFUL'
         WHERE COALESCE({performance_state}, '')='SUCCESSFUL'
           AND NOT EXISTS (
@@ -450,8 +451,8 @@ def _install_trigger(connection: sqlite3.Connection) -> None:
             NEW.observed_at,
             {whale_state},
             {whale_direction},
-            0,
-            1
+            NULL,
+            NULL
         WHERE COALESCE({whale_ready}, 0)=1
           AND COALESCE({whale_state}, '') NOT IN ('', 'UNKNOWN', 'NONE')
           AND NOT EXISTS (

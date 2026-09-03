@@ -9,8 +9,8 @@ BOOTSTRAP = Path("app/api/__init__.py")
 def test_premium_assets_are_loaded_by_canonical_panel_shell():
     source = BOOTSTRAP.read_text(encoding="utf-8")
 
-    assert "/static/panel-premium-v2.css?v=1" in source
-    assert "/static/panel-premium-v2.js?v=1" in source
+    assert "/static/panel-premium-v2.css?v=2" in source
+    assert "/static/panel-premium-v2.js?v=2" in source
     assert "phase14_premium_responsive_shell" in source
     assert "HTMLResponse" in source
 

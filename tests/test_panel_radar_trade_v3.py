@@ -46,4 +46,4 @@ def test_radar_ticket_has_responsive_modal_styles():
     source = CSS.read_text(encoding="utf-8")
     assert ".v3-order-modal" in source
     assert ".v3-order-card" in source
-    assert "@media (max-width:760px)" in source
+    assert "@media(max-width:760px)" in source

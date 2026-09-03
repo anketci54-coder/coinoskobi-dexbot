@@ -85,22 +85,26 @@ def test_large_low_value_panels_are_removed_from_rendered_panel():
         "SIGNAL TIMELINE",
         "SİSTEM SAĞLIĞI",
         "SİSTEM & İSTİHBARAT",
+        "EDGE ANALİZ",
     )
     for marker in removed:
         assert marker not in source
 
 
-def test_edge_analysis_is_compact_but_keeps_real_selected_pool_evidence():
+def test_edge_analysis_code_is_removed_and_vezir_uses_full_right_column():
     source = html()
 
-    assert "grid-template-rows:195px minmax(0,1fr)" in source
-    assert 'id="edgeScore"' in source
-    assert 'id="edgeMove"' in source
-    assert 'id="edge5m"' in source
-    assert 'id="edgeVolumeZ"' in source
-    assert 'id="edgeEvidence"' in source
-    assert 'id="edgeReason"' in source
-    assert "r.seismic||{}" in source
+    assert "grid-template-rows:minmax(0,1fr)" in source
+    assert '<aside class="right">\n<section class="panel vezir">' in source
+    assert 'class="panel edge"' not in source
+    assert 'id="edgeScore"' not in source
+    assert 'id="edgeMove"' not in source
+    assert 'id="edge5m"' not in source
+    assert 'id="edgeVolumeZ"' not in source
+    assert 'id="edgeEvidence"' not in source
+    assert 'id="edgeReason"' not in source
+    assert "function renderEdge" not in source
+    assert "renderEdge()" not in source
 
 
 def test_news_and_calendar_share_one_scrollable_news_panel():

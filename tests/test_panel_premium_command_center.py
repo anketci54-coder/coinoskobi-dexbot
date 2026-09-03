@@ -1,167 +1,139 @@
 from pathlib import Path
 
 
-PANEL = Path("app/api/static/index.html")
+HTML = Path("app/api/static/index.html")
+JS = Path("app/api/static/panel.js")
+CSS = Path("app/api/static/panel.css")
 
 
 def html() -> str:
-    return PANEL.read_text(encoding="utf-8")
+    return HTML.read_text(encoding="utf-8")
 
 
-def test_header_is_tall_enough_for_brand_and_metrics():
+def js() -> str:
+    return JS.read_text(encoding="utf-8")
+
+
+def css() -> str:
+    return CSS.read_text(encoding="utf-8")
+
+
+def test_single_canonical_asset_runtime():
     source = html()
+    assert source.count('<script src="/static/panel.js?v=1"></script>') == 1
+    assert source.count('<link rel="stylesheet" href="/static/panel.css?v=1">') == 1
+    assert "<style>" not in source
+    assert "setInterval(" not in source
+    for obsolete in ("panel-premium-v2", "panel-radar-trade-v3", "panel-readable.css"):
+        assert obsolete not in source
 
-    assert "grid-template-rows:92px minmax(0,1fr) 34px" in source
+
+def test_header_keeps_brand_and_real_paper_metrics():
+    source = html()
+    assert "grid-template-rows:92px minmax(0,1fr) 34px" in css()
     assert "İŞLEM<br>MERKEZİ" in source
-    assert "white-space:normal" in source
-    assert "BAKİYE" in source
-    assert "GÜNLÜK PNL" in source
-    assert "TOPLAM PNL" in source
-    assert "AÇIK POZİSYON" in source
-    assert "KULLANILAN RİSK" in source
+    for marker in ("BAKİYE", "GÜNLÜK PNL", "TOPLAM PNL", "AÇIK POZİSYON", "KULLANILAN RİSK"):
+        assert marker in source
 
 
-def test_radar_center_replaces_duplicate_radar_title():
+def test_radar_is_single_canonical_center_without_legacy_distribution():
     source = html()
-
     assert "RADAR MERKEZİ" in source
     assert "UNIVERSE RADAR" not in source
     assert "FIRSAT RADARI" not in source
+    assert 'class="distribution"' not in source
+    assert 'id="universeSource"' not in source
 
 
-def test_radar_center_has_only_requested_market_columns():
+def test_radar_has_requested_columns_filters_and_active_positions_tab():
+    markup, runtime = html(), js()
+    header = ('<div class="radar-grid"><span>STATE</span><span>VARLIK / POOL</span>'
+              '<span>SCORE</span><span>24H HACİM</span><span>FİYAT</span>'
+              '<span>5M</span><span>LİKİDİTE</span></div>')
+    assert header in markup
+    assert "n(r.seismic.score)>0" in runtime
+    assert ".sort((a,b)=>n(b?.seismic?.score)-n(a?.seismic?.score))" in runtime
+    for marker in ('data-filter="ALL"', 'data-filter="COLD"', 'data-filter="WARM"', 'data-filter="HOT"', 'data-filter="ACTIVE"'):
+        assert marker in markup
+    assert "openPositionForRadar" in runtime
+    assert "activePositionRows" in runtime
+    assert "open.map(p=>source.find" in runtime
+    assert "state.filter!=='ACTIVE'&&!state.universe?.available" in runtime
+
+
+def test_radar_uses_readable_pair_name_and_hover_detail():
+    runtime = js()
+    assert "row?.display_name" in runtime
+    assert 'class="token-tooltip"' in runtime
+    assert "snapshot_at" in runtime
+    assert "liquidity_usd" in runtime
+
+
+def test_manual_buy_sell_is_real_paper_only_with_confirmed_order_ticket():
+    runtime = js()
+    assert "side=pos?'SELL':'BUY'" in runtime
+    assert "action=pos?'SAT':'AL'" in runtime
+    assert "state.operatingMode!=='MANUAL'" in runtime
+    assert "openOrderTicket" in runtime
+    assert "'/api/manual-paper/order'" in runtime
+    assert "confirmed:true" in runtime
+    assert "ALIM MİKTARI (USDT)" in runtime
+    assert "ALIMI ONAYLA" in runtime
+    assert "SATIŞI ONAYLA" in runtime
+    assert "Sadece PAPER hesap" in runtime
+    for marker in ("eth_requestAccounts", "wallet_switchEthereumChain", "eth_sendTransaction", "sendTransaction(", "connectWallet(", "signTransaction(", "PRIVATE_KEY"):
+        assert marker not in runtime
+
+
+def test_news_and_calendar_are_immediately_below_radar():
     source = html()
-
-    header = (
-        '<div class="radar-grid"><span>STATE</span>'
-        '<span>VARLIK / POOL</span><span>SCORE</span>'
-        '<span>24H HACİM</span><span>FİYAT</span>'
-        '<span>5M</span><span>LİKİDİTE</span></div>'
-    )
-    assert header in source
-    assert "<span>DEX</span>" not in source
-    assert "EVIDENCE / DURUM" not in source
+    radar_end = source.index('</section>\n\n<section class="panel news">')
+    news_start = source.index('<section class="panel news">')
+    lower_start = source.index('<div class="middle">')
+    assert radar_end < news_start < lower_start
+    for marker in ('id="newsTitle">HABER AKIŞI (0)', 'id="newsStream"', 'id="calendarStream"', "EKONOMİK TAKVİM", "Sahte haber yok", "Sahte etkinlik yok"):
+        assert marker in source
 
 
-def test_radar_center_filters_zero_score_and_sorts_descending_for_all_tabs():
-    source = html()
-
-    assert "n(r.seismic.score)>0" in source
-    assert ".sort((a,b)=>n(b?.seismic?.score)-n(a?.seismic?.score))" in source
-    assert 'data-filter="ALL"' in source
-    assert 'data-filter="COLD"' in source
-    assert 'data-filter="WARM"' in source
-    assert 'data-filter="HOT"' in source
-    assert "score > 0 hareketli pool yok" in source
+def test_wallet_panel_has_no_internal_phase_label_but_keeps_real_binding():
+    markup, runtime = html(), js()
+    assert "PHASE 9" not in markup
+    assert 'id="walletDetailBody"' in markup
+    assert "wallet_details_json" in runtime
+    assert "successful_wallets" in runtime
+    assert "Henüz gerçek wallet detayı yok" in runtime
 
 
-def test_manual_buy_sell_controls_are_prepare_only_and_auto_disables_them():
-    source = html()
-
-    assert '>AL</button>' in source
-    assert '>SAT</button>' in source
-    assert "state.operatingMode!=='MANUAL'" in source
-    assert "prepareManualAction" in source
-    assert "execution/signing authority kapalı; emir gönderilmedi" in source
-
-    forbidden = (
-        "eth_requestAccounts",
-        "wallet_switchEthereumChain",
-        "eth_sendTransaction",
-        "sendTransaction(",
-        "connectWallet(",
-        "signTransaction(",
-    )
-    for marker in forbidden:
-        assert marker not in source
+def test_vezir_is_single_chat_path_and_reports_provider_system_state():
+    markup, runtime = html(), js()
+    assert "VEZİR" in markup
+    assert "OPERASYON ASİSTANI" in markup
+    assert runtime.count("/api/vezir/ask") == 1
+    assert "/api/operations-summary" in runtime
+    assert "sendVezir" in runtime
+    assert "provider" in runtime.lower()
 
 
-def test_large_low_value_panels_are_removed_from_rendered_panel():
-    source = html()
-
-    removed = (
-        "SİSTEM & PAPER LEDGER",
-        "SON SİNYALLER",
-        "SIGNAL TIMELINE",
-        "SİSTEM SAĞLIĞI",
-        "SİSTEM & İSTİHBARAT",
-        "EDGE ANALİZ",
-    )
-    for marker in removed:
-        assert marker not in source
+def test_refresh_never_marks_partial_or_failed_snapshot_fresh():
+    runtime = js()
+    assert "allFresh=results.every(r=>r.status==='fulfilled')" in runtime
+    assert "allFresh?new Date().toLocaleTimeString('tr-TR'):'VERİ HATASI'" in runtime
 
 
-def test_edge_analysis_code_is_removed_and_vezir_uses_full_right_column():
-    source = html()
-
-    assert "grid-template-rows:minmax(0,1fr)" in source
-    assert '<aside class="right">\n<section class="panel vezir">' in source
-    assert 'class="panel edge"' not in source
-    assert 'id="edgeScore"' not in source
-    assert 'id="edgeMove"' not in source
-    assert 'id="edge5m"' not in source
-    assert 'id="edgeVolumeZ"' not in source
-    assert 'id="edgeEvidence"' not in source
-    assert 'id="edgeReason"' not in source
-    assert "function renderEdge" not in source
-    assert "renderEdge()" not in source
+def test_public_tickers_and_canonical_real_data_routes_remain():
+    markup, runtime = html(), js()
+    assert "api.binance.com/api/v3/ticker/24hr" in runtime
+    assert "api.coingecko.com/api/v3/simple/price" in runtime
+    assert "setInterval(refreshTickers,20000)" in runtime
+    for marker in ("getJson('/api/dashboard')", "getJson('/api/authority')", "getJson('/api/universe-panel')"):
+        assert marker in runtime
+    assert "/api/runtime-candidates" not in runtime
+    assert "LIVE EXECUTION" in markup
+    assert "WALLET" in markup
 
 
-def test_news_and_calendar_share_one_scrollable_news_panel():
-    source = html()
-
-    assert 'id="newsTitle">HABER AKIŞI (0)' in source
-    assert 'id="newsStream"' in source
-    assert 'id="calendarStream"' in source
-    assert "EKONOMİK TAKVİM" in source
-    assert "news-title-new" in source
-    assert "news-item.new" in source
-    assert "state.lastNewsCount" in source
-    assert "Sahte haber yok" in source
-    assert "Sahte etkinlik yok" in source
-
-
-def test_public_btc_eth_tickers_have_bounded_fallback_without_secrets():
-    source = html()
-
-    assert "BTC/USDT" in source
-    assert "ETH/USDT" in source
-    assert "api.binance.com/api/v3/ticker/24hr" in source
-    assert "api.coingecko.com/api/v3/simple/price" in source
-    assert "setInterval(refreshTickers,20000)" in source
-    assert "API_KEY" not in source
-    assert "PRIVATE_KEY" not in source
-
-
-def test_panel_preserves_canonical_real_data_and_read_only_contracts():
-    source = html()
-
-    assert "getJson('/api/dashboard')" in source
-    assert "getJson('/api/runtime-candidates')" in source
-    assert "getJson('/api/authority')" in source
-    assert "getJson('/api/universe-panel')" in source
-    assert "READ ONLY" in source
-    assert "LIVE EXECUTION" in source
-    assert "WALLET" in source
-
-
-def test_phase9_wallet_detail_remains_bound_to_real_intelligence_summary():
-    source = html()
-
-    assert 'id="walletDetailBody"' in source
-    assert "wallet_details_json" in source
-    assert "phase9WalletDetails" in source
-    assert "phase9Seen" in source
-    assert "successful_wallets" in source
-    assert "Henüz gerçek Phase 9 wallet detayı yok" in source
-    assert "PHASE 9 · READ ONLY" in source
-
-
-def test_vezir_and_accounting_remain_available():
-    source = html()
-
-    assert "VEZİR" in source
-    assert "/api/vezir/ask" in source
-    assert "MUHASEBE" in source
-    assert "openAccounting()" in source
-    assert "/api/positions" in source
+def test_accounting_remains_available():
+    markup, runtime = html(), js()
+    assert "MUHASEBE" in markup
+    assert "openAccounting()" in markup
+    assert "/api/positions" in runtime

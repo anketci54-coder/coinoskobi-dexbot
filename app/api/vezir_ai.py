@@ -9,7 +9,7 @@ import requests
 GROQ_CHAT_URL = "https://api.groq.com/openai/v1/chat/completions"
 DEFAULT_MODEL = "openai/gpt-oss-120b"
 DEFAULT_TIMEOUT_SECONDS = 12.0
-MAX_COMPLETION_TOKENS = 24
+MAX_COMPLETION_TOKENS = 128
 
 
 _CANONICAL_QUESTIONS = {
@@ -153,6 +153,8 @@ def route_vezir_question(
                     }
                 ],
                 "temperature": 0,
+                "reasoning_effort": "low",
+                "include_reasoning": False,
                 "max_completion_tokens": MAX_COMPLETION_TOKENS,
             },
             timeout=timeout_seconds,

@@ -60,7 +60,7 @@ def test_radar_has_requested_columns_filters_and_active_positions_tab():
 
 def test_radar_uses_readable_pair_name_and_hover_detail():
     runtime = js()
-    assert "r.display_name" in runtime
+    assert "row?.display_name" in runtime
     assert 'class="token-tooltip"' in runtime
     assert "snapshot_at" in runtime
     assert "liquidity_usd" in runtime
@@ -68,8 +68,8 @@ def test_radar_uses_readable_pair_name_and_hover_detail():
 
 def test_manual_buy_sell_is_real_paper_only_with_confirmed_order_ticket():
     runtime = js()
-    assert '>AL</button>' in runtime
-    assert '>SAT</button>' in runtime
+    assert "side=pos?'SELL':'BUY'" in runtime
+    assert "action=pos?'SAT':'AL'" in runtime
     assert "state.operatingMode!=='MANUAL'" in runtime
     assert "openOrderTicket" in runtime
     assert "'/api/manual-paper/order'" in runtime
@@ -104,11 +104,11 @@ def test_wallet_panel_has_no_internal_phase_label_but_keeps_real_binding():
 def test_vezir_is_single_chat_path_and_reports_provider_system_state():
     markup, runtime = html(), js()
     assert "VEZİR" in markup
+    assert "OPERASYON ASİSTANI" in markup
     assert runtime.count("/api/vezir/ask") == 1
     assert "/api/operations-summary" in runtime
     assert "sendVezir" in runtime
     assert "provider" in runtime.lower()
-    assert "SADECE OKUMA" in runtime
 
 
 def test_public_tickers_and_canonical_real_data_routes_remain():
@@ -116,8 +116,9 @@ def test_public_tickers_and_canonical_real_data_routes_remain():
     assert "api.binance.com/api/v3/ticker/24hr" in runtime
     assert "api.coingecko.com/api/v3/simple/price" in runtime
     assert "setInterval(refreshTickers,20000)" in runtime
-    for marker in ("getJson('/api/dashboard')", "getJson('/api/runtime-candidates')", "getJson('/api/authority')", "getJson('/api/universe-panel')"):
+    for marker in ("getJson('/api/dashboard')", "getJson('/api/authority')", "getJson('/api/universe-panel')"):
         assert marker in runtime
+    assert "/api/runtime-candidates" not in runtime
     assert "LIVE EXECUTION" in markup
     assert "WALLET" in markup
 

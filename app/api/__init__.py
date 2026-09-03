@@ -10,10 +10,12 @@ from .panel_universe import universe_panel_payload
 
 PHASE14_PREMIUM_HEAD = """
 <link rel="stylesheet" href="/static/panel-premium-v2.css?v=2">
+<link rel="stylesheet" href="/static/panel-radar-trade-v3.css?v=1">
 """.strip()
 
 PHASE14_PREMIUM_BODY = """
 <script src="/static/panel-premium-v2.js?v=2"></script>
+<script src="/static/panel-radar-trade-v3.js?v=1"></script>
 """.strip()
 
 

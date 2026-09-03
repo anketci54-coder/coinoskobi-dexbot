@@ -217,8 +217,12 @@ def test_strict_legacy_constraints_cannot_break_decision_insert(tmp_path):
     success_count = con.execute(
         "SELECT COUNT(*) FROM wallet_success_score"
     ).fetchone()[0]
+    qualification = con.execute(
+        "SELECT qualification_state FROM wallet_success_score"
+    ).fetchone()[0]
     con.close()
 
     assert decision_count == 1
     assert wallet_count == 1
-    assert success_count == 0
+    assert success_count == 1
+    assert qualification == "SUCCESSFUL"

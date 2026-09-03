@@ -1,11 +1,12 @@
 # COINOSKOBI CANONICAL PROJECT STATE
 
-Updated: 2026-09-01
+Updated: 2026-09-03
 
 ## CANONICAL SOURCE
 
 - Repository: `anketci54-coder/coinoskobi-dexbot`
 - Production branch: `main`
+- Verified main SHA: `95d6ea78f4c2d762b1da1fa8c3290cd088e343f5`
 - VPS project: `/root/projects/coinoskobi-dexbot`
 - Main application: `main.py`
 - Canonical panel application: `app.api.panel:app`
@@ -22,9 +23,8 @@ Repository, VPS working tree, runtime services and runtime databases together fo
 ## GOVERNANCE
 
 - Only canonical architecture classification: **PHASE 0–15**.
-- Phase 0–15 are CLOSED; Phase 15 is final roadmap phase.
+- Phase 0–15 are CLOSED; Phase 15 is the final roadmap phase.
 - No Phase 16, ERA, architecture V2/V3, OCR/R-number, post-roadmap or parallel roadmap chain.
-- PancakeSwap V2/V3 remains valid only as actual DEX protocol naming.
 - Maintenance is assigned to an existing Phase 0–15 owner.
 - No side/test panel architecture and no fake runtime/panel data.
 - Missing evidence remains `UNKNOWN`.
@@ -52,9 +52,12 @@ External roles:
 
 Provider failure or missing evidence is never converted into safe evidence.
 
-## CANONICAL PROVIDER ARCHITECTURE
+## PROVIDER ARCHITECTURE CHECKPOINT
 
-Provider maintenance belongs to existing **Phase 8**; runtime operability/quota budget belongs to **Phase 12**; bounded counterfactual provider pressure belongs to **Phase 13**.
+Provider broker consolidation PR #61 was merged on 2026-09-01.
+Merge commit: `5505900f81261d8216926eb2f40381ffd3f11969`.
+
+Provider maintenance belongs to Phase 8; runtime operability/quota budget belongs to Phase 12; bounded counterfactual provider pressure belongs to Phase 13.
 
 Canonical code boundaries:
 - `app/chains/bsc.py` — BSC Web3 composition
@@ -68,49 +71,11 @@ Broker contract:
 - heavy RPC methods distributed across healthy providers
 - rate-limit/quota/403 circuit cooldown
 - transient transport cooldown
-- all-circuits-open fail-fast without another provider request
+- all-circuits-open fail-fast
 - bounded exact-request cache and in-flight coalescing
 - bounded primary-first WSS fallback
-- no provider URL/secret exposure in broker status
+- no provider URL/secret exposure in status
 - decision/paper/live/wallet/execution authority all false
-
-Legacy parallel `FailoverHTTPProvider`, `FailoverWSSRuntime`, `choose_provider` and `failover_allowed` contracts are removed from the candidate branch.
-
-## ACTIVE INTEGRATION CANDIDATE — PR #61
-
-Branch: `phase13/provider-broker`
-
-Purpose: consolidate provider resilience and quota protection without opening a new architecture tree.
-
-Functional provider commit after rebase:
-`7abd0af74a0af3fbdcb74392332ca82d74ebc2b0`
-
-CI gate commit:
-`85c52daaab972684ff2f7775b8ae5d1ec5ba4797`
-
-Validated evidence before documentation sync:
-- local targeted provider/pressure/E2E: **24 passed**
-- local full regression: **1155 passed / 0 failed**
-- post-rebase targeted acceptance: **9 passed / 0 failed**
-- dead-code audit: PASS
-- GitHub PR smoke/E2E run #462: SUCCESS
-- GitHub push `[full]` run #461: SUCCESS
-- canonical smoke now explicitly includes `tests/test_provider_broker.py`
-- runtime restarted: FALSE
-- `.env` changed: FALSE
-
-Documentation commits after the green functional/CI checkpoint do not alter runtime behavior. PR #61 must receive its normal GitHub CI result again after documentation changes before merge.
-
-## PROVIDER PRESSURE CONTEXT
-
-Observed provider exhaustion that motivated the maintenance:
-- active primary/secondary RPC capacity was exhausted/rate-limited during observation
-- failover itself worked but could not succeed when both configured providers were blocked
-- strategy quality must not be inferred from WATCH/PAPER_BUY counts collected during provider outage
-
-No provider secret is stored in this document.
-
-Deferred capacity options remain ordinary Phase 8/12 infrastructure choices, not new phases. Additional external providers may fill tertiary/quaternary slots when needed. A dedicated BSC node remains a need-based future option only if quota/cost/latency/load justifies its operational burden.
 
 ## COUNTERFACTUAL PRESSURE BOUND
 
@@ -119,7 +84,29 @@ Phase 13 bounded observation contract:
 - one bounded multi-pool request for that batch
 - remaining pending observations wait for later normal refreshes
 
-This reduces external pressure without changing decision authority or outcome semantics.
+## PHASE 14 VEZIR CHECKPOINT
+
+Vezir/Groq operator support remains Phase 14 maintenance.
+
+Merged changes:
+- PR #79 — read-only Groq intent router + compact Vezir presentation
+- PR #80 — GPT-OSS empty-output fix
+
+Current contract:
+- provider output never becomes displayed operational truth
+- Groq only routes into allowlisted deterministic intents
+- displayed answer remains deterministic
+- authority = `READ_ONLY`
+- trade/wallet/signing/database-write/runtime-control/deployment permissions remain false
+- technical detail is shown only when locally requested
+- GPT-OSS router uses bounded completion and low reasoning effort
+
+VPS acceptance on 2026-09-03:
+- targeted Vezir tests: **20 passed**
+- real Groq router: PASS
+- `/api/vezir/ask`: PASS
+- authority: READ_ONLY
+- paper runtime PID/restart count unchanged
 
 ## PHASE OWNERSHIP CHECKPOINT
 
@@ -143,24 +130,21 @@ This reduces external pressure without changing decision authority or outcome se
 ## NEXT MAINTENANCE TARGETS
 
 All remain inside existing Phase 0–15:
+- bounded Vezir conversation context → Phase 14
 - successful-wallet tracking → Phase 9
 - whale tracking → Phase 9
-- news/market intelligence → Phase 5/7 ownership
-- Vezir chatbot/operator support → Phase 14
+- news/market intelligence → Phase 5/7
 - security hardening → Phase 1/3/10 according to concern
 
-No new phase/era/version tree is permitted for these items.
+No new phase/era/version tree is permitted.
 
-## MERGE / RUNTIME RULE
+## RUNTIME RULE
 
-Before PR #61 merge:
-1. documentation-updated PR smoke/E2E must be green
-2. review final PR diff and authority boundaries
-3. merge to `main`
-4. verify post-merge main SHA/CI
-5. fast-forward VPS cleanly
-6. do not restart runtime merely for documentation
-7. runtime restart/provider env change only with a separate explicit operational need
+- Documentation-only maintenance does not require runtime restart.
+- Panel-only changes restart only `coinoskobi-panel-api.service` after tests.
+- Paper runtime is not restarted for panel/documentation maintenance.
+- Provider env/runtime changes require separate explicit operational need.
+- Live/wallet/signing authority remains locked unless separately and explicitly approved.
 
 ## CANONICAL DOCUMENTS
 

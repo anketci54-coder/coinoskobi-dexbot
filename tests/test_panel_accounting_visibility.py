@@ -22,6 +22,7 @@ def test_main_paper_ledger_is_removed_without_losing_accounting_data():
     assert "SİSTEM & PAPER LEDGER" not in html
     assert 'id="ledgerBody"' not in html
     assert "renderLedger" not in html
-    assert "const source=Array.isArray(state.accountingRows)" in html
+    assert "source=Array.isArray(state.accountingRows)?state.accountingRows" in html
     assert "...(state.dashboard?.positions||[])" in html
     assert "...(state.dashboard?.exits||[])" in html
+    assert "state.accountingRows=await getJson('/api/positions')" in html

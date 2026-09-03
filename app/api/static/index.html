@@ -100,7 +100,7 @@
 <div class="drawer" id="accountDrawer"><div class="drawer-card"><button class="close" onclick="closeAccounting()">KAPAT</button><h2>MUHASEBE</h2><div id="accountRows"></div></div></div>
 
 <script>
-const state={dashboard:null,candidates:[],universe:null,selected:null,authority:null,filter:'ALL',accountingRows:null};
+const state={dashboard:null,candidates:[],universe:null,selected:null,authority:null,filter:'ALL',accountingRows:null,vezirIntentContext:[]};
 const el=id=>document.getElementById(id);
 const n=(v,d=0)=>{const x=Number(v);return Number.isFinite(x)?x:d};
 const finite=v=>v!==null&&v!==undefined&&v!==''&&Number.isFinite(Number(v));
@@ -169,16 +169,53 @@ reply.textContent='VEZİR · değerlendiriyor...';
 chat.appendChild(reply);
 
 try{
+const intentCodes={
+WHY_NO_TRADE:'1',
+RISK:'2',
+OPPORTUNITY:'3',
+WATCH:'4',
+POSITIONS:'5',
+SYSTEM:'6',
+GENERAL:'7'
+};
+
+const contextCodes=(state.vezirIntentContext||[])
+.slice(-4)
+.filter(code=>/^[1-7]$/.test(String(code)));
+
+const contextMarker=contextCodes.length
+?'\\n<<VEZIR_CTX:'+contextCodes.join(',')+'>>'
+:'';
+
+const wireQuestion=(
+q.length+contextMarker.length<=500
+?q+contextMarker
+:q
+);
+
 const r=await fetch('/api/vezir/ask',{
 method:'POST',
 headers:{'Content-Type':'application/json'},
-body:JSON.stringify({question:q}),
+body:JSON.stringify({question:wireQuestion}),
 cache:'no-store'
 });
 
 if(!r.ok)throw new Error('vezir request failed');
 
 const data=await r.json();
+
+const verifiedIntent=String(
+data.intent||data.ai_routed_intent||''
+).toUpperCase();
+
+const verifiedCode=intentCodes[verifiedIntent];
+
+if(verifiedCode){
+state.vezirIntentContext=[
+...(state.vezirIntentContext||[]),
+verifiedCode
+].slice(-4);
+}
 
 let text='VEZİR · '+(data.answer||'Bu soruyu yanıtlayacak veri yok.');
 

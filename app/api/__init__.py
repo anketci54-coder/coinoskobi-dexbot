@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+
 from fastapi.responses import HTMLResponse
 
 from . import panel as _panel
@@ -14,13 +16,23 @@ async def canonical_panel_shell(request, call_next):
         return await call_next(request)
 
     html = _panel.INDEX_FILE.read_text(encoding="utf-8")
+
+    # index.html remains the canonical structural shell. Runtime behavior and
+    # presentation are owned by exactly one JS/CSS pair. The historical inline
+    # implementation is stripped before the page is served, so there is no
+    # second renderer, refresh loop, or manual-trade path in the browser.
+    html = re.sub(r"<style>.*?</style>", "", html, count=1, flags=re.S)
+    html = re.sub(r"<script>.*?</script>", "", html, count=1, flags=re.S)
     html = html.replace(
-        "shortToken(r.token0)||'POOL'",
-        "r.display_name||shortToken(r.token0)||'POOL'",
+        "</head>",
+        '<link rel="stylesheet" href="/static/panel.css?v=1">\n</head>',
         1,
     )
-    html = html.replace("PHASE 9 · READ ONLY", "CÜZDAN İZLEME")
-    html = html.replace("OPERASYON ANALİSTİ · SADECE OKUMA", "OPERASYON ASİSTANI")
+    html = html.replace(
+        "</body>",
+        '<script src="/static/panel.js?v=1"></script>\n</body>',
+        1,
+    )
 
     return HTMLResponse(
         content=html,

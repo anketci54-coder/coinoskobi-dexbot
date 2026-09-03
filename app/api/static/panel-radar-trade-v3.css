@@ -1,0 +1,33 @@
+.v3-hide-radar-footer{display:none!important}
+.v3-radar-entry{position:relative;border-bottom:1px solid rgba(20,100,130,.28)}
+.v3-radar-entry .radar-row{border-bottom:0!important;cursor:pointer}
+.v3-radar-detail{display:none;padding:10px 14px 12px 72px;background:rgba(4,20,29,.96);border-top:1px solid rgba(32,163,205,.22)}
+.v3-radar-entry:hover .v3-radar-detail,.v3-radar-entry:focus-within .v3-radar-detail,.v3-radar-entry.pinned .v3-radar-detail{display:block}
+.v3-detail-grid{display:grid;grid-template-columns:repeat(5,minmax(100px,1fr));gap:8px}
+.v3-detail-grid>div,.v3-detail-position{padding:8px 10px;border:1px solid rgba(27,123,156,.32);border-radius:6px;background:rgba(3,28,39,.75);min-width:0}
+.v3-detail-grid small,.v3-detail-position small{display:block;color:#6e9aac;font-size:9px;margin-bottom:3px}
+.v3-detail-grid b{display:block;font-size:11px;color:#d9f7ff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.v3-detail-position{display:flex;align-items:center;gap:18px;margin-top:8px;color:#bcebf4;font-size:11px}
+.v3-detail-position b{color:#36e7a1}
+.v3-detail-hint{margin-top:7px;color:#668d9b;font-size:9px}
+.v3-order-trigger{min-width:42px;height:25px;border-radius:5px;font-size:10px;font-weight:800;cursor:pointer}
+.v3-order-trigger.buy{border:1px solid #00c985;color:#00e89a;background:rgba(0,201,133,.08)}
+.v3-order-trigger.sell{border:1px solid #ff5264;color:#ff6a79;background:rgba(255,82,100,.08)}
+.v3-order-modal{display:none;position:fixed;inset:0;z-index:10000;background:rgba(0,8,12,.72);align-items:center;justify-content:center;padding:16px}
+.v3-order-modal.open{display:flex}
+.v3-order-card{position:relative;width:min(430px,100%);border:1px solid #177b9c;border-radius:10px;background:#07151d;box-shadow:0 24px 80px rgba(0,0,0,.5);padding:18px}
+.v3-order-close{position:absolute;right:12px;top:10px;border:0;background:transparent;color:#789eab;font-size:24px;cursor:pointer}
+.v3-order-kicker{font-size:9px;color:#1ed6f2;letter-spacing:.12em;font-weight:800}
+.v3-order-card h3{margin:5px 0 14px;color:#e6fbff;font-size:18px}
+.v3-order-quote{display:grid;grid-template-columns:1fr auto;gap:7px 12px;padding:11px;border:1px solid rgba(25,128,163,.35);border-radius:7px;background:#061e29;font-size:11px}
+.v3-order-quote span{color:#7299a8}.v3-order-quote b{color:#e3faff;text-align:right}
+.v3-buy-fields label{display:block;margin-top:13px;color:#83a9b7;font-size:9px;font-weight:700}
+.v3-buy-fields input{display:block;width:100%;box-sizing:border-box;margin-top:5px;padding:11px;border:1px solid #1c6e88;border-radius:6px;background:#04141c;color:#e9fcff;font-size:15px;outline:none}
+.v3-quick-amounts{display:flex;gap:6px;margin-top:7px}.v3-quick-amounts button{flex:1;border:1px solid #155b73;border-radius:5px;background:#071d27;color:#9dc8d5;padding:6px;cursor:pointer;font-size:10px}
+.v3-order-estimate{display:grid;grid-template-columns:repeat(2,1fr);gap:7px;margin-top:12px}
+.v3-order-estimate>div{border:1px solid rgba(28,105,132,.32);border-radius:6px;padding:8px;background:#061923}
+.v3-order-estimate small{display:block;color:#648c9b;font-size:8px;margin-bottom:3px}.v3-order-estimate b{color:#dff9ff;font-size:11px}.v3-order-estimate .pos{color:#20dc96}.v3-order-estimate .neg{color:#ff6071}
+.v3-order-error{min-height:18px;margin-top:8px;color:#ff6877;font-size:10px}
+.v3-order-confirm{width:100%;padding:11px;border-radius:6px;font-weight:900;cursor:pointer}.v3-order-confirm.buy{border:1px solid #00c985;background:rgba(0,201,133,.14);color:#21e8a0}.v3-order-confirm.sell{border:1px solid #ff5264;background:rgba(255,82,100,.14);color:#ff7180}.v3-order-confirm:disabled{opacity:.5;cursor:wait}
+.v3-order-safety{text-align:center;color:#587c89;font-size:8px;margin-top:8px}
+@media(max-width:760px){.v3-radar-detail{padding:9px}.v3-detail-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.v3-detail-position{display:grid;grid-template-columns:1fr 1fr;gap:6px}.v3-radar-entry:hover .v3-radar-detail{display:none}.v3-radar-entry.pinned .v3-radar-detail,.v3-radar-entry:focus-within .v3-radar-detail{display:block}.v3-order-card{max-height:92vh;overflow:auto}.v3-order-estimate{grid-template-columns:1fr 1fr}}

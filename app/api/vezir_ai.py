@@ -9,6 +9,7 @@ import requests
 GROQ_CHAT_URL = "https://api.groq.com/openai/v1/chat/completions"
 DEFAULT_MODEL = "openai/gpt-oss-120b"
 DEFAULT_TIMEOUT_SECONDS = 12.0
+MAX_COMPLETION_TOKENS = 24
 
 
 _CANONICAL_QUESTIONS = {
@@ -46,6 +47,22 @@ def _extract_output_text(
         return text.strip()
 
     return None
+
+
+def _technical_requested(question: str) -> bool:
+    q = str(question or "").casefold()
+
+    return any(
+        marker in q
+        for marker in (
+            "teknik",
+            "detay",
+            "rpc",
+            "provider",
+            "altyapı",
+            "altyapi",
+        )
+    )
 
 
 def _build_prompt(
@@ -136,6 +153,7 @@ def route_vezir_question(
                     }
                 ],
                 "temperature": 0,
+                "max_completion_tokens": MAX_COMPLETION_TOKENS,
             },
             timeout=timeout_seconds,
         )
@@ -156,11 +174,9 @@ def route_vezir_question(
             )
 
         label = text.strip().upper()
+        provider_requested_technical = label.endswith("_TECHNICAL")
 
-        technical = False
-
-        if label.endswith("_TECHNICAL"):
-            technical = True
+        if provider_requested_technical:
             base_intent = label[:-10]
         else:
             base_intent = label
@@ -174,6 +190,11 @@ def route_vezir_question(
                 question=question,
                 reason="INVALID_OUTPUT",
             )
+
+        technical = (
+            provider_requested_technical
+            and _technical_requested(question)
+        )
 
         if technical:
             canonical += " Teknik."

@@ -99,8 +99,20 @@ class FullUniverseObservationRuntime:
             "error": _safe_error(exc),
         }
 
+    @staticmethod
+    def _provider_block_failure(exc):
+        return {
+            "state": "ERROR",
+            "branch": "FINALIZED_BLOCK",
+            "from_block": None,
+            "to_block": None,
+            "registered": 0,
+            "provider_call": True,
+            "error_class": type(exc).__name__,
+            "error": _safe_error(exc),
+        }
+
     def run_once(self):
-        finalized = max(0, int(self.finalized_block_reader()) - self.confirmation_depth)
         stream = PANCAKE_FACTORY_STREAMS[
             self._stream_cursor % len(PANCAKE_FACTORY_STREAMS)
         ]
@@ -108,55 +120,79 @@ class FullUniverseObservationRuntime:
 
         discovery_errors = []
         existing_batches = []
-        existing_failed = False
-        for _ in range(self.discovery_batches_per_cycle):
-            try:
-                existing = self.discovery.scan(
-                    stream, start_block=self.start_blocks[stream["dex"]],
-                    finalized_block=finalized, branch="EXISTING",
-                )
-            except Exception as exc:
-                existing = self._discovery_failure(
-                    branch="EXISTING",
-                    exc=exc,
-                )
-                discovery_errors.append(existing)
-                existing_failed = True
-                log.warning(
-                    "Universe discovery failed dex=%s branch=EXISTING error=%s",
-                    stream["dex"],
-                    _safe_error(exc),
-                )
-            existing_batches.append(existing)
-            if existing_failed or existing["state"] == "CAUGHT_UP":
-                break
 
-        if existing_failed:
+        try:
+            finalized = max(
+                0,
+                int(self.finalized_block_reader()) - self.confirmation_depth,
+            )
+        except Exception as exc:
+            finalized = None
+            provider_error = self._provider_block_failure(exc)
+            discovery_errors.append(provider_error)
+            existing_batches.append(provider_error)
             tail = {
-                "state": "SKIPPED_AFTER_DISCOVERY_ERROR",
+                "state": "SKIPPED_PROVIDER_UNAVAILABLE",
                 "branch": "NEW",
-                "from_block": finalized,
-                "to_block": finalized,
+                "from_block": None,
+                "to_block": None,
                 "registered": 0,
                 "provider_call": False,
             }
+            log.warning(
+                "Universe finalized block unavailable error=%s; snapshot observations continue",
+                _safe_error(exc),
+            )
         else:
-            try:
-                tail = self.discovery.scan(
-                    stream, start_block=finalized,
-                    finalized_block=finalized, branch="NEW",
-                )
-            except Exception as exc:
-                tail = self._discovery_failure(
-                    branch="NEW",
-                    exc=exc,
-                )
-                discovery_errors.append(tail)
-                log.warning(
-                    "Universe discovery failed dex=%s branch=NEW error=%s",
-                    stream["dex"],
-                    _safe_error(exc),
-                )
+            existing_failed = False
+            for _ in range(self.discovery_batches_per_cycle):
+                try:
+                    existing = self.discovery.scan(
+                        stream, start_block=self.start_blocks[stream["dex"]],
+                        finalized_block=finalized, branch="EXISTING",
+                    )
+                except Exception as exc:
+                    existing = self._discovery_failure(
+                        branch="EXISTING",
+                        exc=exc,
+                    )
+                    discovery_errors.append(existing)
+                    existing_failed = True
+                    log.warning(
+                        "Universe discovery failed dex=%s branch=EXISTING error=%s",
+                        stream["dex"],
+                        _safe_error(exc),
+                    )
+                existing_batches.append(existing)
+                if existing_failed or existing["state"] == "CAUGHT_UP":
+                    break
+
+            if existing_failed:
+                tail = {
+                    "state": "SKIPPED_AFTER_DISCOVERY_ERROR",
+                    "branch": "NEW",
+                    "from_block": finalized,
+                    "to_block": finalized,
+                    "registered": 0,
+                    "provider_call": False,
+                }
+            else:
+                try:
+                    tail = self.discovery.scan(
+                        stream, start_block=finalized,
+                        finalized_block=finalized, branch="NEW",
+                    )
+                except Exception as exc:
+                    tail = self._discovery_failure(
+                        branch="NEW",
+                        exc=exc,
+                    )
+                    discovery_errors.append(tail)
+                    log.warning(
+                        "Universe discovery failed dex=%s branch=NEW error=%s",
+                        stream["dex"],
+                        _safe_error(exc),
+                    )
 
         observation_results, observed_pools = [], []
         for _ in range(self.observation_batches_per_cycle):
@@ -165,6 +201,7 @@ class FullUniverseObservationRuntime:
             observed_pools.extend(result.get("pools") or [])
             if result["state"] == "IDLE":
                 break
+
         evaluations = []
         for pool in dict.fromkeys(observed_pools):
             registry_row = self.registry.db.execute("""
@@ -188,11 +225,17 @@ class FullUniverseObservationRuntime:
                     state=evaluation["next_state"],
                 )
             evaluations.append(evaluation)
+
         self.cycles += 1
+        observation_degraded = any(
+            row.get("state") == "DEGRADED"
+            for row in observation_results
+        )
+
         return {
             "state": (
                 "SHADOW_DEGRADED"
-                if discovery_errors
+                if discovery_errors or observation_degraded
                 else "SHADOW_READY"
             ),
             "cycle": self.cycles,
@@ -205,6 +248,8 @@ class FullUniverseObservationRuntime:
             "observation_batches": observation_results,
             "observed": len(observed_pools), "evaluated": len(evaluations),
             "universe_size": self.registry.count(),
+            "provider_degraded": bool(discovery_errors),
+            "snapshot_degraded": observation_degraded,
             "decision_authority": False, "paper_authority": False,
             "live_authority": False, "wallet_authority": False,
             "execution_authority": False,
@@ -308,6 +353,7 @@ class UniverseShadowService:
     def status(self):
         with self._lock:
             running = bool(self._thread and self._thread.is_alive())
+            result = dict(self.last_result or {})
             return {
                 "name": self.name,
                 "state": "READY" if running else "STOPPED",
@@ -316,6 +362,9 @@ class UniverseShadowService:
                 "cycles": self.cycle_count,
                 "failures": self.failure_count,
                 "last_error": self.last_error,
+                "last_cycle_state": result.get("state"),
+                "provider_degraded": bool(result.get("provider_degraded")),
+                "snapshot_degraded": bool(result.get("snapshot_degraded")),
                 "decision_authority": False,
                 "paper_authority": False,
                 "live_authority": False,

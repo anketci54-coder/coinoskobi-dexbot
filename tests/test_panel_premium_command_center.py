@@ -121,3 +121,16 @@ def test_unbound_research_sections_fail_closed_instead_of_fabricating_values():
     assert "Araştırma sonucu backend'e publish edilmeden panel alpha üretmez." in html
     assert "Haber sağlayıcısı panel backend'ine bağlanmadı." in html
     assert "Ekonomik takvim kaynağı bağlı değil." in html
+
+
+def test_phase9_wallet_detail_is_bound_to_real_intelligence_summary():
+    html = PANEL.read_text(encoding="utf-8")
+
+    assert 'id="walletDetailBody"' in html
+    assert "wallet_details_json" in html
+    assert "phase9WalletDetails" in html
+    assert "phase9Seen" in html
+    assert "successful_wallets" in html
+    assert "Henüz gerçek Phase 9 wallet detayı yok" in html
+    assert "PHASE 9 · READ ONLY" in html
+    assert "<small>BAŞARILI</small>" in html

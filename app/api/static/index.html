@@ -70,7 +70,7 @@
 <div class="middle">
 <section class="panel"><div class="head"><div class="title">MARKET STATE FLOW</div><div class="meta">READ ONLY</div></div><div class="flow-body"><div class="flow-row"><b class="cold">COLD → WARM</b><div class="bar"><i id="cwBar"></i></div><span id="cwCount">—</span></div><div class="flow-row"><b class="warm">WARM → HOT</b><div class="bar"><i id="whBar"></i></div><span id="whCount">—</span></div><div class="flow-row"><b class="hot">HOT → COLD</b><div class="bar"><i id="hcBar"></i></div><span id="hcCount">—</span></div><div class="empty" id="flowNote">Transition telemetry gerçek universe projection üzerinden bekleniyor. Sahte oran gösterilmez.</div></div></section>
 <section class="panel"><div class="head"><div class="title">SİSTEM & PAPER LEDGER</div><div class="meta" id="ledgerMeta">CANLI</div></div><div class="ledger-body"><table class="table"><thead><tr><th>PAIR</th><th>POSITION</th><th>ENTRY</th><th>EXIT / REASON</th><th>PNL</th><th>SİNYAL</th><th>HOLD</th></tr></thead><tbody id="ledgerBody"></tbody></table></div></section>
-<section class="panel"><div class="head"><div class="title">CÜZDAN / BALİNA TAKİP</div><div class="meta">İSTİHBARAT</div></div><div class="wallet-body"><div class="grid6"><div class="box"><small>BALİNA</small><b id="whaleCount">—</b></div><div class="box"><small>WALLET</small><b id="walletCount">—</b></div><div class="box"><small>OUTCOME</small><b id="outcomeCount">—</b></div></div><div class="empty" style="margin-top:10px">Adres bazlı detay akışı mevcut backend kontratında yok; sayı özeti gerçek intelligence readmodel'den gelir.</div></div></section>
+<section class="panel"><div class="head"><div class="title">CÜZDAN / BALİNA TAKİP</div><div class="meta">PHASE 9 · READ ONLY</div></div><div class="wallet-body"><div class="grid6"><div class="box"><small>BALİNA</small><b id="whaleCount">—</b></div><div class="box"><small>WALLET</small><b id="walletCount">—</b></div><div class="box"><small>BAŞARILI</small><b id="outcomeCount">—</b></div></div><table class="table" style="margin-top:9px"><thead><tr><th>WALLET</th><th>SON GÖRÜLME</th><th>BAŞARI</th><th>BALİNA</th><th>YÖN</th></tr></thead><tbody id="walletDetailBody"></tbody></table></div></section>
 </div>
 
 <div class="lower">
@@ -89,7 +89,7 @@
 
 <div class="healthintel">
 <section class="panel"><div class="head"><div class="title">SİSTEM SAĞLIĞI</div><div class="meta" id="healthMeta">—</div></div><div class="health-body"><div class="kv"><span>PAPER SİSTEM</span><span id="paperHealth">—</span></div><div class="kv"><span>PANEL API</span><span id="panelHealth">—</span></div><div class="kv"><span>DB DURUM</span><span id="dbHealth">—</span></div><div class="kv"><span>DISK</span><span id="diskHealth">—</span></div><div class="kv"><span>LIVE EXECUTION</span><span class="neg">KAPALI</span></div><div class="kv"><span>WALLET AUTHORITY</span><span class="neg">KAPALI</span></div></div></section>
-<section class="panel"><div class="head"><div class="title">SİSTEM & İSTİHBARAT</div><div class="meta pos">CANLI</div></div><div class="intel-body"><div class="grid6"><div class="box"><small>BALİNA</small><b id="whaleCount2">—</b></div><div class="box"><small>WALLET</small><b id="walletCount2">—</b></div><div class="box"><small>OUTCOME</small><b id="outcomeCount2">—</b></div><div class="box"><small>PANEL API</small><b id="panelBox">—</b></div><div class="box"><small>PAPER</small><b id="paperBox">—</b></div><div class="box"><small>DB</small><b id="dbBox">—</b></div></div></div></section>
+<section class="panel"><div class="head"><div class="title">SİSTEM & İSTİHBARAT</div><div class="meta pos">CANLI</div></div><div class="intel-body"><div class="grid6"><div class="box"><small>BALİNA</small><b id="whaleCount2">—</b></div><div class="box"><small>WALLET</small><b id="walletCount2">—</b></div><div class="box"><small>BAŞARILI</small><b id="outcomeCount2">—</b></div><div class="box"><small>PANEL API</small><b id="panelBox">—</b></div><div class="box"><small>PAPER</small><b id="paperBox">—</b></div><div class="box"><small>DB</small><b id="dbBox">—</b></div></div></div></section>
 </div>
 </aside>
 </main>
@@ -128,7 +128,66 @@ function renderUniverse(){const u=state.universe;if(!u||!u.available){text('cold
 function renderEdge(){if(state.selected?.kind!=='universe'){text('edgeMeta','READ ONLY');text('edgeScore','—');text('edgeMove','—');text('edgePriceZ','—');text('edgeVolumeZ','—');text('edgeTxnsZ','—');text('edgeLiquidityRatio','—');text('edgeEvidence','—');text('edgeReason','Pool seçilmedi');return}const r=state.selected.row||{},s=r.seismic||{};text('edgeMeta',`${r.state||'—'} · ${shortToken(r.pool)}`);text('edgeScore',score(s.score));text('edgeMove',s.previous_state&&s.next_state?`${s.previous_state} → ${s.next_state}`:'—');text('edgePriceZ',zscore(s.price_z));text('edgeVolumeZ',zscore(s.volume_z));text('edgeTxnsZ',zscore(s.txns_z));text('edgeLiquidityRatio',finite(s.liquidity_ratio)?Number(s.liquidity_ratio).toFixed(2):'—');text('edgeEvidence',finite(s.evidence_count)?String(s.evidence_count):'—');text('edgeReason',s.reason||'Seismic evaluation yok')}
 function renderLedger(){const open=(state.dashboard?.positions||[]);const closed=(state.dashboard?.exits||[]);const rows=[...open.map(r=>({...r,_ledgerKind:'OPEN'})),...closed.map(r=>({...r,_ledgerKind:'CLOSED'}))].sort((a,b)=>String(b.closed_at||b.created_at||'').localeCompare(String(a.closed_at||a.created_at||''))).slice(0,6);const body=el('ledgerBody');body.innerHTML='';text('ledgerMeta',`AÇIK ${open.length} · KAPALI ${closed.length}`);if(!rows.length){body.innerHTML='<tr><td colspan="7" class="ghost">Aktif paper epoch işlem kaydı yok</td></tr>';return}rows.forEach(r=>{const tr=document.createElement('tr');const pnl=r.net_pnl_usdt??r.net_pnl;const mark=r._ledgerKind==='CLOSED'?(r.exit_price??r.current_price):r.current_price;const exitReason=r._ledgerKind==='CLOSED'?`${price(mark)} · ${escapeHtml(r.close_reason||'—')}`:`CURRENT ${price(mark)}`;tr.innerHTML=`<td>${escapeHtml(r.symbol||shortToken(r.token))}</td><td>${escapeHtml(r.status||r._ledgerKind)}</td><td>${price(r.entry_price)}</td><td>${exitReason}</td><td class="${cls(pnl)}">${money(pnl)} · ${pct(r.roi_pct)}</td><td>${escapeHtml(r.trade_policy||'—')}</td><td>${holdDuration(r)}</td>`;body.appendChild(tr)})}
 function renderSignals(){const body=el('signalBody');body.innerHTML='';const rows=(state.dashboard?.signals||[]).slice(0,5);if(!rows.length){body.innerHTML='<div class="empty">Sinyal yok</div>';return}rows.forEach(r=>{const div=document.createElement('div');div.className='kv';div.innerHTML=`<span>${escapeHtml(String(r.timestamp||'—').slice(11,19))} · ${escapeHtml(r.source||'')}</span><span class="${cls(r.pnl)}">${escapeHtml(r.message||'—')}</span>`;body.appendChild(div)})}
-function renderIntel(){const i=state.dashboard?.intelligence||{};const whale=i.active_whales??0,wallet=i.tracked_wallets??0,outcome=i.outcome_evidence??0;['whaleCount','whaleCount2'].forEach(x=>text(x,whale));['walletCount','walletCount2'].forEach(x=>text(x,wallet));['outcomeCount','outcomeCount2'].forEach(x=>text(x,outcome))}
+function phase9WalletDetails(i){
+const raw=i?.summary?.wallet_details_json;
+if(Array.isArray(raw))return raw;
+if(typeof raw!=='string'||!raw.trim())return[];
+try{
+const parsed=JSON.parse(raw);
+return Array.isArray(parsed)?parsed:[];
+}catch(e){
+return[];
+}
+}
+function phase9Seen(value){
+const n=Number(value);
+if(!Number.isFinite(n)||n<=0)return'—';
+return new Date(n*1000).toLocaleString('tr-TR',{
+day:'2-digit',
+month:'2-digit',
+hour:'2-digit',
+minute:'2-digit'
+});
+}
+function renderIntel(){
+const i=state.dashboard?.intelligence||{};
+const whale=i.active_whales??0;
+const wallet=i.tracked_wallets??0;
+const successful=i.successful_wallets??0;
+
+['whaleCount','whaleCount2'].forEach(x=>text(x,whale));
+['walletCount','walletCount2'].forEach(x=>text(x,wallet));
+['outcomeCount','outcomeCount2'].forEach(x=>text(x,successful));
+
+const body=el('walletDetailBody');
+if(!body)return;
+body.innerHTML='';
+
+const rows=phase9WalletDetails(i).slice(0,12);
+
+if(!rows.length){
+body.innerHTML='<tr><td colspan="5" class="ghost">Henüz gerçek Phase 9 wallet detayı yok</td></tr>';
+return;
+}
+
+rows.forEach(r=>{
+const tr=document.createElement('tr');
+
+const success=String(r.success_state||'UNKNOWN').toUpperCase();
+const whaleState=String(r.whale_state||'UNKNOWN').toUpperCase();
+const direction=String(r.whale_direction||'UNKNOWN').toUpperCase();
+
+tr.innerHTML=`
+<td title="${escapeHtml(r.wallet_uid||'')}">${escapeHtml(shortToken(r.address||r.wallet_uid))}</td>
+<td>${escapeHtml(phase9Seen(r.last_seen_at||r.first_seen_at))}</td>
+<td class="${success==='SUCCESSFUL'?'pos':''}">${escapeHtml(success)}</td>
+<td class="${whaleState!=='UNKNOWN'&&whaleState!=='NONE'?'warn':''}">${escapeHtml(whaleState)}</td>
+<td>${escapeHtml(direction)}</td>
+`;
+
+body.appendChild(tr);
+});
+}
 function renderHealth(){const h=state.dashboard?.health||{};const ok=h.status==='ok';text('healthMeta',ok?'DURUMY':'CHECK');text('paperHealth',String(h.paper_runtime||'—').toUpperCase());text('panelHealth',String(h.panel_api||'—').toUpperCase());text('dbHealth',h.database?'OK':'ERROR');text('diskHealth',pct(h.disk_usage_pct));text('panelBox',String(h.panel_api||'—').toUpperCase());text('paperBox',String(h.paper_runtime||'—').toUpperCase());text('dbBox',h.database?'OK':'ERROR');text('footerHealth',ok?'OK':'CHECK');text('footerPanel',String(h.panel_api||'—').toUpperCase());text('footerDb',h.database?'AKTİF':'ERROR')}
 function renderTimeline(){if(state.selected?.kind==='universe'){const r=state.selected.row||{},s=r.seismic||{};text('timelineTitle','SIGNAL TIMELINE · '+shortToken(r.pool)+' · CURRENT '+String(r.state||'—'));text('timelineCold',r.state==='COLD'?'CURRENT':s.previous_state==='COLD'?'PREVIOUS':'state feed');text('timelineWarm',r.state==='WARM'?'CURRENT':s.previous_state==='WARM'?'PREVIOUS':'state feed');text('timelineHot',r.state==='HOT'?'CURRENT':s.previous_state==='HOT'?'PREVIOUS':'state feed');text('timeline5m',pct(r.change_5m_pct));text('timelineEvidence',finite(s.evidence_count)?`${s.evidence_count} · score ${score(s.score)}`:'—');return}if(state.selected?.kind==='runtime'){const c=state.candidates[state.selected.index];text('timelineTitle',c?'SIGNAL TIMELINE · Runtime: '+(c.name||shortToken(c.token)):'SIGNAL TIMELINE · Seçili aday yok')}else{text('timelineTitle','SIGNAL TIMELINE · Seçili universe pool\'u yok')}['timelineCold','timelineWarm','timelineHot'].forEach(id=>text(id,'state feed'));text('timeline5m','—');text('timelineEvidence','—')}
 function renderVezir(){const d=state.dashboard||{},s=d.summary||{},u=state.universe;const states=u?.available?` COLD ${u.counts?.COLD??0}, WARM ${u.counts?.WARM??0}, HOT ${u.counts?.HOT??0}.`:'';const selected=state.selected?.kind==='universe'&&state.selected.row?.seismic?` Seçili pool seismic score ${score(state.selected.row.seismic.score)}.`:'';text('vezirSummary',`Equity ${money(s.equity)}, günlük PNL ${money(s.daily_pnl)}, açık pozisyon ${s.open_count??'—'}.${states}${selected} Panel read-only.`)}

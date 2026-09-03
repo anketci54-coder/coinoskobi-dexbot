@@ -27,6 +27,8 @@ def test_router_success_returns_only_canonical_question(monkeypatch):
         "openai/gpt-oss-120b",
     )
 
+    captured = {}
+
     class Response:
         status_code = 200
 
@@ -41,10 +43,14 @@ def test_router_success_returns_only_canonical_question(monkeypatch):
                 ]
             }
 
+    def fake_post(*args, **kwargs):
+        captured.update(kwargs)
+        return Response()
+
     monkeypatch.setattr(
         ai.requests,
         "post",
-        lambda *a, **k: Response(),
+        fake_post,
     )
 
     r = ai.route_vezir_question(
@@ -57,6 +63,10 @@ def test_router_success_returns_only_canonical_question(monkeypatch):
     assert r["ai_provider"] == "GROQ"
     assert r["ai_model"] == "openai/gpt-oss-120b"
     assert "answer" not in r
+    assert (
+        captured["json"]["max_completion_tokens"]
+        == ai.MAX_COMPLETION_TOKENS
+    )
 
 
 def test_router_supports_bounded_technical_route(monkeypatch):
@@ -92,6 +102,43 @@ def test_router_supports_bounded_technical_route(monkeypatch):
     assert r["intent"] == "SYSTEM"
     assert r["technical"] is True
     assert r["question"] == "Sistem durumu ne? Teknik."
+
+
+def test_router_does_not_grant_technical_detail_from_model_only(
+    monkeypatch,
+):
+    monkeypatch.setenv(
+        "GROQ_API_KEY",
+        "test-key",
+    )
+
+    class Response:
+        status_code = 200
+
+        def json(self):
+            return {
+                "choices": [
+                    {
+                        "message": {
+                            "content": "SYSTEM_TECHNICAL"
+                        }
+                    }
+                ]
+            }
+
+    monkeypatch.setattr(
+        ai.requests,
+        "post",
+        lambda *a, **k: Response(),
+    )
+
+    r = ai.route_vezir_question(
+        question="Sistem nasıl gidiyor?"
+    )
+
+    assert r["intent"] == "SYSTEM"
+    assert r["technical"] is False
+    assert r["question"] == "Sistem durumu ne?"
 
 
 def test_router_rejects_provider_prose_and_injection_output(

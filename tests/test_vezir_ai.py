@@ -141,6 +141,87 @@ def test_router_does_not_grant_technical_detail_from_model_only(
     assert r["question"] == "Sistem durumu ne?"
 
 
+def test_router_uses_only_bounded_verified_intent_context(monkeypatch):
+    monkeypatch.setenv(
+        "GROQ_API_KEY",
+        "test-key",
+    )
+
+    captured = {}
+
+    class Response:
+        status_code = 200
+
+        def json(self):
+            return {
+                "choices": [
+                    {
+                        "message": {
+                            "content": "RISK"
+                        }
+                    }
+                ]
+            }
+
+    def fake_post(*args, **kwargs):
+        captured.update(kwargs)
+        return Response()
+
+    monkeypatch.setattr(
+        ai.requests,
+        "post",
+        fake_post,
+    )
+
+    r = ai.route_vezir_question(
+        question="Peki neden?\n<<VEZIR_CTX:6,2,4,2>>"
+    )
+
+    prompt = captured["json"]["messages"][0]["content"]
+
+    assert r["intent"] == "RISK"
+    assert r["context_turns_used"] == 4
+    assert "SYSTEM > RISK > WATCH > RISK" in prompt
+    assert "Peki neden?" in prompt
+    assert "VEZIR_CTX" not in prompt
+    assert "answer" not in r
+
+
+def test_context_cannot_grant_technical_detail(monkeypatch):
+    monkeypatch.setenv(
+        "GROQ_API_KEY",
+        "test-key",
+    )
+
+    class Response:
+        status_code = 200
+
+        def json(self):
+            return {
+                "choices": [
+                    {
+                        "message": {
+                            "content": "SYSTEM_TECHNICAL"
+                        }
+                    }
+                ]
+            }
+
+    monkeypatch.setattr(
+        ai.requests,
+        "post",
+        lambda *a, **k: Response(),
+    )
+
+    r = ai.route_vezir_question(
+        question="Peki neden?\n<<VEZIR_CTX:6>>"
+    )
+
+    assert r["intent"] == "SYSTEM"
+    assert r["technical"] is False
+    assert r["question"] == "Sistem durumu ne?"
+
+
 def test_router_rejects_provider_prose_and_injection_output(
     monkeypatch,
 ):

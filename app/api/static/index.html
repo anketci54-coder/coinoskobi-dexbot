@@ -100,7 +100,7 @@
 <div class="drawer" id="accountDrawer"><div class="drawer-card"><button class="close" onclick="closeAccounting()">KAPAT</button><h2>MUHASEBE</h2><div id="accountRows"></div></div></div>
 
 <script>
-const state={dashboard:null,candidates:[],universe:null,selected:null,authority:null,filter:'ALL',accountingRows:null};
+const state={dashboard:null,candidates:[],universe:null,selected:null,authority:null,filter:'ALL',accountingRows:null,vezirIntentContext:[]};
 const el=id=>document.getElementById(id);
 const n=(v,d=0)=>{const x=Number(v);return Number.isFinite(x)?x:d};
 const finite=v=>v!==null&&v!==undefined&&v!==''&&Number.isFinite(Number(v));
@@ -136,7 +136,12 @@ function accountingTable(title,rows,closed){if(!rows.length)return`<div class="a
 function renderAccounting(){const s=state.dashboard?.summary||{},p=state.dashboard?.performance||{};const source=Array.isArray(state.accountingRows)?state.accountingRows:[...(state.dashboard?.positions||[]),...(state.dashboard?.exits||[])];const open=source.filter(r=>String(r.status||'OPEN').toUpperCase()!=='CLOSED');const closed=source.filter(r=>String(r.status||'').toUpperCase()==='CLOSED');el('accountRows').innerHTML=`<div class="account-summary">${[['Başlangıç',money(s.starting_capital)],['Equity',money(s.equity)],['Toplam PNL',money(s.total_pnl)],['Gerçekleşen net',money(s.realized_net)],['Açık PNL',money(s.open_pnl)],['Açık işlem',String(open.length)],['Kapalı işlem',String(closed.length)],['Kazanma oranı',pct(s.win_rate_pct)],['Profit factor',p.profit_factor==null?'—':Number(p.profit_factor).toFixed(2)]].map(([a,b])=>`<div class="account-stat"><small>${a}</small><b>${b}</b></div>`).join('')}</div>${accountingTable('AÇIK İŞLEMLER',open,false)}${accountingTable('KAPANAN İŞLEMLER',closed,true)}`}
 async function openAccounting(){el('accountDrawer').classList.add('open');el('accountRows').innerHTML='<div class="empty">Muhasebe kayıtları güncelleniyor…</div>';try{state.accountingRows=await getJson('/api/positions')}catch(e){console.error(e);state.accountingRows=null}renderAccounting()}
 function closeAccounting(){el('accountDrawer').classList.remove('open')}
-function askVezir(q){el('vezirInput').value=q;sendVezir()}
+function askVezir(q){
+const input=el('vezirInput');
+if(input.disabled)return;
+input.value=q;
+sendVezir()
+}
 // VEZIR_ENTER_BINDING
 document.addEventListener('DOMContentLoaded',()=>{
 const vi=el('vezirInput');
@@ -149,6 +154,7 @@ sendVezir();
 });
 async function sendVezir(){
 const input=el('vezirInput'),q=input.value.trim();
+if(input.disabled)return;
 if(!q)return;
 
 const chat=el('chatBody');
@@ -169,16 +175,53 @@ reply.textContent='VEZİR · değerlendiriyor...';
 chat.appendChild(reply);
 
 try{
+const intentCodes={
+WHY_NO_TRADE:'1',
+RISK:'2',
+OPPORTUNITY:'3',
+WATCH:'4',
+POSITIONS:'5',
+SYSTEM:'6',
+GENERAL:'7'
+};
+
+const contextCodes=(state.vezirIntentContext||[])
+.slice(-4)
+.filter(code=>/^[1-7]$/.test(String(code)));
+
+const contextMarker=contextCodes.length
+?'\\n<<VEZIR_CTX:'+contextCodes.join(',')+'>>'
+:'';
+
+const wireQuestion=(
+q.length+contextMarker.length<=500
+?q+contextMarker
+:q
+);
+
 const r=await fetch('/api/vezir/ask',{
 method:'POST',
 headers:{'Content-Type':'application/json'},
-body:JSON.stringify({question:q}),
+body:JSON.stringify({question:wireQuestion}),
 cache:'no-store'
 });
 
 if(!r.ok)throw new Error('vezir request failed');
 
 const data=await r.json();
+
+const verifiedIntent=String(
+data.intent||data.ai_routed_intent||''
+).toUpperCase();
+
+const verifiedCode=intentCodes[verifiedIntent];
+
+if(verifiedCode){
+state.vezirIntentContext=[
+...(state.vezirIntentContext||[]),
+verifiedCode
+].slice(-4);
+}
 
 let text='VEZİR · '+(data.answer||'Bu soruyu yanıtlayacak veri yok.');
 

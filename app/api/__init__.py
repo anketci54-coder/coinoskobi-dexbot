@@ -2,22 +2,18 @@ from __future__ import annotations
 
 from fastapi.responses import HTMLResponse
 
-# Package bootstrap intentionally registers display-only panel extensions on the
-# canonical FastAPI app without changing paper/runtime/execution authority.
 from . import panel as _panel
 from .panel_display_names import enrich_universe_display_names
+from .panel_manual_paper import register_manual_paper_routes
 from .panel_universe import universe_panel_payload
 
 
-# The canonical panel remains one index.html. Premium CSS/JS are separate static
-# assets so presentation can evolve without duplicating the panel or touching the
-# paper runtime. They remain read-only and carry no execution authority.
 PHASE14_PREMIUM_HEAD = """
-<link rel="stylesheet" href="/static/panel-premium-v2.css?v=1">
+<link rel="stylesheet" href="/static/panel-premium-v2.css?v=2">
 """.strip()
 
 PHASE14_PREMIUM_BODY = """
-<script src="/static/panel-premium-v2.js?v=1"></script>
+<script src="/static/panel-premium-v2.js?v=2"></script>
 """.strip()
 
 
@@ -42,13 +38,15 @@ async def phase14_premium_responsive_shell(request, call_next):
             1,
         )
 
-    # Preserve the real display-name enrichment without mutating the canonical
-    # source file or inventing token labels.
     html = html.replace(
         "shortToken(r.token0)||'POOL'",
         "r.display_name||shortToken(r.token0)||'POOL'",
         1,
     )
+
+    # User-facing labels stay operational, not implementation/governance jargon.
+    html = html.replace("PHASE 9 · READ ONLY", "CÜZDAN İZLEME")
+    html = html.replace("OPERASYON ANALİSTİ · SADECE OKUMA", "OPERASYON ASİSTANI")
 
     return HTMLResponse(
         content=html,
@@ -67,3 +65,10 @@ def api_universe_panel():
         payload,
         _panel.CACHE_DB,
     )
+
+
+register_manual_paper_routes(
+    _panel.app,
+    paper_db=_panel.PAPER_DB,
+    cache_db=_panel.CACHE_DB,
+)

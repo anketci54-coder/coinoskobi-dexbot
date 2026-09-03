@@ -52,15 +52,15 @@ def answer_vezir_query(question:str,operations:dict[str,Any])->dict[str,Any]:
         intent='WHY_NO_TRADE'
         if po: answer=f'Şu anda {po} açık paper işlem var. Sistem tamamen işlemsiz değil.'
         elif reason:
-            answer=f"Açık paper işlem yok. Son karar kayıtlarında ana neden: {reason.get('label') or 'İşlem şartları oluşmadı'}."; c=_vezir_int(reason.get('count')); answer+=f' Bu durum {c} kayıtta görüldü.' if c else ''; answer+=' Ayrıca veri akışı şu anda sınırlı.' if ss=='DEGRADED' else ''
-        elif ss=='DEGRADED': answer='Açık paper işlem yok. Veri akışı sınırlı; işlem şartlarının doğrulanması zayıflamış olabilir. Kesin karar nedeni için yeterli güncel kayıt yok.'
+            answer=f"Açık paper işlem yok. Son karar kayıtlarında ana neden: {reason.get('label') or 'İşlem şartları oluşmadı'}."; c=_vezir_int(reason.get('count')); answer+=f' Bu durum {c} kayıtta görüldü.' if c else ''; answer+=' Sistem şu anda sınırlı veriyle çalışıyor.' if ss=='DEGRADED' else ''
+        elif ss=='DEGRADED': answer='Açık paper işlem yok. Sistem sınırlı veriyle çalışıyor; işlem şartlarının doğrulanması zayıflamış olabilir. Kesin karar nedeni için yeterli güncel kayıt yok.'
         else: answer='Açık paper işlem yok. Bunu açıklayacak yeterli güncel karar nedeni görünmüyor.'
     elif any(x in q for x in ('risk','sorun','tehlike','problem')):
         intent='RISK'; answer='Şu an en önemli risk veri akışının sınırlı olması.' if ss=='DEGRADED' else ('Sistem güvenli beklemede.' if ss=='SAFE' else 'Şu anda panel verilerinde öne çıkan kritik bir sistem riski görünmüyor.')
     elif any(x in q for x in ('firsat','aday','en iyi','guclu')):
         intent='OPPORTUNITY'; answer=f'{wv} WATCH çıkışı doğrulanmış durumda.' if wv else (f'{wo} fırsat izleniyor; henüz doğrulanmış çıkış yok.' if wo else 'Şu anda doğrulanmış veya aktif izlenen bir fırsat görünmüyor.')
     elif any(x in q for x in ('watch','izlenen','izleme','probe')):
-        intent='WATCH'; answer=f'{wo} fırsat izleniyor. {wp} çıkış kontrolü, {wv} doğrulanmış çıkış'; answer+=f', {wl} kısmi doğrulama' if wl else ''; answer+='.'
+        intent='WATCH'; answer=f'{wo} fırsat izleniyor. {wp} kayıt için çıkış kontrolü yapılmış, {wv} doğrulanmış çıkış'; answer+=f', {wl} kısmi doğrulama' if wl else ''; answer+='.'
     elif any(x in q for x in ('islem','pozisyon','paper','pnl','kar zarar')):
         intent='POSITIONS'; answer=f'Şu anda {po} açık paper işlem var. {pc} işlem kapanmış. Gerçekleşen toplam sonuç {_vezir_money(pnl)}.'
     elif any(x in q for x in ('sistem','durum','saglik','calisiyor mu')):
@@ -68,5 +68,5 @@ def answer_vezir_query(question:str,operations:dict[str,Any])->dict[str,Any]:
     else:
         answer='Sorunu mevcut operasyon verisinden güvenilir biçimde yanıtlayamıyorum. Radar, işlem, risk veya sistem durumunu sorabilirsin.'
     technical=None
-    if tech: technical='Teknik özet: veri sağlayıcı sağlığı sınırlı.' if ss=='DEGRADED' else ('Teknik özet: veri sağlayıcı sağlığı normal.' if ss=='HEALTHY' else 'Teknik özet: runtime normal aktif durumda değil.')
+    if tech: technical='Teknik özet: RPC/provider veri sağlayıcı sağlığı sınırlı.' if ss=='DEGRADED' else ('Teknik özet: RPC/provider veri sağlayıcı sağlığı normal.' if ss=='HEALTHY' else 'Teknik özet: runtime normal aktif durumda değil.')
     return {'answer':answer,'intent':intent,'authority':'READ_ONLY','technical':technical,'evidence':{'system_state':ss,'watch_open':wo,'watch_verified':wv,'watch_limited':wl,'watch_probed':wp,'paper_open':po,'paper_closed':pc,'main_reason_available':bool(reason)},'permissions':{'trade':False,'wallet':False,'signing':False,'database_write':False,'runtime_control':False,'deployment':False}}

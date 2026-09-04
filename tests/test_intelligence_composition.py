@@ -140,6 +140,48 @@ def test_phase9_phase10_readmodels_connected():
     ]["candidate_action"] == "NO_ADVERSARY_BLOCK"
 
 
+def test_phase9_realized_outcome_refreshes_trusted_wallet_readmodel():
+    c = RuntimeIntelligenceComposition()
+    wallet = "bsc:0xabc"
+
+    c.update_wallet(
+        wallet,
+        {
+            "state": "READY",
+            "wallet_context_ready": True,
+            "market_context_allowed": True,
+            "wallet_id": wallet,
+            "identity_source": "TRANSACTION_FROM_ONLY",
+            "wallet_hard_risk": False,
+        },
+    )
+
+    for i in range(20):
+        result = c.observe_wallet_outcome(
+            wallet,
+            f"paper-position:{i}",
+            10.0 if i < 13 else -2.0,
+            realized=True,
+        )
+
+    assert result["state"] == "SUCCESSFUL"
+    assert result["realized_sample_size"] == 20
+
+    read = c.build(
+        "0xtoken",
+        wallet_id=wallet,
+    )["wallet_readmodel"]
+
+    performance = read[
+        "payload"
+    ]["phase9_wallet_tracking"]["performance"]
+
+    assert performance["state"] == "SUCCESSFUL"
+    assert performance["realized_sample_size"] == 20
+    assert performance["realized_win_rate"] == 0.65
+    assert read["payload"]["identity_source"] == "TRANSACTION_FROM_ONLY"
+
+
 def test_hard_adversary_can_only_block():
     c = RuntimeIntelligenceComposition()
 

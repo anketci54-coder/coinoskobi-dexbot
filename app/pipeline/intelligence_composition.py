@@ -78,12 +78,46 @@ class RuntimeIntelligenceComposition:
         *,
         realized=False,
     ):
-        return self.wallet_tracking.observe_outcome(
+        result = self.wallet_tracking.observe_outcome(
             wallet_id,
             token_id,
             return_pct,
             realized=realized,
         )
+
+        normalized_wallet_id = str(
+            wallet_id or ""
+        ).strip().lower()
+
+        current = (
+            self.wallet_readmodel.get(
+                normalized_wallet_id
+            )
+            if normalized_wallet_id
+            else {"state": "UNKNOWN", "payload": None}
+        )
+
+        payload = current.get("payload")
+
+        if isinstance(payload, dict):
+            identity_source = str(
+                payload.get("identity_source") or ""
+            ).strip().upper()
+
+            payload_wallet = str(
+                payload.get("wallet_id") or ""
+            ).strip().lower()
+
+            if (
+                identity_source == "TRANSACTION_FROM_ONLY"
+                and payload_wallet == normalized_wallet_id
+            ):
+                self.update_wallet(
+                    normalized_wallet_id,
+                    payload,
+                )
+
+        return result
 
     def observe_wallet_holding(
         self,

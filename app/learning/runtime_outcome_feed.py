@@ -52,6 +52,7 @@ class RuntimeLearningOutcomeFeed:
         max_memory=2048,
         max_readmodel=256,
         min_samples=20,
+        wallet_outcome_observer=None,
     ):
         self.chain = (
             str(chain or "")
@@ -72,6 +73,10 @@ class RuntimeLearningOutcomeFeed:
         self.min_samples = max(
             1,
             int(min_samples),
+        )
+
+        self.wallet_outcome_observer = (
+            wallet_outcome_observer
         )
 
         self._events = OrderedDict()
@@ -215,9 +220,6 @@ class RuntimeLearningOutcomeFeed:
             ]
         )
 
-        # We do NOT reconstruct historical signal-family
-        # attribution from current state. If opening-time
-        # attribution wasn't persisted, it remains UNKNOWN.
         signal_states = {}
 
         if isinstance(
@@ -273,6 +275,19 @@ class RuntimeLearningOutcomeFeed:
             freshness="FRESH",
         )
 
+        phase9_wallet_tracking = (
+            self._observe_phase9_wallet_outcome(
+                position_id=position_id,
+                opening_context=opening_context,
+                realized_return=(
+                    realized["return"]
+                ),
+                evidence_complete=(
+                    evidence_complete
+                ),
+            )
+        )
+
         row = {
             "outcome_id": outcome_id,
             "position_id": position_id,
@@ -316,6 +331,9 @@ class RuntimeLearningOutcomeFeed:
             "attribution": attribution,
             "memory_result": (
                 memory_result
+            ),
+            "phase9_wallet_tracking": (
+                phase9_wallet_tracking
             ),
             "opening_context_persisted": (
                 opening_context
@@ -362,6 +380,126 @@ class RuntimeLearningOutcomeFeed:
             "OBSERVED",
             row,
         )
+
+    def _observe_phase9_wallet_outcome(
+        self,
+        *,
+        position_id,
+        opening_context,
+        realized_return,
+        evidence_complete,
+    ):
+        observer = getattr(
+            self,
+            "wallet_outcome_observer",
+            None,
+        )
+
+        if not callable(observer):
+            return self._phase9_out(
+                "UNBOUND",
+                "OBSERVER_NOT_BOUND",
+            )
+
+        actor_identity = (
+            opening_context.get("actor_identity")
+            if isinstance(opening_context, dict)
+            else None
+        )
+
+        if not isinstance(actor_identity, dict):
+            return self._phase9_out(
+                "NOT_ELIGIBLE",
+                "ENTRY_IDENTITY_NOT_VERIFIED",
+            )
+
+        wallet_id = str(
+            actor_identity.get("wallet_id") or ""
+        ).strip().lower()
+        identity_source = str(
+            actor_identity.get("identity_source") or ""
+        ).strip().upper()
+        hindsight = actor_identity.get(
+            "hindsight_reconstructed"
+        )
+
+        if (
+            not wallet_id
+            or identity_source != "TRANSACTION_FROM_ONLY"
+            or hindsight is not False
+        ):
+            return self._phase9_out(
+                "NOT_ELIGIBLE",
+                "ENTRY_IDENTITY_NOT_VERIFIED",
+            )
+
+        if (
+            not evidence_complete
+            or realized_return is None
+        ):
+            return self._phase9_out(
+                "NOT_ELIGIBLE",
+                "REALIZED_OUTCOME_NOT_READY",
+            )
+
+        try:
+            return_pct = float(
+                realized_return
+            ) * 100.0
+        except (TypeError, ValueError):
+            return self._phase9_out(
+                "NOT_ELIGIBLE",
+                "REALIZED_OUTCOME_NOT_READY",
+            )
+
+        try:
+            result = observer(
+                wallet_id,
+                f"paper-position:{position_id}",
+                return_pct,
+                realized=True,
+            )
+        except Exception as exc:
+            return self._phase9_out(
+                "DEGRADED",
+                type(exc).__name__,
+            )
+
+        if not isinstance(result, dict):
+            return self._phase9_out(
+                "DEGRADED",
+                "INVALID_OBSERVER_RESULT",
+            )
+
+        return {
+            **result,
+            "source": "PAPER_CLOSE_ENTRY_WALLET",
+            "identity_source": "TRANSACTION_FROM_ONLY",
+            "hindsight_reconstructed": False,
+            "decision_authority": False,
+            "paper_authority": False,
+            "live_authority": False,
+            "wallet_authority": False,
+            "signing_authority": False,
+            "execution_authority": False,
+        }
+
+    @staticmethod
+    def _phase9_out(state, reason):
+        return {
+            "state": state,
+            "reason": reason,
+            "source": "PAPER_CLOSE_ENTRY_WALLET",
+            "identity_source": None,
+            "hindsight_reconstructed": False,
+            "trade_signal": False,
+            "decision_authority": False,
+            "paper_authority": False,
+            "live_authority": False,
+            "wallet_authority": False,
+            "signing_authority": False,
+            "execution_authority": False,
+        }
 
     def event_snapshot(self):
         return [

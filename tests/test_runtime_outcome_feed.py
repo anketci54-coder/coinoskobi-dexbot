@@ -14,6 +14,7 @@ def close(
     roi,
     *,
     reason=None,
+    opening_context=None,
 ):
     if reason is None:
         reason = (
@@ -37,8 +38,19 @@ def close(
         ),
         realized_return=roi,
         close_reason=reason,
-        opening_context=None,
+        opening_context=opening_context,
     )
+
+
+def verified_context(wallet="bsc:0xabc"):
+    return {
+        "actor_identity": {
+            "wallet_id": wallet,
+            "actor_id": wallet,
+            "identity_source": "TRANSACTION_FROM_ONLY",
+            "hindsight_reconstructed": False,
+        }
+    }
 
 
 def test_positive_real_paper_close_is_valid_signal():
@@ -76,7 +88,6 @@ def test_positive_real_paper_close_is_valid_signal():
         is False
     )
 
-    # We do not fabricate historical attribution.
     assert row[
         "attribution"
     ][
@@ -139,6 +150,94 @@ def test_duplicate_position_outcome_is_idempotent():
     assert feed.status()[
         "duplicate_count"
     ] == 1
+
+
+def test_verified_entry_wallet_feeds_phase9_realized_percent_once():
+    calls = []
+
+    def observer(wallet_id, outcome_id, return_pct, *, realized=False):
+        calls.append((wallet_id, outcome_id, return_pct, realized))
+        return {
+            "state": "OBSERVED",
+            "realized_sample_size": 1,
+            "decision_authority": False,
+            "execution_authority": False,
+        }
+
+    feed = RuntimeLearningOutcomeFeed(
+        wallet_outcome_observer=observer
+    )
+
+    first = close(
+        feed,
+        41,
+        0.20,
+        opening_context=verified_context(),
+    )
+    duplicate = close(
+        feed,
+        41,
+        0.20,
+        opening_context=verified_context(),
+    )
+
+    assert calls == [
+        (
+            "bsc:0xabc",
+            "paper-position:41",
+            20.0,
+            True,
+        )
+    ]
+    assert first["payload"]["phase9_wallet_tracking"]["state"] == "OBSERVED"
+    assert first["payload"]["phase9_wallet_tracking"]["source"] == "PAPER_CLOSE_ENTRY_WALLET"
+    assert duplicate["state"] == "DUPLICATE"
+
+
+def test_unverified_or_hindsight_identity_cannot_feed_phase9():
+    calls = []
+
+    def observer(*args, **kwargs):
+        calls.append((args, kwargs))
+        return {"state": "OBSERVED"}
+
+    feed = RuntimeLearningOutcomeFeed(
+        wallet_outcome_observer=observer
+    )
+
+    guessed = verified_context()
+    guessed["actor_identity"]["identity_source"] = "ROUTER_GUESS"
+    hindsight = verified_context()
+    hindsight["actor_identity"]["hindsight_reconstructed"] = True
+
+    a = close(feed, 51, 0.10, opening_context=guessed)
+    b = close(feed, 52, 0.10, opening_context=hindsight)
+
+    assert calls == []
+    assert a["payload"]["phase9_wallet_tracking"]["state"] == "NOT_ELIGIBLE"
+    assert b["payload"]["phase9_wallet_tracking"]["state"] == "NOT_ELIGIBLE"
+
+
+def test_phase9_observer_failure_cannot_break_paper_outcome():
+    def observer(*args, **kwargs):
+        raise RuntimeError("phase9 unavailable")
+
+    feed = RuntimeLearningOutcomeFeed(
+        wallet_outcome_observer=observer
+    )
+
+    result = close(
+        feed,
+        61,
+        0.10,
+        opening_context=verified_context(),
+    )
+
+    assert result["state"] == "OBSERVED"
+    phase9 = result["payload"]["phase9_wallet_tracking"]
+    assert phase9["state"] == "DEGRADED"
+    assert phase9["reason"] == "RuntimeError"
+    assert phase9["execution_authority"] is False
 
 
 def test_single_trade_cannot_calibrate():

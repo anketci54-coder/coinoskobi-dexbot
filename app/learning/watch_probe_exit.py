@@ -5,7 +5,7 @@ import time
 from web3 import Web3
 
 from app.chains.bsc import w3
-from app.config.contracts import PANCAKE_ROUTER, WBNB
+from app.config.contracts import PANCAKE_ROUTER, USDT, WBNB
 from app.risk.exit_feasibility import (
     PAIR_ABI,
     ERC20_ABI,
@@ -17,6 +17,7 @@ from app.risk.sellability import analyze as sellability_analyze
 
 MAX_PROBES_PER_MINUTE = 4
 RETRY_SECONDS = 900.0
+USDC = "0x8AC76a51cc950d9822D68b83Fe1Ad97B32Cd580d"
 
 _BUDGET_LOCK = threading.Lock()
 _BUDGET_WINDOW = None
@@ -85,6 +86,8 @@ def _exact_router_exit_usdt(token, pair, token_amount):
     token_address = Web3.to_checksum_address(token)
     pair_address = Web3.to_checksum_address(pair)
     wbnb = Web3.to_checksum_address(WBNB)
+    usdt = Web3.to_checksum_address(USDT)
+    usdc = Web3.to_checksum_address(USDC)
 
     pair_contract = w3.eth.contract(
         address=pair_address,
@@ -98,13 +101,27 @@ def _exact_router_exit_usdt(token, pair, token_amount):
         pair_contract.functions.token1().call()
     )
 
-    if {
+    pair_tokens = {
         token0.lower(),
         token1.lower(),
-    } != {
-        token_address.lower(),
+    }
+
+    if token_address.lower() not in pair_tokens:
+        return None
+
+    quote_address = (
+        token1
+        if token0.lower() == token_address.lower()
+        else token0
+    )
+
+    allowed_quotes = {
         wbnb.lower(),
-    }:
+        usdt.lower(),
+        usdc.lower(),
+    }
+
+    if quote_address.lower() not in allowed_quotes:
         return None
 
     token_contract = w3.eth.contract(
@@ -131,7 +148,7 @@ def _exact_router_exit_usdt(token, pair, token_amount):
         router.functions
         .getAmountsOut(
             raw_amount,
-            [token_address, wbnb],
+            [token_address, quote_address],
         )
         .call()
     )
@@ -139,13 +156,28 @@ def _exact_router_exit_usdt(token, pair, token_amount):
     if not amounts or int(amounts[-1]) <= 0:
         return None
 
-    wbnb_out = int(amounts[-1]) / 1e18
-    wbnb_usd, _ = _wbnb_usd(router)
+    raw_quote_out = int(amounts[-1])
 
-    if wbnb_usd is None or wbnb_usd <= 0:
-        return None
+    if quote_address.lower() == wbnb.lower():
+        wbnb_out = raw_quote_out / 1e18
+        wbnb_usd, _ = _wbnb_usd(router)
 
-    return wbnb_out * float(wbnb_usd)
+        if wbnb_usd is None or wbnb_usd <= 0:
+            return None
+
+        return wbnb_out * float(wbnb_usd)
+
+    quote_contract = w3.eth.contract(
+        address=quote_address,
+        abi=ERC20_ABI,
+    )
+    quote_decimals = int(
+        quote_contract.functions.decimals().call()
+    )
+
+    # BSC USDT/USDC are accepted as the canonical USD quote assets
+    # for this bounded read-only WATCH exit simulation.
+    return raw_quote_out / (10 ** quote_decimals)
 
 
 def probe_watch_exit(

@@ -6,7 +6,10 @@ import time
 from pathlib import Path
 from typing import Any
 
-from app.dex.arkham_provider import fetch_balances_for_address
+from app.dex.arkham_provider import (
+    MAX_TRACKED_WALLETS,
+    fetch_balances_for_address,
+)
 from app.paper.wallet_holdings_schema import ensure_wallet_holdings_schema
 
 
@@ -58,6 +61,7 @@ class ArkhamSuccessfulWalletService:
             "provider_failures": 0,
             "change_events": 0,
             **payload,
+            "tracked_wallet_cap": MAX_TRACKED_WALLETS,
             "read_only_provider": True,
             "decision_authority": False,
             "paper_authority": False,
@@ -93,25 +97,39 @@ class ArkhamSuccessfulWalletService:
     ) -> list[dict[str, str]]:
         rows = db.execute(
             """
+            WITH tracked_cohort AS (
+                SELECT
+                    lower(r.wallet_uid) AS wallet_uid,
+                    lower(r.chain) AS chain,
+                    lower(r.address) AS address,
+                    COALESCE(s.calculated_at, 0) AS calculated_at
+                FROM wallet_discovery_registry AS r
+                JOIN wallet_success_score AS s
+                  ON lower(s.wallet_uid)=lower(r.wallet_uid)
+                WHERE UPPER(COALESCE(s.qualification_state,''))='SUCCESSFUL'
+                  AND UPPER(COALESCE(r.discovery_source,''))='TRANSACTION_FROM_ONLY'
+                  AND lower(COALESCE(r.chain,''))='bsc'
+                  AND COALESCE(r.address,'')<>''
+                ORDER BY COALESCE(s.calculated_at, 0) DESC,
+                         lower(r.wallet_uid) ASC
+                LIMIT ?
+            )
             SELECT
-                lower(r.wallet_uid) AS wallet_uid,
-                lower(r.chain) AS chain,
-                lower(r.address) AS address
-            FROM wallet_discovery_registry AS r
-            JOIN wallet_success_score AS s
-              ON lower(s.wallet_uid)=lower(r.wallet_uid)
+                c.wallet_uid,
+                c.chain,
+                c.address
+            FROM tracked_cohort AS c
             LEFT JOIN wallet_holding_scan_state AS h
-              ON lower(h.wallet_uid)=lower(r.wallet_uid)
-            WHERE UPPER(COALESCE(s.qualification_state,''))='SUCCESSFUL'
-              AND UPPER(COALESCE(r.discovery_source,''))='TRANSACTION_FROM_ONLY'
-              AND lower(COALESCE(r.chain,''))='bsc'
-              AND COALESCE(r.address,'')<>''
+              ON lower(h.wallet_uid)=lower(c.wallet_uid)
             ORDER BY COALESCE(h.last_scan_at, 0) ASC,
-                     COALESCE(s.calculated_at, 0) DESC,
-                     lower(r.wallet_uid) ASC
+                     c.calculated_at DESC,
+                     c.wallet_uid ASC
             LIMIT ?
             """,
-            (max(1, min(int(limit), MAX_WALLETS_PER_CYCLE)),),
+            (
+                MAX_TRACKED_WALLETS,
+                max(1, min(int(limit), MAX_WALLETS_PER_CYCLE)),
+            ),
         ).fetchall()
         return [dict(row) for row in rows]
 
@@ -203,6 +221,53 @@ class ArkhamSuccessfulWalletService:
             (wallet_uid, time.time(), reason),
         )
 
+    def _upsert_holding(
+        self,
+        db: sqlite3.Connection,
+        wallet: dict[str, str],
+        token_id: str,
+        row: dict[str, Any],
+        observed_at: float,
+    ) -> None:
+        db.execute(
+            """
+            INSERT INTO wallet_holding_snapshot(
+                wallet_uid,token_id,chain,address,token_address,pricing_id,
+                symbol,name,balance,value_usd,price_usd,price_change_24h_pct,
+                observed_at,provider
+            ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            ON CONFLICT(wallet_uid,token_id) DO UPDATE SET
+                chain=excluded.chain,
+                address=excluded.address,
+                token_address=excluded.token_address,
+                pricing_id=excluded.pricing_id,
+                symbol=excluded.symbol,
+                name=excluded.name,
+                balance=excluded.balance,
+                value_usd=excluded.value_usd,
+                price_usd=excluded.price_usd,
+                price_change_24h_pct=excluded.price_change_24h_pct,
+                observed_at=excluded.observed_at,
+                provider=excluded.provider
+            """,
+            (
+                wallet["wallet_uid"],
+                token_id,
+                wallet["chain"],
+                wallet["address"],
+                row.get("token_address"),
+                row.get("pricing_id"),
+                row.get("symbol"),
+                row.get("name"),
+                row.get("balance"),
+                row.get("value_usd"),
+                row.get("price_usd"),
+                row.get("price_change_24h_pct"),
+                observed_at,
+                "ARKHAM",
+            ),
+        )
+
     def _apply_wallet_snapshot(
         self,
         db: sqlite3.Connection,
@@ -211,6 +276,7 @@ class ArkhamSuccessfulWalletService:
     ) -> int:
         wallet_uid = wallet["wallet_uid"]
         observed_at = float(result.get("fetched_at") or time.time())
+        complete_snapshot = result.get("complete_snapshot") is True
         previous = self._previous_holdings(db, wallet_uid)
         current = {
             str(row["token_id"]): dict(row)
@@ -220,8 +286,12 @@ class ArkhamSuccessfulWalletService:
             and float(row.get("balance") or 0.0) > 0
         }
 
+        comparable_tokens = set(current)
+        if complete_snapshot:
+            comparable_tokens |= set(previous)
+
         changes = 0
-        for token_id in sorted(set(previous) | set(current)):
+        for token_id in sorted(comparable_tokens):
             old = previous.get(token_id) or {}
             new = current.get(token_id) or {}
             old_balance = float(old.get("balance") or 0.0)
@@ -251,37 +321,20 @@ class ArkhamSuccessfulWalletService:
             )
             changes += 1
 
-        db.execute(
-            "DELETE FROM wallet_holding_snapshot WHERE lower(wallet_uid)=lower(?)",
-            (wallet_uid,),
-        )
-        for token_id, row in current.items():
+        removed = set(previous) - set(current) if complete_snapshot else set()
+        if complete_snapshot:
             db.execute(
-                """
-                INSERT INTO wallet_holding_snapshot(
-                    wallet_uid,token_id,chain,address,token_address,pricing_id,
-                    symbol,name,balance,value_usd,price_usd,price_change_24h_pct,
-                    observed_at,provider
-                ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-                """,
-                (
-                    wallet_uid,
-                    token_id,
-                    wallet["chain"],
-                    wallet["address"],
-                    row.get("token_address"),
-                    row.get("pricing_id"),
-                    row.get("symbol"),
-                    row.get("name"),
-                    row.get("balance"),
-                    row.get("value_usd"),
-                    row.get("price_usd"),
-                    row.get("price_change_24h_pct"),
-                    observed_at,
-                    "ARKHAM",
-                ),
+                "DELETE FROM wallet_holding_snapshot WHERE lower(wallet_uid)=lower(?)",
+                (wallet_uid,),
             )
 
+        for token_id, row in current.items():
+            self._upsert_holding(db, wallet, token_id, row, observed_at)
+
+        provider_state = "READY" if complete_snapshot else "PARTIAL_ASSET_CAP"
+        asset_count = result.get("available_asset_count")
+        if asset_count is None:
+            asset_count = len(current)
         db.execute(
             """
             INSERT INTO wallet_holding_scan_state(
@@ -299,16 +352,16 @@ class ArkhamSuccessfulWalletService:
                 wallet_uid,
                 observed_at,
                 observed_at,
-                "READY",
+                provider_state,
                 result.get("total_value_usd"),
-                len(current),
+                int(asset_count),
             ),
         )
         self._trim_changes(db)
         self._observe_runtime(
             wallet_uid,
             current,
-            set(previous) - set(current),
+            removed,
             observed_at,
         )
         return changes
@@ -335,21 +388,27 @@ class ArkhamSuccessfulWalletService:
             wallets = self._qualified_wallets(db, self.wallets_per_cycle)
             requested = len(wallets)
             for wallet in wallets:
-                result = self.fetcher(
+                raw_result = self.fetcher(
                     wallet["address"],
                     chain=wallet["chain"],
                 )
-                if not isinstance(result, dict) or result.get("available") is not True:
+                result = raw_result if isinstance(raw_result, dict) else {}
+                if result.get("available") is not True:
                     failures += 1
                     self._record_provider_failure(
                         db,
                         wallet["wallet_uid"],
-                        str((result or {}).get("reason") or "UNAVAILABLE"),
+                        str(result.get("reason") or "UNAVAILABLE"),
                     )
+                    db.commit()
                     continue
-                changes += self._apply_wallet_snapshot(db, wallet, result)
+                try:
+                    changes += self._apply_wallet_snapshot(db, wallet, result)
+                    db.commit()
+                except Exception:
+                    db.rollback()
+                    raise
                 updated += 1
-            db.commit()
         finally:
             db.close()
 
@@ -410,6 +469,7 @@ class ArkhamSuccessfulWalletService:
                 "state": "RUNNING" if running else "STOPPED",
                 "interval_seconds": self.interval_seconds,
                 "wallets_per_cycle": self.wallets_per_cycle,
+                "tracked_wallet_cap": MAX_TRACKED_WALLETS,
                 "last_cycle_at": self.last_cycle_at,
                 "last_result": dict(self.last_result),
                 "last_error": self.last_error,

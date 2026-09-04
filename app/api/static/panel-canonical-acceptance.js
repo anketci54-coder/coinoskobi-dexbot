@@ -20,10 +20,6 @@
   window.fetch = async (input, init = {}) => {
     const url = typeof input === 'string' ? input : String(input?.url || input || '');
 
-    if (url === '/api/vezir/ask') {
-      return nativeFetch('/api/vezir/chat-v2', init);
-    }
-
     if (url === '/api/dashboard') {
       const original = await nativeFetch(input, init);
       if (!original.ok) return original;

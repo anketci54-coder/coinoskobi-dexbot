@@ -10,6 +10,11 @@ JS = STATIC / "panel-canonical.js"
 CSS = STATIC / "panel-canonical.css"
 INIT = ROOT / "app" / "api" / "__init__.py"
 LEGACY_MANUAL_PAPER = ROOT / "app" / "api" / "panel_manual_paper.py"
+LEGACY_VEZIR_MODULES = (
+    ROOT / "app" / "api" / "vezir_chat.py",
+    ROOT / "app" / "api" / "vezir_memory.py",
+    ROOT / "app" / "api" / "vezir_learning.py",
+)
 LEGACY_PANEL_ASSETS = (
     "panel-premium-v2.css",
     "panel-premium-v2.js",
@@ -46,6 +51,19 @@ def test_legacy_manual_paper_v1_route_is_removed():
 
     assert "/api/manual-paper/order-v2" in route_paths
     assert "/api/manual-paper/order" not in route_paths
+
+
+def test_legacy_vezir_v1_cluster_is_removed():
+    for path in LEGACY_VEZIR_MODULES:
+        assert not path.exists(), path.name
+
+    route_paths = {
+        route.path
+        for route in panel_api.app.routes
+    }
+
+    assert "/api/vezir/ask" in route_paths
+    assert "/api/vezir/chat-v2" not in route_paths
 
 
 def test_canonical_runtime_owns_required_real_connections():

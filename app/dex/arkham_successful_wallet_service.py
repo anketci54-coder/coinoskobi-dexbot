@@ -6,7 +6,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-from app.api.wallet_intelligence_feed import fetch_balances_for_address
+from app.dex.arkham_provider import fetch_balances_for_address
 from app.paper.wallet_holdings_schema import ensure_wallet_holdings_schema
 
 
@@ -400,7 +400,7 @@ class ArkhamSuccessfulWalletService:
         self._stop_event.set()
         thread = self._thread
         if thread is not None and thread.is_alive():
-            thread.join(timeout=min(10.0, self.interval_seconds))
+            thread.join(timeout=min(40.0, self.interval_seconds))
 
     def status(self) -> dict[str, Any]:
         with self._lock:

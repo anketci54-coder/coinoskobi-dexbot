@@ -111,13 +111,25 @@ def test_vezir_is_single_chat_path_and_reports_provider_system_state():
     assert runtime.count("/api/vezir/ask") == 1
     assert "/api/operations-summary" in runtime
     assert "sendVezir" in runtime
-    assert "provider" in runtime.lower()
+    assert "String(system.state||'').toUpperCase()==='DEGRADED'" in runtime
+    assert "RPC/provider veri akışında sorun var" in runtime
 
 
 def test_refresh_never_marks_partial_or_failed_snapshot_fresh():
     runtime = js()
     assert "allFresh=results.every(r=>r.status==='fulfilled')" in runtime
     assert "allFresh?new Date().toLocaleTimeString('tr-TR'):'VERİ HATASI'" in runtime
+
+
+def test_bfcache_restore_clears_cached_accounting_and_refreshes():
+    runtime = js()
+    assert "function restoreFromBfcache(event)" in runtime
+    assert "if(!event.persisted)return" in runtime
+    assert "state.accountingRows=null" in runtime
+    assert "state.dashboard=null" in runtime
+    assert "state.universe=null" in runtime
+    assert "state.authority=null" in runtime
+    assert "window.addEventListener('pageshow',restoreFromBfcache)" in runtime
 
 
 def test_public_tickers_and_canonical_real_data_routes_remain():

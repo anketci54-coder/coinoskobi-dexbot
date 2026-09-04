@@ -456,6 +456,24 @@ class PaperManager:
 
         results = []
 
+        retry_degraded = getattr(
+            feed,
+            "retry_degraded_wallet_outcomes",
+            None,
+        )
+
+        if callable(retry_degraded):
+            try:
+                results.extend(
+                    retry_degraded(
+                        limit=8
+                    )
+                )
+            except Exception:
+                logger.exception(
+                    "Phase 9 wallet outcome retry failed"
+                )
+
         for pos in reader(
             after_id=(
                 self._learning_replay_after_id

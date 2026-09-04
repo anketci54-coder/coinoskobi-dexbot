@@ -437,3 +437,67 @@ def test_degraded_phase9_observer_retries_on_duplicate_replay():
     assert feed.event_count == 1
     assert feed.accepted_count == 1
     assert feed.duplicate_count == 1
+
+
+def test_degraded_phase9_retry_queue_survives_multiple_scheduler_passes():
+    calls = []
+
+    def observer(wallet_id, outcome_id, return_pct, *, realized=False):
+        calls.append((wallet_id, outcome_id, return_pct, realized))
+        if len(calls) < 4:
+            raise RuntimeError("temporary")
+        return {
+            "state": "OBSERVED",
+            "realized_sample_size": 1,
+            "decision_authority": False,
+            "execution_authority": False,
+        }
+
+    feed = RuntimeLearningOutcomeFeed(
+        wallet_outcome_observer=observer
+    )
+
+    first = close(
+        feed,
+        81,
+        0.25,
+        opening_context=verified_context(),
+    )
+
+    assert first["payload"]["phase9_wallet_tracking"]["state"] == "DEGRADED"
+    assert feed.phase9_retry_count == 1
+
+    a = feed.retry_degraded_wallet_outcomes()
+    b = feed.retry_degraded_wallet_outcomes()
+    c = feed.retry_degraded_wallet_outcomes()
+
+    assert a[0]["phase9_wallet_tracking"]["state"] == "DEGRADED"
+    assert b[0]["phase9_wallet_tracking"]["state"] == "DEGRADED"
+    assert c[0]["phase9_wallet_tracking"]["state"] == "OBSERVED"
+    assert len(calls) == 4
+    assert feed.phase9_retry_count == 0
+    assert feed.event_snapshot()[0]["phase9_wallet_tracking"]["state"] == "OBSERVED"
+    assert feed.accepted_count == 1
+    assert feed.duplicate_count == 0
+
+
+def test_phase9_retry_queue_is_bounded_with_event_store():
+    def observer(*args, **kwargs):
+        raise RuntimeError("temporary")
+
+    feed = RuntimeLearningOutcomeFeed(
+        max_events=2,
+        wallet_outcome_observer=observer,
+    )
+
+    for position_id in (91, 92, 93):
+        close(
+            feed,
+            position_id,
+            0.10,
+            opening_context=verified_context(),
+        )
+
+    assert feed.event_count == 2
+    assert feed.phase9_retry_count == 2
+    assert feed.status()["max_phase9_retries"] == 2

@@ -133,3 +133,39 @@ def test_missing_persisted_stop_uses_controller_without_optional_evidence():
     assert result[0]["data"]["action"] == "HOLD"
     assert result[0]["data"]["reason"] == "NO_EXIT_CONDITION"
     assert result[0]["data"]["hybrid_exit"]["bound"] is True
+
+
+def test_replay_retries_phase9_degraded_queue_without_new_closed_rows():
+    class RetryFeed:
+        def __init__(self):
+            self.calls = 0
+
+        def retry_degraded_wallet_outcomes(self, *, limit=8):
+            self.calls += 1
+            assert limit == 8
+            return [{
+                "state": "PHASE9_RETRY",
+                "phase9_wallet_tracking": {"state": "DEGRADED"},
+            }]
+
+    class RetryDB:
+        def __init__(self):
+            self.after_ids = []
+
+        def closed_positions(self, *, after_id=0):
+            self.after_ids.append(after_id)
+            return []
+
+    manager = PaperManager.__new__(PaperManager)
+    manager.learning_feed = RetryFeed()
+    manager.db = RetryDB()
+    manager._learning_replay_after_id = 99
+
+    first = manager.replay_closed_outcomes()
+    second = manager.replay_closed_outcomes()
+
+    assert manager.learning_feed.calls == 2
+    assert manager.db.after_ids == [99, 99]
+    assert manager._learning_replay_after_id == 99
+    assert len(first) == 1
+    assert len(second) == 1

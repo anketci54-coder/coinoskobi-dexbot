@@ -80,6 +80,8 @@ class RuntimeLearningOutcomeFeed:
         )
 
         self._events = OrderedDict()
+        self._phase9_retries = OrderedDict()
+        self.max_phase9_retries = self.max_events
 
         self.memory = OutcomeMemory(
             max_entries=max_memory
@@ -145,9 +147,7 @@ class RuntimeLearningOutcomeFeed:
                 isinstance(phase9, dict)
                 and phase9.get("state") == "DEGRADED"
             ):
-                existing[
-                    "phase9_wallet_tracking"
-                ] = self._observe_phase9_wallet_outcome(
+                retry_result = self._observe_phase9_wallet_outcome(
                     position_id=position_id,
                     opening_context=opening_context,
                     realized_return=realized_return,
@@ -158,6 +158,31 @@ class RuntimeLearningOutcomeFeed:
                         and realized_return is not None
                     ),
                 )
+                existing[
+                    "phase9_wallet_tracking"
+                ] = retry_result
+
+                if (
+                    isinstance(retry_result, dict)
+                    and retry_result.get("state") == "DEGRADED"
+                ):
+                    self._remember_phase9_retry(
+                        outcome_id=outcome_id,
+                        position_id=position_id,
+                        opening_context=opening_context,
+                        realized_return=realized_return,
+                        evidence_complete=bool(
+                            observed_at
+                            and evaluated_at
+                            and token
+                            and realized_return is not None
+                        ),
+                    )
+                else:
+                    self._phase9_retries.pop(
+                        outcome_id,
+                        None,
+                    )
 
             return self._out(
                 "DUPLICATE",
@@ -373,12 +398,28 @@ class RuntimeLearningOutcomeFeed:
             outcome_id
         ] = row
 
+        if (
+            isinstance(phase9_wallet_tracking, dict)
+            and phase9_wallet_tracking.get("state") == "DEGRADED"
+        ):
+            self._remember_phase9_retry(
+                outcome_id=outcome_id,
+                position_id=position_id,
+                opening_context=opening_context,
+                realized_return=realized["return"],
+                evidence_complete=evidence_complete,
+            )
+
         while (
             len(self._events)
             > self.max_events
         ):
-            self._events.popitem(
+            dropped_id, _ = self._events.popitem(
                 last=False
+            )
+            self._phase9_retries.pop(
+                dropped_id,
+                None,
             )
 
             self.dropped_count += 1
@@ -400,6 +441,110 @@ class RuntimeLearningOutcomeFeed:
             "OBSERVED",
             row,
         )
+
+    @property
+    def phase9_retry_count(self):
+        return len(self._phase9_retries)
+
+    def _remember_phase9_retry(
+        self,
+        *,
+        outcome_id,
+        position_id,
+        opening_context,
+        realized_return,
+        evidence_complete,
+    ):
+        self._phase9_retries[outcome_id] = {
+            "position_id": position_id,
+            "opening_context": opening_context,
+            "realized_return": realized_return,
+            "evidence_complete": evidence_complete,
+        }
+        self._phase9_retries.move_to_end(
+            outcome_id
+        )
+
+        while (
+            len(self._phase9_retries)
+            > self.max_phase9_retries
+        ):
+            self._phase9_retries.popitem(
+                last=False
+            )
+
+    def retry_degraded_wallet_outcomes(
+        self,
+        *,
+        limit=8,
+    ):
+        try:
+            bounded_limit = max(
+                1,
+                min(
+                    64,
+                    int(limit),
+                ),
+            )
+        except (TypeError, ValueError):
+            bounded_limit = 8
+
+        outcome_ids = list(
+            self._phase9_retries.keys()
+        )[:bounded_limit]
+        results = []
+
+        for outcome_id in outcome_ids:
+            retry = self._phase9_retries.get(
+                outcome_id
+            )
+            row = self._events.get(
+                outcome_id
+            )
+
+            if (
+                not isinstance(retry, dict)
+                or not isinstance(row, dict)
+            ):
+                self._phase9_retries.pop(
+                    outcome_id,
+                    None,
+                )
+                continue
+
+            phase9 = self._observe_phase9_wallet_outcome(
+                position_id=retry.get("position_id"),
+                opening_context=retry.get("opening_context"),
+                realized_return=retry.get("realized_return"),
+                evidence_complete=bool(
+                    retry.get("evidence_complete")
+                ),
+            )
+            row[
+                "phase9_wallet_tracking"
+            ] = phase9
+            results.append({
+                "state": "PHASE9_RETRY",
+                "outcome_id": outcome_id,
+                "phase9_wallet_tracking": dict(phase9),
+                "decision_authority": False,
+                "execution_authority": False,
+            })
+
+            if (
+                isinstance(phase9, dict)
+                and phase9.get("state") == "DEGRADED"
+            ):
+                self._phase9_retries.move_to_end(
+                    outcome_id
+                )
+            else:
+                self._phase9_retries.pop(
+                    outcome_id,
+                    None,
+                )
+
+        return results
 
     def _observe_phase9_wallet_outcome(
         self,
@@ -793,6 +938,12 @@ class RuntimeLearningOutcomeFeed:
             ),
             "dropped_count": (
                 self.dropped_count
+            ),
+            "phase9_retry_count": (
+                self.phase9_retry_count
+            ),
+            "max_phase9_retries": (
+                self.max_phase9_retries
             ),
             "bounded": True,
             "source": (

@@ -38,6 +38,10 @@ jobs:
           tests/test_candidate_reevaluation_ledger.py
           tests/test_followup_snapshot_cache.py
           tests/test_runtime_performance_observer.py
+          tests/test_runtime_outcome_feed.py
+          tests/test_intelligence_composition.py
+          tests/test_phase9_outcome_binding.py
+          tests/test_phase9_successful_wallet_tracking.py
           tests/test_phase13_counterfactual_observation.py
           tests/test_phase13_counterfactual_pipeline.py
           tests/test_phase9_panel_bridge.py

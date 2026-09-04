@@ -13,6 +13,7 @@ class Runner:
         self,
         scan_job=None,
         position_job=None,
+        watch_probe_job=None,
         services=None,
         sleep_func=None,
     ):
@@ -30,6 +31,13 @@ class Runner:
                 interval=10,
                 func=position_job,
                 name="paper_manager",
+            )
+
+        if watch_probe_job:
+            self.scheduler.every(
+                interval=10,
+                func=watch_probe_job,
+                name="watch_probe_exit_sweeper",
             )
 
         self.services = list(

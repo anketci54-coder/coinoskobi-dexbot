@@ -9,7 +9,7 @@ SNAPSHOT_KEY = "WATCH_OUTCOMES"
 
 
 def watch_learning_snapshot(paper_db: Path | str) -> dict[str, Any]:
-    """Read-only learning evidence derived from WATCH outcomes."""
+    """Read-only learning evidence derived only from durable WATCH outcomes."""
     path = Path(paper_db)
     if not path.exists():
         return {"available": False, "reason": "PAPER_DB_MISSING"}
@@ -29,17 +29,21 @@ def watch_learning_snapshot(paper_db: Path | str) -> dict[str, Any]:
                 COUNT(*) AS total,
                 SUM(CASE WHEN status='OPEN' THEN 1 ELSE 0 END) AS open_count,
                 SUM(CASE WHEN status='CLOSED' THEN 1 ELSE 0 END) AS closed_count,
-                SUM(CASE WHEN exit_state='VERIFIED' THEN 1 ELSE 0 END) AS verified_count,
-                SUM(CASE WHEN exit_state='LIMITED' THEN 1 ELSE 0 END) AS limited_count,
-                SUM(CASE WHEN exit_state='UNVERIFIED' THEN 1 ELSE 0 END) AS unverified_count,
-                SUM(CASE WHEN exit_probe_attempted_at IS NOT NULL THEN 1 ELSE 0 END) AS attempted_count,
+                SUM(CASE WHEN UPPER(COALESCE(exit_state,''))='VERIFIED' THEN 1 ELSE 0 END) AS verified_count,
+                SUM(CASE WHEN UPPER(COALESCE(exit_state,''))='LIMITED' THEN 1 ELSE 0 END) AS limited_count,
+                SUM(CASE WHEN UPPER(COALESCE(exit_state,''))='UNVERIFIED' THEN 1 ELSE 0 END) AS unverified_count,
+                SUM(CASE WHEN last_exit_probe_at IS NOT NULL THEN 1 ELSE 0 END) AS attempted_count,
                 AVG(CASE
-                    WHEN status='CLOSED' AND entry_usdt > 0 AND exit_usdt IS NOT NULL
-                    THEN ((exit_usdt / entry_usdt) - 1.0) * 100.0
+                    WHEN status='CLOSED'
+                     AND entry_usdt > 0
+                     AND realizable_exit_usdt IS NOT NULL
+                    THEN ((realizable_exit_usdt / entry_usdt) - 1.0) * 100.0
                     ELSE NULL
                 END) AS verified_avg_return_pct,
                 SUM(CASE
-                    WHEN status='CLOSED' AND entry_usdt > 0 AND exit_usdt > entry_usdt
+                    WHEN status='CLOSED'
+                     AND entry_usdt > 0
+                     AND realizable_exit_usdt > entry_usdt
                     THEN 1 ELSE 0
                 END) AS verified_wins
             FROM watch_probe_trades
@@ -51,15 +55,16 @@ def watch_learning_snapshot(paper_db: Path | str) -> dict[str, Any]:
 
     total = int(row["total"] or 0)
     closed = int(row["closed_count"] or 0)
+    verified = int(row["verified_count"] or 0)
     wins = int(row["verified_wins"] or 0)
-    win_rate = (wins / closed) if closed else None
+    win_rate = (wins / verified) if verified else None
 
     confidence = "INSUFFICIENT"
-    if closed >= 100:
+    if verified >= 100:
         confidence = "HIGH"
-    elif closed >= 30:
+    elif verified >= 30:
         confidence = "MEDIUM"
-    elif closed >= 10:
+    elif verified >= 10:
         confidence = "LOW"
 
     return {
@@ -67,7 +72,7 @@ def watch_learning_snapshot(paper_db: Path | str) -> dict[str, Any]:
         "total": total,
         "open": int(row["open_count"] or 0),
         "closed": closed,
-        "verified": int(row["verified_count"] or 0),
+        "verified": verified,
         "limited": int(row["limited_count"] or 0),
         "unverified": int(row["unverified_count"] or 0),
         "exit_attempted": int(row["attempted_count"] or 0),
@@ -79,7 +84,8 @@ def watch_learning_snapshot(paper_db: Path | str) -> dict[str, Any]:
             else None
         ),
         "learning_confidence": confidence,
-        "truth_rule": "Only CLOSED outcomes with verified exit_usdt calibrate performance.",
+        "truth_rule": "Only VERIFIED durable exits calibrate performance.",
+        "paper_db_write_authority": False,
         "trade_authority": False,
         "wallet_authority": False,
         "signing_authority": False,

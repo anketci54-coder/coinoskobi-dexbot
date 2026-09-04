@@ -10,6 +10,9 @@ from app.config.settings import (
 from app.dex.provider_broker import (
     ProviderBrokerHTTPProvider,
 )
+from app.dex.provider_public_fallback import (
+    ReadOnlyPublicFallbackProvider,
+)
 
 
 def build_bsc_web3(
@@ -21,8 +24,10 @@ def build_bsc_web3(
     cooldown_seconds=(
         RPC_PROVIDER_COOLDOWN_SECONDS
     ),
+    public_fallback_enabled=True,
+    public_urls=None,
 ):
-    provider = (
+    private_provider = (
         ProviderBrokerHTTPProvider(
             [
                 primary_url,
@@ -34,6 +39,12 @@ def build_bsc_web3(
                 cooldown_seconds
             ),
         )
+    )
+
+    provider = ReadOnlyPublicFallbackProvider(
+        private_provider,
+        enabled=public_fallback_enabled,
+        public_urls=public_urls,
     )
 
     return Web3(provider)

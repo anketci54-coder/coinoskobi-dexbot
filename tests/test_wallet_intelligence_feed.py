@@ -1,11 +1,12 @@
-from app.api import wallet_intelligence_feed as feed
 from app.api.wallet_intelligence_feed import (
     MAX_TRACKED_ASSETS_PER_WALLET,
     MAX_TRACKED_WALLETS,
+    fetch_balances_for_address,
     normalize_address_balances,
     score_wallet_candidate,
     select_top_wallets,
 )
+from app.dex import arkham_provider as provider
 
 
 def test_wallet_score_uses_more_than_pnl():
@@ -99,9 +100,9 @@ def test_fetch_balances_for_address_uses_official_address_balance_endpoint(monke
         return Response()
 
     monkeypatch.setenv("ARKHAM_API_KEY", "test-key")
-    monkeypatch.setattr(feed.requests, "get", fake_get)
+    monkeypatch.setattr(provider.requests, "get", fake_get)
 
-    out = feed.fetch_balances_for_address("0xWallet", chain="bsc")
+    out = fetch_balances_for_address("0xWallet", chain="bsc")
 
     assert out["available"] is True
     assert out["complete_snapshot"] is True
@@ -117,7 +118,7 @@ def test_fetch_balances_for_address_uses_official_address_balance_endpoint(monke
 def test_fetch_balances_without_key_is_fail_soft(monkeypatch):
     monkeypatch.delenv("ARKHAM_API_KEY", raising=False)
 
-    out = feed.fetch_balances_for_address("0xWallet")
+    out = fetch_balances_for_address("0xWallet")
 
     assert out == {
         "available": False,

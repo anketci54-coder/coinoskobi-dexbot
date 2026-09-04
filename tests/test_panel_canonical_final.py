@@ -1,5 +1,7 @@
 from pathlib import Path
 
+from app.api import _panel as panel_api
+
 
 ROOT = Path(__file__).resolve().parents[1]
 STATIC = ROOT / "app" / "api" / "static"
@@ -35,11 +37,15 @@ def test_legacy_panel_assets_are_removed():
 
 
 def test_legacy_manual_paper_v1_route_is_removed():
-    init = INIT.read_text(encoding="utf-8")
     assert not LEGACY_MANUAL_PAPER.exists()
-    assert "panel_manual_paper_v2" in init
-    assert "register_manual_paper_routes_v2" in init
-    assert "register_manual_paper_routes(" not in init
+
+    route_paths = {
+        route.path
+        for route in panel_api.app.routes
+    }
+
+    assert "/api/manual-paper/order-v2" in route_paths
+    assert "/api/manual-paper/order" not in route_paths
 
 
 def test_canonical_runtime_owns_required_real_connections():

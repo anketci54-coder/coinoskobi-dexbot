@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from app.api.wallet_intelligence_feed import arkham_config_status
+from app.dex.arkham_provider import arkham_config_status
 from app.dex.arkham_successful_wallet_service import ArkhamSuccessfulWalletService
 from app.paper.database import DB as PAPER_DB
 

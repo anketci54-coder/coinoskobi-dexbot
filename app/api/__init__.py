@@ -3,6 +3,7 @@ from __future__ import annotations
 from fastapi import HTTPException
 
 from . import panel as _panel
+from .panel_acceptance import register_panel_acceptance_routes
 from .panel_display_names import enrich_universe_display_names
 from .panel_manual_paper_v2 import register_manual_paper_routes_v2
 from .panel_provider_health import provider_health_snapshot, register_provider_health_route
@@ -45,6 +46,11 @@ register_manual_paper_routes_v2(
 )
 
 register_watch_summary_route(
+    _panel.app,
+    paper_db=_panel.PAPER_DB,
+)
+
+register_panel_acceptance_routes(
     _panel.app,
     paper_db=_panel.PAPER_DB,
 )

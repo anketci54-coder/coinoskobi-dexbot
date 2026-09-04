@@ -13,7 +13,6 @@ concurrency:
 
 # Full regression is opt-in by commit marker after a coherent
 # production package has already passed the canonical smoke/E2E gate.
-# Runtime performance observer validated by full regression marker.
 jobs:
   smoke:
     runs-on: ubuntu-latest
@@ -50,11 +49,14 @@ jobs:
           tests/test_application_market_flow_binding.py
           tests/test_application_dynamic_wss_pairs.py
           tests/test_application_paper_lifecycle.py
-          tests/test_panel_premium_command_center.py
-          tests/test_panel_premium_v2.py
-          tests/test_panel_radar_trade_v3.py
+          tests/test_panel_canonical_final.py
           tests/test_panel_manual_paper_v2.py
           tests/test_panel_operations.py
+          tests/test_watch_probe_store.py
+          tests/test_watch_probe_exit.py
+          tests/test_watch_probe_exit_quote_assets.py
+          tests/test_watch_probe_sweeper.py
+          tests/test_watch_probe_runner_binding.py
 
   full:
     if: ${{ github.event_name == 'push' && contains(github.event.head_commit.message, '[full]') }}

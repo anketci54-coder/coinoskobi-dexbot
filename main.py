@@ -22,6 +22,9 @@ from app.dex.open_position_hot_path import (
 from app.dex.wss_service import (
     NativeWSSService,
 )
+from app.learning.watch_probe_sweeper import (
+    sweep_default_watch_probe_exits,
+)
 from app.pipeline.engine import (
     PipelineEngine,
 )
@@ -755,9 +758,16 @@ def build_application(
         else None
     )
 
+    watch_probe_job = (
+        sweep_default_watch_probe_exits
+        if position_job is not None
+        else None
+    )
+
     runner = Runner(
         scan_job=application_scan_job,
         position_job=position_job,
+        watch_probe_job=watch_probe_job,
         services=services,
     )
 
@@ -801,6 +811,9 @@ def build_application(
         ),
         "paper_lifecycle_bound": (
             position_job is not None
+        ),
+        "watch_probe_sweeper_bound": (
+            watch_probe_job is not None
         ),
         "hot_position_wss": (
             hot_bridge.status()

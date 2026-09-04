@@ -128,22 +128,23 @@
 
   async function showAccounting() {
     try {
-      const dashboard = await get('/api/dashboard');
-      const positions = Array.isArray(dashboard.positions) ? dashboard.positions : [];
-      const exits = Array.isArray(dashboard.exits) ? dashboard.exits : [];
-      const rows = [...positions.map(x => ({...x, _kind: 'AÇIK'})), ...exits.map(x => ({...x, _kind: 'KAPALI'}))];
+      const [dashboard, ledger] = await Promise.all([
+        get('/api/dashboard'),
+        get('/api/positions')
+      ]);
+      const rows = Array.isArray(ledger) ? ledger : [];
       const summary = dashboard.summary || {};
       const html = `
         <div class="acceptance-kpis">
           <div><small>BAKİYE</small><b>${money(summary.equity)}</b></div>
           <div><small>TOPLAM PNL</small><b>${money(summary.total_pnl)}</b></div>
-          <div><small>AÇIK</small><b>${esc(summary.open_count ?? positions.length)}</b></div>
+          <div><small>AÇIK</small><b>${esc(summary.open_count ?? '—')}</b></div>
           <div><small>YATIRIM</small><b>${money(summary.open_investment)}</b></div>
         </div>
         <div class="acceptance-scroll"><table class="acceptance-table">
           <thead><tr><th>DURUM</th><th>TOKEN</th><th>GİRİŞ</th><th>ÇIKIŞ/SON</th><th>NET PNL</th><th>ROI</th></tr></thead>
           <tbody>${rows.length ? rows.map(r => `<tr>
-            <td>${esc(r._kind)}</td><td>${esc(r.symbol || short(r.token))}</td>
+            <td>${esc(String(r.status || '—').toUpperCase())}</td><td>${esc(r.symbol || short(r.token))}</td>
             <td>${esc(r.entry_price ?? '—')}</td><td>${esc(r.exit_price ?? r.current_price ?? '—')}</td>
             <td>${money(r.net_pnl_usdt ?? r.net_pnl)}</td><td>${pct(num(r.roi_pct) ?? (num(r.roi) === null ? null : num(r.roi) * 100))}</td>
           </tr>`).join('') : '<tr><td colspan="6">Muhasebe kaydı yok.</td></tr>'}</tbody>

@@ -46,3 +46,14 @@ def test_main_paper_ledger_is_removed_without_losing_accounting_data():
     assert 'id="accountingButton"' in html
     assert "/api/accounting-ledger-v2?limit=100" in js
     assert "dashboard.exits" not in js
+
+
+def test_accounting_kpis_are_derived_from_complete_paginated_ledger():
+    js = ACCEPTANCE.read_text(encoding="utf-8")
+
+    assert "function accountingSummary(rows, dashboardSummary = {})" in js
+    assert "const openRows = rows.filter" in js
+    assert "row?.entry_amount_usdt ?? row?.amount_usdt" in js
+    assert "row?.net_pnl_usdt ?? row?.net_pnl" in js
+    assert "const summary = accountingSummary(rows, dashboard.summary || {})" in js
+    assert "const summary = dashboard.summary || {}" not in js

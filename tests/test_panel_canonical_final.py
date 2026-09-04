@@ -12,7 +12,7 @@ def test_root_panel_has_one_canonical_frontend_owner():
     html = HTML.read_text(encoding="utf-8")
     init = INIT.read_text(encoding="utf-8")
     assert "/static/panel-canonical.css?v=1" in html
-    assert "/static/panel-canonical.js?v=2" in html
+    assert "/static/panel-canonical.js?v=3" in html
     assert "panel-premium-v2" not in html
     assert "panel-radar-trade-v3" not in html
     assert "panel-premium-v2" not in init

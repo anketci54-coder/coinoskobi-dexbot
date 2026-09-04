@@ -158,6 +158,32 @@
     return rows;
   }
 
+  function accountingSummary(rows, dashboardSummary = {}) {
+    const statuses = rows.map(row => String(row?.status || '').toUpperCase());
+    const statusKnown = statuses.every(status => status === 'OPEN' || status === 'CLOSED');
+    const openRows = rows.filter((_, index) => statuses[index] === 'OPEN');
+    const openAmounts = openRows.map(row => num(row?.entry_amount_usdt ?? row?.amount_usdt));
+    const pnlValues = rows.map(row => num(row?.net_pnl_usdt ?? row?.net_pnl));
+    const openCount = statusKnown ? openRows.length : null;
+    const openInvestment = statusKnown && openAmounts.every(value => value !== null)
+      ? openAmounts.reduce((sum, value) => sum + value, 0)
+      : null;
+    const totalPnl = pnlValues.every(value => value !== null)
+      ? pnlValues.reduce((sum, value) => sum + value, 0)
+      : null;
+    const startingCapital = num(dashboardSummary.starting_capital);
+    const equity = startingCapital !== null && totalPnl !== null
+      ? startingCapital + totalPnl
+      : null;
+
+    return {
+      equity,
+      total_pnl: totalPnl,
+      open_count: openCount,
+      open_investment: openInvestment
+    };
+  }
+
   async function showAccounting() {
     try {
       const [dashboard, ledger] = await Promise.all([
@@ -165,7 +191,7 @@
         getAccountingLedger()
       ]);
       const rows = Array.isArray(ledger) ? ledger : [];
-      const summary = dashboard.summary || {};
+      const summary = accountingSummary(rows, dashboard.summary || {});
       const html = `
         <div class="acceptance-kpis">
           <div><small>BAKİYE</small><b>${money(summary.equity)}</b></div>

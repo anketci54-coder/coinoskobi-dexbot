@@ -1,0 +1,441 @@
+from __future__ import annotations
+
+import sqlite3
+import threading
+import time
+from pathlib import Path
+from typing import Any
+
+from app.api.wallet_intelligence_feed import fetch_balances_for_address
+
+
+DEFAULT_INTERVAL_SECONDS = 300.0
+DEFAULT_WALLETS_PER_CYCLE = 4
+MAX_WALLETS_PER_CYCLE = 16
+MAX_CHANGE_ROWS = 4096
+
+
+class ArkhamSuccessfulWalletService:
+    """Bounded Phase 9 slow-path holdings tracker for qualified wallets.
+
+    Only wallets already qualified as SUCCESSFUL by internal realized-outcome
+    evidence are enriched. Arkham never grants qualification or trade authority.
+    """
+
+    name = "arkham-successful-wallet-holdings"
+
+    def __init__(
+        self,
+        db_path: str | Path,
+        *,
+        intelligence=None,
+        fetcher=fetch_balances_for_address,
+        interval_seconds: float = DEFAULT_INTERVAL_SECONDS,
+        wallets_per_cycle: int = DEFAULT_WALLETS_PER_CYCLE,
+        sleep_func=time.sleep,
+    ):
+        self.db_path = Path(db_path)
+        self.intelligence = intelligence
+        self.fetcher = fetcher
+        self.interval_seconds = max(30.0, float(interval_seconds))
+        self.wallets_per_cycle = max(
+            1,
+            min(int(wallets_per_cycle), MAX_WALLETS_PER_CYCLE),
+        )
+        self.sleep_func = sleep_func
+        self._stop_event = threading.Event()
+        self._thread = None
+        self._lock = threading.RLock()
+        self.last_error = None
+        self.last_cycle_at = None
+        self.last_result = {
+            "state": "NOT_STARTED",
+            "wallets_requested": 0,
+            "wallets_updated": 0,
+            "change_events": 0,
+        }
+
+    def _connect(self) -> sqlite3.Connection:
+        db = sqlite3.connect(str(self.db_path), timeout=30)
+        db.row_factory = sqlite3.Row
+        db.execute("PRAGMA busy_timeout=30000")
+        return db
+
+    @staticmethod
+    def _ensure_schema(db: sqlite3.Connection) -> None:
+        db.executescript(
+            """
+            CREATE TABLE IF NOT EXISTS wallet_holding_snapshot(
+                wallet_uid TEXT NOT NULL,
+                token_id TEXT NOT NULL,
+                chain TEXT NOT NULL,
+                address TEXT NOT NULL,
+                token_address TEXT,
+                pricing_id TEXT,
+                symbol TEXT,
+                name TEXT,
+                balance REAL NOT NULL,
+                value_usd REAL,
+                price_usd REAL,
+                price_change_24h_pct REAL,
+                observed_at REAL NOT NULL,
+                provider TEXT NOT NULL,
+                PRIMARY KEY(wallet_uid, token_id)
+            );
+            CREATE INDEX IF NOT EXISTS idx_wallet_holding_snapshot_wallet
+            ON wallet_holding_snapshot(wallet_uid, observed_at DESC);
+
+            CREATE TABLE IF NOT EXISTS wallet_holding_change_evidence(
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                wallet_uid TEXT NOT NULL,
+                token_id TEXT NOT NULL,
+                change_type TEXT NOT NULL,
+                previous_balance REAL,
+                current_balance REAL,
+                previous_value_usd REAL,
+                current_value_usd REAL,
+                observed_at REAL NOT NULL,
+                provider TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_wallet_holding_changes_wallet
+            ON wallet_holding_change_evidence(wallet_uid, observed_at DESC, id DESC);
+
+            CREATE TABLE IF NOT EXISTS wallet_holding_scan_state(
+                wallet_uid TEXT PRIMARY KEY,
+                last_scan_at REAL,
+                last_success_at REAL,
+                last_provider_state TEXT,
+                total_value_usd REAL,
+                asset_count INTEGER
+            );
+            """
+        )
+
+    @staticmethod
+    def _balance_changed(previous: float, current: float) -> bool:
+        scale = max(1.0, abs(previous), abs(current))
+        return abs(previous - current) > (scale * 1e-12)
+
+    @staticmethod
+    def _qualified_wallets(db: sqlite3.Connection, limit: int) -> list[dict[str, str]]:
+        rows = db.execute(
+            """
+            SELECT
+                lower(r.wallet_uid) AS wallet_uid,
+                lower(r.chain) AS chain,
+                lower(r.address) AS address
+            FROM wallet_discovery_registry AS r
+            JOIN wallet_success_score AS s
+              ON lower(s.wallet_uid)=lower(r.wallet_uid)
+            LEFT JOIN wallet_holding_scan_state AS h
+              ON lower(h.wallet_uid)=lower(r.wallet_uid)
+            WHERE UPPER(COALESCE(s.qualification_state,''))='SUCCESSFUL'
+              AND UPPER(COALESCE(r.discovery_source,''))='TRANSACTION_FROM_ONLY'
+              AND lower(COALESCE(r.chain,''))='bsc'
+              AND COALESCE(r.address,'')<>''
+            ORDER BY COALESCE(h.last_scan_at, 0) ASC,
+                     COALESCE(s.calculated_at, 0) DESC,
+                     lower(r.wallet_uid) ASC
+            LIMIT ?
+            """,
+            (max(1, min(int(limit), MAX_WALLETS_PER_CYCLE)),),
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+    @staticmethod
+    def _previous_holdings(db: sqlite3.Connection, wallet_uid: str) -> dict[str, dict[str, Any]]:
+        rows = db.execute(
+            """
+            SELECT token_id,balance,value_usd
+            FROM wallet_holding_snapshot
+            WHERE lower(wallet_uid)=lower(?)
+            """,
+            (wallet_uid,),
+        ).fetchall()
+        return {str(row["token_id"]): dict(row) for row in rows}
+
+    @staticmethod
+    def _change_type(previous: float, current: float) -> str:
+        if previous <= 0 < current:
+            return "ADDED"
+        if previous > 0 and current <= 0:
+            return "REMOVED"
+        if current > previous:
+            return "INCREASED"
+        return "DECREASED"
+
+    @staticmethod
+    def _trim_change_evidence(db: sqlite3.Connection) -> None:
+        db.execute(
+            """
+            DELETE FROM wallet_holding_change_evidence
+            WHERE id NOT IN (
+                SELECT id
+                FROM wallet_holding_change_evidence
+                ORDER BY id DESC
+                LIMIT ?
+            )
+            """,
+            (MAX_CHANGE_ROWS,),
+        )
+
+    def _observe_runtime(self, wallet_uid: str, current: dict[str, dict[str, Any]], removed: set[str], observed_at: float) -> None:
+        observer = getattr(self.intelligence, "observe_wallet_holding", None)
+        if not callable(observer):
+            return
+        for token_id, row in current.items():
+            observer(
+                wallet_uid,
+                token_id,
+                row["balance"],
+                value_usd=row.get("value_usd"),
+                observed_at=observed_at,
+            )
+        for token_id in removed:
+            observer(
+                wallet_uid,
+                token_id,
+                0.0,
+                value_usd=0.0,
+                observed_at=observed_at,
+            )
+
+    def _apply_wallet_snapshot(
+        self,
+        db: sqlite3.Connection,
+        wallet: dict[str, str],
+        result: dict[str, Any],
+    ) -> int:
+        wallet_uid = wallet["wallet_uid"]
+        chain = wallet["chain"]
+        address = wallet["address"]
+        observed_at = float(result.get("fetched_at") or time.time())
+        previous = self._previous_holdings(db, wallet_uid)
+        current = {
+            str(row["token_id"]): dict(row)
+            for row in (result.get("holdings") or [])
+            if isinstance(row, dict)
+            and row.get("token_id")
+            and float(row.get("balance") or 0.0) > 0
+        }
+
+        changes = 0
+        all_tokens = set(previous) | set(current)
+        for token_id in sorted(all_tokens):
+            old = previous.get(token_id) or {}
+            new = current.get(token_id) or {}
+            old_balance = float(old.get("balance") or 0.0)
+            new_balance = float(new.get("balance") or 0.0)
+            if not self._balance_changed(old_balance, new_balance):
+                continue
+            db.execute(
+                """
+                INSERT INTO wallet_holding_change_evidence(
+                    wallet_uid,token_id,change_type,
+                    previous_balance,current_balance,
+                    previous_value_usd,current_value_usd,
+                    observed_at,provider
+                ) VALUES(?,?,?,?,?,?,?,?,?)
+                """,
+                (
+                    wallet_uid,
+                    token_id,
+                    self._change_type(old_balance, new_balance),
+                    old.get("balance"),
+                    new.get("balance"),
+                    old.get("value_usd"),
+                    new.get("value_usd"),
+                    observed_at,
+                    "ARKHAM",
+                ),
+            )
+            changes += 1
+
+        db.execute(
+            "DELETE FROM wallet_holding_snapshot WHERE lower(wallet_uid)=lower(?)",
+            (wallet_uid,),
+        )
+        for token_id, row in current.items():
+            db.execute(
+                """
+                INSERT INTO wallet_holding_snapshot(
+                    wallet_uid,token_id,chain,address,token_address,pricing_id,
+                    symbol,name,balance,value_usd,price_usd,price_change_24h_pct,
+                    observed_at,provider
+                ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                """,
+                (
+                    wallet_uid,
+                    token_id,
+                    chain,
+                    address,
+                    row.get("token_address"),
+                    row.get("pricing_id"),
+                    row.get("symbol"),
+                    row.get("name"),
+                    row.get("balance"),
+                    row.get("value_usd"),
+                    row.get("price_usd"),
+                    row.get("price_change_24h_pct"),
+                    observed_at,
+                    "ARKHAM",
+                ),
+            )
+
+        db.execute(
+            """
+            INSERT INTO wallet_holding_scan_state(
+                wallet_uid,last_scan_at,last_success_at,last_provider_state,
+                total_value_usd,asset_count
+            ) VALUES(?,?,?,?,?,?)
+            ON CONFLICT(wallet_uid) DO UPDATE SET
+                last_scan_at=excluded.last_scan_at,
+                last_success_at=excluded.last_success_at,
+                last_provider_state=excluded.last_provider_state,
+                total_value_usd=excluded.total_value_usd,
+                asset_count=excluded.asset_count
+            """,
+            (
+                wallet_uid,
+                observed_at,
+                observed_at,
+                "READY",
+                result.get("total_value_usd"),
+                len(current),
+            ),
+        )
+        self._trim_change_evidence(db)
+        self._observe_runtime(
+            wallet_uid,
+            current,
+            set(previous) - set(current),
+            observed_at,
+        )
+        return changes
+
+    def run_cycle(self) -> dict[str, Any]:
+        if not self.db_path.exists():
+            result = {
+                "state": "DB_MISSING",
+                "wallets_requested": 0,
+                "wallets_updated": 0,
+                "change_events": 0,
+            }
+            with self._lock:
+                self.last_result = result
+                self.last_cycle_at = time.time()
+            return result
+
+        db = self._connect()
+        requested = 0
+        updated = 0
+        change_events = 0
+        provider_failures = 0
+        try:
+            self._ensure_schema(db)
+            wallets = self._qualified_wallets(db, self.wallets_per_cycle)
+            requested = len(wallets)
+            for wallet in wallets:
+                result = self.fetcher(
+                    wallet["address"],
+                    chain=wallet["chain"],
+                )
+                now = time.time()
+                if not isinstance(result, dict) or result.get("available") is not True:
+                    provider_failures += 1
+                    db.execute(
+                        """
+                        INSERT INTO wallet_holding_scan_state(
+                            wallet_uid,last_scan_at,last_provider_state
+                        ) VALUES(?,?,?)
+                        ON CONFLICT(wallet_uid) DO UPDATE SET
+                            last_scan_at=excluded.last_scan_at,
+                            last_provider_state=excluded.last_provider_state
+                        """,
+                        (
+                            wallet["wallet_uid"],
+                            now,
+                            str((result or {}).get("reason") or "UNAVAILABLE"),
+                        ),
+                    )
+                    continue
+                change_events += self._apply_wallet_snapshot(db, wallet, result)
+                updated += 1
+            db.commit()
+        finally:
+            db.close()
+
+        state = "READY"
+        if requested == 0:
+            state = "NO_SUCCESSFUL_WALLETS"
+        elif updated == 0 and provider_failures:
+            state = "PROVIDER_UNAVAILABLE"
+        elif provider_failures:
+            state = "PARTIAL"
+
+        result = {
+            "state": state,
+            "wallets_requested": requested,
+            "wallets_updated": updated,
+            "provider_failures": provider_failures,
+            "change_events": change_events,
+            "read_only_provider": True,
+            "decision_authority": False,
+            "paper_authority": False,
+            "live_authority": False,
+            "wallet_authority": False,
+            "signing_authority": False,
+            "execution_authority": False,
+        }
+        with self._lock:
+            self.last_result = result
+            self.last_cycle_at = time.time()
+            self.last_error = None
+        return result
+
+    def _thread_main(self) -> None:
+        while not self._stop_event.is_set():
+            try:
+                self.run_cycle()
+            except Exception as exc:
+                with self._lock:
+                    self.last_error = f"{type(exc).__name__}: {exc}"
+            if self._stop_event.wait(self.interval_seconds):
+                break
+
+    def start(self) -> None:
+        with self._lock:
+            if self._thread is not None and self._thread.is_alive():
+                return
+            self._stop_event.clear()
+            self._thread = threading.Thread(
+                target=self._thread_main,
+                name="coinoskobi-arkham-successful-wallets",
+                daemon=True,
+            )
+            self._thread.start()
+
+    def stop(self) -> None:
+        self._stop_event.set()
+        thread = self._thread
+        if thread is not None and thread.is_alive():
+            thread.join(timeout=min(10.0, self.interval_seconds))
+
+    def status(self) -> dict[str, Any]:
+        with self._lock:
+            running = bool(self._thread is not None and self._thread.is_alive())
+            return {
+                "name": self.name,
+                "state": "RUNNING" if running else "STOPPED",
+                "interval_seconds": self.interval_seconds,
+                "wallets_per_cycle": self.wallets_per_cycle,
+                "last_cycle_at": self.last_cycle_at,
+                "last_result": dict(self.last_result),
+                "last_error": self.last_error,
+                "decision_authority": False,
+                "paper_authority": False,
+                "live_authority": False,
+                "wallet_authority": False,
+                "signing_authority": False,
+                "execution_authority": False,
+            }

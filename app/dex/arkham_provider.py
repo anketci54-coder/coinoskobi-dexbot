@@ -101,17 +101,9 @@ def fetch_swaps_for_address(
     }
 
 
-def normalize_address_balances(
-    payload: Any,
-    *,
-    chain: str = "bsc",
-    limit: int = MAX_TRACKED_ASSETS_PER_WALLET,
-) -> list[dict[str, Any]]:
-    chain = str(chain or "bsc").strip().lower() or "bsc"
-    limit = max(1, min(int(limit), MAX_TRACKED_ASSETS_PER_WALLET))
+def _normalize_chain_rows(payload: Any, chain: str) -> list[dict[str, Any]]:
     if not isinstance(payload, dict):
         return []
-
     balances = payload.get("balances")
     if not isinstance(balances, dict):
         return []
@@ -165,7 +157,18 @@ def normalize_address_balances(
         ),
         reverse=True,
     )
-    return normalized[:limit]
+    return normalized
+
+
+def normalize_address_balances(
+    payload: Any,
+    *,
+    chain: str = "bsc",
+    limit: int = MAX_TRACKED_ASSETS_PER_WALLET,
+) -> list[dict[str, Any]]:
+    chain = str(chain or "bsc").strip().lower() or "bsc"
+    limit = max(1, min(int(limit), MAX_TRACKED_ASSETS_PER_WALLET))
+    return _normalize_chain_rows(payload, chain)[:limit]
 
 
 def fetch_balances_for_address(
@@ -176,6 +179,7 @@ def fetch_balances_for_address(
 ) -> dict[str, Any]:
     address = str(address or "").strip()
     chain = str(chain or "bsc").strip().lower() or "bsc"
+    limit = max(1, min(int(limit), MAX_TRACKED_ASSETS_PER_WALLET))
     if not address:
         raise ValueError("ADDRESS_REQUIRED")
     headers = _headers()
@@ -223,15 +227,18 @@ def fetch_balances_for_address(
             "holdings": [],
         }
 
+    normalized = _normalize_chain_rows(payload, chain)
     totals = payload.get("totalBalance") if isinstance(payload, dict) else {}
     total_usd = totals.get(chain) if isinstance(totals, dict) else None
     return {
         "available": True,
         "address": address,
         "chain": chain,
-        "holdings": normalize_address_balances(payload, chain=chain, limit=limit),
+        "holdings": normalized[:limit],
         "total_value_usd": _finite(total_usd),
-        "complete_snapshot": True,
+        "complete_snapshot": len(normalized) <= limit,
+        "available_asset_count": len(normalized),
+        "returned_asset_count": min(len(normalized), limit),
         "fetched_at": time.time(),
         "read_only": True,
         "trade_authority": False,

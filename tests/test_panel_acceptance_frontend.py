@@ -15,7 +15,7 @@ def test_acceptance_controls_are_present():
     assert 'id="autoTradeState"' in html
     assert "MUHASEBE" in html
     assert "HABER ETKİ" in html
-    assert "/static/panel-canonical-acceptance.js?v=2" in html
+    assert "/static/panel-canonical-acceptance.js?v=3" in html
     assert html.index("panel-canonical-acceptance.js") < html.index("panel-canonical.js")
 
 

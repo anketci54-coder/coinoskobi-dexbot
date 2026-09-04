@@ -1,6 +1,7 @@
 import signal
 import time
 
+from app.core.application_services import build_application_auxiliary_services
 from app.core.logger import get_logger
 from app.core.scheduler import Scheduler
 
@@ -16,6 +17,7 @@ class Runner:
         watch_probe_job=None,
         services=None,
         sleep_func=None,
+        auxiliary_service_factory=None,
     ):
         self.scheduler = Scheduler()
 
@@ -42,6 +44,16 @@ class Runner:
 
         self.services = list(
             services or []
+        )
+
+        factory = (
+            auxiliary_service_factory
+            if auxiliary_service_factory is not None
+            else build_application_auxiliary_services
+        )
+        auxiliary = factory() if callable(factory) else []
+        self.services.extend(
+            list(auxiliary or [])
         )
 
         self.sleep_func = (

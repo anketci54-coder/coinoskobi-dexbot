@@ -289,3 +289,101 @@ def test_authority_zero():
     assert r[
         "execution_authority"
     ] is False
+
+
+def test_wallet_tracking_updates_are_serialized_across_threads():
+    import threading
+    import time
+
+    class GuardedTracking:
+        def __init__(self):
+            self.active = 0
+            self.overlap = False
+            self.guard = threading.Lock()
+
+        def _enter(self):
+            with self.guard:
+                self.active += 1
+                if self.active > 1:
+                    self.overlap = True
+            time.sleep(0.02)
+
+        def _exit(self):
+            with self.guard:
+                self.active -= 1
+
+        def snapshot(self, wallet_id):
+            self._enter()
+            try:
+                return {
+                    "state": "READY",
+                    "wallet_id": wallet_id,
+                    "performance": {"state": "OBSERVED"},
+                }
+            finally:
+                self._exit()
+
+        def observe_outcome(self, wallet_id, token_id, return_pct, *, realized=False):
+            self._enter()
+            try:
+                return {
+                    "state": "OBSERVED",
+                    "wallet_id": wallet_id,
+                    "realized_sample_size": 1,
+                    "decision_authority": False,
+                    "execution_authority": False,
+                }
+            finally:
+                self._exit()
+
+        def observe_holding(self, *args, **kwargs):
+            self._enter()
+            try:
+                return {"state": "READY"}
+            finally:
+                self._exit()
+
+    tracking = GuardedTracking()
+    c = RuntimeIntelligenceComposition(wallet_tracking=tracking)
+    wallet = "bsc:0xabc"
+    payload = {
+        "wallet_id": wallet,
+        "identity_source": "TRANSACTION_FROM_ONLY",
+        "wallet_context_ready": True,
+    }
+    c.update_wallet(wallet, payload)
+
+    barrier = threading.Barrier(3)
+    errors = []
+
+    def update():
+        try:
+            barrier.wait()
+            c.update_wallet(wallet, payload)
+        except Exception as exc:
+            errors.append(exc)
+
+    def outcome():
+        try:
+            barrier.wait()
+            c.observe_wallet_outcome(
+                wallet,
+                "paper-position:threaded",
+                10.0,
+                realized=True,
+            )
+        except Exception as exc:
+            errors.append(exc)
+
+    a = threading.Thread(target=update)
+    b = threading.Thread(target=outcome)
+    a.start()
+    b.start()
+    barrier.wait()
+    a.join(timeout=2)
+    b.join(timeout=2)
+
+    assert not a.is_alive()
+    assert not b.is_alive()
+    assert errors == []
+    assert tracking.overlap is False

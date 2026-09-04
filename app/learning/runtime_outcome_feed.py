@@ -136,12 +136,32 @@ class RuntimeLearningOutcomeFeed:
 
         if outcome_id in self._events:
             self.duplicate_count += 1
+            existing = self._events[outcome_id]
+            phase9 = existing.get(
+                "phase9_wallet_tracking"
+            )
+
+            if (
+                isinstance(phase9, dict)
+                and phase9.get("state") == "DEGRADED"
+            ):
+                existing[
+                    "phase9_wallet_tracking"
+                ] = self._observe_phase9_wallet_outcome(
+                    position_id=position_id,
+                    opening_context=opening_context,
+                    realized_return=realized_return,
+                    evidence_complete=bool(
+                        observed_at
+                        and evaluated_at
+                        and token
+                        and realized_return is not None
+                    ),
+                )
 
             return self._out(
                 "DUPLICATE",
-                self._events[
-                    outcome_id
-                ],
+                existing,
             )
 
         realized = self._realized(

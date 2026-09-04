@@ -1,3 +1,5 @@
+from threading import RLock
+
 from app.dex.market_quality import analyze_market_quality
 from app.dex.flow_spread import flow_spread
 from app.dex.flow_confirmation import confirm_flow
@@ -31,6 +33,7 @@ class RuntimeIntelligenceComposition:
             wallet_tracking
             or WalletTrackingComposition()
         )
+        self._wallet_lock = RLock()
 
         self.adversary_readmodel = AdversaryReadModel(
             adversary_max_entries
@@ -41,34 +44,35 @@ class RuntimeIntelligenceComposition:
         wallet_id,
         payload,
     ):
-        payload = dict(payload or {})
-        normalized_wallet_id = str(
-            wallet_id or ""
-        ).strip().lower()
-
-        identity_source = str(
-            payload.get("identity_source") or ""
-        ).strip().upper()
-
-        if (
-            normalized_wallet_id
-            and identity_source
-            == "TRANSACTION_FROM_ONLY"
-            and str(
-                payload.get("wallet_id") or ""
+        with self._wallet_lock:
+            payload = dict(payload or {})
+            normalized_wallet_id = str(
+                wallet_id or ""
             ).strip().lower()
-            == normalized_wallet_id
-        ):
-            payload["phase9_wallet_tracking"] = (
-                self.wallet_tracking.snapshot(
-                    normalized_wallet_id
-                )
-            )
 
-        return self.wallet_readmodel.put(
-            normalized_wallet_id,
-            payload,
-        )
+            identity_source = str(
+                payload.get("identity_source") or ""
+            ).strip().upper()
+
+            if (
+                normalized_wallet_id
+                and identity_source
+                == "TRANSACTION_FROM_ONLY"
+                and str(
+                    payload.get("wallet_id") or ""
+                ).strip().lower()
+                == normalized_wallet_id
+            ):
+                payload["phase9_wallet_tracking"] = (
+                    self.wallet_tracking.snapshot(
+                        normalized_wallet_id
+                    )
+                )
+
+            return self.wallet_readmodel.put(
+                normalized_wallet_id,
+                payload,
+            )
 
     def observe_wallet_outcome(
         self,
@@ -78,46 +82,47 @@ class RuntimeIntelligenceComposition:
         *,
         realized=False,
     ):
-        result = self.wallet_tracking.observe_outcome(
-            wallet_id,
-            token_id,
-            return_pct,
-            realized=realized,
-        )
-
-        normalized_wallet_id = str(
-            wallet_id or ""
-        ).strip().lower()
-
-        current = (
-            self.wallet_readmodel.get(
-                normalized_wallet_id
+        with self._wallet_lock:
+            result = self.wallet_tracking.observe_outcome(
+                wallet_id,
+                token_id,
+                return_pct,
+                realized=realized,
             )
-            if normalized_wallet_id
-            else {"state": "UNKNOWN", "payload": None}
-        )
 
-        payload = current.get("payload")
-
-        if isinstance(payload, dict):
-            identity_source = str(
-                payload.get("identity_source") or ""
-            ).strip().upper()
-
-            payload_wallet = str(
-                payload.get("wallet_id") or ""
+            normalized_wallet_id = str(
+                wallet_id or ""
             ).strip().lower()
 
-            if (
-                identity_source == "TRANSACTION_FROM_ONLY"
-                and payload_wallet == normalized_wallet_id
-            ):
-                self.update_wallet(
-                    normalized_wallet_id,
-                    payload,
+            current = (
+                self.wallet_readmodel.get(
+                    normalized_wallet_id
                 )
+                if normalized_wallet_id
+                else {"state": "UNKNOWN", "payload": None}
+            )
 
-        return result
+            payload = current.get("payload")
+
+            if isinstance(payload, dict):
+                identity_source = str(
+                    payload.get("identity_source") or ""
+                ).strip().upper()
+
+                payload_wallet = str(
+                    payload.get("wallet_id") or ""
+                ).strip().lower()
+
+                if (
+                    identity_source == "TRANSACTION_FROM_ONLY"
+                    and payload_wallet == normalized_wallet_id
+                ):
+                    self.update_wallet(
+                        normalized_wallet_id,
+                        payload,
+                    )
+
+            return result
 
     def observe_wallet_holding(
         self,
@@ -128,21 +133,23 @@ class RuntimeIntelligenceComposition:
         value_usd=None,
         observed_at=None,
     ):
-        return self.wallet_tracking.observe_holding(
-            wallet_id,
-            token_id,
-            balance,
-            value_usd=value_usd,
-            observed_at=observed_at,
-        )
+        with self._wallet_lock:
+            return self.wallet_tracking.observe_holding(
+                wallet_id,
+                token_id,
+                balance,
+                value_usd=value_usd,
+                observed_at=observed_at,
+            )
 
     def wallet_tracking_snapshot(
         self,
         wallet_id,
     ):
-        return self.wallet_tracking.snapshot(
-            wallet_id
-        )
+        with self._wallet_lock:
+            return self.wallet_tracking.snapshot(
+                wallet_id
+            )
 
     def update_adversary(
         self,

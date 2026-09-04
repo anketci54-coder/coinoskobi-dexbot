@@ -395,3 +395,45 @@ def test_no_false_negative_or_missed_opportunity_is_invented():
     assert stats[
         "missed_opportunity_count"
     ] == 0
+
+
+def test_degraded_phase9_observer_retries_on_duplicate_replay():
+    calls = []
+
+    def observer(wallet_id, outcome_id, return_pct, *, realized=False):
+        calls.append((wallet_id, outcome_id, return_pct, realized))
+        if len(calls) == 1:
+            raise RuntimeError("temporary")
+        return {
+            "state": "OBSERVED",
+            "realized_sample_size": 1,
+            "decision_authority": False,
+            "execution_authority": False,
+        }
+
+    feed = RuntimeLearningOutcomeFeed(
+        wallet_outcome_observer=observer
+    )
+
+    first = close(
+        feed,
+        71,
+        0.20,
+        opening_context=verified_context(),
+    )
+    second = close(
+        feed,
+        71,
+        0.20,
+        opening_context=verified_context(),
+    )
+
+    assert first["state"] == "OBSERVED"
+    assert first["payload"]["phase9_wallet_tracking"]["state"] == "OBSERVED"
+    assert second["state"] == "DUPLICATE"
+    assert second["payload"]["phase9_wallet_tracking"]["state"] == "OBSERVED"
+    assert len(calls) == 2
+    assert calls[0][1] == calls[1][1] == "paper-position:71"
+    assert feed.event_count == 1
+    assert feed.accepted_count == 1
+    assert feed.duplicate_count == 1

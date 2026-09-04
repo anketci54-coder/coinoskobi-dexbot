@@ -1,5 +1,7 @@
 from pathlib import Path
 
+from app.api import _panel as panel_api
+
 
 ROOT = Path(__file__).resolve().parents[1]
 STATIC = ROOT / "app" / "api" / "static"
@@ -7,6 +9,7 @@ HTML = STATIC / "index.html"
 JS = STATIC / "panel-canonical.js"
 CSS = STATIC / "panel-canonical.css"
 INIT = ROOT / "app" / "api" / "__init__.py"
+LEGACY_MANUAL_PAPER = ROOT / "app" / "api" / "panel_manual_paper.py"
 LEGACY_PANEL_ASSETS = (
     "panel-premium-v2.css",
     "panel-premium-v2.js",
@@ -31,6 +34,18 @@ def test_root_panel_has_one_canonical_frontend_owner():
 def test_legacy_panel_assets_are_removed():
     for name in LEGACY_PANEL_ASSETS:
         assert not (STATIC / name).exists(), name
+
+
+def test_legacy_manual_paper_v1_route_is_removed():
+    assert not LEGACY_MANUAL_PAPER.exists()
+
+    route_paths = {
+        route.path
+        for route in panel_api.app.routes
+    }
+
+    assert "/api/manual-paper/order-v2" in route_paths
+    assert "/api/manual-paper/order" not in route_paths
 
 
 def test_canonical_runtime_owns_required_real_connections():

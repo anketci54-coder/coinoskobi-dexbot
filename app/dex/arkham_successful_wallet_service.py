@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from app.api.wallet_intelligence_feed import fetch_balances_for_address
+from app.paper.wallet_holdings_schema import ensure_wallet_holdings_schema
 
 
 DEFAULT_INTERVAL_SECONDS = 300.0
@@ -32,7 +33,6 @@ class ArkhamSuccessfulWalletService:
         fetcher=fetch_balances_for_address,
         interval_seconds: float = DEFAULT_INTERVAL_SECONDS,
         wallets_per_cycle: int = DEFAULT_WALLETS_PER_CYCLE,
-        sleep_func=time.sleep,
     ):
         self.db_path = Path(db_path)
         self.intelligence = intelligence
@@ -42,17 +42,29 @@ class ArkhamSuccessfulWalletService:
             1,
             min(int(wallets_per_cycle), MAX_WALLETS_PER_CYCLE),
         )
-        self.sleep_func = sleep_func
         self._stop_event = threading.Event()
         self._thread = None
         self._lock = threading.RLock()
         self.last_error = None
         self.last_cycle_at = None
-        self.last_result = {
-            "state": "NOT_STARTED",
+        self.last_result = self._result("NOT_STARTED")
+
+    @staticmethod
+    def _result(state: str, **payload: Any) -> dict[str, Any]:
+        return {
+            "state": state,
             "wallets_requested": 0,
             "wallets_updated": 0,
+            "provider_failures": 0,
             "change_events": 0,
+            **payload,
+            "read_only_provider": True,
+            "decision_authority": False,
+            "paper_authority": False,
+            "live_authority": False,
+            "wallet_authority": False,
+            "signing_authority": False,
+            "execution_authority": False,
         }
 
     def _connect(self) -> sqlite3.Connection:
@@ -62,62 +74,23 @@ class ArkhamSuccessfulWalletService:
         return db
 
     @staticmethod
-    def _ensure_schema(db: sqlite3.Connection) -> None:
-        db.executescript(
-            """
-            CREATE TABLE IF NOT EXISTS wallet_holding_snapshot(
-                wallet_uid TEXT NOT NULL,
-                token_id TEXT NOT NULL,
-                chain TEXT NOT NULL,
-                address TEXT NOT NULL,
-                token_address TEXT,
-                pricing_id TEXT,
-                symbol TEXT,
-                name TEXT,
-                balance REAL NOT NULL,
-                value_usd REAL,
-                price_usd REAL,
-                price_change_24h_pct REAL,
-                observed_at REAL NOT NULL,
-                provider TEXT NOT NULL,
-                PRIMARY KEY(wallet_uid, token_id)
-            );
-            CREATE INDEX IF NOT EXISTS idx_wallet_holding_snapshot_wallet
-            ON wallet_holding_snapshot(wallet_uid, observed_at DESC);
-
-            CREATE TABLE IF NOT EXISTS wallet_holding_change_evidence(
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                wallet_uid TEXT NOT NULL,
-                token_id TEXT NOT NULL,
-                change_type TEXT NOT NULL,
-                previous_balance REAL,
-                current_balance REAL,
-                previous_value_usd REAL,
-                current_value_usd REAL,
-                observed_at REAL NOT NULL,
-                provider TEXT NOT NULL
-            );
-            CREATE INDEX IF NOT EXISTS idx_wallet_holding_changes_wallet
-            ON wallet_holding_change_evidence(wallet_uid, observed_at DESC, id DESC);
-
-            CREATE TABLE IF NOT EXISTS wallet_holding_scan_state(
-                wallet_uid TEXT PRIMARY KEY,
-                last_scan_at REAL,
-                last_success_at REAL,
-                last_provider_state TEXT,
-                total_value_usd REAL,
-                asset_count INTEGER
-            );
-            """
-        )
+    def _required_phase9_tables(db: sqlite3.Connection) -> bool:
+        existing = {
+            str(row[0])
+            for row in db.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            ).fetchall()
+        }
+        return {
+            "wallet_discovery_registry",
+            "wallet_success_score",
+        }.issubset(existing)
 
     @staticmethod
-    def _balance_changed(previous: float, current: float) -> bool:
-        scale = max(1.0, abs(previous), abs(current))
-        return abs(previous - current) > (scale * 1e-12)
-
-    @staticmethod
-    def _qualified_wallets(db: sqlite3.Connection, limit: int) -> list[dict[str, str]]:
+    def _qualified_wallets(
+        db: sqlite3.Connection,
+        limit: int,
+    ) -> list[dict[str, str]]:
         rows = db.execute(
             """
             SELECT
@@ -143,7 +116,10 @@ class ArkhamSuccessfulWalletService:
         return [dict(row) for row in rows]
 
     @staticmethod
-    def _previous_holdings(db: sqlite3.Connection, wallet_uid: str) -> dict[str, dict[str, Any]]:
+    def _previous_holdings(
+        db: sqlite3.Connection,
+        wallet_uid: str,
+    ) -> dict[str, dict[str, Any]]:
         rows = db.execute(
             """
             SELECT token_id,balance,value_usd
@@ -155,17 +131,20 @@ class ArkhamSuccessfulWalletService:
         return {str(row["token_id"]): dict(row) for row in rows}
 
     @staticmethod
+    def _balance_changed(previous: float, current: float) -> bool:
+        scale = max(1.0, abs(previous), abs(current))
+        return abs(previous - current) > scale * 1e-12
+
+    @staticmethod
     def _change_type(previous: float, current: float) -> str:
         if previous <= 0 < current:
             return "ADDED"
         if previous > 0 and current <= 0:
             return "REMOVED"
-        if current > previous:
-            return "INCREASED"
-        return "DECREASED"
+        return "INCREASED" if current > previous else "DECREASED"
 
     @staticmethod
-    def _trim_change_evidence(db: sqlite3.Connection) -> None:
+    def _trim_changes(db: sqlite3.Connection) -> None:
         db.execute(
             """
             DELETE FROM wallet_holding_change_evidence
@@ -179,7 +158,13 @@ class ArkhamSuccessfulWalletService:
             (MAX_CHANGE_ROWS,),
         )
 
-    def _observe_runtime(self, wallet_uid: str, current: dict[str, dict[str, Any]], removed: set[str], observed_at: float) -> None:
+    def _observe_runtime(
+        self,
+        wallet_uid: str,
+        current: dict[str, dict[str, Any]],
+        removed: set[str],
+        observed_at: float,
+    ) -> None:
         observer = getattr(self.intelligence, "observe_wallet_holding", None)
         if not callable(observer):
             return
@@ -200,6 +185,24 @@ class ArkhamSuccessfulWalletService:
                 observed_at=observed_at,
             )
 
+    def _record_provider_failure(
+        self,
+        db: sqlite3.Connection,
+        wallet_uid: str,
+        reason: str,
+    ) -> None:
+        db.execute(
+            """
+            INSERT INTO wallet_holding_scan_state(
+                wallet_uid,last_scan_at,last_provider_state
+            ) VALUES(?,?,?)
+            ON CONFLICT(wallet_uid) DO UPDATE SET
+                last_scan_at=excluded.last_scan_at,
+                last_provider_state=excluded.last_provider_state
+            """,
+            (wallet_uid, time.time(), reason),
+        )
+
     def _apply_wallet_snapshot(
         self,
         db: sqlite3.Connection,
@@ -207,8 +210,6 @@ class ArkhamSuccessfulWalletService:
         result: dict[str, Any],
     ) -> int:
         wallet_uid = wallet["wallet_uid"]
-        chain = wallet["chain"]
-        address = wallet["address"]
         observed_at = float(result.get("fetched_at") or time.time())
         previous = self._previous_holdings(db, wallet_uid)
         current = {
@@ -220,8 +221,7 @@ class ArkhamSuccessfulWalletService:
         }
 
         changes = 0
-        all_tokens = set(previous) | set(current)
-        for token_id in sorted(all_tokens):
+        for token_id in sorted(set(previous) | set(current)):
             old = previous.get(token_id) or {}
             new = current.get(token_id) or {}
             old_balance = float(old.get("balance") or 0.0)
@@ -267,8 +267,8 @@ class ArkhamSuccessfulWalletService:
                 (
                     wallet_uid,
                     token_id,
-                    chain,
-                    address,
+                    wallet["chain"],
+                    wallet["address"],
                     row.get("token_address"),
                     row.get("pricing_id"),
                     row.get("symbol"),
@@ -304,7 +304,7 @@ class ArkhamSuccessfulWalletService:
                 len(current),
             ),
         )
-        self._trim_change_evidence(db)
+        self._trim_changes(db)
         self._observe_runtime(
             wallet_uid,
             current,
@@ -315,24 +315,23 @@ class ArkhamSuccessfulWalletService:
 
     def run_cycle(self) -> dict[str, Any]:
         if not self.db_path.exists():
-            result = {
-                "state": "DB_MISSING",
-                "wallets_requested": 0,
-                "wallets_updated": 0,
-                "change_events": 0,
-            }
+            result = self._result("DB_MISSING")
             with self._lock:
                 self.last_result = result
                 self.last_cycle_at = time.time()
             return result
 
         db = self._connect()
-        requested = 0
-        updated = 0
-        change_events = 0
-        provider_failures = 0
+        requested = updated = failures = changes = 0
         try:
-            self._ensure_schema(db)
+            ensure_wallet_holdings_schema(db)
+            if not self._required_phase9_tables(db):
+                result = self._result("PHASE9_TABLES_MISSING")
+                with self._lock:
+                    self.last_result = result
+                    self.last_cycle_at = time.time()
+                return result
+
             wallets = self._qualified_wallets(db, self.wallets_per_cycle)
             requested = len(wallets)
             for wallet in wallets:
@@ -340,26 +339,15 @@ class ArkhamSuccessfulWalletService:
                     wallet["address"],
                     chain=wallet["chain"],
                 )
-                now = time.time()
                 if not isinstance(result, dict) or result.get("available") is not True:
-                    provider_failures += 1
-                    db.execute(
-                        """
-                        INSERT INTO wallet_holding_scan_state(
-                            wallet_uid,last_scan_at,last_provider_state
-                        ) VALUES(?,?,?)
-                        ON CONFLICT(wallet_uid) DO UPDATE SET
-                            last_scan_at=excluded.last_scan_at,
-                            last_provider_state=excluded.last_provider_state
-                        """,
-                        (
-                            wallet["wallet_uid"],
-                            now,
-                            str((result or {}).get("reason") or "UNAVAILABLE"),
-                        ),
+                    failures += 1
+                    self._record_provider_failure(
+                        db,
+                        wallet["wallet_uid"],
+                        str((result or {}).get("reason") or "UNAVAILABLE"),
                     )
                     continue
-                change_events += self._apply_wallet_snapshot(db, wallet, result)
+                changes += self._apply_wallet_snapshot(db, wallet, result)
                 updated += 1
             db.commit()
         finally:
@@ -368,25 +356,18 @@ class ArkhamSuccessfulWalletService:
         state = "READY"
         if requested == 0:
             state = "NO_SUCCESSFUL_WALLETS"
-        elif updated == 0 and provider_failures:
+        elif updated == 0 and failures:
             state = "PROVIDER_UNAVAILABLE"
-        elif provider_failures:
+        elif failures:
             state = "PARTIAL"
 
-        result = {
-            "state": state,
-            "wallets_requested": requested,
-            "wallets_updated": updated,
-            "provider_failures": provider_failures,
-            "change_events": change_events,
-            "read_only_provider": True,
-            "decision_authority": False,
-            "paper_authority": False,
-            "live_authority": False,
-            "wallet_authority": False,
-            "signing_authority": False,
-            "execution_authority": False,
-        }
+        result = self._result(
+            state,
+            wallets_requested=requested,
+            wallets_updated=updated,
+            provider_failures=failures,
+            change_events=changes,
+        )
         with self._lock:
             self.last_result = result
             self.last_cycle_at = time.time()

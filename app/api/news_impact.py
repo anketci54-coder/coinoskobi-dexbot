@@ -26,11 +26,11 @@ _EVENT_IMPACT = {
 }
 
 _NEGATIVE_REG = re.compile(
-    r"\b(sanction|ban|banned|lawsuit|charge|probe|investigation|freeze|seize|restriction|fine|cease|halt|illegal|yaptırım|yasak|dava|soruşturma|ceza)\b",
+    r"\b(sanctions?|ban(?:ned|s)?|lawsuits?|charges?|probes?|investigations?|freezes?|seizes?|restrictions?|fines?|cease|halt|illegal|yaptırım(?:lar)?|yasak(?:lar)?|dava(?:lar)?|soruşturma(?:lar)?|ceza(?:lar)?)\b",
     re.I,
 )
 _POSITIVE_REG = re.compile(
-    r"\b(approve|approval|licensed|license|clarity|framework|authorized|onay|lisans|çerçeve)\b",
+    r"\b(approve|approval|approved|licensed|licenses?|license|clarity|frameworks?|framework|authorized|onay|lisans(?:lar)?|çerçeve(?:ler)?)\b",
     re.I,
 )
 

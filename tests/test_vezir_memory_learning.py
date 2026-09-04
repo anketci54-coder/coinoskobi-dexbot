@@ -39,7 +39,6 @@ def test_watch_learning_uses_only_verified_durable_exits(tmp_path):
             entry_price=1.0,
             opened_at=1000.0 + i,
         )
-    store.close()
 
     con = sqlite3.connect(db)
     rows = con.execute("SELECT id FROM watch_probe_trades ORDER BY id").fetchall()

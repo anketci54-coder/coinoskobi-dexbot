@@ -28,7 +28,7 @@ Known recurring non-blocking warning:
 
 # Canonical Provider Broker Maintenance — 2026-09-01
 
-Status: **VALIDATED / PR #61 OPEN BEFORE MERGE**
+Status: **VALIDATED / MERGED**
 
 Ownership:
 - provider broker/resilience → Phase 8
@@ -109,22 +109,64 @@ After `tests/test_provider_broker.py` was added to the canonical smoke gate:
 The push run used commit message:
 `ci: gate provider broker in canonical smoke [full]`
 
-This establishes GitHub-side canonical smoke/E2E plus full-regression success for the provider functional state.
-
-## Documentation Follow-Up
-
-README/ROADMAP/PROJECT_STATE/TEST_RESULTS were subsequently aligned with the validated architecture. These documentation commits do not alter runtime behavior, but PR #61 must receive its normal post-documentation GitHub CI result before merge.
-
-## Current Gate
-
 Provider broker functional validation: **PASS**
-
 Provider cleanup audit: **PASS**
-
 Authority audit: **PASS**
-
 GitHub smoke/E2E: **PASS**
-
 GitHub full regression: **PASS**
+Merge: **PASS**
 
-Merge: **PENDING final documentation-updated PR CI and final diff audit**
+---
+
+# Phase 14 Vezir / Canonical Panel Final Maintenance Seal — 2026-09-04
+
+Status: **VALIDATED**
+
+Ownership:
+- canonical Command Center / Vezir operator support → Phase 14
+
+Relevant merged PRs:
+- PR #79 — read-only Groq intent router + compact Vezir presentation
+- PR #80 — GPT-OSS empty-output fix
+- PR #96 — canonical panel acceptance + intelligence feed restoration
+- PR #97 — final acceptance regression hotfix
+
+PR #97 merge commit:
+`aa7bbbeb8a6c8b55490ace5838191d57d5b0e4e2`
+
+PR #97 scope audit:
+- plural regulatory negative terms classified correctly
+- Vezir learning test aligned with actual `WatchProbeStore` lifecycle
+- no authority change
+- no live/wallet/signing/execution change
+- Codex review completed with no reported findings
+
+## VPS Final Acceptance
+
+Observed final diagnostic:
+- targeted Vezir tests: **20 passed**
+- real Groq router: **PASS**
+- `AI_USED=True`
+- provider: `GROQ`
+- model: `openai/gpt-oss-120b`
+- routed intent: `GENERAL`
+- fallback reason: `None`
+- router returned no direct answer field as designed: **PASS**
+- canonical panel-only restart: **PASS**
+- port 8098 readiness: **PASS**
+- `/api/vezir/ask`: **PASS**
+- endpoint answer present: **PASS**
+- authority: `READ_ONLY`
+- paper runtime untouched: **PASS**
+- `PHASE14_VEZIR_GROQ_FINAL=PASS`
+
+## Authority Seal
+
+- AI trade authority = 0
+- live execution authority = 0
+- wallet authority = 0
+- signing authority = 0
+- runtime-control authority from Vezir = 0
+- deployment authority from Vezir = 0
+
+Final maintenance acceptance: **PASS**

@@ -1,12 +1,12 @@
 # COINOSKOBI CANONICAL PROJECT STATE
 
-Updated: 2026-09-03
+Updated: 2026-09-04
 
 ## CANONICAL SOURCE
 
 - Repository: `anketci54-coder/coinoskobi-dexbot`
 - Production branch: `main`
-- Verified main SHA: `95d6ea78f4c2d762b1da1fa8c3290cd088e343f5`
+- Verified main SHA: `aa7bbbeb8a6c8b55490ace5838191d57d5b0e4e2`
 - VPS project: `/root/projects/coinoskobi-dexbot`
 - Main application: `main.py`
 - Canonical panel application: `app.api.panel:app`
@@ -91,6 +91,8 @@ Vezir/Groq operator support remains Phase 14 maintenance.
 Merged changes:
 - PR #79 — read-only Groq intent router + compact Vezir presentation
 - PR #80 — GPT-OSS empty-output fix
+- PR #96 — canonical panel acceptance + intelligence feed restoration
+- PR #97 — final acceptance regression hotfix
 
 Current contract:
 - provider output never becomes displayed operational truth
@@ -101,12 +103,16 @@ Current contract:
 - technical detail is shown only when locally requested
 - GPT-OSS router uses bounded completion and low reasoning effort
 
-VPS acceptance on 2026-09-03:
+VPS final acceptance on 2026-09-04:
 - targeted Vezir tests: **20 passed**
 - real Groq router: PASS
+- AI provider/model routing: PASS
 - `/api/vezir/ask`: PASS
+- answer field present at endpoint: PASS
 - authority: READ_ONLY
-- paper runtime PID/restart count unchanged
+- canonical panel port 8098 readiness after panel-only restart: PASS
+- paper runtime untouched: PASS
+- `PHASE14_VEZIR_GROQ_FINAL=PASS`
 
 ## PHASE OWNERSHIP CHECKPOINT
 

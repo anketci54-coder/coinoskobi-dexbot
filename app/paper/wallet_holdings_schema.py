@@ -17,8 +17,6 @@ def ensure_wallet_holdings_schema(conn) -> dict[str, object]:
     versioned separately from the paper-trade lifecycle schema. It carries
     observation evidence only and grants no trading authority.
     """
-    savepoint = "wallet_holdings_schema_upgrade"
-    conn.execute(f"SAVEPOINT {savepoint}")
     try:
         conn.executescript(
             """
@@ -67,11 +65,8 @@ def ensure_wallet_holdings_schema(conn) -> dict[str, object]:
             );
             """
         )
-        conn.execute(f"RELEASE SAVEPOINT {savepoint}")
         conn.commit()
     except Exception:
-        conn.execute(f"ROLLBACK TO SAVEPOINT {savepoint}")
-        conn.execute(f"RELEASE SAVEPOINT {savepoint}")
         conn.rollback()
         raise
 

@@ -126,24 +126,83 @@
     }
   }
 
+  async function getAccountingLedger() {
+    const rows = [];
+    const seen = new Set();
+    let beforeId = null;
+
+    for (;;) {
+      const url = beforeId === null
+        ? '/api/accounting-ledger-v2?limit=100'
+        : `/api/accounting-ledger-v2?limit=100&before_id=${encodeURIComponent(beforeId)}`;
+      const page = await get(url);
+      const batch = Array.isArray(page.rows) ? page.rows : [];
+
+      for (const row of batch) {
+        const id = Number(row?.id);
+        const key = Number.isFinite(id) ? `id:${id}` : JSON.stringify(row);
+        if (!seen.has(key)) {
+          seen.add(key);
+          rows.push(row);
+        }
+      }
+
+      const next = Number(page.next_before_id);
+      if (!batch.length || !Number.isFinite(next)) break;
+      if (beforeId !== null && next >= beforeId) {
+        throw new Error('MUHASEBE sayfalama ilerlemedi');
+      }
+      beforeId = next;
+    }
+
+    return rows;
+  }
+
+  function accountingSummary(rows, dashboardSummary = {}) {
+    const statuses = rows.map(row => String(row?.status || '').toUpperCase());
+    const statusKnown = statuses.every(status => status === 'OPEN' || status === 'CLOSED');
+    const openRows = rows.filter((_, index) => statuses[index] === 'OPEN');
+    const openAmounts = openRows.map(row => num(row?.entry_amount_usdt ?? row?.amount_usdt));
+    const pnlValues = rows.map(row => num(row?.net_pnl_usdt ?? row?.net_pnl));
+    const openCount = statusKnown ? openRows.length : null;
+    const openInvestment = statusKnown && openAmounts.every(value => value !== null)
+      ? openAmounts.reduce((sum, value) => sum + value, 0)
+      : null;
+    const totalPnl = pnlValues.every(value => value !== null)
+      ? pnlValues.reduce((sum, value) => sum + value, 0)
+      : null;
+    const startingCapital = num(dashboardSummary.starting_capital);
+    const equity = startingCapital !== null && totalPnl !== null
+      ? startingCapital + totalPnl
+      : null;
+
+    return {
+      equity,
+      total_pnl: totalPnl,
+      open_count: openCount,
+      open_investment: openInvestment
+    };
+  }
+
   async function showAccounting() {
     try {
-      const dashboard = await get('/api/dashboard');
-      const positions = Array.isArray(dashboard.positions) ? dashboard.positions : [];
-      const exits = Array.isArray(dashboard.exits) ? dashboard.exits : [];
-      const rows = [...positions.map(x => ({...x, _kind: 'AÇIK'})), ...exits.map(x => ({...x, _kind: 'KAPALI'}))];
-      const summary = dashboard.summary || {};
+      const [dashboard, ledger] = await Promise.all([
+        get('/api/dashboard'),
+        getAccountingLedger()
+      ]);
+      const rows = Array.isArray(ledger) ? ledger : [];
+      const summary = accountingSummary(rows, dashboard.summary || {});
       const html = `
         <div class="acceptance-kpis">
           <div><small>BAKİYE</small><b>${money(summary.equity)}</b></div>
           <div><small>TOPLAM PNL</small><b>${money(summary.total_pnl)}</b></div>
-          <div><small>AÇIK</small><b>${esc(summary.open_count ?? positions.length)}</b></div>
+          <div><small>AÇIK</small><b>${esc(summary.open_count ?? '—')}</b></div>
           <div><small>YATIRIM</small><b>${money(summary.open_investment)}</b></div>
         </div>
         <div class="acceptance-scroll"><table class="acceptance-table">
           <thead><tr><th>DURUM</th><th>TOKEN</th><th>GİRİŞ</th><th>ÇIKIŞ/SON</th><th>NET PNL</th><th>ROI</th></tr></thead>
           <tbody>${rows.length ? rows.map(r => `<tr>
-            <td>${esc(r._kind)}</td><td>${esc(r.symbol || short(r.token))}</td>
+            <td>${esc(String(r.status || '—').toUpperCase())}</td><td>${esc(r.symbol || short(r.token))}</td>
             <td>${esc(r.entry_price ?? '—')}</td><td>${esc(r.exit_price ?? r.current_price ?? '—')}</td>
             <td>${money(r.net_pnl_usdt ?? r.net_pnl)}</td><td>${pct(num(r.roi_pct) ?? (num(r.roi) === null ? null : num(r.roi) * 100))}</td>
           </tr>`).join('') : '<tr><td colspan="6">Muhasebe kaydı yok.</td></tr>'}</tbody>

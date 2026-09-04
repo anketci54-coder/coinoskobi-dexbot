@@ -54,6 +54,8 @@ jobs:
           tests/test_application_dynamic_wss_pairs.py
           tests/test_application_paper_lifecycle.py
           tests/test_panel_canonical_final.py
+          tests/test_panel_accounting_visibility.py
+          tests/test_panel_fresh_snapshot.py
           tests/test_panel_manual_paper_v2.py
           tests/test_panel_operations.py
           tests/test_watch_probe_store.py

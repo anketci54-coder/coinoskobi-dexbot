@@ -126,11 +126,43 @@
     }
   }
 
+  async function getAccountingLedger() {
+    const rows = [];
+    const seen = new Set();
+    let beforeId = null;
+
+    for (;;) {
+      const url = beforeId === null
+        ? '/api/accounting-ledger-v2?limit=100'
+        : `/api/accounting-ledger-v2?limit=100&before_id=${encodeURIComponent(beforeId)}`;
+      const page = await get(url);
+      const batch = Array.isArray(page.rows) ? page.rows : [];
+
+      for (const row of batch) {
+        const id = Number(row?.id);
+        const key = Number.isFinite(id) ? `id:${id}` : JSON.stringify(row);
+        if (!seen.has(key)) {
+          seen.add(key);
+          rows.push(row);
+        }
+      }
+
+      const next = Number(page.next_before_id);
+      if (!batch.length || !Number.isFinite(next)) break;
+      if (beforeId !== null && next >= beforeId) {
+        throw new Error('MUHASEBE sayfalama ilerlemedi');
+      }
+      beforeId = next;
+    }
+
+    return rows;
+  }
+
   async function showAccounting() {
     try {
       const [dashboard, ledger] = await Promise.all([
         get('/api/dashboard'),
-        get('/api/positions')
+        getAccountingLedger()
       ]);
       const rows = Array.isArray(ledger) ? ledger : [];
       const summary = dashboard.summary || {};

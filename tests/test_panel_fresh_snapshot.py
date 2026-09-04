@@ -2,6 +2,7 @@ from pathlib import Path
 
 
 JS = Path("app/api/static/panel-canonical.js")
+HTML = Path("app/api/static/index.html")
 PANEL = Path("app/api/panel.py")
 
 
@@ -38,6 +39,29 @@ def test_failed_refresh_sources_remain_unavailable_not_fake_empty():
     assert "text('updatedAt',successCount===5?stamp:successCount>0?`${stamp} · KISMİ`:'VERİ YOK')" in js
     assert "Radar verisi alınamadı." in js
     assert "<tr><td colspan=\"4\">VERİ YOK</td></tr>" in js
+
+
+def test_watch_rows_failure_is_not_rendered_as_empty_ledger():
+    js = JS.read_text(encoding="utf-8")
+
+    assert "if(body&&!state.watch)" in js
+    assert "body.innerHTML='<tr><td colspan=\"4\">VERİ YOK</td></tr>';return" in js
+
+
+def test_manual_order_controls_require_dashboard_position_state():
+    js = JS.read_text(encoding="utf-8")
+
+    assert "state.mode==='MANUAL'&&state.dashboard" in js
+    assert "state.mode==='MANUAL'?`<button class=\"order-btn" not in js
+
+
+def test_changed_panel_assets_have_new_cache_keys():
+    html = HTML.read_text(encoding="utf-8")
+
+    assert "/static/panel-canonical.js?v=2" in html
+    assert "/static/panel-canonical-acceptance.js?v=3" in html
+    assert "/static/panel-canonical.js?v=1" not in html
+    assert "/static/panel-canonical-acceptance.js?v=2" not in html
 
 
 def test_panel_document_is_served_no_store():

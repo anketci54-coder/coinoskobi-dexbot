@@ -384,6 +384,7 @@ def paper_rows(
     limit: int = 100,
     *,
     active_only: bool = False,
+    before_id: int | None = None,
 ) -> list[dict[str, Any]]:
     where_clause = (
         "WHERE paper_account_version = "
@@ -399,6 +400,10 @@ def paper_rows(
         params.append(
             PANEL_ACTIVE_PERIOD_MIN_TRADE_ID
         )
+
+    if before_id is not None:
+        where_clause += " AND id < ?"
+        params.append(int(before_id))
 
     params.append(limit)
 
@@ -1836,6 +1841,36 @@ def api_watch_probes() -> dict[str, Any]:
 @app.get("/api/positions")
 def api_positions() -> list[dict[str, Any]]:
     return paper_rows(active_only=True)
+
+
+@app.get("/api/accounting-ledger-v2")
+def api_accounting_ledger_v2(
+    limit: int = 100,
+    before_id: int | None = None,
+) -> dict[str, Any]:
+    bounded_limit = max(1, min(int(limit), 200))
+    rows = paper_rows(
+        limit=bounded_limit,
+        active_only=True,
+        before_id=before_id,
+    )
+    next_before_id = (
+        int(rows[-1]["id"])
+        if len(rows) == bounded_limit
+        and rows[-1].get("id") is not None
+        else None
+    )
+    return {
+        "rows": rows,
+        "next_before_id": next_before_id,
+        "limit": bounded_limit,
+        "authority": {
+            "read_only": True,
+            "execution": False,
+            "wallet": False,
+            "signing": False,
+        },
+    }
 
 
 @app.get("/api/positions-v2")

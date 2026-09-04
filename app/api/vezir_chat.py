@@ -7,6 +7,7 @@ from typing import Any
 
 import requests
 
+from app.api.news_impact import impact_snapshot
 from app.api.vezir_ai import DEFAULT_MODEL, GROQ_CHAT_URL
 from app.api.vezir_learning import SNAPSHOT_KEY, watch_learning_snapshot
 from app.api.vezir_memory import VezirMemoryStore
@@ -14,7 +15,7 @@ from app.api.vezir_memory import VezirMemoryStore
 
 MAX_QUESTION = 500
 MAX_RECENT = 6
-MAX_TOKENS = 420
+MAX_TOKENS = 520
 TIMEOUT_SECONDS = 12.0
 
 
@@ -28,6 +29,7 @@ def _compact_truth(operations: dict[str, Any], provider: dict[str, Any], learnin
         "opportunity": operations.get("opportunity") or {},
         "provider": provider,
         "watch_learning": learning,
+        "news_impact": impact_snapshot(limit=20),
         "authority": {
             "trade": False,
             "wallet": False,
@@ -48,10 +50,14 @@ def _prompt(question: str, truth: dict[str, Any], recent: list[dict[str, Any]]) 
         "Kullanıcı takip sorusu sorarsa yakın konuşma bağlamını kullan. "
         "OPERASYON GERÇEĞİ olarak yalnız TRUTH_JSON içindeki değerleri kullan; eksik veriyi uydurma. "
         "Geçmiş konuşma yalnız sohbet bağlamıdır ve gerçek zamanlı gerçek sayılmaz. "
+        "NEWS_IMPACT içindeki forecast kayıtları haber etkisi öngörüsüdür, gerçekleşmiş sonuç veya işlem sinyali değildir. "
+        "Haber sorularında mümkünse olay türünü, etkilenen token/chain/segmenti, olası yönü, zaman ufkunu, risk ve güven seviyesini açıkla. "
+        "X/Telegram/Discord gibi sosyal kaynaklarda tek kaynaklı veya düşük güvenli iddiayı doğrulanmış gerçek gibi anlatma. "
+        "Airdrop/ICO/IDO/TGE, listing/delisting, hack/exploit, token unlock, regülasyon/yaptırım, partnership ve network upgrade olaylarını birbirinden ayır. "
         "WATCH öğrenme güveni INSUFFICIENT ise başarı oranı veya kesin tahmin üretme. "
-        "Provider sorunu varsa açıkça söyle. Teknik ayrıntı istenmedikçe 2-5 kısa cümle kullan. "
+        "Provider sorunu varsa açıkça söyle. Teknik ayrıntı istenmedikçe 2-6 kısa cümle kullan. "
         "Emir verme, işlem açma, wallet/signing/execution yetkin olduğunu iddia etme. "
-        "Kendi kodunu değiştiremezsin. Tavsiye verirken bunun analiz olduğunu açık tut.\n\n"
+        "Kendi kodunu değiştiremezsin. Tahmini kesinlik gibi sunma; güven ve belirsizliği belirt.\n\n"
         f"RECENT_CHAT_JSON={json.dumps(history, ensure_ascii=False, separators=(',', ':'))}\n"
         f"TRUTH_JSON={json.dumps(truth, ensure_ascii=False, separators=(',', ':'))}\n"
         f"USER={question}"
@@ -144,6 +150,7 @@ def chat_with_vezir(
         "ai_fallback_reason": None if ai_used else fallback_reason,
         "memory": memory.status(),
         "learning": learning,
+        "news_impact": truth["news_impact"],
         "provider_health": provider_health,
         "authority": truth["authority"],
     }

@@ -1,0 +1,110 @@
+name: Phase 14 P2 repair once
+
+on:
+  push:
+    branches:
+      - phase14/panel-baseline-full-regression
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    if: ${{ github.actor != 'github-actions[bot]' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: phase14/panel-baseline-full-regression
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: pip
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Apply bounded Phase 14 fixes
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path: str, old: str, new: str) -> None:
+              p = Path(path)
+              text = p.read_text(encoding="utf-8")
+              if text.count(old) != 1:
+                  raise SystemExit(f"ANCHOR_MISMATCH:{path}:{text.count(old)}")
+              p.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+          panel = "app/api/panel.py"
+          replace_once(
+              panel,
+              """def paper_rows(\n    limit: int = 100,\n    *,\n    active_only: bool = False,\n) -> list[dict[str, Any]]:\n""",
+              """def paper_rows(\n    limit: int = 100,\n    *,\n    active_only: bool = False,\n    before_id: int | None = None,\n) -> list[dict[str, Any]]:\n""",
+          )
+          replace_once(
+              panel,
+              """    if active_only:\n        where_clause += (\n            \" AND id >= ?\"\n        )\n        params.append(\n            PANEL_ACTIVE_PERIOD_MIN_TRADE_ID\n        )\n\n    params.append(limit)\n""",
+              """    if active_only:\n        where_clause += (\n            \" AND id >= ?\"\n        )\n        params.append(\n            PANEL_ACTIVE_PERIOD_MIN_TRADE_ID\n        )\n\n    if before_id is not None:\n        where_clause += \" AND id < ?\"\n        params.append(int(before_id))\n\n    params.append(limit)\n""",
+          )
+          replace_once(
+              panel,
+              """@app.get(\"/api/positions\")\ndef api_positions() -> list[dict[str, Any]]:\n    return paper_rows(active_only=True)\n\n\n@app.get(\"/api/positions-v2\")\n""",
+              """@app.get(\"/api/positions\")\ndef api_positions() -> list[dict[str, Any]]:\n    return paper_rows(active_only=True)\n\n\n@app.get(\"/api/accounting-ledger-v2\")\ndef api_accounting_ledger_v2(\n    limit: int = 100,\n    before_id: int | None = None,\n) -> dict[str, Any]:\n    bounded_limit = max(1, min(int(limit), 200))\n    rows = paper_rows(\n        limit=bounded_limit,\n        active_only=True,\n        before_id=before_id,\n    )\n    next_before_id = (\n        int(rows[-1][\"id\"])\n        if len(rows) == bounded_limit\n        and rows[-1].get(\"id\") is not None\n        else None\n    )\n    return {\n        \"rows\": rows,\n        \"next_before_id\": next_before_id,\n        \"limit\": bounded_limit,\n        \"authority\": {\n            \"read_only\": True,\n            \"execution\": False,\n            \"wallet\": False,\n            \"signing\": False,\n        },\n    }\n\n\n@app.get(\"/api/positions-v2\")\n""",
+          )
+
+          js = "app/api/static/panel-canonical.js"
+          replace_once(
+              js,
+              "${state.mode==='MANUAL'?`<button class=\"order-btn ${p?'sell':'buy'}\" type=\"button\">${p?'SAT':'AL'}</button>`:''}",
+              "${state.mode==='MANUAL'&&state.dashboard?`<button class=\"order-btn ${p?'sell':'buy'}\" type=\"button\">${p?'SAT':'AL'}</button>`:''}",
+          )
+          old_watch = '''  function renderWatch(){const body=$(\'watchRows\');if(!state.watchSummary&&!state.watch){[\'watchCount\',\'watchOpen\',\'watchEntry\',\'watchValue\',\'watchPnl\'].forEach(id=>text(id,\'—\'));paint(\'watchPnl\',null);if(body)body.innerHTML=\'<tr><td colspan="4">VERİ YOK</td></tr>\';return}const s=state.watchSummary||state.watch?.summary||{};const markValue=s.mark_value_usdt??s.current_value_usdt;const markPnl=s.mark_pnl_usdt??s.pnl_usdt;text(\'watchCount\',String(s.count??0));text(\'watchOpen\',String(s.open??0));text(\'watchEntry\',money(s.entry_usdt_total));text(\'watchValue\',money(markValue));text(\'watchPnl\',money(markPnl));paint(\'watchPnl\',markPnl);const rows=Array.isArray(state.watch?.rows)?state.watch.rows.slice(0,5):[];if(body)body.innerHTML=rows.length?rows.map(r=>`<tr><td title="${esc(r.token)}">${esc(short(r.token))}</td><td>${money(r.current_value_usdt)}</td><td class="${n(r.pnl_usdt)>=0?\'pos\':\'neg\'}">${money(r.pnl_usdt)}</td><td>${esc(r.status||\'—\')}</td></tr>`).join(\'\'):\'<tr><td colspan="4">Kayıt yok</td></tr>\'}'''
+          new_watch = '''  function renderWatch(){const body=$(\'watchRows\');if(!state.watchSummary&&!state.watch){[\'watchCount\',\'watchOpen\',\'watchEntry\',\'watchValue\',\'watchPnl\'].forEach(id=>text(id,\'—\'));paint(\'watchPnl\',null);if(body)body.innerHTML=\'<tr><td colspan="4">VERİ YOK</td></tr>\';return}const s=state.watchSummary||state.watch?.summary||{};const markValue=s.mark_value_usdt??s.current_value_usdt;const markPnl=s.mark_pnl_usdt??s.pnl_usdt;text(\'watchCount\',String(s.count??0));text(\'watchOpen\',String(s.open??0));text(\'watchEntry\',money(s.entry_usdt_total));text(\'watchValue\',money(markValue));text(\'watchPnl\',money(markPnl));paint(\'watchPnl\',markPnl);if(body&&!state.watch){body.innerHTML=\'<tr><td colspan="4">VERİ YOK</td></tr>\';return}const rows=Array.isArray(state.watch?.rows)?state.watch.rows.slice(0,5):[];if(body)body.innerHTML=rows.length?rows.map(r=>`<tr><td title="${esc(r.token)}">${esc(short(r.token))}</td><td>${money(r.current_value_usdt)}</td><td class="${n(r.pnl_usdt)>=0?\'pos\':\'neg\'}">${money(r.pnl_usdt)}</td><td>${esc(r.status||\'—\')}</td></tr>`).join(\'\'):\'<tr><td colspan="4">Kayıt yok</td></tr>\'}'''
+          replace_once(js, old_watch, new_watch)
+
+          acceptance = "app/api/static/panel-canonical-acceptance.js"
+          helper = '''  async function getAccountingLedger() {\n    const rows = [];\n    const seen = new Set();\n    let beforeId = null;\n\n    for (;;) {\n      const url = beforeId === null\n        ? '/api/accounting-ledger-v2?limit=100'\n        : `/api/accounting-ledger-v2?limit=100&before_id=${encodeURIComponent(beforeId)}`;\n      const page = await get(url);\n      const batch = Array.isArray(page.rows) ? page.rows : [];\n\n      for (const row of batch) {\n        const id = Number(row?.id);\n        const key = Number.isFinite(id) ? `id:${id}` : JSON.stringify(row);\n        if (!seen.has(key)) {\n          seen.add(key);\n          rows.push(row);\n        }\n      }\n\n      const next = Number(page.next_before_id);\n      if (!batch.length || !Number.isFinite(next)) break;\n      if (beforeId !== null && next >= beforeId) {\n        throw new Error('MUHASEBE sayfalama ilerlemedi');\n      }\n      beforeId = next;\n    }\n\n    return rows;\n  }\n\n'''
+          replace_once(
+              acceptance,
+              "  async function showAccounting() {\n",
+              helper + "  async function showAccounting() {\n",
+          )
+          replace_once(
+              acceptance,
+              """      const [dashboard, ledger] = await Promise.all([\n        get('/api/dashboard'),\n        get('/api/positions')\n      ]);\n""",
+              """      const [dashboard, ledger] = await Promise.all([\n        get('/api/dashboard'),\n        getAccountingLedger()\n      ]);\n""",
+          )
+
+          html = "app/api/static/index.html"
+          replace_once(html, "/static/panel-canonical-acceptance.js?v=2", "/static/panel-canonical-acceptance.js?v=3")
+          replace_once(html, "/static/panel-canonical.js?v=1", "/static/panel-canonical.js?v=2")
+
+          Path("tests/test_panel_accounting_visibility.py").write_text('''from pathlib import Path\n\n\nHTML = Path("app/api/static/index.html")\nACCEPTANCE = Path("app/api/static/panel-canonical-acceptance.js")\nPANEL = Path("app/api/panel.py")\n\n\ndef test_accounting_drawer_uses_paginated_complete_ledger():\n    js = ACCEPTANCE.read_text(encoding="utf-8")\n\n    assert "async function showAccounting()" in js\n    assert "async function getAccountingLedger()" in js\n    assert "get('/api/dashboard')" in js\n    assert "/api/accounting-ledger-v2?limit=100" in js\n    assert "before_id=${encodeURIComponent(beforeId)}" in js\n    assert "page.next_before_id" in js\n    assert "getAccountingLedger()" in js\n    assert "const rows = Array.isArray(ledger) ? ledger : []" in js\n    assert "MUHASEBE · PAPER_10K" in js\n    assert "get('/api/positions')" not in js\n\n\ndef test_accounting_backend_is_cursor_paginated_and_read_only():\n    source = PANEL.read_text(encoding="utf-8")\n\n    assert '@app.get("/api/accounting-ledger-v2")' in source\n    assert "before_id: int | None = None" in source\n    assert 'where_clause += " AND id < ?"' in source\n    assert "bounded_limit = max(1, min(int(limit), 200))" in source\n    assert "before_id=before_id" in source\n    assert '"next_before_id": next_before_id' in source\n    assert '"read_only": True' in source\n    assert '"execution": False' in source\n    assert '"wallet": False' in source\n    assert '"signing": False' in source\n\n\ndef test_main_paper_ledger_is_removed_without_losing_accounting_data():\n    html = HTML.read_text(encoding="utf-8")\n    js = ACCEPTANCE.read_text(encoding="utf-8")\n\n    assert "SİSTEM & PAPER LEDGER" not in html\n    assert 'id="ledgerBody"' not in html\n    assert "renderLedger" not in html\n    assert 'id="accountingButton"' in html\n    assert "/api/accounting-ledger-v2?limit=100" in js\n    assert "dashboard.exits" not in js\n''', encoding="utf-8")
+
+          Path("tests/test_panel_fresh_snapshot.py").write_text('''from pathlib import Path\n\n\nJS = Path("app/api/static/panel-canonical.js")\nHTML = Path("app/api/static/index.html")\nPANEL = Path("app/api/panel.py")\n\n\ndef test_panel_bfcache_restore_invalidates_old_refresh_generation():\n    js = JS.read_text(encoding="utf-8")\n\n    assert "snapshotGeneration:0" in js\n    assert "state.snapshotGeneration+=1" in js\n    assert "const generation=state.snapshotGeneration" in js\n    assert "if(generation!==state.snapshotGeneration)return" in js\n    assert "state.refreshing=false" not in js\n\n\ndef test_panel_bfcache_restore_clears_restored_modals():\n    js = JS.read_text(encoding="utf-8")\n\n    assert "function clearRestoredModals()" in js\n    assert "acceptanceModal" in js\n    assert "shell.classList.remove('open')" in js\n    assert "clearRestoredModals();" in js\n    assert "window.addEventListener('pageshow'" in js\n    assert "event.persisted" in js\n    assert "clearLiveSnapshot();refresh()" in js\n\n\ndef test_failed_refresh_sources_remain_unavailable_not_fake_empty():\n    js = JS.read_text(encoding="utf-8")\n\n    assert "state.dashboard=d.status==='fulfilled'?d.value:null" in js\n    assert "state.universe=u.status==='fulfilled'?u.value:null" in js\n    assert "state.watch=w.status==='fulfilled'?w.value:null" in js\n    assert "state.watchSummary=ws.status==='fulfilled'?ws.value:null" in js\n    assert "state.operations=o.status==='fulfilled'?o.value:null" in js\n    assert "text('updatedAt',successCount===5?stamp:successCount>0?`${stamp} · KISMİ`:'VERİ YOK')" in js\n    assert "Radar verisi alınamadı." in js\n    assert "<tr><td colspan=\\\"4\\\">VERİ YOK</td></tr>" in js\n\n\ndef test_watch_rows_failure_is_not_rendered_as_empty_ledger():\n    js = JS.read_text(encoding="utf-8")\n\n    assert "if(body&&!state.watch)" in js\n    assert "body.innerHTML='<tr><td colspan=\\\"4\\\">VERİ YOK</td></tr>';return" in js\n\n\ndef test_manual_order_controls_require_dashboard_position_state():\n    js = JS.read_text(encoding="utf-8")\n\n    assert "state.mode==='MANUAL'&&state.dashboard" in js\n    assert "state.mode==='MANUAL'?`<button class=\\\"order-btn" not in js\n\n\ndef test_changed_panel_assets_have_new_cache_keys():\n    html = HTML.read_text(encoding="utf-8")\n\n    assert "/static/panel-canonical.js?v=2" in html\n    assert "/static/panel-canonical-acceptance.js?v=3" in html\n    assert "/static/panel-canonical.js?v=1" not in html\n    assert "/static/panel-canonical-acceptance.js?v=2" not in html\n\n\ndef test_panel_document_is_served_no_store():\n    source = PANEL.read_text(encoding="utf-8")\n\n    assert '\"Cache-Control\"' in source\n    assert '\"no-store, no-cache, \"' in source\n    assert '\"must-revalidate, max-age=0\"' in source\n    assert '\"Pragma\"' in source\n    assert '\"no-cache\"' in source\n''', encoding="utf-8")
+          PY
+      - name: Static and syntax guards
+        run: |
+          git diff --check
+          python -m py_compile app/api/panel.py
+          node --check app/api/static/panel-canonical.js
+          node --check app/api/static/panel-canonical-acceptance.js
+      - name: Focused regression
+        run: >-
+          python -m pytest -q
+          tests/test_panel_accounting_visibility.py
+          tests/test_panel_fresh_snapshot.py
+          tests/test_panel_canonical_final.py
+          tests/test_panel_manual_paper_v2.py
+          tests/test_panel_operations.py
+      - name: Commit validated repair and remove one-shot workflow
+        shell: bash
+        run: |
+          git rm .github/workflows/phase14-p2-repair-once.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/api/panel.py app/api/static/index.html app/api/static/panel-canonical.js app/api/static/panel-canonical-acceptance.js tests/test_panel_accounting_visibility.py tests/test_panel_fresh_snapshot.py
+          git diff --cached --check
+          git commit -m "fix: close Phase 14 panel P2 findings"
+          git push origin HEAD:phase14/panel-baseline-full-regression

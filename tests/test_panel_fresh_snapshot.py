@@ -1,17 +1,17 @@
 from pathlib import Path
 
 
-HTML = Path("app/api/static/index.html")
+JS = Path("app/api/static/panel-canonical.js")
 PANEL = Path("app/api/panel.py")
 
 
 def test_panel_clears_restored_dom_before_live_refresh():
-    html = HTML.read_text(encoding="utf-8")
+    js = JS.read_text(encoding="utf-8")
 
-    assert "function clearLiveSnapshot()" in html
-    assert "window.addEventListener('pageshow'" in html
-    assert "event.persisted" in html
-    assert "clearLiveSnapshot();refresh()" in html
+    assert "function clearLiveSnapshot()" in js
+    assert "window.addEventListener('pageshow'" in js
+    assert "event.persisted" in js
+    assert "clearLiveSnapshot();refresh()" in js
 
 
 def test_panel_document_is_served_no_store():

@@ -1573,6 +1573,16 @@ def api_status() -> dict[str, Any]:
     }
 
 
+
+@app.get("/watch-probes")
+def watch_probes_page():
+    return FileResponse(
+        Path(__file__).resolve().parent
+        / "static"
+        / "watch-probes.html"
+    )
+
+
 @app.get("/api/watch-probes")
 def api_watch_probes() -> dict[str, Any]:
     if not table_exists("watch_probe_trades"):

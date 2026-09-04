@@ -2,10 +2,18 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-HTML = ROOT / "app" / "api" / "static" / "index.html"
-JS = ROOT / "app" / "api" / "static" / "panel-canonical.js"
-CSS = ROOT / "app" / "api" / "static" / "panel-canonical.css"
+STATIC = ROOT / "app" / "api" / "static"
+HTML = STATIC / "index.html"
+JS = STATIC / "panel-canonical.js"
+CSS = STATIC / "panel-canonical.css"
 INIT = ROOT / "app" / "api" / "__init__.py"
+LEGACY_PANEL_ASSETS = (
+    "panel-premium-v2.css",
+    "panel-premium-v2.js",
+    "panel-radar-trade-v3.css",
+    "panel-radar-trade-v3.js",
+    "panel-readable.css",
+)
 
 
 def test_root_panel_has_one_canonical_frontend_owner():
@@ -18,6 +26,11 @@ def test_root_panel_has_one_canonical_frontend_owner():
     assert "panel-premium-v2" not in init
     assert "panel-radar-trade-v3" not in init
     assert "middleware" not in init
+
+
+def test_legacy_panel_assets_are_removed():
+    for name in LEGACY_PANEL_ASSETS:
+        assert not (STATIC / name).exists(), name
 
 
 def test_canonical_runtime_owns_required_real_connections():

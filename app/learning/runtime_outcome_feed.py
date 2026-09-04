@@ -52,6 +52,7 @@ class RuntimeLearningOutcomeFeed:
         max_memory=2048,
         max_readmodel=256,
         min_samples=20,
+        wallet_outcome_observer=None,
     ):
         self.chain = (
             str(chain or "")
@@ -74,7 +75,13 @@ class RuntimeLearningOutcomeFeed:
             int(min_samples),
         )
 
+        self.wallet_outcome_observer = (
+            wallet_outcome_observer
+        )
+
         self._events = OrderedDict()
+        self._phase9_retries = OrderedDict()
+        self.max_phase9_retries = self.max_events
 
         self.memory = OutcomeMemory(
             max_entries=max_memory
@@ -131,12 +138,55 @@ class RuntimeLearningOutcomeFeed:
 
         if outcome_id in self._events:
             self.duplicate_count += 1
+            existing = self._events[outcome_id]
+            phase9 = existing.get(
+                "phase9_wallet_tracking"
+            )
+
+            if (
+                isinstance(phase9, dict)
+                and phase9.get("state") == "DEGRADED"
+            ):
+                retry_result = self._observe_phase9_wallet_outcome(
+                    position_id=position_id,
+                    opening_context=opening_context,
+                    realized_return=realized_return,
+                    evidence_complete=bool(
+                        observed_at
+                        and evaluated_at
+                        and token
+                        and realized_return is not None
+                    ),
+                )
+                existing[
+                    "phase9_wallet_tracking"
+                ] = retry_result
+
+                if (
+                    isinstance(retry_result, dict)
+                    and retry_result.get("state") == "DEGRADED"
+                ):
+                    self._remember_phase9_retry(
+                        outcome_id=outcome_id,
+                        position_id=position_id,
+                        opening_context=opening_context,
+                        realized_return=realized_return,
+                        evidence_complete=bool(
+                            observed_at
+                            and evaluated_at
+                            and token
+                            and realized_return is not None
+                        ),
+                    )
+                else:
+                    self._phase9_retries.pop(
+                        outcome_id,
+                        None,
+                    )
 
             return self._out(
                 "DUPLICATE",
-                self._events[
-                    outcome_id
-                ],
+                existing,
             )
 
         realized = self._realized(
@@ -215,9 +265,6 @@ class RuntimeLearningOutcomeFeed:
             ]
         )
 
-        # We do NOT reconstruct historical signal-family
-        # attribution from current state. If opening-time
-        # attribution wasn't persisted, it remains UNKNOWN.
         signal_states = {}
 
         if isinstance(
@@ -273,6 +320,19 @@ class RuntimeLearningOutcomeFeed:
             freshness="FRESH",
         )
 
+        phase9_wallet_tracking = (
+            self._observe_phase9_wallet_outcome(
+                position_id=position_id,
+                opening_context=opening_context,
+                realized_return=(
+                    realized["return"]
+                ),
+                evidence_complete=(
+                    evidence_complete
+                ),
+            )
+        )
+
         row = {
             "outcome_id": outcome_id,
             "position_id": position_id,
@@ -317,6 +377,9 @@ class RuntimeLearningOutcomeFeed:
             "memory_result": (
                 memory_result
             ),
+            "phase9_wallet_tracking": (
+                phase9_wallet_tracking
+            ),
             "opening_context_persisted": (
                 opening_context
                 is not None
@@ -335,12 +398,28 @@ class RuntimeLearningOutcomeFeed:
             outcome_id
         ] = row
 
+        if (
+            isinstance(phase9_wallet_tracking, dict)
+            and phase9_wallet_tracking.get("state") == "DEGRADED"
+        ):
+            self._remember_phase9_retry(
+                outcome_id=outcome_id,
+                position_id=position_id,
+                opening_context=opening_context,
+                realized_return=realized["return"],
+                evidence_complete=evidence_complete,
+            )
+
         while (
             len(self._events)
             > self.max_events
         ):
-            self._events.popitem(
+            dropped_id, _ = self._events.popitem(
                 last=False
+            )
+            self._phase9_retries.pop(
+                dropped_id,
+                None,
             )
 
             self.dropped_count += 1
@@ -362,6 +441,230 @@ class RuntimeLearningOutcomeFeed:
             "OBSERVED",
             row,
         )
+
+    @property
+    def phase9_retry_count(self):
+        return len(self._phase9_retries)
+
+    def _remember_phase9_retry(
+        self,
+        *,
+        outcome_id,
+        position_id,
+        opening_context,
+        realized_return,
+        evidence_complete,
+    ):
+        self._phase9_retries[outcome_id] = {
+            "position_id": position_id,
+            "opening_context": opening_context,
+            "realized_return": realized_return,
+            "evidence_complete": evidence_complete,
+        }
+        self._phase9_retries.move_to_end(
+            outcome_id
+        )
+
+        while (
+            len(self._phase9_retries)
+            > self.max_phase9_retries
+        ):
+            self._phase9_retries.popitem(
+                last=False
+            )
+
+    def retry_degraded_wallet_outcomes(
+        self,
+        *,
+        limit=8,
+    ):
+        try:
+            bounded_limit = max(
+                1,
+                min(
+                    64,
+                    int(limit),
+                ),
+            )
+        except (TypeError, ValueError):
+            bounded_limit = 8
+
+        outcome_ids = list(
+            self._phase9_retries.keys()
+        )[:bounded_limit]
+        results = []
+
+        for outcome_id in outcome_ids:
+            retry = self._phase9_retries.get(
+                outcome_id
+            )
+            row = self._events.get(
+                outcome_id
+            )
+
+            if (
+                not isinstance(retry, dict)
+                or not isinstance(row, dict)
+            ):
+                self._phase9_retries.pop(
+                    outcome_id,
+                    None,
+                )
+                continue
+
+            phase9 = self._observe_phase9_wallet_outcome(
+                position_id=retry.get("position_id"),
+                opening_context=retry.get("opening_context"),
+                realized_return=retry.get("realized_return"),
+                evidence_complete=bool(
+                    retry.get("evidence_complete")
+                ),
+            )
+            row[
+                "phase9_wallet_tracking"
+            ] = phase9
+            results.append({
+                "state": "PHASE9_RETRY",
+                "outcome_id": outcome_id,
+                "phase9_wallet_tracking": dict(phase9),
+                "decision_authority": False,
+                "execution_authority": False,
+            })
+
+            if (
+                isinstance(phase9, dict)
+                and phase9.get("state") == "DEGRADED"
+            ):
+                self._phase9_retries.move_to_end(
+                    outcome_id
+                )
+            else:
+                self._phase9_retries.pop(
+                    outcome_id,
+                    None,
+                )
+
+        return results
+
+    def _observe_phase9_wallet_outcome(
+        self,
+        *,
+        position_id,
+        opening_context,
+        realized_return,
+        evidence_complete,
+    ):
+        observer = getattr(
+            self,
+            "wallet_outcome_observer",
+            None,
+        )
+
+        if not callable(observer):
+            return self._phase9_out(
+                "UNBOUND",
+                "OBSERVER_NOT_BOUND",
+            )
+
+        actor_identity = (
+            opening_context.get("actor_identity")
+            if isinstance(opening_context, dict)
+            else None
+        )
+
+        if not isinstance(actor_identity, dict):
+            return self._phase9_out(
+                "NOT_ELIGIBLE",
+                "ENTRY_IDENTITY_NOT_VERIFIED",
+            )
+
+        wallet_id = str(
+            actor_identity.get("wallet_id") or ""
+        ).strip().lower()
+        identity_source = str(
+            actor_identity.get("identity_source") or ""
+        ).strip().upper()
+        hindsight = actor_identity.get(
+            "hindsight_reconstructed"
+        )
+
+        if (
+            not wallet_id
+            or identity_source != "TRANSACTION_FROM_ONLY"
+            or hindsight is not False
+        ):
+            return self._phase9_out(
+                "NOT_ELIGIBLE",
+                "ENTRY_IDENTITY_NOT_VERIFIED",
+            )
+
+        if (
+            not evidence_complete
+            or realized_return is None
+        ):
+            return self._phase9_out(
+                "NOT_ELIGIBLE",
+                "REALIZED_OUTCOME_NOT_READY",
+            )
+
+        try:
+            return_pct = float(
+                realized_return
+            ) * 100.0
+        except (TypeError, ValueError):
+            return self._phase9_out(
+                "NOT_ELIGIBLE",
+                "REALIZED_OUTCOME_NOT_READY",
+            )
+
+        try:
+            result = observer(
+                wallet_id,
+                f"paper-position:{position_id}",
+                return_pct,
+                realized=True,
+            )
+        except Exception as exc:
+            return self._phase9_out(
+                "DEGRADED",
+                type(exc).__name__,
+            )
+
+        if not isinstance(result, dict):
+            return self._phase9_out(
+                "DEGRADED",
+                "INVALID_OBSERVER_RESULT",
+            )
+
+        return {
+            **result,
+            "source": "PAPER_CLOSE_ENTRY_WALLET",
+            "identity_source": "TRANSACTION_FROM_ONLY",
+            "hindsight_reconstructed": False,
+            "decision_authority": False,
+            "paper_authority": False,
+            "live_authority": False,
+            "wallet_authority": False,
+            "signing_authority": False,
+            "execution_authority": False,
+        }
+
+    @staticmethod
+    def _phase9_out(state, reason):
+        return {
+            "state": state,
+            "reason": reason,
+            "source": "PAPER_CLOSE_ENTRY_WALLET",
+            "identity_source": None,
+            "hindsight_reconstructed": False,
+            "trade_signal": False,
+            "decision_authority": False,
+            "paper_authority": False,
+            "live_authority": False,
+            "wallet_authority": False,
+            "signing_authority": False,
+            "execution_authority": False,
+        }
 
     def event_snapshot(self):
         return [
@@ -635,6 +938,12 @@ class RuntimeLearningOutcomeFeed:
             ),
             "dropped_count": (
                 self.dropped_count
+            ),
+            "phase9_retry_count": (
+                self.phase9_retry_count
+            ),
+            "max_phase9_retries": (
+                self.max_phase9_retries
             ),
             "bounded": True,
             "source": (

@@ -44,6 +44,30 @@ def build_application(
         or PipelineEngine()
     )
 
+    learning_feed = getattr(
+        pipeline,
+        "learning_outcome_feed",
+        None,
+    )
+    intelligence = getattr(
+        pipeline,
+        "intelligence",
+        None,
+    )
+    wallet_outcome_observer = getattr(
+        intelligence,
+        "observe_wallet_outcome",
+        None,
+    )
+
+    if (
+        learning_feed is not None
+        and callable(wallet_outcome_observer)
+    ):
+        learning_feed.wallet_outcome_observer = (
+            wallet_outcome_observer
+        )
+
     services = []
     market_flow_bound = False
     hot_bridge = HotPositionWSSBridge()

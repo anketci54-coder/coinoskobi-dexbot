@@ -5,6 +5,7 @@ import sqlite3
 import threading
 import time
 import xml.etree.ElementTree as ET
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -35,6 +36,28 @@ def _ro(path: Path | str) -> sqlite3.Connection:
 
 def _table_exists(con: sqlite3.Connection, name: str) -> bool:
     return con.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (name,)).fetchone() is not None
+
+
+def _timestamp_seconds(value: Any) -> float | None:
+    if value is None or value == "":
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    text = str(value).strip()
+    if not text:
+        return None
+    try:
+        return float(text)
+    except ValueError:
+        pass
+    try:
+        normalized = text[:-1] + "+00:00" if text.endswith("Z") else text
+        dt = datetime.fromisoformat(normalized)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.timestamp()
+    except ValueError:
+        return None
 
 
 def watch_probe_detail(paper_db: Path | str, *, limit: int = 100) -> dict[str, Any]:
@@ -76,14 +99,16 @@ def wallet_intelligence_detail(paper_db: Path | str) -> dict[str, Any]:
             details = json.loads(data.get("wallet_details_json")) if data.get("wallet_details_json") else []
         except Exception:
             details = []
-        generated = float(data.get("generated_at") or 0.0)
-        age = max(0.0, time.time() - generated) if generated else None
+        generated_raw = data.get("generated_at")
+        generated = _timestamp_seconds(generated_raw)
+        age = max(0.0, time.time() - generated) if generated is not None else None
         return {
             "available": True,
             "tracked_wallets": int(data.get("tracked_wallets") or 0),
             "successful_wallets": int(data.get("successful_wallets") or 0),
             "active_whales": int(data.get("active_whales") or 0),
-            "generated_at": generated or None,
+            "generated_at": generated_raw,
+            "generated_at_epoch": generated,
             "age_seconds": age,
             "stale": bool(age is None or age > 900),
             "rows": details if isinstance(details, list) else [],

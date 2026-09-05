@@ -23,7 +23,7 @@ def _db(path):
         );
         CREATE TABLE intelligence_summary_readmodel(
             summary_key TEXT PRIMARY KEY,
-            generated_at REAL,
+            generated_at TEXT,
             tracked_wallets INTEGER,
             successful_wallets INTEGER,
             active_whales INTEGER,
@@ -34,7 +34,7 @@ def _db(path):
         INSERT INTO wallet_success_score
         VALUES('bsc:wallet',100,25,'SUCCESSFUL');
         INSERT INTO intelligence_summary_readmodel
-        VALUES('PHASE9_PANEL_DETAIL',100,1,1,0,'[]');
+        VALUES('PHASE9_PANEL_DETAIL','2026-09-05T09:00:00+00:00',1,1,0,'[]');
         """
     )
     ensure_wallet_holdings_schema(con)
@@ -85,6 +85,8 @@ def test_wallet_panel_returns_successful_wallet_holdings_and_changes(tmp_path, m
 
     assert out['available'] is True
     assert out['successful_wallets'] == 1
+    assert isinstance(out['generated_at'], float)
+    assert out['generated_at'] > 0
     holdings = out['arkham_holdings']
     assert holdings['state'] == 'READY'
     assert holdings['wallet_count'] == 1
@@ -93,6 +95,7 @@ def test_wallet_panel_returns_successful_wallet_holdings_and_changes(tmp_path, m
     assert holdings['wallets'][0]['holdings'][0]['symbol'] == 'TOK'
     assert holdings['changes'][0]['change_type'] == 'INCREASED'
     assert holdings['read_only'] is True
+    assert holdings['trade_authority'] is False
     assert holdings['decision_authority'] is False
     assert holdings['paper_authority'] is False
     assert holdings['wallet_authority'] is False

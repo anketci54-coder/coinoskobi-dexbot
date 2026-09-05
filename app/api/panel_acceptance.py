@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
 import json
 import sqlite3
 import threading
@@ -38,6 +39,27 @@ def _ro(path: Path | str) -> sqlite3.Connection:
 
 def _table_exists(con: sqlite3.Connection, name: str) -> bool:
     return con.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (name,)).fetchone() is not None
+
+
+def _timestamp(value: Any) -> float | None:
+    if value is None or value == "":
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        pass
+    text = str(value).strip()
+    if not text:
+        return None
+    if text.endswith("Z"):
+        text = text[:-1] + "+00:00"
+    try:
+        parsed = datetime.fromisoformat(text)
+    except (TypeError, ValueError):
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.timestamp()
 
 
 def watch_probe_detail(paper_db: Path | str, *, limit: int = 100) -> dict[str, Any]:
@@ -237,14 +259,14 @@ def wallet_intelligence_detail(paper_db: Path | str) -> dict[str, Any]:
             details = json.loads(data.get("wallet_details_json")) if data.get("wallet_details_json") else []
         except Exception:
             details = []
-        generated = float(data.get("generated_at") or 0.0)
-        age = max(0.0, time.time() - generated) if generated else None
+        generated = _timestamp(data.get("generated_at"))
+        age = max(0.0, time.time() - generated) if generated is not None else None
         return {
             "available": True,
             "tracked_wallets": int(data.get("tracked_wallets") or 0),
             "successful_wallets": int(data.get("successful_wallets") or 0),
             "active_whales": int(data.get("active_whales") or 0),
-            "generated_at": generated or None,
+            "generated_at": generated,
             "age_seconds": age,
             "stale": bool(age is None or age > 900),
             "rows": details if isinstance(details, list) else [],

@@ -21,7 +21,10 @@ _CANDIDATE_TAG_TERMS = (
     "smart money",
     "smart-money",
     "smart_money",
-    "whale",
+    "high pnl",
+    "high-pnl",
+    "high_pnl",
+    "profitable",
 )
 _BSC_ALIASES = {"bsc", "bnb", "bnbchain", "bnb chain", "bnb-chain", "binance-smart-chain", "binance smart chain"}
 

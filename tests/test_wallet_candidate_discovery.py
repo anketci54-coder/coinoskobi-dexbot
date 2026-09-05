@@ -115,14 +115,14 @@ def test_same_source_key_refreshes_evidence_in_place(tmp_path):
 
     ingest_wallet_candidates(
         path,
-        [{"chain": "bsc", "address": "0xabc", "rank": 44}],
+        [{"chain": "bsc", "address": "0xabc", "rank": 44, "metadata": {"tag": "trader"}}],
         source="ARKHAM_TOP_TRADERS",
         source_key="top-traders",
         observed_at=100.0,
     )
     ingest_wallet_candidates(
         path,
-        [{"chain": "bsc", "address": "0xabc", "rank": 12}],
+        [{"chain": "bsc", "address": "0xabc"}],
         source="ARKHAM_TOP_TRADERS",
         source_key="top-traders",
         observed_at=300.0,
@@ -130,11 +130,11 @@ def test_same_source_key_refreshes_evidence_in_place(tmp_path):
 
     db = sqlite3.connect(path)
     row = db.execute(
-        "SELECT external_rank,first_seen_at,last_seen_at,active FROM wallet_discovery_source_evidence"
+        "SELECT external_rank,first_seen_at,last_seen_at,active,metadata_json FROM wallet_discovery_source_evidence"
     ).fetchone()
     db.close()
 
-    assert row == (12, 100.0, 300.0, 1)
+    assert row == (44, 100.0, 300.0, 1, '{"tag":"trader"}')
 
 
 def test_candidate_pool_is_bounded_by_distinct_wallet(tmp_path, monkeypatch):
@@ -172,6 +172,33 @@ def test_candidate_pool_is_bounded_by_distinct_wallet(tmp_path, monkeypatch):
     assert len(active) == 2
     assert inactive == 1
     assert success_count == 0
+
+
+def test_evidence_rows_are_bounded_even_when_source_keys_rotate(tmp_path, monkeypatch):
+    path = tmp_path / "paper.db"
+    _db(path)
+    monkeypatch.setattr(discovery, "MAX_DISCOVERY_EVIDENCE_ROWS", 3)
+
+    for index in range(4):
+        ingest_wallet_candidates(
+            path,
+            [{"chain": "bsc", "address": "0xabc", "rank": index + 1}],
+            source="ARKHAM_TOP_TRADERS",
+            source_key=f"top-traders:{index}",
+            observed_at=100.0 + index,
+        )
+
+    db = sqlite3.connect(path)
+    rows = db.execute(
+        "SELECT source_key FROM wallet_discovery_source_evidence ORDER BY last_seen_at"
+    ).fetchall()
+    db.close()
+
+    assert [row[0] for row in rows] == [
+        "top-traders:1",
+        "top-traders:2",
+        "top-traders:3",
+    ]
 
 
 def test_invalid_rows_are_rejected_without_registry_pollution(tmp_path):

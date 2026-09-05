@@ -16,8 +16,10 @@ def test_acceptance_controls_are_present():
     assert "MUHASEBE" in html
     assert "HABER ETKİ" in html
     assert "CÜZDAN / BALİNA TAKİP" in html
-    assert "/static/panel-canonical-acceptance.js?v=4" in html
+    assert "/static/panel-canonical-acceptance.js?v=5" in html
+    assert "/static/panel-refinement-v3.js?v=1" in html
     assert html.index("panel-canonical-acceptance.js") < html.index("panel-canonical.js")
+    assert html.index("panel-canonical.js") < html.index("panel-refinement-v3.js")
 
 
 def test_acceptance_bridge_keeps_canonical_vezir_endpoint():

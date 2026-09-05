@@ -58,10 +58,12 @@ def test_manual_order_controls_require_dashboard_position_state():
 def test_changed_panel_assets_have_new_cache_keys():
     html = HTML.read_text(encoding="utf-8")
 
-    assert "/static/panel-canonical.js?v=3" in html
-    assert "/static/panel-canonical-acceptance.js?v=4" in html
-    assert "/static/panel-canonical.js?v=2" not in html
-    assert "/static/panel-canonical-acceptance.js?v=3" not in html
+    assert "/static/panel-canonical.js?v=5" in html
+    assert "/static/panel-canonical-acceptance.js?v=5" in html
+    assert "/static/panel-refinement-v3.css?v=1" in html
+    assert "/static/panel-refinement-v3.js?v=1" in html
+    assert "/static/panel-canonical.js?v=3" not in html
+    assert "/static/panel-canonical-acceptance.js?v=4" not in html
 
 
 def test_panel_document_is_served_no_store():

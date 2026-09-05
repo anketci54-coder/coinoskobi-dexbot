@@ -1,3 +1,5 @@
+import pytest
+
 from app.dex import arkham_discovery_provider as provider
 
 
@@ -30,7 +32,7 @@ def test_provider_is_inactive_without_api_key(monkeypatch):
     assert called == []
 
 
-def test_address_tag_updates_normalize_only_bsc_and_dedupe(monkeypatch):
+def test_address_tag_updates_keep_only_relevant_bsc_candidates_and_dedupe(monkeypatch):
     monkeypatch.setenv("ARKHAM_API_KEY", "configured-not-printed")
     calls = []
     payload = {
@@ -39,6 +41,9 @@ def test_address_tag_updates_normalize_only_bsc_and_dedupe(monkeypatch):
             {"address": _addr(1), "chain": "bsc", "tag": "Trader"},
             {"address": _addr(2), "chain": "ethereum", "tag": "Trader"},
             {"address": {"address": _addr(3), "chain": "bnb"}, "tagName": "Whale"},
+            {"address": _addr(4), "chain": "bsc", "tag": "Exchange Deposit"},
+            {"address": _addr(5), "chain": "bsc", "tags": [{"name": "Smart Money"}]},
+            {"address": "0xabc", "chain": "bsc", "tag": "Trader"},
         ]
     }
 
@@ -53,8 +58,17 @@ def test_address_tag_updates_normalize_only_bsc_and_dedupe(monkeypatch):
     )
 
     assert out["available"] is True
-    assert [row["address"] for row in out["candidates"]] == [_addr(1), _addr(3)]
+    assert [row["address"] for row in out["candidates"]] == [
+        _addr(1),
+        _addr(3),
+        _addr(5),
+    ]
     assert all(row["chain"] == "bsc" for row in out["candidates"])
+    assert [row["metadata"]["arkham_signal"] for row in out["candidates"]] == [
+        "TRADER",
+        "WHALE",
+        "SMART_MONEY",
+    ]
     assert out["success_authority"] is False
     assert out["execution_authority"] is False
     assert calls[0][0].endswith("/intelligence/address_tags/updates")
@@ -62,7 +76,7 @@ def test_address_tag_updates_normalize_only_bsc_and_dedupe(monkeypatch):
     assert "API-Key" in calls[0][2]
 
 
-def test_address_updates_support_nested_data_shape(monkeypatch):
+def test_address_updates_support_nested_data_shape_but_remain_passive(monkeypatch):
     monkeypatch.setenv("ARKHAM_API_KEY", "configured-not-printed")
     payload = {
         "data": {
@@ -89,6 +103,7 @@ def test_address_updates_support_nested_data_shape(monkeypatch):
     assert out["returned_candidates"] == 1
     assert out["candidates"][0]["address"] == _addr(7)
     assert out["candidates"][0]["metadata"]["arkham_feed"] == "ADDRESS_UPDATES"
+    assert out["candidates"][0]["metadata"]["arkham_signal"] is None
 
 
 def test_normalizer_is_bounded_and_rejects_unknown_feed():
@@ -102,3 +117,6 @@ def test_normalizer_is_bounded_and_rejects_unknown_feed():
         limit=3,
     )
     assert len(out) == 3
+
+    with pytest.raises(ValueError, match="UNSUPPORTED_ARKHAM_DISCOVERY_FEED"):
+        provider.normalize_discovery_updates(rows, feed="UNKNOWN")

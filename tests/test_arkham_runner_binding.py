@@ -1,6 +1,7 @@
 from app.core import application_services
 from app.core import runner as runner_module
 from app.core.runner import Runner
+from app.dex.arkham_candidate_discovery_service import ArkhamCandidateDiscoveryService
 from app.dex.arkham_successful_wallet_service import ArkhamSuccessfulWalletService
 
 
@@ -20,13 +21,18 @@ def test_auxiliary_registry_binds_arkham_when_configured(monkeypatch, tmp_path):
         intelligence=intelligence,
     )
 
-    assert len(services) == 1
-    service = services[0]
-    assert isinstance(service, ArkhamSuccessfulWalletService)
-    assert service.db_path == path
-    assert service.intelligence is intelligence
-    assert service.status()["wallet_authority"] is False
-    assert service.status()["execution_authority"] is False
+    assert len(services) == 2
+    discovery, holdings = services
+    assert isinstance(discovery, ArkhamCandidateDiscoveryService)
+    assert discovery.db_path == path
+    assert discovery.status()["success_authority"] is False
+    assert discovery.status()["execution_authority"] is False
+
+    assert isinstance(holdings, ArkhamSuccessfulWalletService)
+    assert holdings.db_path == path
+    assert holdings.intelligence is intelligence
+    assert holdings.status()["wallet_authority"] is False
+    assert holdings.status()["execution_authority"] is False
 
 
 def test_runner_default_auxiliary_factory_receives_captured_pipeline_intelligence(monkeypatch):

@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 
-WALLET_DISCOVERY_EVIDENCE_SCHEMA_VERSION = 1
+WALLET_DISCOVERY_EVIDENCE_SCHEMA_VERSION = 2
 MAX_DISCOVERY_CANDIDATES = 5000
 MAX_DISCOVERY_EVIDENCE_ROWS = 20000
 
 REQUIRED_TABLES = (
     "wallet_discovery_source_evidence",
+    "wallet_discovery_feed_state",
 )
 
 
@@ -34,6 +35,14 @@ def ensure_wallet_discovery_evidence_schema(conn) -> dict[str, object]:
             ON wallet_discovery_source_evidence(active, last_seen_at DESC);
             CREATE INDEX IF NOT EXISTS idx_wallet_discovery_evidence_source
             ON wallet_discovery_source_evidence(source, active, external_rank, last_seen_at DESC);
+
+            CREATE TABLE IF NOT EXISTS wallet_discovery_feed_state(
+                feed TEXT PRIMARY KEY,
+                last_attempt_at REAL,
+                last_success_at REAL,
+                last_provider_state TEXT,
+                last_candidate_count INTEGER NOT NULL DEFAULT 0
+            );
             """
         )
         conn.commit()

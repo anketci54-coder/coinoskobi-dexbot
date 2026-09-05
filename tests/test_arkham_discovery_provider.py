@@ -23,7 +23,7 @@ def test_provider_is_inactive_without_api_key(monkeypatch):
     monkeypatch.setattr(provider.requests, "get", lambda *a, **k: called.append(1))
 
     out = provider.fetch_discovery_updates(
-        feed="ADDRESS_TAG_UPDATES",
+        feed="ADDRESS_UPDATES",
         since=100.0,
     )
 
@@ -32,20 +32,20 @@ def test_provider_is_inactive_without_api_key(monkeypatch):
     assert called == []
 
 
-def test_address_tag_updates_keep_only_performance_relevant_bsc_candidates_and_dedupe(monkeypatch):
+def test_address_updates_keep_only_performance_relevant_bsc_candidates_and_dedupe(monkeypatch):
     monkeypatch.setenv("ARKHAM_API_KEY", "configured-not-printed")
     calls = []
     payload = {
         "updates": [
-            {"address": _addr(1), "chain": "bsc", "tag": "Trader"},
-            {"address": _addr(1), "chain": "bsc", "tag": "Trader"},
-            {"address": _addr(2), "chain": "ethereum", "tag": "Trader"},
-            {"address": {"address": _addr(3), "chain": "bnb"}, "tagName": "Whale"},
-            {"address": _addr(4), "chain": "bsc", "tag": "Exchange Deposit"},
-            {"address": _addr(5), "chain": "bsc", "tags": [{"name": "Smart Money"}]},
-            {"address": _addr(6), "chain": "bsc", "tag": "High PnL Wallet"},
-            {"address": _addr(7), "chain": "bsc", "tag": "Profitable Trader"},
-            {"address": "0xabc", "chain": "bsc", "tag": "Trader"},
+            {"address": _addr(1), "chain": "bsc", "label": "Trader"},
+            {"address": _addr(1), "chain": "bsc", "label": "Trader"},
+            {"address": _addr(2), "chain": "ethereum", "label": "Trader"},
+            {"address": {"address": _addr(3), "chain": "bnb"}, "label": "Whale"},
+            {"address": _addr(4), "chain": "bsc", "label": "Exchange Deposit"},
+            {"address": _addr(5), "chain": "bsc", "labels": [{"name": "Smart Money"}]},
+            {"address": _addr(6), "chain": "bsc", "label": "High PnL Wallet"},
+            {"address": _addr(7), "chain": "bsc", "label": "Profitable Trader"},
+            {"address": "0xabc", "chain": "bsc", "label": "Trader"},
         ]
     }
 
@@ -55,7 +55,7 @@ def test_address_tag_updates_keep_only_performance_relevant_bsc_candidates_and_d
 
     monkeypatch.setattr(provider.requests, "get", fake_get)
     out = provider.fetch_discovery_updates(
-        feed="ADDRESS_TAG_UPDATES",
+        feed="ADDRESS_UPDATES",
         since=100.0,
     )
 
@@ -66,7 +66,6 @@ def test_address_tag_updates_keep_only_performance_relevant_bsc_candidates_and_d
         _addr(6),
         _addr(7),
     ]
-    assert all(row["chain"] == "bsc" for row in out["candidates"])
     assert [row["metadata"]["arkham_signal"] for row in out["candidates"]] == [
         "TRADER",
         "SMART_MONEY",
@@ -75,28 +74,44 @@ def test_address_tag_updates_keep_only_performance_relevant_bsc_candidates_and_d
     ]
     assert out["success_authority"] is False
     assert out["execution_authority"] is False
-    assert calls[0][0].endswith("/intelligence/address_tags/updates")
+    assert calls[0][0].endswith("/intelligence/addresses/updates")
     assert calls[0][1]["since"].endswith("Z")
     assert "API-Key" in calls[0][2]
 
 
-def test_address_updates_support_nested_data_shape_but_remain_passive(monkeypatch):
+def test_tag_id_only_association_update_is_not_guessed_as_candidate(monkeypatch):
+    monkeypatch.setenv("ARKHAM_API_KEY", "configured-not-printed")
+    payload = {
+        "updates": [
+            {"address": _addr(8), "chain": "bsc", "tagId": "tag-123", "time": "2026-09-05T12:00:00Z"}
+        ]
+    }
+    monkeypatch.setattr(provider.requests, "get", lambda *a, **k: Response(payload))
+
+    out = provider.fetch_discovery_updates(
+        feed="ADDRESS_TAG_UPDATES",
+        since=100.0,
+    )
+
+    assert out["available"] is True
+    assert out["candidates"] == []
+    assert out["returned_candidates"] == 0
+
+
+def test_address_updates_support_nested_data_shape_with_performance_label(monkeypatch):
     monkeypatch.setenv("ARKHAM_API_KEY", "configured-not-printed")
     payload = {
         "data": {
             "items": [
                 {
-                    "addressInfo": {"address": _addr(7), "chainType": "bsc"},
-                    "entityName": "Example",
+                    "addressInfo": {"address": _addr(9), "chainType": "bsc"},
+                    "label": "Smart Money Trader",
+                    "time": "2026-09-05T12:00:00Z",
                 }
             ]
         }
     }
-    monkeypatch.setattr(
-        provider.requests,
-        "get",
-        lambda *a, **k: Response(payload),
-    )
+    monkeypatch.setattr(provider.requests, "get", lambda *a, **k: Response(payload))
 
     out = provider.fetch_discovery_updates(
         feed="ADDRESS_UPDATES",
@@ -105,23 +120,16 @@ def test_address_updates_support_nested_data_shape_but_remain_passive(monkeypatc
 
     assert out["available"] is True
     assert out["returned_candidates"] == 1
-    assert out["candidates"][0]["address"] == _addr(7)
-    assert out["candidates"][0]["metadata"]["arkham_feed"] == "ADDRESS_UPDATES"
-    assert out["candidates"][0]["metadata"]["arkham_signal"] is None
+    assert out["candidates"][0]["address"] == _addr(9)
+    assert out["candidates"][0]["metadata"]["arkham_signal"] == "TRADER"
+    assert out["candidates"][0]["metadata"]["updated_at"] == "2026-09-05T12:00:00Z"
 
 
 def test_valid_empty_update_page_is_successful(monkeypatch):
     monkeypatch.setenv("ARKHAM_API_KEY", "configured-not-printed")
-    monkeypatch.setattr(
-        provider.requests,
-        "get",
-        lambda *a, **k: Response({"updates": []}),
-    )
+    monkeypatch.setattr(provider.requests, "get", lambda *a, **k: Response({"updates": []}))
 
-    out = provider.fetch_discovery_updates(
-        feed="ADDRESS_TAG_UPDATES",
-        since=100.0,
-    )
+    out = provider.fetch_discovery_updates(feed="ADDRESS_UPDATES", since=100.0)
 
     assert out["available"] is True
     assert out["candidates"] == []
@@ -136,10 +144,7 @@ def test_unknown_update_payload_is_provider_failure(monkeypatch):
         lambda *a, **k: Response({"unexpected": {"shape": True}}),
     )
 
-    out = provider.fetch_discovery_updates(
-        feed="ADDRESS_TAG_UPDATES",
-        since=100.0,
-    )
+    out = provider.fetch_discovery_updates(feed="ADDRESS_UPDATES", since=100.0)
 
     assert out["available"] is False
     assert out["reason"] == "ARKHAM_INVALID_UPDATES_PAYLOAD"
@@ -148,7 +153,7 @@ def test_unknown_update_payload_is_provider_failure(monkeypatch):
 
 def test_normalizer_is_bounded_and_rejects_unknown_feed():
     rows = [
-        {"address": _addr(i), "chain": "bsc"}
+        {"address": _addr(i), "chain": "bsc", "label": "Trader"}
         for i in range(1, 10)
     ]
     out = provider.normalize_discovery_updates(

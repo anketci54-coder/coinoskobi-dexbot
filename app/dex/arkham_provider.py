@@ -101,22 +101,16 @@ def fetch_swaps_for_address(
     }
 
 
-def _normalize_chain_rows(payload: Any, chain: str) -> list[dict[str, Any]]:
-    if not isinstance(payload, dict):
-        return []
-    balances = payload.get("balances")
-    if not isinstance(balances, dict):
-        return []
-    rows = balances.get(chain)
-    if not isinstance(rows, list):
-        return []
-
+def _normalize_rows(rows: list[Any], chain: str) -> tuple[list[dict[str, Any]], int]:
     normalized = []
+    rejected = 0
     for row in rows:
         if not isinstance(row, dict):
+            rejected += 1
             continue
         balance = _finite(row.get("balance"), allow_none=False)
         if balance is None or balance < 0:
+            rejected += 1
             continue
 
         token_address = str(
@@ -133,6 +127,7 @@ def _normalize_chain_rows(payload: Any, chain: str) -> list[dict[str, Any]]:
         elif fallback_id:
             token_id = f"{chain}:arkham:{fallback_id}"
         else:
+            rejected += 1
             continue
 
         normalized.append({
@@ -157,6 +152,19 @@ def _normalize_chain_rows(payload: Any, chain: str) -> list[dict[str, Any]]:
         ),
         reverse=True,
     )
+    return normalized, rejected
+
+
+def _normalize_chain_rows(payload: Any, chain: str) -> list[dict[str, Any]]:
+    if not isinstance(payload, dict):
+        return []
+    balances = payload.get("balances")
+    if not isinstance(balances, dict):
+        return []
+    rows = balances.get(chain)
+    if not isinstance(rows, list):
+        return []
+    normalized, _ = _normalize_rows(rows, chain)
     return normalized
 
 
@@ -227,17 +235,37 @@ def fetch_balances_for_address(
             "holdings": [],
         }
 
-    normalized = _normalize_chain_rows(payload, chain)
+    chain_rows = balances.get(chain)
+    if not isinstance(chain_rows, list):
+        return {
+            "available": False,
+            "reason": "ARKHAM_INVALID_CHAIN_BALANCES",
+            "holdings": [],
+        }
+
+    normalized, rejected_rows = _normalize_rows(chain_rows, chain)
     totals = payload.get("totalBalance") if isinstance(payload, dict) else {}
     total_usd = totals.get(chain) if isinstance(totals, dict) else None
+    capped = len(normalized) > limit
+    complete_snapshot = rejected_rows == 0 and not capped
+    if rejected_rows:
+        provider_state = "PARTIAL_REJECTED_ROWS"
+    elif capped:
+        provider_state = "PARTIAL_ASSET_CAP"
+    else:
+        provider_state = "READY"
+
     return {
         "available": True,
         "address": address,
         "chain": chain,
         "holdings": normalized[:limit],
         "total_value_usd": _finite(total_usd),
-        "complete_snapshot": len(normalized) <= limit,
-        "available_asset_count": len(normalized),
+        "complete_snapshot": complete_snapshot,
+        "provider_state": provider_state,
+        "available_asset_count": len(chain_rows),
+        "valid_asset_count": len(normalized),
+        "rejected_asset_count": rejected_rows,
         "returned_asset_count": min(len(normalized), limit),
         "fetched_at": time.time(),
         "read_only": True,

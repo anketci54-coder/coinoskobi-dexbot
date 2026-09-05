@@ -62,7 +62,6 @@ def _rows(payload: Any) -> list[dict[str, Any]]:
 
 
 def _has_update_shape(payload: Any) -> bool:
-    """Distinguish a valid empty update page from an unknown provider shape."""
     if isinstance(payload, list):
         return True
     if not isinstance(payload, dict):
@@ -177,7 +176,7 @@ def normalize_discovery_updates(
 
         tag_text = _tag_text(row)
         signal = _candidate_signal(tag_text)
-        if feed == "ADDRESS_TAG_UPDATES" and signal is None:
+        if signal is None:
             continue
 
         key = ("bsc", address)
@@ -193,7 +192,7 @@ def normalize_discovery_updates(
                     "arkham_signal": signal,
                     "tag": row.get("tag") or row.get("tagName") or row.get("label"),
                     "entity": row.get("entity") or row.get("entityName"),
-                    "updated_at": row.get("updatedAt") or row.get("updated_at") or row.get("timestamp"),
+                    "updated_at": row.get("updatedAt") or row.get("updated_at") or row.get("timestamp") or row.get("time"),
                 },
             }
         )

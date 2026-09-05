@@ -265,6 +265,8 @@ def wallet_brief(paper_db: Path | str, *, limit: int = 8) -> dict[str, Any]:
     try:
         candidates = 0
         rows: list[dict[str, Any]] = []
+        candidate_source = None
+
         if _table_exists(con, "wallet_discovery_source_evidence"):
             candidates = int(con.execute(
                 "SELECT COUNT(DISTINCT lower(wallet_uid)) FROM wallet_discovery_source_evidence WHERE active=1"
@@ -280,6 +282,46 @@ def wallet_brief(paper_db: Path | str, *, limit: int = 8) -> dict[str, Any]:
                 """,
                 (max(1, min(int(limit), 20)),),
             ).fetchall()]
+            if candidates or rows:
+                candidate_source = "EVIDENCE"
+
+        if not rows and _table_exists(con, "wallet_discovery_registry"):
+            registry_rows = [dict(row) for row in con.execute(
+                """
+                SELECT wallet_uid,
+                       discovery_source AS source,
+                       freshness_state,
+                       lifecycle_state,
+                       last_seen_at
+                FROM wallet_discovery_registry
+                WHERE COALESCE(wallet_uid,'')<>''
+                  AND UPPER(COALESCE(lifecycle_state,'ACTIVE'))<>'INACTIVE'
+                ORDER BY COALESCE(last_seen_at,0) DESC, lower(wallet_uid) ASC
+                LIMIT ?
+                """,
+                (max(1, min(int(limit), 20)),),
+            ).fetchall()]
+            candidates = int(con.execute(
+                """
+                SELECT COUNT(DISTINCT lower(wallet_uid))
+                FROM wallet_discovery_registry
+                WHERE COALESCE(wallet_uid,'')<>''
+                  AND UPPER(COALESCE(lifecycle_state,'ACTIVE'))<>'INACTIVE'
+                """
+            ).fetchone()[0])
+            rows = [
+                {
+                    "wallet_uid": row.get("wallet_uid"),
+                    "source": row.get("source") or "REGISTRY",
+                    "provider": None,
+                    "candidate_state": row.get("freshness_state") or row.get("lifecycle_state") or "OBSERVED",
+                    "external_rank": None,
+                    "last_seen_at": row.get("last_seen_at"),
+                }
+                for row in registry_rows
+            ]
+            if candidates or rows:
+                candidate_source = "REGISTRY"
 
         successful = 0
         if _table_exists(con, "wallet_success_score"):
@@ -316,6 +358,7 @@ def wallet_brief(paper_db: Path | str, *, limit: int = 8) -> dict[str, Any]:
         "successful": successful,
         "holdings_wallets": len(holding_wallets),
         "rows": clean_rows,
+        "candidate_source": candidate_source,
         "holdings_state": holdings.get("state"),
         "provider": detail.get("provider") if isinstance(detail, dict) else None,
         "generated_at": datetime.now(timezone.utc).timestamp(),

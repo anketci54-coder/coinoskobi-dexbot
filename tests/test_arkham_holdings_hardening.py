@@ -1,4 +1,6 @@
 import sqlite3
+import threading
+import time
 
 from app.dex import arkham_provider
 from app.dex.arkham_successful_wallet_service import ArkhamSuccessfulWalletService
@@ -57,9 +59,9 @@ def _holding(token, balance, value):
     }
 
 
-def _snapshot(*holdings, fetched_at, complete=True, available_count=None):
+def _snapshot(*holdings, fetched_at, complete=True, available_count=None, provider_state=None):
     rows = list(holdings)
-    return {
+    result = {
         "available": True,
         "chain": "bsc",
         "holdings": rows,
@@ -68,6 +70,9 @@ def _snapshot(*holdings, fetched_at, complete=True, available_count=None):
         "available_asset_count": available_count if available_count is not None else len(rows),
         "fetched_at": float(fetched_at),
     }
+    if provider_state is not None:
+        result["provider_state"] = provider_state
+    return result
 
 
 def _query(path, sql, params=()):
@@ -108,9 +113,69 @@ def test_provider_marks_capped_129_asset_response_partial(monkeypatch):
     out = arkham_provider.fetch_balances_for_address("0xwallet", chain="bsc")
 
     assert out["complete_snapshot"] is False
+    assert out["provider_state"] == "PARTIAL_ASSET_CAP"
     assert out["available_asset_count"] == 129
     assert out["returned_asset_count"] == 128
     assert len(out["holdings"]) == 128
+
+
+def test_provider_rejects_malformed_requested_chain_rows(monkeypatch):
+    payload = {
+        "balances": {"bsc": {"unexpected": "mapping"}},
+        "totalBalance": {"bsc": 123.0},
+    }
+
+    class Response:
+        status_code = 200
+
+        @staticmethod
+        def json():
+            return payload
+
+    monkeypatch.setenv("ARKHAM_API_KEY", "test-key")
+    monkeypatch.setattr(arkham_provider.requests, "get", lambda *args, **kwargs: Response())
+
+    out = arkham_provider.fetch_balances_for_address("0xwallet", chain="bsc")
+
+    assert out["available"] is False
+    assert out["reason"] == "ARKHAM_INVALID_CHAIN_BALANCES"
+    assert out["holdings"] == []
+
+
+def test_provider_rejected_rows_make_snapshot_partial(monkeypatch):
+    payload = {
+        "balances": {
+            "bsc": [
+                {
+                    "ethereumAddress": "0x0000000000000000000000000000000000000001",
+                    "symbol": "GOOD",
+                    "balance": 1,
+                    "usd": 10,
+                },
+                {"symbol": "BAD", "balance": "not-a-number"},
+            ]
+        },
+        "totalBalance": {"bsc": 10.0},
+    }
+
+    class Response:
+        status_code = 200
+
+        @staticmethod
+        def json():
+            return payload
+
+    monkeypatch.setenv("ARKHAM_API_KEY", "test-key")
+    monkeypatch.setattr(arkham_provider.requests, "get", lambda *args, **kwargs: Response())
+
+    out = arkham_provider.fetch_balances_for_address("0xwallet", chain="bsc")
+
+    assert out["available"] is True
+    assert out["complete_snapshot"] is False
+    assert out["provider_state"] == "PARTIAL_REJECTED_ROWS"
+    assert out["available_asset_count"] == 2
+    assert out["valid_asset_count"] == 1
+    assert out["rejected_asset_count"] == 1
 
 
 def test_partial_capped_snapshot_preserves_omitted_prior_assets_and_no_removal(tmp_path):
@@ -129,6 +194,7 @@ def test_partial_capped_snapshot_preserves_omitted_prior_assets_and_no_removal(t
                 fetched_at=200,
                 complete=False,
                 available_count=129,
+                provider_state="PARTIAL_ASSET_CAP",
             ),
         ]
     )
@@ -154,6 +220,37 @@ def test_partial_capped_snapshot_preserves_omitted_prior_assets_and_no_removal(t
         "SELECT last_provider_state,asset_count FROM wallet_holding_scan_state",
     )[0]
     assert state == {"last_provider_state": "PARTIAL_ASSET_CAP", "asset_count": 129}
+
+
+def test_successive_partial_snapshots_never_grow_past_asset_cap(tmp_path):
+    path = tmp_path / "paper.db"
+    _create_phase9_tables(path)
+    _insert_wallet(path, 1)
+
+    first = [
+        _holding(f"0x{i:040x}", 1, 1000 - i)
+        for i in range(128)
+    ]
+    second = [
+        _holding(f"0x{i:040x}", 1, 2000 - i)
+        for i in range(64, 192)
+    ]
+    results = iter([
+        _snapshot(*first, fetched_at=100, complete=False, available_count=192, provider_state="PARTIAL_ASSET_CAP"),
+        _snapshot(*second, fetched_at=200, complete=False, available_count=192, provider_state="PARTIAL_ASSET_CAP"),
+    ])
+
+    service = ArkhamSuccessfulWalletService(path, fetcher=lambda *args, **kwargs: next(results))
+    service.run_cycle()
+    service.run_cycle()
+
+    count = _query(path, "SELECT COUNT(*) AS n FROM wallet_holding_snapshot")[0]["n"]
+    assert count == 128
+    removed = _query(
+        path,
+        "SELECT COUNT(*) AS n FROM wallet_holding_change_evidence WHERE change_type='REMOVED'",
+    )[0]["n"]
+    assert removed == 0
 
 
 def test_tracked_cohort_never_rotates_beyond_500_successful_wallets(tmp_path):
@@ -185,6 +282,48 @@ def test_tracked_cohort_never_rotates_beyond_500_successful_wallets(tmp_path):
     assert len(selected) == 1
     assert selected[0]["wallet_uid"] != excluded_uid
     assert selected[0]["wallet_uid"] == "bsc:0x00000000000000000000000000000000000001f4"
+
+
+def test_displaced_wallet_state_is_pruned_from_500_wallet_cohort(tmp_path):
+    path = tmp_path / "paper.db"
+    _create_phase9_tables(path)
+    for index in range(501):
+        _insert_wallet(path, index, calculated_at=index)
+
+    displaced_uid = "bsc:0x0000000000000000000000000000000000000000"
+    db = sqlite3.connect(path)
+    db.execute(
+        "INSERT INTO wallet_holding_scan_state(wallet_uid,last_scan_at,last_provider_state) VALUES(?,1,'READY')",
+        (displaced_uid,),
+    )
+    db.execute(
+        """
+        INSERT INTO wallet_holding_snapshot(
+            wallet_uid,token_id,chain,address,balance,observed_at,provider
+        ) VALUES(?,?,?,?,?,?,?)
+        """,
+        (displaced_uid, "bsc:0xdead", "bsc", "0x0", 1, 1, "ARKHAM"),
+    )
+    db.commit()
+    db.close()
+
+    service = ArkhamSuccessfulWalletService(
+        path,
+        fetcher=lambda *args, **kwargs: {"available": False, "reason": "STOP"},
+        wallets_per_cycle=1,
+    )
+    service.run_cycle()
+
+    assert _query(
+        path,
+        "SELECT wallet_uid FROM wallet_holding_scan_state WHERE wallet_uid=?",
+        (displaced_uid,),
+    ) == []
+    assert _query(
+        path,
+        "SELECT wallet_uid FROM wallet_holding_snapshot WHERE wallet_uid=?",
+        (displaced_uid,),
+    ) == []
 
 
 def test_provider_network_wait_happens_without_prior_wallet_write_lock(tmp_path):
@@ -235,3 +374,41 @@ def test_truthy_non_dict_provider_failure_is_fail_soft_and_advances_scan_state(t
     )[0]
     assert state["wallet_uid"] == uid
     assert state["last_provider_state"] == "UNAVAILABLE"
+
+
+def test_stop_cancels_between_wallets_and_waits_for_worker_exit(tmp_path):
+    path = tmp_path / "paper.db"
+    _create_phase9_tables(path)
+    _insert_wallet(path, 1, calculated_at=2)
+    _insert_wallet(path, 2, calculated_at=1)
+
+    entered = threading.Event()
+    release = threading.Event()
+    calls = []
+
+    def fetcher(address, **kwargs):
+        calls.append(address)
+        entered.set()
+        release.wait(timeout=2)
+        return {"available": False, "reason": "ARKHAM_HTTP_429", "holdings": []}
+
+    service = ArkhamSuccessfulWalletService(
+        path,
+        fetcher=fetcher,
+        wallets_per_cycle=2,
+        interval_seconds=30,
+    )
+    service.start()
+    assert entered.wait(timeout=2)
+
+    stopper = threading.Thread(target=service.stop)
+    stopper.start()
+    time.sleep(0.05)
+    assert stopper.is_alive()
+
+    release.set()
+    stopper.join(timeout=2)
+
+    assert not stopper.is_alive()
+    assert service.status()["state"] == "STOPPED"
+    assert len(calls) == 1

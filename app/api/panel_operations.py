@@ -55,6 +55,52 @@ def answer_vezir_query(question:str,operations:dict[str,Any])->dict[str,Any]:
             answer=f"Açık paper işlem yok. Son karar kayıtlarında ana neden: {reason.get('label') or 'İşlem şartları oluşmadı'}."; c=_vezir_int(reason.get('count')); answer+=f' Bu durum {c} kayıtta görüldü.' if c else ''; answer+=' Sistem şu anda sınırlı veriyle çalışıyor.' if ss=='DEGRADED' else ''
         elif ss=='DEGRADED': answer='Açık paper işlem yok. Sistem sınırlı veriyle çalışıyor; işlem şartlarının doğrulanması zayıflamış olabilir. Kesin karar nedeni için yeterli güncel kayıt yok.'
         else: answer='Açık paper işlem yok. Bunu açıklayacak yeterli güncel karar nedeni görünmüyor.'
+    elif any(x in q for x in ('haber','news','listeleme','airdrop','ido','ico')):
+        intent='NEWS_IMPACT'
+        market=dict(operations.get('market') or {})
+        rows=market.get('items') if isinstance(market.get('items'),list) else []
+
+        if rows:
+            parts=[]
+            for row in rows[:3]:
+                if not isinstance(row,dict):
+                    continue
+
+                title=str(
+                    row.get('title_tr')
+                    or row.get('source_title')
+                    or 'PİYASA'
+                ).strip()
+
+                summary=str(
+                    row.get('summary_tr')
+                    or 'Etki sınıflandırması yok.'
+                ).strip()
+
+                try:
+                    score=int(row.get('importance_score') or 0)
+                except (TypeError,ValueError):
+                    score=0
+
+                source=str(row.get('source') or '').strip()
+
+                item=f"{title}"
+                if score:
+                    item+=f" [{score}/100]"
+                item+=f": {summary}"
+                if source:
+                    item+=f" Kaynak: {source}"
+
+                parts.append(item)
+
+            answer=(
+                'Güncel haber etkisi: '
+                + ' | '.join(parts)
+                if parts
+                else 'Güncel haberlerde güvenilir etki özeti üretilemedi.'
+            )
+        else:
+            answer='Şu anda doğrulanmış güncel haber etkisi verisi bulunmuyor.'
     elif any(x in q for x in ('risk','sorun','tehlike','problem')):
         intent='RISK'; answer='Şu an en önemli risk veri akışının sınırlı olması.' if ss=='DEGRADED' else ('Sistem güvenli beklemede.' if ss=='SAFE' else 'Şu anda panel verilerinde öne çıkan kritik bir sistem riski görünmüyor.')
     elif any(x in q for x in ('firsat','aday','en iyi','guclu')):

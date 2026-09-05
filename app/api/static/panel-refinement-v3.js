@@ -1,4 +1,5 @@
 (() => {
+  window.__COINOSKOBI_REFINEMENT_V3_OWNS_INTEL = true;
   const $ = id => document.getElementById(id);
   const esc = value => String(value ?? '')
     .replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')
@@ -45,7 +46,7 @@
     if (!target) return;
     rendering = true;
     try {
-      target.innerHTML = rows.length ? rows.map((row, index) => `
+      const html = rows.length ? rows.map((row, index) => `
         <div class="intel-item">
           <span class="intel-state ${stateClass(row.state)}">${esc(row.state)}</span>
           <span class="intel-main">
@@ -55,8 +56,13 @@
           <span class="intel-score">${esc(row.importance_score ?? '—')}</span>
           <button class="intel-detail" type="button" data-detail-index="${index}" data-detail-target="${targetId}">DETAY</button>
         </div>`).join('') : `<div class="news-empty">${esc(emptyText)}</div>`;
+      if (target.innerHTML !== html) {
+        target.innerHTML = html;
+      }
     } finally {
-      rendering = false;
+      setTimeout(() => {
+        rendering = false;
+      }, 0);
     }
   }
 
@@ -81,11 +87,20 @@
     if (!row) return;
     const sourceLine = row.source ? `<div class="acceptance-muted" style="margin-top:8px">KAYNAK: ${esc(row.source)}</div>` : '';
     const dateLine = row.date || row.published_at ? `<div class="acceptance-muted" style="margin-top:5px">ZAMAN: ${esc(row.date || row.published_at)}</div>` : '';
+    const originalTitle = row.source_title
+      ? `<div class="mini" style="margin-top:8px"><small>GERÇEK HABER BAŞLIĞI</small><b style="white-space:normal;line-height:1.45">${esc(row.source_title)}</b></div>`
+      : '';
+    const sourceUrl = String(row.url || '').trim();
+    const sourceLink = /^https?:\/\//i.test(sourceUrl)
+      ? `<div style="margin-top:10px"><a href="${esc(sourceUrl)}" target="_blank" rel="noopener noreferrer" style="color:var(--cyan);font-weight:900;text-decoration:none">KAYNAĞI AÇ ↗</a></div>`
+      : '';
+
     openModal(
       `${row.state || 'COLD'} · ÖNEM ${row.importance_score ?? '—'}/100`,
-      `<div class="mini"><small>BAŞLIK</small><b>${esc(row.title_tr || 'PİYASA')}</b></div>
-       <div class="mini" style="margin-top:8px"><small>KISA ETKİ</small><b style="white-space:normal;line-height:1.45">${esc(row.summary_tr || '—')}</b></div>
-       ${sourceLine}${dateLine}`
+      `<div class="mini"><small>SINIF</small><b>${esc(row.title_tr || 'PİYASA')}</b></div>
+       ${originalTitle}
+       <div class="mini" style="margin-top:8px"><small>OLASI PİYASA ETKİSİ</small><b style="white-space:normal;line-height:1.45">${esc(row.summary_tr || '—')}</b></div>
+       ${sourceLine}${dateLine}${sourceLink}`
     );
   }
 
@@ -125,7 +140,9 @@
         <td>${esc(row.candidate_state || 'OBSERVED')} · ${esc(ageText(row.age_seconds))}</td>
       </tr>`).join('') : '<tr><td colspan="3">Güncel aday cüzdan kaydı yok.</td></tr>';
     } finally {
-      rendering = false;
+      setTimeout(() => {
+        rendering = false;
+      }, 0);
     }
   }
 
@@ -252,23 +269,11 @@
     });
   }
 
-  function protectRefinedAreas() {
-    ['newsStream','calendarStream','walletRows'].forEach(id => {
-      const node = $(id);
-      if (!node) return;
-      new MutationObserver(() => {
-        if (rendering) return;
-        queueMicrotask(() => {
-          if (id === 'walletRows') renderWallet(); else renderMarket();
-        });
-      }).observe(node, {childList:true,subtree:true,characterData:true});
-    });
-  }
+
 
   document.addEventListener('DOMContentLoaded', () => {
     bindTabs();
     bindDetails();
-    protectRefinedAreas();
 
     $('walletDetailButton')?.addEventListener('click', event => {
       event.stopImmediatePropagation();

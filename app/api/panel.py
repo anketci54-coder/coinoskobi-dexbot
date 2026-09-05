@@ -19,6 +19,7 @@ import requests
 
 from app.api.panel_operations import answer_vezir_query, build_operations_payload, build_vezir_context
 from app.api.vezir_ai import route_vezir_question
+from app.api.panel_provider_health import provider_health_snapshot
 from app.config.settings import RPC_URL, RPC_URL_SECONDARY
 
 
@@ -2335,49 +2336,20 @@ def _phase14_probe_rpc(url: str) -> bool:
 
 
 def _phase14_data_healthy() -> bool:
-    now = time.monotonic()
+    """Use the canonical provider-health projection.
 
-    cached_at = float(
-        _PHASE14_PROVIDER_HEALTH_CACHE.get(
-            "checked_at"
-        ) or 0.0
+    This includes primary, secondary, tertiary and quaternary provider
+    broker state instead of probing only the first two configured URLs.
+    """
+    try:
+        health = provider_health_snapshot()
+    except Exception:
+        return False
+
+    return (
+        health.get("state") == "HEALTHY"
+        and health.get("chain_id_ok") is True
     )
-
-    if (
-        now - cached_at
-        < _PHASE14_PROVIDER_HEALTH_TTL_SECONDS
-    ):
-        return bool(
-            _PHASE14_PROVIDER_HEALTH_CACHE.get(
-                "healthy"
-            )
-        )
-
-    providers = [
-        RPC_URL,
-        RPC_URL_SECONDARY,
-    ]
-
-    configured = [
-        url
-        for url in providers
-        if str(url or "").strip()
-    ]
-
-    healthy = any(
-        _phase14_probe_rpc(url)
-        for url in configured
-    )
-
-    _PHASE14_PROVIDER_HEALTH_CACHE[
-        "checked_at"
-    ] = now
-
-    _PHASE14_PROVIDER_HEALTH_CACHE[
-        "healthy"
-    ] = healthy
-
-    return healthy
 
 
 def _phase14_operations_payload() -> dict[str, Any]:
@@ -2444,6 +2416,13 @@ def vezir_ask(
         )
 
     operations = _phase14_operations_payload()
+
+    if "haber" in question.casefold() or "news" in question.casefold():
+        try:
+            from app.api.panel_workspace_v3 import ranked_news_brief
+            operations["market"] = ranked_news_brief(limit=3)
+        except Exception:
+            operations["market"] = {"items": []}
 
     baseline = answer_vezir_query(
         question,

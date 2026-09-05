@@ -17,3 +17,61 @@ body{letter-spacing:.01em}
 @media(max-width:1400px){.compact-topbar{grid-template-columns:160px 96px 96px repeat(5,minmax(84px,1fr)) 180px}.content.refined-content{grid-template-columns:minmax(0,1fr) 335px}.refined-lower{grid-template-columns:minmax(285px,.8fr) minmax(390px,1.5fr)}}
 @media(max-width:1180px){.compact-topbar{grid-template-columns:repeat(4,1fr)}.brand{grid-column:span 2}.controls{grid-column:span 2}.content.refined-content{grid-template-columns:1fr}.left.refined-left{grid-template-rows:auto auto}.refined-lower{grid-template-columns:1fr 1.5fr}.vezir{min-height:440px}}
 @media(max-width:760px){.compact-topbar{grid-template-columns:repeat(2,1fr)}.brand,.controls{grid-column:1/-1}.refined-lower{display:block}.wallet-panel,.market-panel{min-height:240px}.intel-item{grid-template-columns:46px minmax(0,1fr) 48px}.intel-detail{grid-column:2/-1;width:max-content}.content.refined-content,.left.refined-left{display:block}.radar.compact-radar{min-height:390px}.vezir{min-height:400px}}
+
+
+/* DASHBOARD_VIEWPORT_GEOMETRY_V2
+   Desktop dashboard stays inside viewport.
+   Long news/calendar lists scroll inside their own panel. */
+@media (min-width:1181px) {
+  .app {
+    height:100dvh;
+    min-height:100dvh;
+    overflow:hidden;
+  }
+
+  .content.refined-content,
+  .left.refined-left,
+  .refined-lower,
+  .market-panel,
+  .wallet-panel {
+    min-height:0;
+  }
+
+  .content.refined-content,
+  .left.refined-left,
+  .refined-lower {
+    overflow:hidden;
+  }
+
+  .left.refined-left {
+    grid-template-rows:minmax(245px,.88fr) minmax(250px,1fr);
+  }
+
+  .refined-lower {
+    height:100%;
+    align-items:stretch;
+  }
+
+  .market-panel,
+  .wallet-panel {
+    height:100%;
+    overflow:hidden;
+  }
+
+  .market-panel {
+    display:grid;
+    grid-template-rows:36px minmax(0,1fr);
+  }
+
+  .market-body {
+    height:auto;
+    min-height:0;
+    overflow:hidden;
+  }
+
+  .intel-pane {
+    min-height:0;
+    overflow:auto;
+    overscroll-behavior:contain;
+  }
+}

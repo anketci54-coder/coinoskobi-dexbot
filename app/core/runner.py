@@ -1,10 +1,35 @@
 import signal
 import time
 
+from app.core.application_services import build_application_auxiliary_services
 from app.core.logger import get_logger
 from app.core.scheduler import Scheduler
 
 log = get_logger()
+
+
+def _application_intelligence(scan_job):
+    """Resolve the PipelineEngine intelligence captured by build_application.
+
+    The production scan job is an application-owned closure over `pipeline`.
+    This keeps the auxiliary service on the exact same intelligence composition
+    without introducing a process-global singleton or scheduler coupling.
+    """
+    code = getattr(scan_job, "__code__", None)
+    closure = getattr(scan_job, "__closure__", None)
+    if code is None or not closure:
+        return None
+
+    try:
+        captured = {
+            name: cell.cell_contents
+            for name, cell in zip(code.co_freevars, closure)
+        }
+    except (AttributeError, ValueError):
+        return None
+
+    pipeline = captured.get("pipeline")
+    return getattr(pipeline, "intelligence", None)
 
 
 class Runner:
@@ -16,6 +41,7 @@ class Runner:
         watch_probe_job=None,
         services=None,
         sleep_func=None,
+        auxiliary_service_factory=None,
     ):
         self.scheduler = Scheduler()
 
@@ -42,6 +68,20 @@ class Runner:
 
         self.services = list(
             services or []
+        )
+
+        if auxiliary_service_factory is None:
+            auxiliary = build_application_auxiliary_services(
+                intelligence=_application_intelligence(scan_job),
+            )
+        else:
+            auxiliary = (
+                auxiliary_service_factory()
+                if callable(auxiliary_service_factory)
+                else []
+            )
+        self.services.extend(
+            list(auxiliary or [])
         )
 
         self.sleep_func = (

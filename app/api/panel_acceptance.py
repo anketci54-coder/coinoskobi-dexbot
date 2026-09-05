@@ -65,6 +65,7 @@ def watch_probe_detail(paper_db: Path | str, *, limit: int = 100) -> dict[str, A
 def _arkham_holdings_panel(con: sqlite3.Connection, provider: dict[str, Any]) -> dict[str, Any]:
     authority = {
         "read_only": True,
+        "trade_authority": False,
         "decision_authority": False,
         "paper_authority": False,
         "live_authority": False,

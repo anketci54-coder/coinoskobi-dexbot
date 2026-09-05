@@ -354,9 +354,13 @@ class ArkhamSuccessfulWalletService:
             and float(row.get("balance") or 0.0) > 0
         }
 
-        comparable_tokens = set(current)
         if complete_snapshot:
-            comparable_tokens |= set(previous)
+            comparable_tokens = set(current) | set(previous)
+        else:
+            # A capped/partial view cannot prove that a newly visible token was
+            # absent before. Compare only tokens observed in both snapshots so
+            # omission churn never creates false ADDED/REMOVED evidence.
+            comparable_tokens = set(current) & set(previous)
 
         changes = 0
         for token_id in sorted(comparable_tokens):

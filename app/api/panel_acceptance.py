@@ -22,6 +22,9 @@ CALENDAR_URL = "https://nfs.faireconomy.media/ff_calendar_thisweek.json"
 HTTP_TIMEOUT = 5.0
 NEWS_TTL_SECONDS = 120.0
 CALENDAR_TTL_SECONDS = 300.0
+ARKHAM_PANEL_WALLET_LIMIT = 12
+ARKHAM_PANEL_ASSET_LIMIT_PER_WALLET = 20
+ARKHAM_PANEL_CHANGE_LIMIT = 80
 _CACHE_LOCK = threading.RLock()
 _CACHE: dict[str, dict[str, Any]] = {}
 
@@ -59,6 +62,149 @@ def watch_probe_detail(paper_db: Path | str, *, limit: int = 100) -> dict[str, A
     return {"available": True, "count": len(rows), "rows": [dict(row) for row in rows], "paper_only": True, "trade_authority": False, "wallet_authority": False, "execution_authority": False}
 
 
+def _arkham_holdings_panel(con: sqlite3.Connection, provider: dict[str, Any]) -> dict[str, Any]:
+    authority = {
+        "read_only": True,
+        "decision_authority": False,
+        "paper_authority": False,
+        "live_authority": False,
+        "wallet_authority": False,
+        "signing_authority": False,
+        "execution_authority": False,
+    }
+    required = {
+        "wallet_discovery_registry",
+        "wallet_success_score",
+        "wallet_holding_snapshot",
+        "wallet_holding_change_evidence",
+        "wallet_holding_scan_state",
+    }
+    existing = {
+        str(row[0])
+        for row in con.execute(
+            "SELECT name FROM sqlite_master WHERE type='table'"
+        ).fetchall()
+    }
+    missing = sorted(required - existing)
+    if missing:
+        state = "INACTIVE_NO_API_KEY" if provider.get("configured") is not True else "WAITING_FOR_RUNTIME"
+        return {
+            "state": state,
+            "available": False,
+            "missing_tables": missing,
+            "wallets": [],
+            "changes": [],
+            **authority,
+        }
+
+    wallet_rows = con.execute(
+        """
+        WITH successful AS (
+            SELECT
+                lower(s.wallet_uid) AS wallet_key,
+                MIN(s.wallet_uid) AS wallet_uid,
+                MAX(COALESCE(s.calculated_at, 0)) AS calculated_at,
+                MAX(COALESCE(s.sample_depth, 0)) AS sample_depth
+            FROM wallet_success_score AS s
+            WHERE UPPER(COALESCE(s.qualification_state,''))='SUCCESSFUL'
+              AND COALESCE(s.wallet_uid,'')<>''
+            GROUP BY lower(s.wallet_uid)
+        )
+        SELECT
+            successful.wallet_uid,
+            successful.calculated_at,
+            successful.sample_depth,
+            lower(COALESCE(r.chain,'bsc')) AS chain,
+            lower(COALESCE(r.address,'')) AS address,
+            h.last_scan_at,
+            h.last_success_at,
+            h.last_provider_state,
+            h.total_value_usd,
+            h.asset_count
+        FROM successful
+        JOIN wallet_discovery_registry AS r
+          ON lower(r.wallet_uid)=successful.wallet_key
+        LEFT JOIN wallet_holding_scan_state AS h
+          ON lower(h.wallet_uid)=successful.wallet_key
+        WHERE UPPER(COALESCE(r.discovery_source,''))='TRANSACTION_FROM_ONLY'
+          AND lower(COALESCE(r.chain,''))='bsc'
+          AND COALESCE(r.address,'')<>''
+        GROUP BY successful.wallet_key
+        ORDER BY successful.calculated_at DESC, successful.wallet_uid ASC
+        LIMIT ?
+        """,
+        (ARKHAM_PANEL_WALLET_LIMIT,),
+    ).fetchall()
+    wallets = [dict(row) for row in wallet_rows]
+    wallet_uids = [str(row.get("wallet_uid") or "").lower() for row in wallets if row.get("wallet_uid")]
+
+    holdings_by_wallet: dict[str, list[dict[str, Any]]] = {uid: [] for uid in wallet_uids}
+    changes: list[dict[str, Any]] = []
+    if wallet_uids:
+        placeholders = ",".join("?" for _ in wallet_uids)
+        holding_rows = con.execute(
+            f"""
+            SELECT
+                wallet_uid, token_id, token_address, pricing_id, symbol, name,
+                balance, value_usd, price_usd, price_change_24h_pct,
+                observed_at, provider
+            FROM wallet_holding_snapshot
+            WHERE lower(wallet_uid) IN ({placeholders})
+            ORDER BY lower(wallet_uid) ASC,
+                     COALESCE(value_usd, -1.0) DESC,
+                     observed_at DESC,
+                     token_id ASC
+            """,
+            tuple(wallet_uids),
+        ).fetchall()
+        for raw in holding_rows:
+            item = dict(raw)
+            key = str(item.get("wallet_uid") or "").lower()
+            bucket = holdings_by_wallet.get(key)
+            if bucket is not None and len(bucket) < ARKHAM_PANEL_ASSET_LIMIT_PER_WALLET:
+                bucket.append(item)
+
+        change_rows = con.execute(
+            f"""
+            SELECT
+                id, wallet_uid, token_id, change_type,
+                previous_balance, current_balance,
+                previous_value_usd, current_value_usd,
+                observed_at, provider
+            FROM wallet_holding_change_evidence
+            WHERE lower(wallet_uid) IN ({placeholders})
+            ORDER BY observed_at DESC, id DESC
+            LIMIT ?
+            """,
+            (*wallet_uids, ARKHAM_PANEL_CHANGE_LIMIT),
+        ).fetchall()
+        changes = [dict(row) for row in change_rows]
+
+    for wallet in wallets:
+        key = str(wallet.get("wallet_uid") or "").lower()
+        wallet["holdings"] = holdings_by_wallet.get(key, [])
+
+    if not wallets:
+        state = "NO_SUCCESSFUL_WALLETS"
+    elif provider.get("configured") is not True:
+        state = "INACTIVE_NO_API_KEY"
+    else:
+        states = {str(row.get("last_provider_state") or "").upper() for row in wallets}
+        state = "READY" if any(s in {"READY", "PARTIAL_ASSET_CAP", "PARTIAL_REJECTED_ROWS"} for s in states) else "WAITING_FOR_FIRST_SCAN"
+
+    return {
+        "state": state,
+        "available": bool(wallets),
+        "wallet_count": len(wallets),
+        "wallets": wallets,
+        "changes": changes,
+        "wallet_limit": ARKHAM_PANEL_WALLET_LIMIT,
+        "asset_limit_per_wallet": ARKHAM_PANEL_ASSET_LIMIT_PER_WALLET,
+        "change_limit": ARKHAM_PANEL_CHANGE_LIMIT,
+        **authority,
+    }
+
+
 def wallet_intelligence_detail(paper_db: Path | str) -> dict[str, Any]:
     path = Path(paper_db)
     provider = arkham_config_status()
@@ -66,11 +212,25 @@ def wallet_intelligence_detail(paper_db: Path | str) -> dict[str, Any]:
         return {"available": False, "reason": "PAPER_DB_MISSING", "rows": [], "provider": provider}
     con = _ro(path)
     try:
+        holdings = _arkham_holdings_panel(con, provider)
         if not _table_exists(con, "intelligence_summary_readmodel"):
-            return {"available": False, "reason": "READMODEL_MISSING", "rows": [], "provider": provider}
+            return {
+                "available": False,
+                "reason": "READMODEL_MISSING",
+                "rows": [],
+                "provider": provider,
+                "arkham_holdings": holdings,
+            }
         row = con.execute("SELECT * FROM intelligence_summary_readmodel ORDER BY generated_at DESC LIMIT 1").fetchone()
         if row is None:
-            return {"available": True, "rows": [], "tracked_wallets": 0, "provider": provider}
+            return {
+                "available": True,
+                "rows": [],
+                "tracked_wallets": 0,
+                "provider": provider,
+                "arkham_holdings": holdings,
+                "read_only": True,
+            }
         data = dict(row)
         try:
             details = json.loads(data.get("wallet_details_json")) if data.get("wallet_details_json") else []
@@ -88,6 +248,7 @@ def wallet_intelligence_detail(paper_db: Path | str) -> dict[str, Any]:
             "stale": bool(age is None or age > 900),
             "rows": details if isinstance(details, list) else [],
             "provider": provider,
+            "arkham_holdings": holdings,
             "read_only": True,
         }
     finally:

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 WALLET_DISCOVERY_EVIDENCE_SCHEMA_VERSION = 1
 MAX_DISCOVERY_CANDIDATES = 5000
+MAX_DISCOVERY_EVIDENCE_ROWS = 20000
 
 REQUIRED_TABLES = (
     "wallet_discovery_source_evidence",
@@ -56,6 +57,7 @@ def ensure_wallet_discovery_evidence_schema(conn) -> dict[str, object]:
         "state": "READY",
         "schema_version": WALLET_DISCOVERY_EVIDENCE_SCHEMA_VERSION,
         "candidate_cap": MAX_DISCOVERY_CANDIDATES,
+        "evidence_row_cap": MAX_DISCOVERY_EVIDENCE_ROWS,
         "tables": list(REQUIRED_TABLES),
         "read_only_evidence": True,
         "trade_authority": False,

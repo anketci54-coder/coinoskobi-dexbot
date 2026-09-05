@@ -15,12 +15,12 @@ DEFAULT_INTERVAL_SECONDS = 900.0
 DEFAULT_BOOTSTRAP_LOOKBACK_SECONDS = 3600.0
 CURSOR_OVERLAP_SECONDS = 30.0
 FEEDS = (
-    ("ADDRESS_TAG_UPDATES", "ARKHAM_ADDRESS_TAG_UPDATE"),
+    ("ADDRESS_UPDATES", "ARKHAM_ADDRESS_UPDATE"),
 )
 
 
 class ArkhamCandidateDiscoveryService:
-    """Slow-path Arkham tagged-address discovery; observations never grant success."""
+    """Slow-path Arkham labeled-address discovery; observations never grant success."""
 
     name = "arkham-candidate-discovery"
 
@@ -57,8 +57,8 @@ class ArkhamCandidateDiscoveryService:
             "candidates_accepted": 0,
             **payload,
             "candidate_state": "OBSERVED",
-            "active_feed": "ADDRESS_TAG_UPDATES",
-            "generic_address_feed_active": False,
+            "active_feed": "ADDRESS_UPDATES",
+            "address_tag_feed_active": False,
             "read_only_provider": True,
             "success_authority": False,
             "trade_authority": False,
@@ -240,8 +240,8 @@ class ArkhamCandidateDiscoveryService:
                 "last_cycle_at": self.last_cycle_at,
                 "last_result": dict(self.last_result),
                 "last_error": self.last_error,
-                "active_feed": "ADDRESS_TAG_UPDATES",
-                "generic_address_feed_active": False,
+                "active_feed": "ADDRESS_UPDATES",
+                "address_tag_feed_active": False,
                 "success_authority": False,
                 "trade_authority": False,
                 "decision_authority": False,

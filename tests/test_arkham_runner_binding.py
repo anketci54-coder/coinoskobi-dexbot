@@ -1,4 +1,5 @@
 from app.core import application_services
+from app.core import runner as runner_module
 from app.core.runner import Runner
 from app.dex.arkham_successful_wallet_service import ArkhamSuccessfulWalletService
 
@@ -11,17 +12,50 @@ def test_auxiliary_registry_is_empty_without_arkham_key(monkeypatch):
 
 def test_auxiliary_registry_binds_arkham_when_configured(monkeypatch, tmp_path):
     path = tmp_path / "paper.db"
+    intelligence = object()
     monkeypatch.setenv("ARKHAM_API_KEY", "configured-not-printed")
     monkeypatch.setattr(application_services, "PAPER_DB", path)
 
-    services = application_services.build_application_auxiliary_services()
+    services = application_services.build_application_auxiliary_services(
+        intelligence=intelligence,
+    )
 
     assert len(services) == 1
     service = services[0]
     assert isinstance(service, ArkhamSuccessfulWalletService)
     assert service.db_path == path
+    assert service.intelligence is intelligence
     assert service.status()["wallet_authority"] is False
     assert service.status()["execution_authority"] is False
+
+
+def test_runner_default_auxiliary_factory_receives_captured_pipeline_intelligence(monkeypatch):
+    intelligence = object()
+
+    class Pipeline:
+        pass
+
+    pipeline = Pipeline()
+    pipeline.intelligence = intelligence
+
+    def scan_job():
+        return pipeline
+
+    captured = []
+
+    def factory(*, intelligence=None):
+        captured.append(intelligence)
+        return []
+
+    monkeypatch.setattr(
+        runner_module,
+        "build_application_auxiliary_services",
+        factory,
+    )
+
+    Runner(scan_job=scan_job)
+
+    assert captured == [intelligence]
 
 
 def test_runner_owns_auxiliary_service_lifecycle_without_scheduler_job():

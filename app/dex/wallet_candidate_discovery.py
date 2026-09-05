@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import json
+import math
 import sqlite3
+import string
 import time
 from pathlib import Path
 from typing import Any, Iterable
@@ -19,12 +21,19 @@ ALLOWED_SOURCES = {
     "ARKHAM_ADDRESS_TAG_UPDATE",
     "TRANSACTION_FROM_ONLY",
 }
+ALLOWED_CHAINS = {"bsc"}
+MAX_SOURCE_KEY_LENGTH = 160
+MAX_METADATA_JSON_LENGTH = 4096
 
 
 def _wallet_parts(chain: Any, address: Any) -> tuple[str, str, str] | None:
     chain_text = str(chain or "").strip().lower()
     address_text = str(address or "").strip().lower()
-    if not chain_text or not address_text:
+    if chain_text not in ALLOWED_CHAINS:
+        return None
+    if len(address_text) != 42 or not address_text.startswith("0x"):
+        return None
+    if any(ch not in string.hexdigits for ch in address_text[2:]):
         return None
     return f"{chain_text}:{address_text}", chain_text, address_text
 
@@ -43,9 +52,10 @@ def _metadata(value: Any) -> str | None:
     if value is None:
         return None
     try:
-        return json.dumps(value, separators=(",", ":"), sort_keys=True)
+        encoded = json.dumps(value, separators=(",", ":"), sort_keys=True)
     except (TypeError, ValueError):
         return None
+    return encoded if len(encoded) <= MAX_METADATA_JSON_LENGTH else None
 
 
 def _ensure_registry(db: sqlite3.Connection) -> None:
@@ -99,9 +109,6 @@ def _upsert_registry(
         )
         return
 
-    # Preserve the existing canonical discovery source. Multi-source provenance
-    # belongs in wallet_discovery_source_evidence and must never be destroyed by
-    # a later provider observation.
     db.execute(
         """
         UPDATE wallet_discovery_registry
@@ -124,9 +131,6 @@ def _prune_candidate_pool(db: sqlite3.Connection) -> None:
     ).fetchall()
     keep = [str(row["wallet_uid"]) for row in rows[:MAX_DISCOVERY_CANDIDATES]]
     if len(rows) <= MAX_DISCOVERY_CANDIDATES:
-        return
-    if not keep:
-        db.execute("UPDATE wallet_discovery_source_evidence SET active=0 WHERE active=1")
         return
     placeholders = ",".join("?" for _ in keep)
     db.execute(
@@ -164,16 +168,22 @@ def ingest_wallet_candidates(
     provider: str = "ARKHAM",
     observed_at: float | None = None,
 ) -> dict[str, Any]:
-    """Ingest external/native wallet candidates without granting success authority."""
+    """Ingest BSC wallet candidates without granting success authority."""
     source = str(source or "").strip().upper()
     source_key = str(source_key or "").strip()
     provider = str(provider or "").strip().upper() or "UNKNOWN"
     if source not in ALLOWED_SOURCES:
         raise ValueError("UNSUPPORTED_DISCOVERY_SOURCE")
-    if not source_key:
-        raise ValueError("SOURCE_KEY_REQUIRED")
+    if not source_key or len(source_key) > MAX_SOURCE_KEY_LENGTH:
+        raise ValueError("INVALID_SOURCE_KEY")
 
-    seen = float(observed_at if observed_at is not None else time.time())
+    try:
+        seen = float(observed_at if observed_at is not None else time.time())
+    except (TypeError, ValueError):
+        raise ValueError("INVALID_OBSERVED_AT") from None
+    if not math.isfinite(seen) or seen < 0:
+        raise ValueError("INVALID_OBSERVED_AT")
+
     path = Path(db_path)
     if not path.exists():
         raise FileNotFoundError(path)

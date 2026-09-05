@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import string
 import time
 from datetime import datetime, timezone
 from typing import Any
@@ -15,6 +16,14 @@ _ENDPOINTS = {
     "ADDRESS_TAG_UPDATES": "/intelligence/address_tags/updates",
     "ADDRESS_UPDATES": "/intelligence/addresses/updates",
 }
+_CANDIDATE_TAG_TERMS = (
+    "trader",
+    "smart money",
+    "smart-money",
+    "smart_money",
+    "whale",
+)
+_BSC_ALIASES = {"bsc", "bnb", "bnbchain", "bnb chain", "bnb-chain", "binance-smart-chain", "binance smart chain"}
 
 
 def _headers() -> dict[str, str]:
@@ -82,6 +91,49 @@ def _address_chain(row: dict[str, Any]) -> tuple[str | None, str | None]:
     return None, None
 
 
+def _is_evm_address(value: Any) -> bool:
+    text = str(value or "").strip().lower()
+    return (
+        len(text) == 42
+        and text.startswith("0x")
+        and all(ch in string.hexdigits for ch in text[2:])
+    )
+
+
+def _text_values(value: Any) -> list[str]:
+    if isinstance(value, str):
+        text = value.strip()
+        return [text] if text else []
+    if isinstance(value, dict):
+        out: list[str] = []
+        for key in ("name", "label", "tag", "type", "displayName", "display_name"):
+            item = value.get(key)
+            if isinstance(item, str) and item.strip():
+                out.append(item.strip())
+        return out
+    if isinstance(value, list):
+        out: list[str] = []
+        for item in value:
+            out.extend(_text_values(item))
+        return out
+    return []
+
+
+def _tag_text(row: dict[str, Any]) -> str:
+    values: list[str] = []
+    for key in ("tag", "tags", "tagName", "tag_name", "label", "labels"):
+        values.extend(_text_values(row.get(key)))
+    return " ".join(values).strip().lower()
+
+
+def _candidate_signal(tag_text: str) -> str | None:
+    normalized = " ".join(str(tag_text or "").lower().split())
+    for term in _CANDIDATE_TAG_TERMS:
+        if term in normalized:
+            return term.upper().replace("-", "_").replace(" ", "_")
+    return None
+
+
 def normalize_discovery_updates(
     payload: Any,
     *,
@@ -97,11 +149,17 @@ def normalize_discovery_updates(
     seen: set[tuple[str, str]] = set()
     for row in _rows(payload):
         address, chain = _address_chain(row)
-        if not address:
+        if not address or not _is_evm_address(address):
             continue
         chain = (chain or "").lower()
-        if chain not in {"bsc", "bnb", "bnbchain", "binance-smart-chain"}:
+        if chain not in _BSC_ALIASES:
             continue
+
+        tag_text = _tag_text(row)
+        signal = _candidate_signal(tag_text)
+        if feed == "ADDRESS_TAG_UPDATES" and signal is None:
+            continue
+
         key = ("bsc", address)
         if key in seen:
             continue
@@ -112,6 +170,7 @@ def normalize_discovery_updates(
                 "address": address,
                 "metadata": {
                     "arkham_feed": feed,
+                    "arkham_signal": signal,
                     "tag": row.get("tag") or row.get("tagName") or row.get("label"),
                     "entity": row.get("entity") or row.get("entityName"),
                     "updated_at": row.get("updatedAt") or row.get("updated_at") or row.get("timestamp"),

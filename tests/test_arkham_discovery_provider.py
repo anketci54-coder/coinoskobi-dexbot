@@ -32,7 +32,7 @@ def test_provider_is_inactive_without_api_key(monkeypatch):
     assert called == []
 
 
-def test_address_tag_updates_keep_only_relevant_bsc_candidates_and_dedupe(monkeypatch):
+def test_address_tag_updates_keep_only_performance_relevant_bsc_candidates_and_dedupe(monkeypatch):
     monkeypatch.setenv("ARKHAM_API_KEY", "configured-not-printed")
     calls = []
     payload = {
@@ -43,6 +43,8 @@ def test_address_tag_updates_keep_only_relevant_bsc_candidates_and_dedupe(monkey
             {"address": {"address": _addr(3), "chain": "bnb"}, "tagName": "Whale"},
             {"address": _addr(4), "chain": "bsc", "tag": "Exchange Deposit"},
             {"address": _addr(5), "chain": "bsc", "tags": [{"name": "Smart Money"}]},
+            {"address": _addr(6), "chain": "bsc", "tag": "High PnL Wallet"},
+            {"address": _addr(7), "chain": "bsc", "tag": "Profitable Trader"},
             {"address": "0xabc", "chain": "bsc", "tag": "Trader"},
         ]
     }
@@ -60,14 +62,16 @@ def test_address_tag_updates_keep_only_relevant_bsc_candidates_and_dedupe(monkey
     assert out["available"] is True
     assert [row["address"] for row in out["candidates"]] == [
         _addr(1),
-        _addr(3),
         _addr(5),
+        _addr(6),
+        _addr(7),
     ]
     assert all(row["chain"] == "bsc" for row in out["candidates"])
     assert [row["metadata"]["arkham_signal"] for row in out["candidates"]] == [
         "TRADER",
-        "WHALE",
         "SMART_MONEY",
+        "HIGH_PNL",
+        "TRADER",
     ]
     assert out["success_authority"] is False
     assert out["execution_authority"] is False

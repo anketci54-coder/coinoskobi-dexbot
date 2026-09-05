@@ -110,6 +110,42 @@ def test_address_updates_support_nested_data_shape_but_remain_passive(monkeypatc
     assert out["candidates"][0]["metadata"]["arkham_signal"] is None
 
 
+def test_valid_empty_update_page_is_successful(monkeypatch):
+    monkeypatch.setenv("ARKHAM_API_KEY", "configured-not-printed")
+    monkeypatch.setattr(
+        provider.requests,
+        "get",
+        lambda *a, **k: Response({"updates": []}),
+    )
+
+    out = provider.fetch_discovery_updates(
+        feed="ADDRESS_TAG_UPDATES",
+        since=100.0,
+    )
+
+    assert out["available"] is True
+    assert out["candidates"] == []
+    assert out["returned_candidates"] == 0
+
+
+def test_unknown_update_payload_is_provider_failure(monkeypatch):
+    monkeypatch.setenv("ARKHAM_API_KEY", "configured-not-printed")
+    monkeypatch.setattr(
+        provider.requests,
+        "get",
+        lambda *a, **k: Response({"unexpected": {"shape": True}}),
+    )
+
+    out = provider.fetch_discovery_updates(
+        feed="ADDRESS_TAG_UPDATES",
+        since=100.0,
+    )
+
+    assert out["available"] is False
+    assert out["reason"] == "ARKHAM_INVALID_UPDATES_PAYLOAD"
+    assert out["candidates"] == []
+
+
 def test_normalizer_is_bounded_and_rejects_unknown_feed():
     rows = [
         {"address": _addr(i), "chain": "bsc"}

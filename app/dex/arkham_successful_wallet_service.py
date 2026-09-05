@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from app.dex.arkham_provider import (
+    MAX_TRACKED_ASSETS_PER_WALLET,
     MAX_TRACKED_WALLETS,
     fetch_balances_for_address,
 )
@@ -62,6 +63,7 @@ class ArkhamSuccessfulWalletService:
             "change_events": 0,
             **payload,
             "tracked_wallet_cap": MAX_TRACKED_WALLETS,
+            "tracked_asset_cap": MAX_TRACKED_ASSETS_PER_WALLET,
             "read_only_provider": True,
             "decision_authority": False,
             "paper_authority": False,
@@ -89,6 +91,26 @@ class ArkhamSuccessfulWalletService:
             "wallet_discovery_registry",
             "wallet_success_score",
         }.issubset(existing)
+
+    @staticmethod
+    def _tracked_cohort_wallet_uids(db: sqlite3.Connection) -> list[str]:
+        rows = db.execute(
+            """
+            SELECT lower(r.wallet_uid) AS wallet_uid
+            FROM wallet_discovery_registry AS r
+            JOIN wallet_success_score AS s
+              ON lower(s.wallet_uid)=lower(r.wallet_uid)
+            WHERE UPPER(COALESCE(s.qualification_state,''))='SUCCESSFUL'
+              AND UPPER(COALESCE(r.discovery_source,''))='TRANSACTION_FROM_ONLY'
+              AND lower(COALESCE(r.chain,''))='bsc'
+              AND COALESCE(r.address,'')<>''
+            ORDER BY COALESCE(s.calculated_at, 0) DESC,
+                     lower(r.wallet_uid) ASC
+            LIMIT ?
+            """,
+            (MAX_TRACKED_WALLETS,),
+        ).fetchall()
+        return [str(row["wallet_uid"]) for row in rows]
 
     @staticmethod
     def _qualified_wallets(
@@ -134,6 +156,29 @@ class ArkhamSuccessfulWalletService:
         return [dict(row) for row in rows]
 
     @staticmethod
+    def _prune_outside_cohort(
+        db: sqlite3.Connection,
+        cohort_wallet_uids: list[str],
+    ) -> None:
+        cohort = [str(uid).strip().lower() for uid in cohort_wallet_uids if uid]
+        if not cohort:
+            db.execute("DELETE FROM wallet_holding_snapshot")
+            db.execute("DELETE FROM wallet_holding_scan_state")
+            return
+
+        placeholders = ",".join("?" for _ in cohort)
+        db.execute(
+            f"DELETE FROM wallet_holding_snapshot "
+            f"WHERE lower(wallet_uid) NOT IN ({placeholders})",
+            cohort,
+        )
+        db.execute(
+            f"DELETE FROM wallet_holding_scan_state "
+            f"WHERE lower(wallet_uid) NOT IN ({placeholders})",
+            cohort,
+        )
+
+    @staticmethod
     def _previous_holdings(
         db: sqlite3.Connection,
         wallet_uid: str,
@@ -174,6 +219,29 @@ class ArkhamSuccessfulWalletService:
             )
             """,
             (MAX_CHANGE_ROWS,),
+        )
+
+    @staticmethod
+    def _trim_wallet_snapshot(db: sqlite3.Connection, wallet_uid: str) -> None:
+        db.execute(
+            """
+            DELETE FROM wallet_holding_snapshot
+            WHERE lower(wallet_uid)=lower(?)
+              AND token_id NOT IN (
+                  SELECT token_id
+                  FROM wallet_holding_snapshot
+                  WHERE lower(wallet_uid)=lower(?)
+                  ORDER BY observed_at DESC,
+                           COALESCE(value_usd, -1.0) DESC,
+                           token_id ASC
+                  LIMIT ?
+              )
+            """,
+            (
+                wallet_uid,
+                wallet_uid,
+                MAX_TRACKED_ASSETS_PER_WALLET,
+            ),
         )
 
     def _observe_runtime(
@@ -331,7 +399,12 @@ class ArkhamSuccessfulWalletService:
         for token_id, row in current.items():
             self._upsert_holding(db, wallet, token_id, row, observed_at)
 
-        provider_state = "READY" if complete_snapshot else "PARTIAL_ASSET_CAP"
+        self._trim_wallet_snapshot(db, wallet_uid)
+
+        provider_state = str(
+            result.get("provider_state")
+            or ("READY" if complete_snapshot else "PARTIAL_ASSET_CAP")
+        )
         asset_count = result.get("available_asset_count")
         if asset_count is None:
             asset_count = len(current)
@@ -385,9 +458,16 @@ class ArkhamSuccessfulWalletService:
                     self.last_cycle_at = time.time()
                 return result
 
+            cohort = self._tracked_cohort_wallet_uids(db)
+            self._prune_outside_cohort(db, cohort)
+            db.commit()
+
             wallets = self._qualified_wallets(db, self.wallets_per_cycle)
             requested = len(wallets)
             for wallet in wallets:
+                if self._stop_event.is_set():
+                    break
+
                 raw_result = self.fetcher(
                     wallet["address"],
                     chain=wallet["chain"],
@@ -419,6 +499,8 @@ class ArkhamSuccessfulWalletService:
             state = "PROVIDER_UNAVAILABLE"
         elif failures:
             state = "PARTIAL"
+        elif self._stop_event.is_set() and updated < requested:
+            state = "STOPPED"
 
         result = self._result(
             state,
@@ -459,7 +541,10 @@ class ArkhamSuccessfulWalletService:
         self._stop_event.set()
         thread = self._thread
         if thread is not None and thread.is_alive():
-            thread.join(timeout=min(40.0, self.interval_seconds))
+            thread.join()
+        with self._lock:
+            if self._thread is thread:
+                self._thread = None
 
     def status(self) -> dict[str, Any]:
         with self._lock:
@@ -470,6 +555,7 @@ class ArkhamSuccessfulWalletService:
                 "interval_seconds": self.interval_seconds,
                 "wallets_per_cycle": self.wallets_per_cycle,
                 "tracked_wallet_cap": MAX_TRACKED_WALLETS,
+                "tracked_asset_cap": MAX_TRACKED_ASSETS_PER_WALLET,
                 "last_cycle_at": self.last_cycle_at,
                 "last_result": dict(self.last_result),
                 "last_error": self.last_error,

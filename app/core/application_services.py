@@ -5,7 +5,7 @@ from app.dex.arkham_successful_wallet_service import ArkhamSuccessfulWalletServi
 from app.paper.database import DB as PAPER_DB
 
 
-def build_application_auxiliary_services():
+def build_application_auxiliary_services(*, intelligence=None):
     """Return optional application-owned slow-path services.
 
     These services share Runner lifecycle but never enter scanner scheduling or
@@ -18,6 +18,7 @@ def build_application_auxiliary_services():
         services.append(
             ArkhamSuccessfulWalletService(
                 PAPER_DB,
+                intelligence=intelligence,
             )
         )
 

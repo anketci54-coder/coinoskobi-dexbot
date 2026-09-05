@@ -61,6 +61,23 @@ def _rows(payload: Any) -> list[dict[str, Any]]:
     return []
 
 
+def _has_update_shape(payload: Any) -> bool:
+    """Distinguish a valid empty update page from an unknown provider shape."""
+    if isinstance(payload, list):
+        return True
+    if not isinstance(payload, dict):
+        return False
+    for key in ("updates", "items", "data", "addresses", "addressTags", "address_tags"):
+        value = payload.get(key)
+        if isinstance(value, list):
+            return True
+        if isinstance(value, dict):
+            for nested_key in ("updates", "items", "data"):
+                if isinstance(value.get(nested_key), list):
+                    return True
+    return False
+
+
 def _address_chain(row: dict[str, Any]) -> tuple[str | None, str | None]:
     candidates = [row]
     for key in ("address", "addressInfo", "address_info", "subject", "target"):
@@ -234,6 +251,13 @@ def fetch_discovery_updates(
         return {
             "available": False,
             "reason": "ARKHAM_INVALID_JSON",
+            "feed": feed,
+            "candidates": [],
+        }
+    if not _has_update_shape(payload):
+        return {
+            "available": False,
+            "reason": "ARKHAM_INVALID_UPDATES_PAYLOAD",
             "feed": feed,
             "candidates": [],
         }

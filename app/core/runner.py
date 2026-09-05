@@ -8,6 +8,30 @@ from app.core.scheduler import Scheduler
 log = get_logger()
 
 
+def _application_intelligence(scan_job):
+    """Resolve the PipelineEngine intelligence captured by build_application.
+
+    The production scan job is an application-owned closure over `pipeline`.
+    This keeps the auxiliary service on the exact same intelligence composition
+    without introducing a process-global singleton or scheduler coupling.
+    """
+    code = getattr(scan_job, "__code__", None)
+    closure = getattr(scan_job, "__closure__", None)
+    if code is None or not closure:
+        return None
+
+    try:
+        captured = {
+            name: cell.cell_contents
+            for name, cell in zip(code.co_freevars, closure)
+        }
+    except (AttributeError, ValueError):
+        return None
+
+    pipeline = captured.get("pipeline")
+    return getattr(pipeline, "intelligence", None)
+
+
 class Runner:
 
     def __init__(
@@ -46,12 +70,16 @@ class Runner:
             services or []
         )
 
-        factory = (
-            auxiliary_service_factory
-            if auxiliary_service_factory is not None
-            else build_application_auxiliary_services
-        )
-        auxiliary = factory() if callable(factory) else []
+        if auxiliary_service_factory is None:
+            auxiliary = build_application_auxiliary_services(
+                intelligence=_application_intelligence(scan_job),
+            )
+        else:
+            auxiliary = (
+                auxiliary_service_factory()
+                if callable(auxiliary_service_factory)
+                else []
+            )
         self.services.extend(
             list(auxiliary or [])
         )

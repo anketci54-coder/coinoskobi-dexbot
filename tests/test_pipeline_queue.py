@@ -38,10 +38,46 @@ def candidate(index):
     }
 
 
-def test_second_cycle_processes_backlog_not_same_first_batch():
+def test_second_cycle_processes_backlog_not_same_first_batch(
+    monkeypatch,
+):
+    # This test owns queue/cooldown semantics only.
+    # Freeze the queue clock so wall-clock test duration cannot
+    # expire the cooldown and isolate run_cycle from the real
+    # PAPER_DB observation stores.
+    monkeypatch.setattr(
+        "app.pipeline.candidate_queue.time.monotonic",
+        lambda: 1000.0,
+    )
+
     engine = PipelineEngine.__new__(
         PipelineEngine
     )
+
+    class FakeCounterfactualStore:
+        def status(self):
+            return {
+                "size": 0,
+                "outcome_counts": {},
+            }
+
+    engine.counterfactual_store = (
+        FakeCounterfactualStore()
+    )
+
+    engine.observe_counterfactual_candidate = (
+        lambda row, summary: {
+            "evaluation": {
+                "state": "NOT_ELIGIBLE",
+            },
+        }
+    )
+
+    engine.unified_outcome_snapshot = lambda: {
+        "state": "INSUFFICIENT_EVIDENCE",
+        "paper_sample_count": 0,
+        "counterfactual_sample_count": 0,
+    }
 
     rows = [
         candidate(i)

@@ -607,11 +607,44 @@ def build_cost_model(
         or {}
     )
 
-    route_friction = _number(
+    # Router quote shortfall for one whole token includes both
+    # pool fee and amount-dependent price impact. It is useful
+    # evidence, but it must not be treated as a size-independent
+    # round-trip fee.
+    route_quote_shortfall = _number(
         exit_data.get(
             "route_friction_fraction"
         )
     )
+
+    implied_v2_fee_state = str(
+        exit_data.get(
+            "implied_v2_fee_state"
+        )
+        or "UNKNOWN"
+    ).upper()
+
+    implied_v2_fee = _number(
+        exit_data.get(
+            "implied_v2_fee_fraction"
+        )
+    )
+
+    if (
+        implied_v2_fee_state == "READY"
+        and implied_v2_fee is not None
+        and 0.0 <= implied_v2_fee < 1.0
+    ):
+        route_friction = implied_v2_fee
+        route_friction_source = "IMPLIED_V2_FEE"
+
+    else:
+        route_friction = route_quote_shortfall
+        route_friction_source = (
+            "ROUTE_QUOTE_SHORTFALL"
+            if route_quote_shortfall is not None
+            else "UNKNOWN"
+        )
 
     buy_tax_pct = _number(
         sellability.get(
@@ -750,6 +783,22 @@ def build_cost_model(
     return {
         "route_friction_fraction": (
             route_friction
+        ),
+
+        "route_friction_source": (
+            route_friction_source
+        ),
+
+        "route_quote_shortfall_fraction": (
+            route_quote_shortfall
+        ),
+
+        "implied_v2_fee_fraction": (
+            implied_v2_fee
+        ),
+
+        "implied_v2_fee_state": (
+            implied_v2_fee_state
         ),
 
         "buy_tax_fraction": (

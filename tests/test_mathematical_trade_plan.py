@@ -1,4 +1,5 @@
 from app.strategy.mathematical_trade_plan import (
+    build_cost_model,
     build_trade_plan,
     dynamic_stop_price,
     tp1_required_fraction,
@@ -668,3 +669,64 @@ def test_vur_kac_never_realizes_a_net_losing_position():
         state["reason"]
         == "NO_REALIZABLE_NET_PROFIT"
     )
+
+
+def test_cost_model_prefers_inferred_v2_fee_over_quote_shortfall():
+    result = build_cost_model(
+        sellability_data={
+            "buy_tax": 0,
+            "sell_tax": 0,
+            "buy_gas": 0,
+            "sell_gas": 0,
+        },
+        exit_evidence={
+            "route_friction_fraction": 0.0268,
+            "implied_v2_fee_state": "READY",
+            "implied_v2_fee_fraction": 0.0025,
+            "gas_price_wei": 0,
+            "wbnb_usd_estimate": 600.0,
+        },
+    )
+
+    assert result["route_friction_source"] == "IMPLIED_V2_FEE"
+
+    assert abs(
+        result["route_friction_fraction"]
+        - 0.0025
+    ) < 1e-12
+
+    assert abs(
+        result["route_quote_shortfall_fraction"]
+        - 0.0268
+    ) < 1e-12
+
+    assert abs(
+        result["implied_v2_fee_fraction"]
+        - 0.0025
+    ) < 1e-12
+
+
+def test_cost_model_keeps_quote_shortfall_as_compatibility_fallback():
+    result = build_cost_model(
+        sellability_data={
+            "buy_tax": 0,
+            "sell_tax": 0,
+            "buy_gas": 0,
+            "sell_gas": 0,
+        },
+        exit_evidence={
+            "route_friction_fraction": 0.004,
+            "gas_price_wei": 0,
+            "wbnb_usd_estimate": 600.0,
+        },
+    )
+
+    assert (
+        result["route_friction_source"]
+        == "ROUTE_QUOTE_SHORTFALL"
+    )
+
+    assert abs(
+        result["route_friction_fraction"]
+        - 0.004
+    ) < 1e-12

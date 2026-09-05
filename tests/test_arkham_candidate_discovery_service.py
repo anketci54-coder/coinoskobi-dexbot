@@ -14,7 +14,7 @@ def _db(path):
     db.close()
 
 
-def test_tag_feed_ingests_observed_candidates_and_advances_cursor(tmp_path):
+def test_address_feed_ingests_observed_candidates_and_advances_cursor(tmp_path):
     path = tmp_path / "paper.db"
     _db(path)
     calls = []
@@ -38,8 +38,8 @@ def test_tag_feed_ingests_observed_candidates_and_advances_cursor(tmp_path):
     assert out["state"] == "READY"
     assert out["feeds_succeeded"] == 1
     assert out["candidates_accepted"] == 1
-    assert out["active_feed"] == "ADDRESS_TAG_UPDATES"
-    assert out["generic_address_feed_active"] is False
+    assert out["active_feed"] == "ADDRESS_UPDATES"
+    assert out["address_tag_feed_active"] is False
     assert out["success_authority"] is False
     assert out["execution_authority"] is False
 
@@ -55,10 +55,10 @@ def test_tag_feed_ingests_observed_candidates_and_advances_cursor(tmp_path):
     ).fetchone()
     db.close()
 
-    assert rows == [("ARKHAM_ADDRESS_TAG_UPDATE", "OBSERVED")]
-    assert cursors == [("ADDRESS_TAG_UPDATES", 1001.0, "READY")]
+    assert rows == [("ARKHAM_ADDRESS_UPDATE", "OBSERVED")]
+    assert cursors == [("ADDRESS_UPDATES", 1001.0, "READY")]
     assert success_table is None
-    assert [feed for feed, _ in calls] == ["ADDRESS_TAG_UPDATES"]
+    assert [feed for feed, _ in calls] == ["ADDRESS_UPDATES"]
 
 
 def test_provider_failure_does_not_advance_last_success_cursor(tmp_path):
@@ -84,16 +84,16 @@ def test_provider_failure_does_not_advance_last_success_cursor(tmp_path):
     assert second["state"] == "PROVIDER_UNAVAILABLE"
 
     db = sqlite3.connect(path)
-    tag = db.execute(
-        "SELECT last_success_at,last_provider_state FROM wallet_discovery_feed_state WHERE feed='ADDRESS_TAG_UPDATES'"
+    address_feed = db.execute(
+        "SELECT last_success_at,last_provider_state FROM wallet_discovery_feed_state WHERE feed='ADDRESS_UPDATES'"
     ).fetchone()
-    generic = db.execute(
-        "SELECT 1 FROM wallet_discovery_feed_state WHERE feed='ADDRESS_UPDATES'"
+    tag_feed = db.execute(
+        "SELECT 1 FROM wallet_discovery_feed_state WHERE feed='ADDRESS_TAG_UPDATES'"
     ).fetchone()
     db.close()
 
-    assert tag == (1000.0, "ARKHAM_HTTP_429")
-    assert generic is None
+    assert address_feed == (1000.0, "ARKHAM_HTTP_429")
+    assert tag_feed is None
 
 
 def test_previous_success_uses_overlap_cursor(tmp_path):
@@ -110,7 +110,7 @@ def test_previous_success_uses_overlap_cursor(tmp_path):
     seen.clear()
     service.run_cycle()
 
-    assert seen == [("ADDRESS_TAG_UPDATES", 970.0)]
+    assert seen == [("ADDRESS_UPDATES", 970.0)]
 
 
 def test_non_dict_provider_result_is_fail_soft(tmp_path):
@@ -124,9 +124,9 @@ def test_non_dict_provider_result_is_fail_soft(tmp_path):
     assert out["provider_failures"] == 1
 
 
-def test_status_explicitly_marks_generic_feed_inactive(tmp_path):
+def test_status_explicitly_marks_tag_feed_inactive(tmp_path):
     path = tmp_path / "paper.db"
     _db(path)
     status = ArkhamCandidateDiscoveryService(path).status()
-    assert status["active_feed"] == "ADDRESS_TAG_UPDATES"
-    assert status["generic_address_feed_active"] is False
+    assert status["active_feed"] == "ADDRESS_UPDATES"
+    assert status["address_tag_feed_active"] is False

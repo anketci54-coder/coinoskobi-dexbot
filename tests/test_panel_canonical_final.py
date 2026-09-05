@@ -8,6 +8,7 @@ STATIC = ROOT / "app" / "api" / "static"
 HTML = STATIC / "index.html"
 JS = STATIC / "panel-canonical.js"
 CSS = STATIC / "panel-canonical.css"
+REFINEMENT_JS = STATIC / "panel-refinement-v3.js"
 INIT = ROOT / "app" / "api" / "__init__.py"
 LEGACY_MANUAL_PAPER = ROOT / "app" / "api" / "panel_manual_paper.py"
 LEGACY_VEZIR_MODULES = (
@@ -27,8 +28,9 @@ LEGACY_PANEL_ASSETS = (
 def test_root_panel_has_one_canonical_frontend_owner():
     html = HTML.read_text(encoding="utf-8")
     init = INIT.read_text(encoding="utf-8")
-    assert "/static/panel-canonical.css?v=1" in html
-    assert "/static/panel-canonical.js?v=3" in html
+    assert "/static/panel-canonical.css?v=5" in html
+    assert "/static/panel-canonical.js?v=5" in html
+    assert "/static/panel-refinement-v3.js?v=1" in html
     assert "panel-premium-v2" not in html
     assert "panel-radar-trade-v3" not in html
     assert "panel-premium-v2" not in init
@@ -84,15 +86,18 @@ def test_canonical_runtime_owns_required_real_connections():
 def test_panel_exposes_operational_sections_without_fake_news():
     html = HTML.read_text(encoding="utf-8")
     js = JS.read_text(encoding="utf-8")
+    refinement = REFINEMENT_JS.read_text(encoding="utf-8")
     for label in (
         "RADAR MERKEZİ",
-        "1 USDT TESTLER",
         "CÜZDAN / BALİNA TAKİP",
-        "HABER AKIŞI",
+        "PİYASA HABERLERİ",
         "EKONOMİK TAKVİM",
+        "AIRDROP / IDO / ICO",
         "VEZİR",
     ):
         assert label in html
+    assert "1 USDT TESTLER" not in html
+    assert "1 USDT TESTLER" in refinement
     assert "Sahte haber gösterilmiyor" in js
     assert "Sahte etkinlik gösterilmiyor" in js
 

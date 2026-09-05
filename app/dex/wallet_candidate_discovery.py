@@ -8,6 +8,7 @@ from typing import Any, Iterable
 
 from app.paper.wallet_discovery_evidence_schema import (
     MAX_DISCOVERY_CANDIDATES,
+    MAX_DISCOVERY_EVIDENCE_ROWS,
     ensure_wallet_discovery_evidence_schema,
 )
 
@@ -138,6 +139,22 @@ def _prune_candidate_pool(db: sqlite3.Connection) -> None:
     )
 
 
+def _trim_evidence_rows(db: sqlite3.Connection) -> None:
+    db.execute(
+        """
+        DELETE FROM wallet_discovery_source_evidence
+        WHERE rowid NOT IN (
+            SELECT rowid
+            FROM wallet_discovery_source_evidence
+            ORDER BY active DESC, last_seen_at DESC,
+                     lower(wallet_uid) ASC, source ASC, source_key ASC
+            LIMIT ?
+        )
+        """,
+        (MAX_DISCOVERY_EVIDENCE_ROWS,),
+    )
+
+
 def ingest_wallet_candidates(
     db_path: str | Path,
     candidates: Iterable[dict[str, Any]],
@@ -190,10 +207,16 @@ def ingest_wallet_candidates(
                 ON CONFLICT(wallet_uid,source,source_key) DO UPDATE SET
                     chain=excluded.chain,
                     address=excluded.address,
-                    external_rank=excluded.external_rank,
+                    external_rank=COALESCE(
+                        excluded.external_rank,
+                        wallet_discovery_source_evidence.external_rank
+                    ),
                     last_seen_at=excluded.last_seen_at,
                     active=1,
-                    metadata_json=excluded.metadata_json,
+                    metadata_json=COALESCE(
+                        excluded.metadata_json,
+                        wallet_discovery_source_evidence.metadata_json
+                    ),
                     provider=excluded.provider
                 """,
                 (
@@ -221,10 +244,16 @@ def ingest_wallet_candidates(
             accepted += 1
 
         _prune_candidate_pool(db)
+        _trim_evidence_rows(db)
         db.commit()
         active_candidates = int(
             db.execute(
                 "SELECT COUNT(DISTINCT lower(wallet_uid)) FROM wallet_discovery_source_evidence WHERE active=1"
+            ).fetchone()[0]
+        )
+        evidence_rows = int(
+            db.execute(
+                "SELECT COUNT(*) FROM wallet_discovery_source_evidence"
             ).fetchone()[0]
         )
         return {
@@ -234,7 +263,9 @@ def ingest_wallet_candidates(
             "accepted": accepted,
             "rejected": rejected,
             "active_candidates": active_candidates,
+            "evidence_rows": evidence_rows,
             "candidate_cap": MAX_DISCOVERY_CANDIDATES,
+            "evidence_row_cap": MAX_DISCOVERY_EVIDENCE_ROWS,
             "candidate_state": "OBSERVED",
             "success_authority": False,
             "trade_authority": False,

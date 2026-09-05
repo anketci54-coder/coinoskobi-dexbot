@@ -95,5 +95,4 @@ def fetch_intelligence_updates(
         row_count=min(len(rows), MAX_UPDATE_ROWS),
         capped=capped,
         fetched_at=time.time(),
-        response_meta=payload if isinstance(payload, dict) else None,
     )

@@ -15,6 +15,7 @@ def test_acceptance_controls_are_present():
     assert 'id="autoTradeState"' in html
     assert "MUHASEBE" in html
     assert "HABER ETKİ" in html
+    assert "CÜZDAN / BALİNA TAKİP" in html
     assert "/static/panel-canonical-acceptance.js?v=4" in html
     assert html.index("panel-canonical-acceptance.js") < html.index("panel-canonical.js")
 
@@ -31,6 +32,17 @@ def test_acceptance_bridge_keeps_canonical_vezir_endpoint():
     assert "'/api/watch-probes-detail-v2?limit=100'" in js
     assert "'/api/auto-trade-health-v2'" in js
     assert "'/api/dashboard'" in js
+
+
+def test_arkham_wallet_detail_is_read_only_and_uses_existing_feed():
+    js = BRIDGE.read_text(encoding="utf-8")
+    assert "showWalletDetails" in js
+    assert "ensureWalletDetailButton" in js
+    assert "walletDetailButton" in js
+    assert "ARKHAM KAPALI · API KEY YOK" in js
+    assert "SON VARLIK DEĞİŞİMLERİ" in js
+    assert "CÜZDAN / BALİNA TAKİP · ARKHAM HOLDINGS" in js
+    assert "get('/api/wallet-intelligence-v2')" in js
 
 
 def test_canonical_vezir_uses_bounded_verified_intent_context():

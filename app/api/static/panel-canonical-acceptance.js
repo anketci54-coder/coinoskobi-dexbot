@@ -88,6 +88,14 @@
     const n = num(value);
     return n === null ? '—' : `${n > 0 ? '+' : ''}${n.toFixed(2)}%`;
   };
+  const age = value => {
+    const ts = num(value);
+    if (ts === null) return '—';
+    const seconds = Math.max(0, Date.now() / 1000 - ts);
+    if (seconds < 60) return `${Math.round(seconds)} sn`;
+    if (seconds < 3600) return `${Math.round(seconds / 60)} dk`;
+    return `${Math.round(seconds / 3600)} sa`;
+  };
 
   function modal(title, bodyHtml) {
     let shell = document.getElementById('acceptanceModal');
@@ -124,6 +132,86 @@
     } catch (error) {
       modal('1 USDT TEST DETAYI', `<div class="acceptance-error">${esc(error.message)}</div>`);
     }
+  }
+
+  function arkhamStateText(data, holdings) {
+    if (data?.provider?.configured !== true) return 'ARKHAM KAPALI · API KEY YOK';
+    const state = String(holdings?.state || 'WAITING_FOR_RUNTIME');
+    if (state === 'NO_SUCCESSFUL_WALLETS') return 'BAŞARILI CÜZDAN YOK';
+    if (state === 'WAITING_FOR_FIRST_SCAN') return 'İLK ARKHAM TARAMASI BEKLENİYOR';
+    if (state === 'WAITING_FOR_RUNTIME') return 'ARKHAM RUNTIME BEKLENİYOR';
+    if (state === 'READY') return 'ARKHAM AKTİF';
+    return state;
+  }
+
+  async function showWalletDetails() {
+    try {
+      const data = await get('/api/wallet-intelligence-v2');
+      const holdings = data.arkham_holdings || {};
+      const wallets = Array.isArray(holdings.wallets) ? holdings.wallets : [];
+      const changes = Array.isArray(holdings.changes) ? holdings.changes : [];
+      const providerText = arkhamStateText(data, holdings);
+
+      const walletHtml = wallets.length ? wallets.map(wallet => {
+        const assets = Array.isArray(wallet.holdings) ? wallet.holdings : [];
+        return `
+          <div style="margin-bottom:14px">
+            <div class="acceptance-kpis">
+              <div><small>CÜZDAN</small><b title="${esc(wallet.address)}">${esc(short(wallet.address || wallet.wallet_uid))}</b></div>
+              <div><small>PORTFÖY</small><b>${money(wallet.total_value_usd)}</b></div>
+              <div><small>VARLIK</small><b>${esc(wallet.asset_count ?? assets.length)}</b></div>
+              <div><small>SON TARAMA</small><b>${esc(age(wallet.last_success_at || wallet.last_scan_at))}</b></div>
+            </div>
+            <div class="acceptance-scroll"><table class="acceptance-table">
+              <thead><tr><th>VARLIK</th><th>BAKİYE</th><th>DEĞER</th><th>FİYAT</th><th>24H</th></tr></thead>
+              <tbody>${assets.length ? assets.map(asset => `<tr>
+                <td title="${esc(asset.token_id)}">${esc(asset.symbol || asset.name || short(asset.token_id))}</td>
+                <td>${esc(asset.balance ?? '—')}</td><td>${money(asset.value_usd)}</td>
+                <td>${money(asset.price_usd)}</td><td>${pct(asset.price_change_24h_pct)}</td>
+              </tr>`).join('') : '<tr><td colspan="5">Henüz holdings kaydı yok.</td></tr>'}</tbody>
+            </table></div>
+          </div>`;
+      }).join('') : `<div class="acceptance-empty">${esc(providerText)}</div>`;
+
+      const changesHtml = changes.length ? `
+        <div class="meta" style="margin:12px 0 6px">SON VARLIK DEĞİŞİMLERİ</div>
+        <div class="acceptance-scroll"><table class="acceptance-table">
+          <thead><tr><th>CÜZDAN</th><th>VARLIK</th><th>DEĞİŞİM</th><th>ÖNCE</th><th>ŞİMDİ</th><th>ZAMAN</th></tr></thead>
+          <tbody>${changes.map(row => `<tr>
+            <td title="${esc(row.wallet_uid)}">${esc(short(row.wallet_uid))}</td>
+            <td title="${esc(row.token_id)}">${esc(short(row.token_id))}</td>
+            <td>${esc(row.change_type || '—')}</td><td>${esc(row.previous_balance ?? '—')}</td>
+            <td>${esc(row.current_balance ?? '—')}</td><td>${esc(age(row.observed_at))}</td>
+          </tr>`).join('')}</tbody>
+        </table></div>` : '';
+
+      const html = `
+        <div class="acceptance-kpis">
+          <div><small>ARKHAM</small><b>${esc(providerText)}</b></div>
+          <div><small>BAŞARILI</small><b>${esc(data.successful_wallets ?? wallets.length)}</b></div>
+          <div><small>HOLDINGS CÜZDAN</small><b>${esc(wallets.length)}</b></div>
+          <div><small>DEĞİŞİM</small><b>${esc(changes.length)}</b></div>
+        </div>
+        ${walletHtml}
+        ${changesHtml}`;
+      modal('CÜZDAN / BALİNA TAKİP · ARKHAM HOLDINGS', html);
+    } catch (error) {
+      modal('CÜZDAN / BALİNA TAKİP', `<div class="acceptance-error">${esc(error.message)}</div>`);
+    }
+  }
+
+  function ensureWalletDetailButton() {
+    const title = [...document.querySelectorAll('.panel .head .title')]
+      .find(node => node.textContent.includes('CÜZDAN / BALİNA TAKİP'));
+    const head = title?.closest('.head');
+    if (!head || document.getElementById('walletDetailButton')) return;
+    const button = document.createElement('button');
+    button.className = 'panel-action';
+    button.id = 'walletDetailButton';
+    button.type = 'button';
+    button.textContent = 'DETAY';
+    button.addEventListener('click', showWalletDetails);
+    head.appendChild(button);
   }
 
   async function getAccountingLedger() {
@@ -219,8 +307,8 @@
     try {
       const data = await get('/api/auto-trade-health-v2');
       const topReason = Array.isArray(data.reasons) && data.reasons.length ? data.reasons[0] : null;
-      const age = num(data.latest_age_seconds);
-      const ageText = age === null ? 'karar yok' : age < 60 ? `${Math.round(age)} sn` : `${Math.round(age / 60)} dk`;
+      const ageValue = num(data.latest_age_seconds);
+      const ageText = ageValue === null ? 'karar yok' : ageValue < 60 ? `${Math.round(ageValue)} sn` : `${Math.round(ageValue / 60)} dk`;
       target.textContent = `AUTO: ${data.decision_count ?? 0} karar · ${topReason ? `${topReason.reason} (${topReason.count})` : 'blocker yok'} · son ${ageText}`;
       target.className = topReason ? 'sub warn' : 'sub';
     } catch (error) {
@@ -232,6 +320,7 @@
   document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('watchDetailButton')?.addEventListener('click', showWatchDetails);
     document.getElementById('accountingButton')?.addEventListener('click', showAccounting);
+    ensureWalletDetailButton();
     refreshAutoHealth();
     setInterval(refreshAutoHealth, 15000);
   });

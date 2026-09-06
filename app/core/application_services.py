@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from app.dex.arkham_candidate_discovery_service import ArkhamCandidateDiscoveryService
 from app.dex.arkham_provider import arkham_config_status
 from app.dex.arkham_successful_wallet_service import ArkhamSuccessfulWalletService
 from app.paper.database import DB as PAPER_DB
@@ -15,6 +16,9 @@ def build_application_auxiliary_services(*, intelligence=None):
     services = []
 
     if arkham_config_status().get("configured") is True:
+        services.append(
+            ArkhamCandidateDiscoveryService(PAPER_DB)
+        )
         services.append(
             ArkhamSuccessfulWalletService(
                 PAPER_DB,

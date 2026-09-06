@@ -1,5 +1,16 @@
 (() => {
   const state={dashboard:null,universe:null,watch:null,watchSummary:null,operations:null,filter:'ALL',mode:'AUTO',refreshing:null,snapshotGeneration:0,asking:false,selected:null,order:null,lastNewsCount:null,vezirContext:[]};
+  const FILTER_STORAGE_KEY='coinoskobi.radar.filter';
+  const VALID_FILTERS=new Set(['ALL','COLD','WARM','HOT','ACTIVE']);
+  const loadStoredFilter=()=>{
+    try{
+      const value=String(localStorage.getItem(FILTER_STORAGE_KEY)||'').toUpperCase();
+      return VALID_FILTERS.has(value)?value:'ALL';
+    }catch(_){
+      return 'ALL';
+    }
+  };
+  state.filter=loadStoredFilter();
   const $=id=>document.getElementById(id);
   const n=v=>{const x=Number(v);return Number.isFinite(x)?x:null};
   const esc=v=>String(v??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'",'&#039;');
@@ -28,7 +39,34 @@
   function renderRadar(){const body=$('radarBody');if(!body)return;body.innerHTML='';if((state.filter==='ACTIVE'&&!state.dashboard)||(state.filter!=='ACTIVE'&&!state.universe)){text('candidateCount','VERİ YOK');body.innerHTML='<div class="body" style="color:var(--muted);font-size:9px">Radar verisi alınamadı.</div>';return}const rows=radarRows();text('candidateCount',state.filter==='ACTIVE'?`${openPositions().length} AÇIK`:`${rows.length} HAREKETLİ`);if(!rows.length){body.innerHTML='<div class="body" style="color:var(--muted);font-size:9px">Bu filtrede uygun hareketli parite yok.</div>';return}for(const r of rows){const p=positionFor(r)||r._active||null,st=rowState(r,p),entry=document.createElement('div');entry.className='radar-entry'+(state.selected===r.pool?' open':'');entry.innerHTML=`<div class="radar-row"><span class="state ${stateClass(st)}">${esc(st)}</span><span class="token-cell"><span><div class="token">${esc(rowName(r))}</div><div class="small">${esc(short(r.pool))}</div></span>${state.mode==='MANUAL'&&state.dashboard?`<button class="order-btn ${p?'sell':'buy'}" type="button">${p?'SAT':'AL'}</button>`:''}</span><span class="small ${n(r?.seismic?.score)>0?'pos':''}">${n(r?.seismic?.score)===null?'—':n(r.seismic.score).toFixed(2)}</span><span class="small volume-cell">${compact(r.volume_24h_usd)}</span><span class="small price-cell">${price(r.price_usd??p?.current_price)}</span><span class="small change-cell ${n(r.change_5m_pct)>0?'pos':n(r.change_5m_pct)<0?'neg':''}">${pct(r.change_5m_pct)}</span><span class="small liquidity-cell">${compact(r.liquidity_usd)}</span></div><div class="radar-detail"><div class="detail-grid"><div><small>PARİTE</small><b>${esc(rowName(r))}</b></div><div><small>QUOTE</small><b>${esc(String(r.quote_symbol||'—').toUpperCase())}</b></div><div><small>FİYAT</small><b>${price(r.price_usd??p?.current_price)}</b></div><div><small>SCORE</small><b>${n(r?.seismic?.score)===null?'—':n(r.seismic.score).toFixed(2)}</b></div><div><small>5M</small><b>${pct(r.change_5m_pct)}</b></div><div><small>24H HACİM</small><b>${compact(r.volume_24h_usd)}</b></div><div><small>LİKİDİTE</small><b>${compact(r.liquidity_usd)}</b></div><div><small>POOL</small><b title="${esc(r.pool)}">${esc(short(r.pool))}</b></div><div><small>TOKEN</small><b title="${esc(r.base_token||r.token0)}">${esc(short(r.base_token||r.token0))}</b></div>${p?`<div><small>AÇIK POZİSYON</small><b>#${esc(p.id)} · ${money(p.entry_amount_usdt)}</b></div>`:''}</div></div>`;entry.querySelector('.radar-row').onclick=e=>{if(e.target.closest('.order-btn'))return;state.selected=state.selected===r.pool?null:r.pool;renderRadar()};const b=entry.querySelector('.order-btn');if(b)b.onclick=e=>{e.stopPropagation();openTicket(p?'SELL':'BUY',r,p)};body.appendChild(entry)}}
 
   function setMode(mode){state.mode=mode==='MANUAL'?'MANUAL':'AUTO';document.body.classList.toggle('manual',state.mode==='MANUAL');$('autoModeButton')?.classList.toggle('active',state.mode==='AUTO');$('manualModeButton')?.classList.toggle('active',state.mode==='MANUAL');renderRadar()}
-  function setFilter(filter,button){state.filter=filter;document.querySelectorAll('[data-filter]').forEach(x=>x.classList.toggle('active',x===button));state.selected=null;renderRadar()}
+  function setFilter(filter,button){
+    const value=VALID_FILTERS.has(String(filter||'').toUpperCase())
+      ?String(filter).toUpperCase()
+      :'ALL';
+    state.filter=value;
+    try{
+      localStorage.setItem(FILTER_STORAGE_KEY,value);
+    }catch(_){}
+    document.querySelectorAll('[data-filter]').forEach(
+      x=>x.classList.toggle('active',x===button)
+    );
+    state.selected=null;
+    renderRadar();
+  }
+
+  function restoreFilter(){
+    const buttons=[...document.querySelectorAll('[data-filter]')];
+    const button=buttons.find(
+      x=>String(x.dataset.filter||'').toUpperCase()===state.filter
+    )||buttons.find(
+      x=>String(x.dataset.filter||'').toUpperCase()==='ALL'
+    );
+    if(button){
+      document.querySelectorAll('[data-filter]').forEach(
+        x=>x.classList.toggle('active',x===button)
+      );
+    }
+  }
 
   function renderWatch(){const body=$('watchRows');if(!state.watchSummary&&!state.watch){['watchCount','watchOpen','watchEntry','watchValue','watchPnl'].forEach(id=>text(id,'—'));paint('watchPnl',null);if(body)body.innerHTML='<tr><td colspan="4">VERİ YOK</td></tr>';return}const s=state.watchSummary||state.watch?.summary||{};const markValue=s.mark_value_usdt??s.current_value_usdt;const markPnl=s.mark_pnl_usdt??s.pnl_usdt;text('watchCount',String(s.count??0));text('watchOpen',String(s.open??0));text('watchEntry',money(s.entry_usdt_total));text('watchValue',money(markValue));text('watchPnl',money(markPnl));paint('watchPnl',markPnl);if(body&&!state.watch){body.innerHTML='<tr><td colspan="4">VERİ YOK</td></tr>';return}const rows=Array.isArray(state.watch?.rows)?state.watch.rows.slice(0,5):[];if(body)body.innerHTML=rows.length?rows.map(r=>`<tr><td title="${esc(r.token)}">${esc(short(r.token))}</td><td>${money(r.current_value_usdt)}</td><td class="${n(r.pnl_usdt)>=0?'pos':'neg'}">${money(r.pnl_usdt)}</td><td>${esc(r.status||'—')}</td></tr>`).join(''):'<tr><td colspan="4">Kayıt yok</td></tr>'}
   function walletRows(){const i=state.dashboard?.intelligence||{},raw=i?.summary?.wallet_details_json;if(Array.isArray(raw))return raw;if(typeof raw==='string'){try{const p=JSON.parse(raw);return Array.isArray(p)?p:[]}catch(e){return[]}}return[]}
@@ -53,5 +91,5 @@
 
   function bind(){$('autoModeButton').onclick=()=>setMode('AUTO');$('manualModeButton').onclick=()=>setMode('MANUAL');document.querySelectorAll('[data-filter]').forEach(b=>b.onclick=()=>setFilter(b.dataset.filter,b));$('vezirSend').onclick=()=>askVezir();$('vezirInput').onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();askVezir()}};document.querySelectorAll('[data-ask]').forEach(b=>b.onclick=()=>askVezir(b.dataset.ask));$('ticketClose').onclick=closeTicket;$('orderModal').onclick=e=>{if(e.target.id==='orderModal')closeTicket()};$('orderAmount').oninput=refreshEstimate;document.querySelectorAll('[data-amount]').forEach(b=>b.onclick=()=>{$('orderAmount').value=b.dataset.amount;refreshEstimate()});$('confirmOrder').onclick=submitOrder;window.addEventListener('focus',refresh);window.addEventListener('pageshow',event=>{if(event.persisted){clearLiveSnapshot();refresh()}});document.addEventListener('visibilitychange',()=>{if(!document.hidden)refresh()})}
 
-  document.addEventListener('DOMContentLoaded',()=>{bind();setMode('AUTO');refreshTickers();refresh();setInterval(refresh,5000);setInterval(refreshTickers,20000)});
+  document.addEventListener('DOMContentLoaded',()=>{bind();restoreFilter();setMode('AUTO');refreshTickers();refresh();setInterval(refresh,5000);setInterval(refreshTickers,20000)});
 })();

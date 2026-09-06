@@ -29,7 +29,7 @@ def test_root_panel_has_one_canonical_frontend_owner():
     html = HTML.read_text(encoding="utf-8")
     init = INIT.read_text(encoding="utf-8")
     assert "/static/panel-canonical.css?v=5" in html
-    assert "/static/panel-canonical.js?v=6" in html
+    assert "/static/panel-canonical.js?v=7" in html
     assert "/static/panel-refinement-v3.js?v=6" in html
     assert "panel-premium-v2" not in html
     assert "panel-radar-trade-v3" not in html
@@ -118,3 +118,15 @@ def test_canonical_assets_are_responsive_and_self_contained():
     assert "@media(max-width:680px)" in css
     assert ".radar-entry.open .radar-detail" in css
     assert "body.manual .order-btn" in css
+
+
+
+def test_radar_filter_survives_page_reload():
+    js = JS.read_text(encoding="utf-8")
+
+    assert "coinoskobi.radar.filter" in js
+    assert "localStorage.getItem(FILTER_STORAGE_KEY)" in js
+    assert "localStorage.setItem(FILTER_STORAGE_KEY,value)" in js
+    assert "VALID_FILTERS" in js
+    assert "'ACTIVE'" in js
+    assert "restoreFilter()" in js

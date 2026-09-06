@@ -810,6 +810,39 @@ def calculate_paper_position_size(
         ),
     )
 
+    # A positive float is not a meaningful paper position
+    # when subtracting it cannot change account capital.
+    # This is derived from numeric accounting precision;
+    # no arbitrary minimum trade amount is introduced.
+    if (
+        amount > 0.0
+        and max(
+            0.0,
+            available - amount,
+        ) == available
+    ):
+        return _zero_result(
+            available=available,
+            raw_amount=raw_amount,
+            safe_quote_reserve=(
+                safe_quote_reserve
+            ),
+            risk_log_distance=(
+                risk_log_distance
+            ),
+            gap_multiplier=gap_multiplier,
+            calibration=calibration,
+            empirical_cost_uncertainty=(
+                empirical_cost_uncertainty
+            ),
+            effective_edge=effective_edge,
+            cost_complete=cost_complete,
+            blockers=[
+                "ENTRY_AMOUNT_BELOW_"
+                "ACCOUNTING_PRECISION"
+            ],
+        )
+
     risk = amount * tail_loss_fraction
     bound_plan = _bind_final_trade_plan(
         plan,

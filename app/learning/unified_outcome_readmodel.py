@@ -16,9 +16,56 @@ def _eligible_paper_event(row):
         .get("outcome_class", "UNKNOWN")
     )
 
-    return (
-        opening.get("entry_context_version")
+    entry_context_version = str(
+        opening.get(
+            "entry_context_version"
+        )
+        or ""
+    ).upper()
+
+    exit_baseline = opening.get(
+        "exit_baseline"
+    )
+
+    signal_attribution = opening.get(
+        "signal_attribution"
+    )
+
+    mathematical_plan_compatible = (
+        entry_context_version
+        == "MATHEMATICAL_PLAN"
+        and opening.get(
+            "captured_at_entry"
+        ) is True
+        and opening.get(
+            "hindsight_reconstructed"
+        ) is False
+        and isinstance(
+            signal_attribution,
+            dict,
+        )
+        and bool(signal_attribution)
+        and isinstance(
+            exit_baseline,
+            dict,
+        )
+        and str(
+            exit_baseline.get(
+                "version"
+            )
+            or ""
+        ).upper()
         == "PHASE13A_V1"
+    )
+
+    entry_context_eligible = (
+        entry_context_version
+        == "PHASE13A_V1"
+        or mathematical_plan_compatible
+    )
+
+    return (
+        entry_context_eligible
         and evidence.get("state")
         == "EVIDENCE_READY"
         and evidence.get(
@@ -127,7 +174,8 @@ def build_unified_outcome_readmodel(
             - len(eligible_paper_events)
         ),
         "paper_eligibility_rule": (
-            "PHASE13A_V1_EVIDENCE_READY"
+            "PHASE13A_V1_OR_COMPATIBLE_"
+            "MATHEMATICAL_PLAN_EVIDENCE_READY"
         ),
         "legacy_visible_not_calibrated": True,
         "counterfactual_sample_count": (

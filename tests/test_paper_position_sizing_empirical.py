@@ -691,3 +691,52 @@ def test_tail_gap_cannot_expand_original_stop_risk_budget(
         ],
         original_stop_budget,
     )
+
+
+def test_positive_float_dust_is_blocked_by_accounting_precision(
+    monkeypatch,
+):
+    monkeypatch.setattr(
+        "app.risk.paper_position_sizing."
+        "_empirical_outcome_calibration",
+        lambda *args, **kwargs: {
+            "ready": True,
+            "reason": (
+                "EMPIRICAL_OUTCOME_CALIBRATION"
+            ),
+            "gap_multiplier": 1.0,
+            "gap_median": 1.0,
+            "gap_statistic": "TEST",
+            "cost_uncertainty_fraction": 0.0,
+            "account_risk_budget_usdt": 100.0,
+            "account_risk_statistic": "TEST",
+            "gap_samples": 1,
+            "cost_samples": 1,
+            "account_risk_samples": 1,
+        },
+    )
+
+    plan = _plan(
+        raw_amount=1000.0,
+        available=10000.0,
+        reserve=1e-14,
+        risk_distance=0.2,
+        known_edge=0.25,
+        full_edge=0.25,
+        cost_complete=True,
+    )
+
+    result = calculate_paper_position_size(
+        mathematical_plan=plan,
+        available_capital_usdt=10000.0,
+    )
+
+    assert (
+        result["entry_amount_usdt"]
+        == 0.0
+    )
+
+    assert (
+        "ENTRY_AMOUNT_BELOW_ACCOUNTING_PRECISION"
+        in result["blockers"]
+    )

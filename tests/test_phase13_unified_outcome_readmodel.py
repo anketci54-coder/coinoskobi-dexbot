@@ -165,3 +165,88 @@ def test_legacy_paper_is_visible_but_not_calibrated():
         "legacy_visible_not_calibrated"
     ] is True
     assert result["state"] == "INSUFFICIENT"
+
+
+def test_current_mathematical_plan_context_is_phase13_eligible():
+    paper = _event(
+        "VALID_SIGNAL",
+        0.20,
+        "PAPER_CLOSE",
+    )
+
+    opening = (
+        paper["evidence"]
+        ["expected_context"]
+        ["opening_context"]
+    )
+
+    opening.clear()
+    opening.update({
+        "captured_at_entry": True,
+        "entry_context_version": (
+            "MATHEMATICAL_PLAN"
+        ),
+        "hindsight_reconstructed": False,
+        "signal_attribution": {
+            "paper_entry": "POSITIVE",
+        },
+        "exit_baseline": {
+            "version": "PHASE13A_V1",
+        },
+    })
+
+    result = build_unified_outcome_readmodel(
+        paper_events=[paper],
+        counterfactual_events=[],
+        min_paper_samples=1,
+        min_counterfactual_samples=1,
+    )
+
+    assert (
+        result["paper_visible_event_count"]
+        == 1
+    )
+    assert (
+        result["paper_eligible_event_count"]
+        == 1
+    )
+    assert result["paper_sample_count"] == 1
+
+
+def test_unproven_mathematical_plan_context_stays_excluded():
+    paper = _event(
+        "VALID_SIGNAL",
+        0.20,
+        "PAPER_CLOSE",
+    )
+
+    opening = (
+        paper["evidence"]
+        ["expected_context"]
+        ["opening_context"]
+    )
+
+    opening.clear()
+    opening.update({
+        "captured_at_entry": True,
+        "entry_context_version": (
+            "MATHEMATICAL_PLAN"
+        ),
+        "hindsight_reconstructed": False,
+        "signal_attribution": {
+            "paper_entry": "POSITIVE",
+        },
+    })
+
+    result = build_unified_outcome_readmodel(
+        paper_events=[paper],
+        counterfactual_events=[],
+        min_paper_samples=1,
+        min_counterfactual_samples=1,
+    )
+
+    assert (
+        result["paper_eligible_event_count"]
+        == 0
+    )
+    assert result["paper_sample_count"] == 0

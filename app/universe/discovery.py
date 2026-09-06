@@ -98,7 +98,14 @@ class PancakeUniverseDiscovery:
         self.registry = registry
         self.log_reader = log_reader
 
-    def scan(self, stream, *, start_block, finalized_block, branch):
+    def scan(
+        self,
+        stream,
+        *,
+        start_block,
+        finalized_block,
+        branch,
+    ):
         branch = canonical_discovery_branch(branch)
         start_block, finalized_block = int(start_block), int(finalized_block)
         if start_block < 0 or finalized_block < 0:
@@ -110,8 +117,12 @@ class PancakeUniverseDiscovery:
             branch,
         )
         from_block = (
-            int(saved["last_scanned_block"]) + 1
-            if saved is not None else start_block
+            max(
+                int(saved["last_scanned_block"]) + 1,
+                start_block,
+            )
+            if saved is not None
+            else start_block
         )
         if from_block > finalized_block:
             return {"state": "CAUGHT_UP", "branch": branch,

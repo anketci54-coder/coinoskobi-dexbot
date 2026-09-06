@@ -116,3 +116,114 @@ def test_block_bounds_and_branch_are_strict(tmp_path):
         discovery.scan(PANCAKE_FACTORY_STREAMS[0], start_block=1,
                        finalized_block=1, branch="UNKNOWN")
 
+
+
+
+
+
+
+def test_new_tail_rebases_stale_checkpoint_to_recent_window(
+    tmp_path,
+):
+    registry = UniverseRegistry(
+        tmp_path / "cache.db"
+    )
+    stream = PANCAKE_FACTORY_STREAMS[0]
+
+    seed = PancakeUniverseDiscovery(
+        registry,
+        Reader([[]]),
+        max_block_span=10,
+    )
+
+    seed.scan(
+        stream,
+        start_block=5,
+        finalized_block=5,
+        branch="NEW",
+    )
+
+    reader = Reader([[]])
+    subject = PancakeUniverseDiscovery(
+        registry,
+        reader,
+        max_block_span=10,
+    )
+
+    result = subject.scan(
+        stream,
+        start_block=11,
+        finalized_block=20,
+        branch="NEW",
+    )
+
+    assert (
+        result["from_block"],
+        result["to_block"],
+    ) == (11, 20)
+
+    assert (
+        reader.calls[0]["from_block"],
+        reader.calls[0]["to_block"],
+    ) == (11, 20)
+
+    current = registry.checkpoint(
+        "bsc",
+        stream["dex"],
+        stream["factory"],
+        stream["event_kind"],
+        "NEW",
+    )
+
+    assert current["last_scanned_block"] == 20
+
+
+def test_new_tail_resumes_after_checkpoint_without_block_gap(
+    tmp_path,
+):
+    registry = UniverseRegistry(
+        tmp_path / "cache.db"
+    )
+    stream = PANCAKE_FACTORY_STREAMS[0]
+    reader = Reader([[], []])
+
+    subject = PancakeUniverseDiscovery(
+        registry,
+        reader,
+        max_block_span=10,
+    )
+
+    first = subject.scan(
+        stream,
+        start_block=11,
+        finalized_block=20,
+        branch="NEW",
+    )
+
+    second = subject.scan(
+        stream,
+        start_block=16,
+        finalized_block=25,
+        branch="NEW",
+    )
+
+    assert (
+        first["from_block"],
+        first["to_block"],
+    ) == (11, 20)
+
+    assert (
+        second["from_block"],
+        second["to_block"],
+    ) == (21, 25)
+
+    assert [
+        (
+            row["from_block"],
+            row["to_block"],
+        )
+        for row in reader.calls
+    ] == [
+        (11, 20),
+        (21, 25),
+    ]

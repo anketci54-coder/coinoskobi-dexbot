@@ -95,7 +95,7 @@ def test_shadow_runtime_requires_explicit_start_blocks_and_bounded_batches():
             raise AssertionError("invalid shadow bound accepted")
 
 
-def test_backfill_batches_keep_each_rpc_span_bounded_and_tail_current():
+def test_backfill_batches_keep_each_rpc_span_bounded_and_tail_recent_window():
     registry = UniverseRegistry(connection=sqlite3.connect(":memory:"))
     reader = LogReader()
     subject = FullUniverseObservationRuntime(
@@ -124,8 +124,15 @@ def test_backfill_batches_keep_each_rpc_span_bounded_and_tail_current():
         (1, 5), (6, 10), (11, 15)
     ]
     assert all(row["to_block"] - row["from_block"] + 1 <= 5 for row in existing_calls)
-    assert reader.calls[3]["from_block"] == 20
-    assert reader.calls[3]["to_block"] == 20
+    assert (
+        reader.calls[3]["from_block"],
+        reader.calls[3]["to_block"],
+    ) == (16, 20)
+    assert (
+        reader.calls[3]["to_block"]
+        - reader.calls[3]["from_block"]
+        + 1
+    ) == 5
     assert existing["last_scanned_block"] == 15
     assert new["last_scanned_block"] == 20
     assert len(result["discovery"]["existing_batches"]) == 3
@@ -134,7 +141,7 @@ def test_backfill_batches_keep_each_rpc_span_bounded_and_tail_current():
     assert result["decision_authority"] is False
 
 
-def test_discovery_failure_does_not_starve_existing_observations(caplog):
+def test_discovery_failure_does_not_starve_observations_or_new_tail(caplog):
     registry = UniverseRegistry(connection=sqlite3.connect(":memory:"))
     stream = PANCAKE_FACTORY_STREAMS[0]
     pool = address(100)
@@ -167,6 +174,7 @@ def test_discovery_failure_does_not_starve_existing_observations(caplog):
         start_blocks={"pancakeswap_v2": 1, "pancakeswap_v3": 1},
         registry=registry,
         log_reader=FailingLogReader(),
+        tail_log_reader=LogReader(),
         finalized_block_reader=lambda: 20,
         snapshot_client=snapshots,
         confirmation_depth=0,
@@ -181,7 +189,15 @@ def test_discovery_failure_does_not_starve_existing_observations(caplog):
     assert result["state"] == "SHADOW_DEGRADED"
     assert result["discovery"]["existing"]["state"] == "ERROR"
     assert result["discovery"]["existing"]["error"] == "RuntimeError"
-    assert result["discovery"]["new"]["state"] == "SKIPPED_AFTER_DISCOVERY_ERROR"
+    assert result["discovery"]["new"]["state"] == "CAUGHT_UP"
+    new_checkpoint = registry.checkpoint(
+        "bsc",
+        stream["dex"],
+        stream["factory"],
+        stream["event_kind"],
+        "NEW",
+    )
+    assert new_checkpoint["last_scanned_block"] == 20
     assert result["observed"] == 1
     assert result["evaluated"] == 1
     assert len(snapshots.calls) == 1
@@ -224,9 +240,11 @@ def test_spawn_isolated_uses_worker_owned_rpc_and_sticky_provider(monkeypatch):
     )
     isolated = template.spawn_isolated()
 
-    assert created == [worker_web3]
+    assert created == [worker_web3, worker_web3]
     assert isinstance(isolated.discovery.log_reader, Web3LogReader)
+    assert isinstance(isolated.tail_discovery.log_reader, Web3LogReader)
     assert isolated.discovery.log_reader.web3 is worker_web3
+    assert isolated.tail_discovery.log_reader.web3 is worker_web3
     assert isolated.finalized_block_reader() == 123
     assert isolated.registry is not template.registry
     assert isinstance(isolated.observer.snapshot_client, SnapshotClient)
@@ -325,3 +343,83 @@ def test_slow_shadow_cycle_does_not_block_caller_thread():
     assert elapsed < 0.5
     release.set()
     assert service.stop() is True
+
+
+
+def test_existing_failure_enters_bounded_backoff_without_starving_tail():
+    registry = UniverseRegistry(
+        connection=sqlite3.connect(":memory:")
+    )
+
+    now = [100.0]
+
+    class FailingExisting:
+        def __init__(self):
+            self.calls = []
+
+        def __call__(self, **request):
+            self.calls.append(request)
+            raise ConnectionError("historical unavailable")
+
+    existing = FailingExisting()
+    tail = LogReader()
+
+    subject = FullUniverseObservationRuntime(
+        start_blocks={
+            "pancakeswap_v2": 1,
+            "pancakeswap_v3": 1,
+        },
+        registry=registry,
+        log_reader=existing,
+        tail_log_reader=tail,
+        finalized_block_reader=lambda: 20,
+        snapshot_client=SnapshotClient(),
+        confirmation_depth=0,
+        discovery_block_span=10,
+        discovery_batches_per_cycle=1,
+        observation_batches_per_cycle=1,
+        existing_retry_seconds=300,
+        now_func=lambda: now[0],
+    )
+
+    first = subject.run_once()
+
+    assert (
+        first["discovery"]["existing"]["state"]
+        == "ERROR"
+    )
+    assert (
+        first["discovery"]["new"]["state"]
+        == "CAUGHT_UP"
+    )
+    assert len(existing.calls) == 1
+
+    subject._stream_cursor = 0
+
+    second = subject.run_once()
+
+    assert (
+        second["discovery"]["existing"]["state"]
+        == "BACKOFF"
+    )
+    assert (
+        second["discovery"]["existing"]["provider_call"]
+        is False
+    )
+    assert (
+        second["discovery"]["new"]["state"]
+        == "CAUGHT_UP"
+    )
+    assert second["state"] == "SHADOW_DEGRADED"
+    assert len(existing.calls) == 1
+
+    now[0] += 301
+    subject._stream_cursor = 0
+
+    third = subject.run_once()
+
+    assert (
+        third["discovery"]["existing"]["state"]
+        == "ERROR"
+    )
+    assert len(existing.calls) == 2

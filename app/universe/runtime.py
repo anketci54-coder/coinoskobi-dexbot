@@ -2,6 +2,7 @@ import logging
 import threading
 import time
 
+from app.config.settings import RPC_PROVIDER_COOLDOWN_SECONDS
 from app.universe.discovery import PANCAKE_FACTORY_STREAMS, PancakeUniverseDiscovery
 from app.universe.registry import UniverseRegistry
 from app.universe.scheduler import UniverseObservationScheduler
@@ -39,10 +40,13 @@ class FullUniverseObservationRuntime:
     """Single bounded shadow owner for discovery, snapshots and heat state."""
 
     def __init__(self, *, start_blocks, registry=None, log_reader=None,
-                 finalized_block_reader=None, snapshot_client=None,
-                 confirmation_depth=12, discovery_block_span=2000,
+                 tail_log_reader=None, finalized_block_reader=None,
+                 snapshot_client=None, confirmation_depth=12,
+                 discovery_block_span=2000,
                  discovery_batches_per_cycle=8,
-                 observation_batches_per_cycle=4):
+                 observation_batches_per_cycle=4,
+                 existing_retry_seconds=RPC_PROVIDER_COOLDOWN_SECONDS,
+                 now_func=None):
         required = {stream["dex"] for stream in PANCAKE_FACTORY_STREAMS}
         self.start_blocks = {dex: int(value) for dex, value in dict(start_blocks).items()}
         if set(self.start_blocks) != required or any(
@@ -57,6 +61,17 @@ class FullUniverseObservationRuntime:
         self.discovery = PancakeUniverseDiscovery(
             self.registry, log_reader, max_block_span=discovery_block_span
         )
+        self.tail_discovery = PancakeUniverseDiscovery(
+            self.registry,
+            tail_log_reader or log_reader,
+            max_block_span=discovery_block_span,
+        )
+        self.existing_retry_seconds = max(
+            1.0,
+            float(existing_retry_seconds),
+        )
+        self._now = now_func or time.monotonic
+        self._existing_retry_after = {}
         self.discovery_batches_per_cycle = int(discovery_batches_per_cycle)
         if not 1 <= self.discovery_batches_per_cycle <= 8:
             raise ValueError("discovery batches per cycle must be 1..8")
@@ -73,17 +88,21 @@ class FullUniverseObservationRuntime:
 
     def spawn_isolated(self):
         """Build a worker-owned runtime with its own SQLite/provider objects."""
-        worker_web3 = _new_bsc_web3()
+        existing_web3 = _new_bsc_web3()
+        tail_web3 = _new_bsc_web3()
         return type(self)(
             start_blocks=dict(self.start_blocks),
             registry=UniverseRegistry(),
-            log_reader=Web3LogReader(worker_web3),
-            finalized_block_reader=lambda: worker_web3.eth.block_number,
+            log_reader=Web3LogReader(existing_web3),
+            tail_log_reader=Web3LogReader(tail_web3),
+            finalized_block_reader=lambda: tail_web3.eth.block_number,
             snapshot_client=ProviderStickySnapshotClient(),
             confirmation_depth=self.confirmation_depth,
             discovery_block_span=self.discovery.max_block_span,
             discovery_batches_per_cycle=self.discovery_batches_per_cycle,
             observation_batches_per_cycle=self.observation_batches_per_cycle,
+            existing_retry_seconds=self.existing_retry_seconds,
+            now_func=self._now,
         )
 
     @staticmethod
@@ -109,54 +128,97 @@ class FullUniverseObservationRuntime:
         discovery_errors = []
         existing_batches = []
         existing_failed = False
-        for _ in range(self.discovery_batches_per_cycle):
-            try:
-                existing = self.discovery.scan(
-                    stream, start_block=self.start_blocks[stream["dex"]],
-                    finalized_block=finalized, branch="EXISTING",
-                )
-            except Exception as exc:
-                existing = self._discovery_failure(
-                    branch="EXISTING",
-                    exc=exc,
-                )
-                discovery_errors.append(existing)
-                existing_failed = True
-                log.warning(
-                    "Universe discovery failed dex=%s branch=EXISTING error=%s",
-                    stream["dex"],
-                    _safe_error(exc),
-                )
-            existing_batches.append(existing)
-            if existing_failed or existing["state"] == "CAUGHT_UP":
-                break
+        existing_backoff = False
 
-        if existing_failed:
-            tail = {
-                "state": "SKIPPED_AFTER_DISCOVERY_ERROR",
-                "branch": "NEW",
-                "from_block": finalized,
-                "to_block": finalized,
+        now = self._now()
+        retry_after = float(
+            self._existing_retry_after.get(
+                stream["dex"],
+                0.0,
+            )
+        )
+
+        if now < retry_after:
+            existing_backoff = True
+            existing_batches.append({
+                "state": "BACKOFF",
+                "branch": "EXISTING",
+                "from_block": None,
+                "to_block": None,
                 "registered": 0,
                 "provider_call": False,
-            }
+                "retry_in_seconds": max(
+                    0.0,
+                    retry_after - now,
+                ),
+            })
         else:
-            try:
-                tail = self.discovery.scan(
-                    stream, start_block=finalized,
-                    finalized_block=finalized, branch="NEW",
-                )
-            except Exception as exc:
-                tail = self._discovery_failure(
-                    branch="NEW",
-                    exc=exc,
-                )
-                discovery_errors.append(tail)
-                log.warning(
-                    "Universe discovery failed dex=%s branch=NEW error=%s",
+            for _ in range(self.discovery_batches_per_cycle):
+                try:
+                    existing = self.discovery.scan(
+                        stream,
+                        start_block=self.start_blocks[stream["dex"]],
+                        finalized_block=finalized,
+                        branch="EXISTING",
+                    )
+                except Exception as exc:
+                    existing = self._discovery_failure(
+                        branch="EXISTING",
+                        exc=exc,
+                    )
+                    discovery_errors.append(existing)
+                    existing_failed = True
+                    self._existing_retry_after[
+                        stream["dex"]
+                    ] = (
+                        now
+                        + self.existing_retry_seconds
+                    )
+                    log.warning(
+                        "Universe discovery failed dex=%s branch=EXISTING error=%s",
+                        stream["dex"],
+                        _safe_error(exc),
+                    )
+
+                existing_batches.append(existing)
+
+                if (
+                    existing_failed
+                    or existing["state"] == "CAUGHT_UP"
+                ):
+                    break
+
+            if not existing_failed:
+                self._existing_retry_after.pop(
                     stream["dex"],
-                    _safe_error(exc),
+                    None,
                 )
+
+        try:
+            tail_start = max(
+                0,
+                finalized
+                - self.tail_discovery.max_block_span
+                + 1,
+            )
+
+            tail = self.tail_discovery.scan(
+                stream,
+                start_block=tail_start,
+                finalized_block=finalized,
+                branch="NEW",
+            )
+        except Exception as exc:
+            tail = self._discovery_failure(
+                branch="NEW",
+                exc=exc,
+            )
+            discovery_errors.append(tail)
+            log.warning(
+                "Universe discovery failed dex=%s branch=NEW error=%s",
+                stream["dex"],
+                _safe_error(exc),
+            )
 
         observation_results, observed_pools = [], []
         for _ in range(self.observation_batches_per_cycle):
@@ -192,7 +254,7 @@ class FullUniverseObservationRuntime:
         return {
             "state": (
                 "SHADOW_DEGRADED"
-                if discovery_errors
+                if discovery_errors or existing_backoff
                 else "SHADOW_READY"
             ),
             "cycle": self.cycles,

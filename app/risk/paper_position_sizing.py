@@ -810,16 +810,24 @@ def calculate_paper_position_size(
         ),
     )
 
-    # A positive float is not a meaningful paper position
-    # when subtracting it cannot change account capital.
-    # This is derived from numeric accounting precision;
-    # no arbitrary minimum trade amount is introduced.
+    # A paper debit smaller than the next representable
+    # downward account-capital step cannot be represented
+    # faithfully by float accounting. Derive the floor from
+    # IEEE-754 spacing instead of inventing a trade minimum.
+    accounting_quantum = (
+        available
+        - math.nextafter(
+            available,
+            -math.inf,
+        )
+        if available > 0.0
+        else 0.0
+    )
+
     if (
         amount > 0.0
-        and max(
-            0.0,
-            available - amount,
-        ) == available
+        and accounting_quantum > 0.0
+        and amount < accounting_quantum
     ):
         return _zero_result(
             available=available,

@@ -740,3 +740,79 @@ def test_positive_float_dust_is_blocked_by_accounting_precision(
         "ENTRY_AMOUNT_BELOW_ACCOUNTING_PRECISION"
         in result["blockers"]
     )
+
+
+
+def test_id51_sub_quantum_micro_notional_is_blocked(
+    monkeypatch,
+):
+    available = 9237.512079329967
+    reserve = 5.634779807892627e-11
+    risk_distance = 0.08124114491030021
+    target_amount = 1.5615460017212325e-12
+
+    accounting_quantum = (
+        available
+        - math.nextafter(
+            available,
+            -math.inf,
+        )
+    )
+
+    assert target_amount < accounting_quantum
+
+    # This reproduces the original bug: subtraction rounds
+    # down by one float step even though the requested debit
+    # itself is smaller than that representable step.
+    assert (
+        available - target_amount
+        != available
+    )
+
+    gap_multiplier = (
+        reserve
+        * math.exp(-risk_distance)
+        / target_amount
+    )
+
+    monkeypatch.setattr(
+        "app.risk.paper_position_sizing."
+        "_empirical_outcome_calibration",
+        lambda *args, **kwargs: {
+            "ready": True,
+            "reason": (
+                "EMPIRICAL_OUTCOME_CALIBRATION"
+            ),
+            "gap_multiplier": gap_multiplier,
+            "gap_median": gap_multiplier,
+            "gap_statistic": "ID51_REGRESSION",
+            "cost_uncertainty_fraction": 0.0,
+            "account_risk_budget_usdt": 100.0,
+            "account_risk_statistic": "TEST",
+            "gap_samples": 1,
+            "cost_samples": 1,
+            "account_risk_samples": 1,
+        },
+    )
+
+    plan = _plan(
+        raw_amount=1000.0,
+        available=available,
+        reserve=reserve,
+        risk_distance=risk_distance,
+        known_edge=0.6724150276335858,
+        full_edge=None,
+        cost_complete=False,
+    )
+
+    result = calculate_paper_position_size(
+        mathematical_plan=plan,
+        available_capital_usdt=available,
+    )
+
+    assert result["entry_amount_usdt"] == 0.0
+
+    assert (
+        "ENTRY_AMOUNT_BELOW_ACCOUNTING_PRECISION"
+        in result["blockers"]
+    )

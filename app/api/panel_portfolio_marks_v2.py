@@ -14,6 +14,7 @@ from app.scanner.gecko_scanner import GeckoScanner
 
 MARK_REFRESH_TTL_SECONDS = 30.0
 MAX_MARK_POOLS = 30
+CACHE_MARK_MAX_AGE_SECONDS = 300.0
 
 _MARK_LOCK = threading.Lock()
 _MARK_CACHE: dict[str, Any] = {
@@ -229,19 +230,30 @@ def _row_mark(
     tokens = _num(position.get("token_amount")) or 0.0
     realized_gross = _num(position.get("realized_gross_proceeds_usdt")) or 0.0
 
+    price = None
+    source = "PAPER_DB_FALLBACK"
+    age = None
+    fresh = False
+
     if quote is not None:
-        price = _num(quote.get("price_usd"))
+        quote_price = _num(quote.get("price_usd"))
         observed = _num(quote.get("observed_at"))
-        source = str(quote.get("source") or "UNKNOWN")
-        age = max(0.0, now - observed) if observed is not None else None
-        fresh = source == "GECKOTERMINAL_MULTI_POOL" or (
-            age is not None and age <= 300.0
-        )
-    else:
+        quote_source = str(quote.get("source") or "UNKNOWN")
+        quote_age = max(0.0, now - observed) if observed is not None else None
+        provider_fresh = quote_source == "GECKOTERMINAL_MULTI_POOL"
+        cache_fresh = quote_age is not None and quote_age <= CACHE_MARK_MAX_AGE_SECONDS
+
+        if quote_price is not None and quote_price > 0 and (provider_fresh or cache_fresh):
+            price = quote_price
+            source = quote_source
+            age = quote_age
+            fresh = True
+        elif quote_price is not None and quote_price > 0:
+            source = "PAPER_DB_FALLBACK_STALE_EXTERNAL"
+            age = quote_age
+
+    if price is None:
         price = _num(position.get("current_price")) or _num(position.get("entry_price"))
-        source = "PAPER_DB_FALLBACK"
-        age = None
-        fresh = False
 
     mark_value = None
     gross_pnl = None
@@ -310,14 +322,17 @@ def _build_payload(
     net_values = [
         _num(row.get("estimated_exit_net_pnl_usdt"))
         for row in mark_rows
+        if row.get("mark_price_fresh")
     ]
     gross_values = [
         _num(row.get("mark_gross_pnl_usdt"))
         for row in mark_rows
+        if row.get("mark_price_fresh")
     ]
     value_values = [
         _num(row.get("mark_value_usdt"))
         for row in mark_rows
+        if row.get("mark_price_fresh")
     ]
 
     net_known = [value for value in net_values if value is not None]
@@ -346,13 +361,13 @@ def _build_payload(
             "cache_mark_count": sum(
                 1
                 for row in mark_rows
-                if row["mark_price_source"] in {
+                if row["mark_price_fresh"] and row["mark_price_source"] in {
                     "UNIVERSE_POOL_REGISTRY",
                     "GECKO_POOL_CACHE",
                 }
             ),
-            "mark_value_usdt": sum(values_known) if values_known else 0.0,
-            "open_mark_gross_pnl_usdt": sum(gross_known) if gross_known else 0.0,
+            "mark_value_usdt": sum(values_known) if values_known else None,
+            "open_mark_gross_pnl_usdt": sum(gross_known) if gross_known else None,
             "open_mark_net_pnl_usdt": open_net,
             "net_mark_coverage_count": len(net_known),
             "realized_net_usdt": realized_net,

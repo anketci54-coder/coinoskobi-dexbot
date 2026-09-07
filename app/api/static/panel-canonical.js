@@ -259,8 +259,7 @@
           +` — ${preview.guidance_text||'—'}`
       ];
 
-      e.textContent=result.join('
-');
+      e.textContent=result.join('\n');
       return;
     }
 

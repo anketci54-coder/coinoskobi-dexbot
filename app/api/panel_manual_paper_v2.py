@@ -45,55 +45,176 @@ def _timestamp(value: Any) -> float | None:
     return parsed.timestamp()
 
 
-def _cache_quote(cache_db: Path, *, pool: str | None, token: str | None) -> dict[str, Any]:
+def _cache_quotes(
+    cache_db: Path,
+    *,
+    pool: str | None,
+    token: str | None,
+) -> list[dict[str, Any]]:
     if not cache_db.exists():
-        return {}
+        return []
 
-    connection = sqlite3.connect(f"file:{cache_db}?mode=ro", uri=True, timeout=3)
+    connection = sqlite3.connect(
+        f"file:{cache_db}?mode=ro",
+        uri=True,
+        timeout=3,
+    )
     connection.row_factory = sqlite3.Row
+
+    quotes: list[dict[str, Any]] = []
+
     try:
-        row = None
-        if pool:
+        tables = {
+            str(row["name"])
+            for row in connection.execute(
+                """
+                SELECT name
+                FROM sqlite_master
+                WHERE type='table'
+                """
+            ).fetchall()
+        }
+
+        if "universe_pool_registry" in tables and pool:
             row = connection.execute(
                 """
-                SELECT pool, token, name, dex, price_usd, updated_at
-                FROM gecko_pool_cache
+                SELECT
+                    pool,
+                    token0 AS token,
+                    NULL AS name,
+                    dex,
+                    latest_price_usd AS price_usd,
+                    latest_snapshot_at AS updated_at
+                FROM universe_pool_registry
                 WHERE lower(pool)=lower(?)
-                ORDER BY updated_at DESC
+                ORDER BY latest_snapshot_at DESC
                 LIMIT 1
                 """,
                 (pool,),
             ).fetchone()
-        if row is None and token:
-            row = connection.execute(
-                """
-                SELECT pool, token, name, dex, price_usd, updated_at
-                FROM gecko_pool_cache
-                WHERE lower(token)=lower(?)
-                   OR lower(replace(token,'bsc_',''))=lower(?)
-                ORDER BY updated_at DESC
-                LIMIT 1
-                """,
-                (token, token),
-            ).fetchone()
-        return dict(row) if row is not None else {}
+
+            if row is not None:
+                quote = dict(row)
+                quote["quote_source"] = (
+                    "UNIVERSE_POOL_REGISTRY"
+                )
+                quotes.append(quote)
+
+        if "gecko_pool_cache" in tables:
+            row = None
+
+            if pool:
+                row = connection.execute(
+                    """
+                    SELECT
+                        pool,
+                        token,
+                        name,
+                        dex,
+                        price_usd,
+                        updated_at
+                    FROM gecko_pool_cache
+                    WHERE lower(pool)=lower(?)
+                    ORDER BY updated_at DESC
+                    LIMIT 1
+                    """,
+                    (pool,),
+                ).fetchone()
+
+            if row is None and token:
+                row = connection.execute(
+                    """
+                    SELECT
+                        pool,
+                        token,
+                        name,
+                        dex,
+                        price_usd,
+                        updated_at
+                    FROM gecko_pool_cache
+                    WHERE lower(token)=lower(?)
+                       OR lower(
+                           replace(token,'bsc_','')
+                       )=lower(?)
+                    ORDER BY updated_at DESC
+                    LIMIT 1
+                    """,
+                    (token, token),
+                ).fetchone()
+
+            if row is not None:
+                quote = dict(row)
+                quote["quote_source"] = (
+                    "GECKO_POOL_CACHE"
+                )
+                quotes.append(quote)
+
+        return quotes
+
     finally:
         connection.close()
 
 
-def _fresh_quote(cache_db: Path, *, pool: str | None, token: str | None) -> tuple[dict[str, Any], float, float]:
-    quote = _cache_quote(cache_db, pool=pool, token=token)
-    price = _num(quote.get("price_usd"))
-    observed = _timestamp(quote.get("updated_at"))
-    if price is None or price <= 0 or observed is None:
-        raise HTTPException(status_code=409, detail="Güncel referans fiyat yok")
+def _fresh_quote(
+    cache_db: Path,
+    *,
+    pool: str | None,
+    token: str | None,
+) -> tuple[dict[str, Any], float, float]:
+    candidates = []
 
-    age = max(0.0, time.time() - observed)
+    for quote in _cache_quotes(
+        cache_db,
+        pool=pool,
+        token=token,
+    ):
+        price = _num(
+            quote.get("price_usd")
+        )
+        observed = _timestamp(
+            quote.get("updated_at")
+        )
+
+        if (
+            price is None
+            or price <= 0
+            or observed is None
+        ):
+            continue
+
+        candidates.append(
+            (
+                observed,
+                price,
+                quote,
+            )
+        )
+
+    if not candidates:
+        raise HTTPException(
+            status_code=409,
+            detail="Güncel referans fiyat yok",
+        )
+
+    observed, price, quote = max(
+        candidates,
+        key=lambda item: item[0],
+    )
+
+    age = max(
+        0.0,
+        time.time() - observed,
+    )
+
     if age > MANUAL_QUOTE_MAX_AGE_SECONDS:
         raise HTTPException(
             status_code=409,
-            detail="Referans fiyat bayat; provider/cache akışını kontrol et",
+            detail=(
+                "Referans fiyat bayat; "
+                "provider/cache akışını kontrol et"
+            ),
         )
+
     return quote, price, age
 
 
@@ -159,6 +280,9 @@ def _buy(*, paper_db: Path, cache_db: Path, payload: dict[str, Any]) -> dict[str
             "captured_at_entry": True,
             "reference_price": price,
             "reference_price_age_seconds": age,
+            "reference_price_source": (
+                quote.get("quote_source")
+            ),
             "cost_model_complete": False,
         }
         connection.execute(
@@ -189,7 +313,9 @@ def _buy(*, paper_db: Path, cache_db: Path, payload: dict[str, Any]) -> dict[str
         return {
             "ok": True, "side": "BUY", "position_id": position_id,
             "token": token, "pool": pool, "reference_price": price,
-            "reference_price_age_seconds": age, "amount_usdt": amount,
+            "reference_price_age_seconds": age,
+            "reference_price_source": quote.get("quote_source"),
+            "amount_usdt": amount,
             "token_amount": token_amount, "paper_balance_after": available - amount,
             "paper_only": True, "live_execution": False,
             "wallet_authority": False, "signing_authority": False,

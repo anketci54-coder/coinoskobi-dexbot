@@ -133,3 +133,169 @@ def test_manual_paper_rejects_unconfirmed_or_unsafe_partial_close_contract_by_de
     assert "live_execution" in source
     assert "wallet_authority" in source
     assert "signing_authority" in source
+
+
+def _cache_db_with_universe(
+    path,
+    *,
+    gecko_price=2.0,
+    gecko_age_seconds=600,
+    universe_price=2.5,
+    universe_age_seconds=0,
+):
+    db = sqlite3.connect(path)
+
+    db.execute(
+        """
+        CREATE TABLE gecko_pool_cache(
+            pool TEXT PRIMARY KEY,
+            token TEXT,
+            name TEXT,
+            dex TEXT,
+            price_usd REAL,
+            updated_at TEXT
+        )
+        """
+    )
+
+    gecko_observed = (
+        datetime.now(timezone.utc)
+        - timedelta(
+            seconds=gecko_age_seconds
+        )
+    )
+
+    db.execute(
+        """
+        INSERT INTO gecko_pool_cache
+        VALUES(?,?,?,?,?,?)
+        """,
+        (
+            POOL,
+            TOKEN,
+            "TEST/USDT",
+            "pancakeswap_v2",
+            gecko_price,
+            gecko_observed.isoformat(),
+        ),
+    )
+
+    db.execute(
+        """
+        CREATE TABLE universe_pool_registry(
+            pool TEXT,
+            token0 TEXT,
+            dex TEXT,
+            latest_price_usd REAL,
+            latest_snapshot_at TEXT
+        )
+        """
+    )
+
+    universe_observed = (
+        datetime.now(timezone.utc)
+        - timedelta(
+            seconds=universe_age_seconds
+        )
+    )
+
+    db.execute(
+        """
+        INSERT INTO universe_pool_registry(
+            pool,
+            token0,
+            dex,
+            latest_price_usd,
+            latest_snapshot_at
+        )
+        VALUES(?,?,?,?,?)
+        """,
+        (
+            POOL,
+            TOKEN,
+            "pancakeswap_v2",
+            universe_price,
+            universe_observed.isoformat(),
+        ),
+    )
+
+    db.commit()
+    db.close()
+
+
+def test_manual_buy_uses_fresh_universe_price_when_gecko_is_stale(
+    tmp_path,
+):
+    paper = tmp_path / "paper.db"
+    cache = tmp_path / "cache.db"
+
+    _paper_db(paper)
+
+    _cache_db_with_universe(
+        cache,
+        gecko_price=2.0,
+        gecko_age_seconds=600,
+        universe_price=2.5,
+        universe_age_seconds=0,
+    )
+
+    bought = _buy(
+        paper_db=paper,
+        cache_db=cache,
+        payload={
+            "token": TOKEN,
+            "pool": POOL,
+            "symbol": "TEST",
+            "amount_usdt": 100.0,
+        },
+    )
+
+    assert bought["reference_price"] == 2.5
+
+    assert (
+        bought["reference_price_source"]
+        == "UNIVERSE_POOL_REGISTRY"
+    )
+
+    assert bought["token_amount"] == pytest.approx(
+        40.0
+    )
+
+
+def test_manual_buy_prefers_newest_valid_quote_source(
+    tmp_path,
+):
+    paper = tmp_path / "paper.db"
+    cache = tmp_path / "cache.db"
+
+    _paper_db(paper)
+
+    _cache_db_with_universe(
+        cache,
+        gecko_price=3.0,
+        gecko_age_seconds=0,
+        universe_price=2.5,
+        universe_age_seconds=30,
+    )
+
+    bought = _buy(
+        paper_db=paper,
+        cache_db=cache,
+        payload={
+            "token": TOKEN,
+            "pool": POOL,
+            "symbol": "TEST",
+            "amount_usdt": 90.0,
+        },
+    )
+
+    assert bought["reference_price"] == 3.0
+
+    assert (
+        bought["reference_price_source"]
+        == "GECKO_POOL_CACHE"
+    )
+
+    assert bought["token_amount"] == pytest.approx(
+        30.0
+    )

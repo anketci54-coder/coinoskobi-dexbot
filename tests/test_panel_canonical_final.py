@@ -86,11 +86,13 @@ def test_premium_accounting_separates_mark_realized_risk_and_exposure():
     assert '/api/dashboard' in accounting_js
     assert '/api/accounting-ledger-v2?limit=100' in accounting_js
     assert '/api/watch-probes-detail-v2?limit=100' in accounting_js
+    assert '/api/portfolio-marks-v2' in accounting_js
     assert 'MARK NEDİR?' in accounting_js
     assert 'REALİZE ÇIKIŞ NEDİR?' in accounting_js
     assert 'RİSK ≠ MARUZİYET' in accounting_js
     assert 'MODELLENEN RİSK' in accounting_js
-    assert 'GERÇEKLEŞMEMİŞ MARK PNL' in accounting_js
+    assert 'TAHMİNİ ÇIKIŞ PNL' in accounting_js
+    assert 'TAHMİNİ NET PNL' in accounting_js
     assert 'VEZİR ÖZETİ' in accounting_js
     assert '.premium-accounting-modal' in accounting_css
     assert 'eth_sendRawTransaction' not in accounting_js

@@ -1980,6 +1980,77 @@ def build_trade_plan(
         or "UNKNOWN"
     ).upper()
 
+    blocker_set = set(blockers)
+
+    # PAPER-only early continuation admission.
+    #
+    # Do not wait for slow evidence to mature when real price
+    # observations already show two positive, non-weakening moves.
+    #
+    # Only evidence-readiness blockers may be bypassed. Economic,
+    # liquidity, suspicious-volume, concentration, sellability,
+    # hard-risk and sizing blockers remain authoritative.
+    early_soft_blockers = {
+        "VUR_KAC_ENTRY_NOT_READY",
+        "VUR_KAC_FLOW_EVIDENCE_NOT_READY",
+        "MARKET_QUALITY_EVIDENCE_NOT_READY",
+        "PARTICIPATION_EVIDENCE_UNKNOWN",
+    }
+
+    latest_entry_return = _number(
+        vur_kac_entry.get(
+            "latest_log_return"
+        )
+    )
+
+    previous_entry_return = _number(
+        vur_kac_entry.get(
+            "previous_log_return"
+        )
+    )
+
+    entry_acceleration = _number(
+        vur_kac_entry.get(
+            "price_acceleration"
+        )
+    )
+
+    early_price_continuation = (
+        bool(
+            vur_kac_entry.get(
+                "enforced"
+            )
+        )
+        and not bool(
+            vur_kac_entry.get(
+                "ready"
+            )
+        )
+        and latest_entry_return is not None
+        and previous_entry_return is not None
+        and entry_acceleration is not None
+        and latest_entry_return > 0
+        and previous_entry_return > 0
+        and entry_acceleration >= 0
+    )
+
+    early_paper_admission = (
+        early_price_continuation
+        and bool(blocker_set)
+        and blocker_set.issubset(
+            early_soft_blockers
+        )
+    )
+
+    bypassed_soft_blockers = (
+        sorted(blocker_set)
+        if early_paper_admission
+        else []
+    )
+
+    if early_paper_admission:
+        blockers = []
+
     paper_eligible = (
         not blockers
     )
@@ -2019,6 +2090,34 @@ def build_trade_plan(
         "vur_kac_entry": (
             vur_kac_entry
         ),
+
+        "paper_admission": {
+            "mode": (
+                "EARLY_PRICE_CONTINUATION"
+                if early_paper_admission
+                else (
+                    "FULL_EVIDENCE"
+                    if paper_eligible
+                    else "BLOCKED"
+                )
+            ),
+            "early_price_continuation": (
+                bool(
+                    early_price_continuation
+                )
+            ),
+            "bypassed_soft_blockers": (
+                bypassed_soft_blockers
+            ),
+            "hard_safety_bypassed": False,
+            "sellability_bypassed": False,
+            "economic_edge_bypassed": False,
+            "liquidity_safety_bypassed": False,
+            "paper_only": True,
+            "live_authority": False,
+            "wallet_authority": False,
+            "execution_authority": False,
+        },
 
         "entry": {
             "price": entry,

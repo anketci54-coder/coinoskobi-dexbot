@@ -181,6 +181,173 @@ class PaperManager:
         )
 
     @staticmethod
+    def _profit_protection_floor(
+        *,
+        pos,
+        plan,
+        highest,
+        current_stop,
+    ):
+        position = (
+            pos
+            if isinstance(pos, dict)
+            else {}
+        )
+
+        trade_plan = (
+            plan
+            if isinstance(plan, dict)
+            else {}
+        )
+
+        cost_model = (
+            trade_plan.get(
+                "cost_model"
+            )
+            or {}
+        )
+
+        try:
+            entry_amount = float(
+                position.get(
+                    "entry_amount_usdt"
+                )
+                or 0.0
+            )
+            tokens = float(
+                position.get(
+                    "token_amount"
+                )
+                or 0.0
+            )
+            stop = float(
+                current_stop
+                or 0.0
+            )
+            highest_value = float(
+                highest
+                or 0.0
+            )
+            sell_retention = float(
+                cost_model.get(
+                    "sell_retention_known"
+                )
+                or 0.0
+            )
+            sell_gas = max(
+                0.0,
+                float(
+                    cost_model.get(
+                        "sell_gas_usd"
+                    )
+                    or 0.0
+                ),
+            )
+        except (
+            TypeError,
+            ValueError,
+        ):
+            return (
+                current_stop,
+                None,
+                False,
+            )
+
+        if (
+            entry_amount <= 0
+            or tokens <= 0
+            or sell_retention <= 0
+        ):
+            return (
+                stop,
+                None,
+                False,
+            )
+
+        # Exact price where selling the remaining inventory
+        # recovers the original paper debit after measured
+        # sell retention and gas. No arbitrary ROI threshold.
+        break_even_price = (
+            entry_amount
+            + sell_gas
+        ) / (
+            tokens
+            * sell_retention
+        )
+
+        armed = (
+            highest_value
+            >= break_even_price
+        )
+
+        return (
+            max(
+                stop,
+                break_even_price,
+            )
+            if armed
+            else stop,
+            break_even_price,
+            armed,
+        )
+
+    @staticmethod
+    def _no_upside_failure(
+        *,
+        post_entry_history,
+        entry_price,
+        highest,
+        current,
+    ):
+        try:
+            entry = float(
+                entry_price
+                or 0.0
+            )
+            highest_value = float(
+                highest
+                or 0.0
+            )
+            current_value = float(
+                current
+                or 0.0
+            )
+        except (
+            TypeError,
+            ValueError,
+        ):
+            return False
+
+        prices = []
+
+        for value in (
+            post_entry_history
+            or ()
+        ):
+            try:
+                number = float(value)
+            except (
+                TypeError,
+                ValueError,
+            ):
+                continue
+
+            if number > 0:
+                prices.append(number)
+
+        # A fresh VUR_KAC entry that never traded above entry
+        # and continues lower on a second real observation has
+        # failed immediately. Exit without waiting for a large
+        # percentage loss or an arbitrary clock threshold.
+        return (
+            entry > 0
+            and current_value < entry
+            and highest_value <= entry
+            and len(prices) >= 2
+            and prices[-1] < prices[-2]
+        )
+
+    @staticmethod
     def _calculate_accounting(
         pos,
         current,
@@ -1196,6 +1363,17 @@ class PaperManager:
             or previous_stop
         )
 
+        (
+            new_stop,
+            break_even_price,
+            break_even_armed,
+        ) = self._profit_protection_floor(
+            pos=pos,
+            plan=plan,
+            highest=highest,
+            current_stop=new_stop,
+        )
+
         state = (
             self._json_dict(
                 pos.get(
@@ -1207,6 +1385,37 @@ class PaperManager:
         state[
             "last_stop"
         ] = new_stop
+
+        state[
+            "break_even_price"
+        ] = break_even_price
+
+        state[
+            "break_even_armed"
+        ] = bool(
+            break_even_armed
+        )
+
+        no_upside_failure = (
+            self._no_upside_failure(
+                post_entry_history=(
+                    post_entry_history
+                ),
+                entry_price=(
+                    pos.get(
+                        "entry_price"
+                    )
+                ),
+                highest=highest,
+                current=current,
+            )
+        )
+
+        state[
+            "no_upside_failure"
+        ] = bool(
+            no_upside_failure
+        )
 
         evidence = (
             self._hybrid_runtime_evidence(
@@ -1264,6 +1473,21 @@ class PaperManager:
                 lowest,
                 plan,
                 "HARD_SAFETY_EXIT",
+            )
+
+        if no_upside_failure:
+            self.db.update_position(
+                pos["id"],
+                common_update,
+            )
+
+            return self._close_math(
+                pos,
+                current,
+                highest,
+                lowest,
+                plan,
+                "MATHEMATICAL_NO_UPSIDE_EXIT",
             )
 
         if (

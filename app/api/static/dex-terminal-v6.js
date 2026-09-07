@@ -15,6 +15,9 @@
   const stateBadge = value => { const s=String(value||'COLD').toUpperCase(); const k=['HOT','WARM','COLD'].includes(s)?s.toLowerCase():'cold'; return `<span class="state ${k}">${esc(s)}</span>`; };
   const formatTime = value => { if(!value) return '—'; const d=new Date(value); return Number.isNaN(d.getTime())?esc(value):d.toLocaleString('tr-TR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}); };
 
+  const LEDGER_PAGE_SIZE = 200;
+  const MAX_LEDGER_PAGES = 25;
+
   let dashboard=null, universe=null, ledger=null, walletBrief=null, walletDetail=null, market=null, calendar=null;
   let radarFilter='ALL';
   let selectedWallet=null;
@@ -23,6 +26,56 @@
     $$('.terminal-page').forEach(node=>node.classList.toggle('active',node.dataset.page===page));
     $$('.nav-item').forEach(node=>node.classList.toggle('active',node.dataset.pageTarget===page));
     window.scrollTo({top:0,behavior:'instant'});
+  }
+
+  async function getAccountingLedger(){
+    const rows=[];
+    const seenIds=new Set();
+    let beforeId=null;
+    let pages=0;
+    let authority=null;
+
+    while(pages<MAX_LEDGER_PAGES){
+      const suffix=beforeId===null?'':`&before_id=${encodeURIComponent(beforeId)}`;
+      const page=await get(`/api/accounting-ledger-v2?limit=${LEDGER_PAGE_SIZE}${suffix}`);
+      const pageRows=Array.isArray(page?.rows)?page.rows:[];
+      authority=page?.authority||authority;
+
+      for(const row of pageRows){
+        const id=row?.id;
+        if(id===null||id===undefined||seenIds.has(String(id))) continue;
+        seenIds.add(String(id));
+        rows.push(row);
+      }
+
+      pages+=1;
+      const next=page?.next_before_id;
+      if(next===null||next===undefined||pageRows.length===0) break;
+      if(beforeId!==null && String(next)===String(beforeId)) break;
+      beforeId=next;
+    }
+
+    return {rows,pages,authority,complete:beforeId===null||pages<MAX_LEDGER_PAGES};
+  }
+
+  function accountingSummary(rows,dashboardSummary={}){
+    const source=Array.isArray(rows)?rows:[];
+    const openRows=source.filter(row=>String(row?.status||'OPEN').toUpperCase()!=='CLOSED');
+    const closedRows=source.filter(row=>String(row?.status||'').toUpperCase()==='CLOSED');
+    const openInvestment=openRows.reduce((sum,row)=>sum+(n(row?.entry_amount_usdt??row?.amount_usdt)||0),0);
+    const realizedNet=closedRows.reduce((sum,row)=>sum+(n(row?.net_pnl_usdt??row?.net_pnl)||0),0);
+    const wins=closedRows.filter(row=>(n(row?.net_pnl_usdt??row?.net_pnl)||0)>0).length;
+    const losses=closedRows.filter(row=>(n(row?.net_pnl_usdt??row?.net_pnl)||0)<0).length;
+    return {
+      openCount: openRows.length,
+      closedCount: closedRows.length,
+      openInvestment,
+      realizedNet,
+      wins,
+      losses,
+      dashboardOpenCount: dashboardSummary?.open_count,
+      dashboardOpenInvestment: dashboardSummary?.open_investment,
+    };
   }
 
   function candidateName(row){ return row.display_name || short(row.token0 || row.token1 || row.pool); }
@@ -72,8 +125,13 @@
     $('positionRows').innerHTML=rows.length?rows.map(row=>`<tr><td><div class="token-cell"><b>${esc(row.symbol||short(row.token))}</b><small>#${esc(row.id??'—')}</small></div></td><td>${esc(short(row.pool))}</td><td>${esc(row.trade_policy||'PAPER')}</td><td>${num(row.entry_price)}</td><td>${num(row.current_price??row.entry_price)}</td><td>${money(row.entry_amount_usdt)}</td><td class="${cls(row.net_pnl_usdt??row.net_pnl)}">${money(row.net_pnl_usdt??row.net_pnl)}</td><td class="${cls(row.roi_pct)}">${pct(row.roi_pct)}</td><td><button class="action-btn" data-preview-position="${esc(row.id)}">SATIŞI İNCELE</button></td></tr>`).join(''):'<tr><td colspan="9" class="muted">Açık paper pozisyon yok.</td></tr>';
   }
   function renderHistory(){
-    const rows=closedRows(); const wins=rows.filter(r=>(n(r.net_pnl_usdt??r.net_pnl)||0)>0).length; const losses=rows.filter(r=>(n(r.net_pnl_usdt??r.net_pnl)||0)<0).length; const pnl=rows.reduce((a,r)=>a+(n(r.net_pnl_usdt??r.net_pnl)||0),0);
-    $('historyCount').textContent=rows.length; $('historyWins').textContent=wins; $('historyLosses').textContent=losses; $('historyPnl').textContent=money(pnl); $('historyPnl').className=cls(pnl); $('historyMeta').textContent=`${rows.length} kapanmış kayıt`;
+    const rows=closedRows();
+    const summary=accountingSummary(ledger?.rows||[],dashboard?.summary||{});
+    $('historyCount').textContent=summary.closedCount;
+    $('historyWins').textContent=summary.wins;
+    $('historyLosses').textContent=summary.losses;
+    $('historyPnl').textContent=money(summary.realizedNet); $('historyPnl').className=cls(summary.realizedNet);
+    $('historyMeta').textContent=`${summary.closedCount} kapanmış kayıt · ${ledger?.pages||1} sayfa`;
     $('historyRows').innerHTML=rows.length?rows.map(row=>`<tr><td>${esc(row.id??'—')}</td><td><b>${esc(row.symbol||short(row.token))}</b></td><td>${num(row.entry_price)}</td><td>${num(row.exit_price??row.current_price)}</td><td class="${cls(row.net_pnl_usdt??row.net_pnl)}">${money(row.net_pnl_usdt??row.net_pnl)}</td><td class="${cls(row.roi_pct)}">${pct(row.roi_pct??(n(row.roi)!==null?n(row.roi)*100:null))}</td><td>${esc(row.close_reason||'—')}</td><td>${formatTime(row.closed_at??row.created_at)}</td></tr>`).join(''):'<tr><td colspan="8" class="muted">Kapanmış işlem yok.</td></tr>';
   }
 
@@ -107,9 +165,13 @@
   async function askVezir(question){ const q=String(question||$('vezirInput')?.value||'').trim(); if(!q)return; if($('vezirInput'))$('vezirInput').value=''; addChat(q,'user'); try{ const data=await post('/api/vezir/ask',{question:q}); addChat(data.answer||'Yanıt alınamadı.'); $('homeVezirAnswer').textContent=data.answer||'Yanıt alınamadı.'; }catch(e){ addChat(`Yanıt alınamadı: ${e.message}`); } }
 
   async function loadAll(){
-    const jobs=[['dashboard','/api/dashboard'],['universe','/api/universe-panel'],['ledger','/api/accounting-ledger-v2?limit=200'],['walletBrief','/api/wallet-brief-v3'],['walletDetail','/api/wallet-intelligence-v2'],['market','/api/market-brief-v3'],['calendar','/api/calendar-brief-v3']];
-    const results=await Promise.all(jobs.map(async ([key,url])=>{try{return [key,await get(url)]}catch(e){console.warn(key,e);return [key,null]}}));
-    for(const [key,value] of results){ if(key==='dashboard')dashboard=value; if(key==='universe')universe=value; if(key==='ledger')ledger=value; if(key==='walletBrief')walletBrief=value; if(key==='walletDetail')walletDetail=value; if(key==='market')market=value; if(key==='calendar')calendar=value; }
+    const jobs=[['dashboard','/api/dashboard'],['universe','/api/universe-panel'],['walletBrief','/api/wallet-brief-v3'],['walletDetail','/api/wallet-intelligence-v2'],['market','/api/market-brief-v3'],['calendar','/api/calendar-brief-v3']];
+    const [results,ledgerResult]=await Promise.all([
+      Promise.all(jobs.map(async ([key,url])=>{try{return [key,await get(url)]}catch(e){console.warn(key,e);return [key,null]}})),
+      getAccountingLedger().catch(e=>{console.warn('ledger',e);return null;})
+    ]);
+    for(const [key,value] of results){ if(key==='dashboard')dashboard=value; if(key==='universe')universe=value; if(key==='walletBrief')walletBrief=value; if(key==='walletDetail')walletDetail=value; if(key==='market')market=value; if(key==='calendar')calendar=value; }
+    if(ledgerResult) ledger=ledgerResult;
     renderDashboard(); renderRadar(); renderWallet(); renderMarket(); renderVezirOps();
   }
 

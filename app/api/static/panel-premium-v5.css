@@ -1,0 +1,143 @@
+/* Coinoskobi premium UI v5
+   Visual-only layer. Existing data contracts and authority boundaries stay unchanged. */
+
+:root{
+  --premium-bg:#031019;
+  --premium-bg2:#061721;
+  --premium-card:#071b27;
+  --premium-card2:#0a2230;
+  --premium-line:#15506a;
+  --premium-line2:#1f7899;
+  --premium-cyan:#35d7ff;
+  --premium-green:#28e69a;
+  --premium-red:#ff6072;
+  --premium-amber:#ffbd43;
+  --premium-text:#f1fbff;
+  --premium-muted:#89a7b5;
+}
+
+html,body{background:#020a11}
+body{overflow:hidden}
+.premium-shell{
+  height:100dvh;
+  min-height:100dvh;
+  display:grid;
+  grid-template-columns:220px minmax(0,1fr);
+  gap:0;
+  padding:0;
+  overflow:hidden;
+  background:
+    radial-gradient(circle at 78% -10%,rgba(22,123,164,.12),transparent 33%),
+    linear-gradient(180deg,#04121b 0%,#020910 100%);
+}
+
+.sidebar{
+  border-radius:0;
+  border-width:0 1px 0 0;
+  min-width:0;
+  display:grid;
+  grid-template-rows:auto 1fr auto auto;
+  padding:18px 10px 12px;
+  background:
+    linear-gradient(180deg,rgba(5,22,33,.995),rgba(2,11,18,.995));
+}
+.side-brand{display:flex;align-items:center;gap:10px;padding:0 10px 20px}
+.side-brand-mark{width:38px;height:38px;display:grid;place-items:center;color:#dff9ff;font-size:32px}
+.side-brand-name{font-size:22px;font-weight:950;letter-spacing:-.02em}
+.side-brand-sub{margin-top:3px;color:var(--premium-cyan);font-size:7px;font-weight:900;letter-spacing:.06em}
+.side-nav{display:flex;flex-direction:column;gap:5px}
+.side-nav-item{
+  width:100%;height:44px;display:grid;grid-template-columns:31px 1fr;gap:7px;align-items:center;
+  border:1px solid transparent;border-radius:7px;background:transparent;color:#91b0bf;text-align:left;
+  padding:0 10px;cursor:pointer;transition:.16s ease;
+}
+.side-nav-item span{font-size:18px;color:#76c8eb;text-align:center}
+.side-nav-item b{font-size:11px;font-weight:850}
+.side-nav-item:hover{background:#082232;color:#e9fbff;border-color:#123e52}
+.side-nav-item.active{background:linear-gradient(90deg,#0b3b53,#082838);color:#fff;border-color:#175b76;box-shadow:inset 3px 0 0 var(--premium-cyan)}
+.side-motto{padding:14px 14px 6px;color:#8aa9b7;font-size:9px;line-height:1.8;letter-spacing:.32em}
+.side-version{padding:0 14px;color:#44697a;font-size:8px}
+
+.workspace{min-width:0;min-height:0;display:grid;grid-template-rows:72px auto minmax(0,1fr) 30px;gap:7px;padding:0 8px 7px;overflow:hidden}
+.workspace-head{display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #0d3343;padding:9px 6px 8px}
+.workspace-kicker{font-size:8px;color:#65cce9;font-weight:900;letter-spacing:.13em}
+.rook-mini{font-size:15px;margin-right:4px}
+.workspace-title{font-size:23px;font-weight:950;letter-spacing:-.02em;margin-top:4px}
+.workspace-title span{color:#49cdf5;font-size:15px;font-weight:700;margin-left:6px}
+.workspace-subtitle{font-size:9px;color:#8daab7;margin-top:3px}
+.workspace-status{display:flex;gap:7px}
+.status-chip{min-width:132px;height:45px;border:1px solid #15536b;border-radius:8px;background:#061a25;display:flex;align-items:center;gap:8px;padding:0 11px}
+.status-chip .dot{width:9px;height:9px;border-radius:50%;box-shadow:0 0 12px currentColor}
+.dot.green{background:#20e38f;color:#20e38f}.dot.cyan{background:#31d9ff;color:#31d9ff}.dot.blue{background:#4b9dff;color:#4b9dff}
+.status-chip span{display:grid;gap:1px}.status-chip b{font-size:8px;color:#dffaff}.status-chip small{font-size:7px;color:#7597a6}
+
+.premium-shell .topbar{display:grid;grid-template-columns:105px 105px repeat(5,minmax(115px,1fr)) 185px;gap:7px}
+.premium-shell .brand{display:none}
+.premium-shell .ticker,.premium-shell .metric,.premium-shell .controls{min-height:72px;padding:10px 12px;border-radius:8px}
+.premium-shell .metric{display:grid;grid-template-columns:28px 1fr;gap:8px;align-items:center}
+.metric-icon{width:26px;height:26px;border-radius:6px;display:grid;place-items:center;color:#6ddcff;background:#082635;border:1px solid #15536b;font-size:14px}
+.metric-icon.amber{color:var(--premium-amber);border-color:#6e5620;background:#241d0b}
+.metric-copy{min-width:0}
+.premium-shell .label{font-size:8px;color:#a9c4cf;letter-spacing:.03em}
+.premium-shell .metric-value,.premium-shell .ticker-value{font-size:17px;margin-top:5px}
+.risk-track{height:5px;background:#102d3b;border-radius:20px;overflow:hidden;margin-top:5px}
+.risk-track span{display:block;height:100%;width:0;background:linear-gradient(90deg,#f0a72e,#ffd063);transition:width .35s ease}
+
+.section-eyebrow{font-size:7px;color:#54c9e9;font-weight:950;letter-spacing:.13em;margin-bottom:2px}
+.premium-shell .panel{background:linear-gradient(180deg,rgba(7,25,36,.995),rgba(3,14,22,.995));border-color:#14516a}
+.premium-shell .content.refined-content{grid-template-columns:minmax(0,1fr) 355px;gap:7px;min-height:0}
+.premium-shell .left.refined-left{grid-template-rows:minmax(275px,.9fr) minmax(245px,1fr);gap:7px;min-height:0}
+.premium-shell .refined-lower{grid-template-columns:minmax(300px,.82fr) minmax(470px,1.7fr);gap:7px}
+.premium-shell .radar-head,.premium-shell .head{background:linear-gradient(180deg,rgba(8,31,43,.7),rgba(5,20,29,.25))}
+.premium-shell .radar-row:hover,.premium-shell .radar-entry.open>.radar-row{background:linear-gradient(90deg,rgba(18,94,124,.25),rgba(4,25,36,.15))}
+.premium-shell .tab,.premium-shell .intel-tab,.premium-shell .panel-action,.premium-shell .ctrl{transition:.16s ease}
+.premium-shell .tab:hover,.premium-shell .intel-tab:hover,.premium-shell .panel-action:hover,.premium-shell .ctrl:hover:not(:disabled){filter:brightness(1.18)}
+.wallet-context{font-size:8px;color:#7196a6;line-height:1.4;margin:7px 1px 1px;padding:6px 7px;border-left:2px solid #1c617b;background:rgba(6,31,43,.45)}
+.premium-shell .vezir{grid-template-rows:90px 33px 47px minmax(0,1fr) 44px}
+.premium-shell .vezir-head{background:linear-gradient(145deg,#082332,#06141e)}
+.vezir-brief-strip{display:grid;grid-template-columns:repeat(3,1fr);gap:5px;padding:5px 7px;border-bottom:1px solid #123d50;background:#04141d}
+.vezir-brief-strip span{border:1px solid #123e51;border-radius:5px;padding:5px 6px;min-width:0}
+.vezir-brief-strip small{display:block;font-size:6px;color:#6f97a8}.vezir-brief-strip b{display:block;margin-top:2px;font-size:7px;color:#d9f5ff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.premium-shell .bubble{background:linear-gradient(180deg,#071d29,#061620);border-color:#17526a}
+
+/* Premium sell manager. It upgrades only the PAPER sell ticket. */
+.ticket.premium-sell-ticket{width:min(1040px,96vw);padding:0;max-height:91vh;overflow:auto;background:#04131c}
+.premium-sell-ticket>.section-eyebrow,.premium-sell-ticket>h3,.premium-sell-ticket>.ticket-grid,.premium-sell-ticket>#buyAmountWrap,.premium-sell-ticket>.ticket-estimate,.premium-sell-ticket>.ticket-error,.premium-sell-ticket>.confirm,.premium-sell-ticket>.sub{display:none}
+.premium-sell-ticket .ticket-close{z-index:4;right:14px;top:11px}
+.sell-manager{display:grid;gap:10px;padding:16px}
+.sell-manager-head{display:flex;align-items:center;justify-content:space-between;padding-right:30px}
+.sell-manager-head h2{font-size:18px;margin:3px 0 0}.sell-manager-head .paper-badge{border:1px solid #17647f;background:#062738;color:#6adfff;border-radius:6px;padding:7px 10px;font-size:8px;font-weight:900}
+.sell-position-strip{display:grid;grid-template-columns:1.5fr repeat(6,1fr);gap:0;border:1px solid #16546d;border-radius:8px;overflow:hidden;background:#071d28}
+.sell-position-strip>div{padding:10px 12px;border-right:1px solid #123e50;min-width:0}.sell-position-strip>div:last-child{border-right:0}
+.sell-position-strip small{display:block;color:#7598a8;font-size:7px}.sell-position-strip b{display:block;margin-top:5px;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sell-position-name{display:flex;align-items:center;gap:9px}.sell-token-mark{width:32px;height:32px;border-radius:50%;display:grid;place-items:center;background:#0b354a;border:1px solid #1f7192;color:#7de6ff;font-weight:950}
+.sell-main-grid{display:grid;grid-template-columns:.95fr 1.35fr 1fr;gap:10px}
+.sell-card{border:1px solid #15516a;border-radius:8px;background:linear-gradient(180deg,#071c28,#04141d);overflow:hidden}
+.sell-card-title{height:38px;display:flex;align-items:center;padding:0 11px;border-bottom:1px solid #123f52;font-size:10px;font-weight:950}
+.sell-levels{padding:8px;display:grid;gap:6px}.sell-level{display:grid;grid-template-columns:1fr auto;gap:10px;align-items:center;padding:9px;border:1px solid #123e50;border-radius:7px;background:#061823}.sell-level span{min-width:0}.sell-level small{display:block;color:#7799a8;font-size:7px;margin-top:2px}.sell-level b{font-size:10px}.sell-level strong{font-size:11px;text-align:right}.sell-level.now{border-color:#187958;background:rgba(15,87,61,.22)}.sell-level.now b,.sell-level.now strong{color:var(--premium-green)}.sell-level.warn{border-color:#785e20;background:rgba(99,75,16,.16)}.sell-level.warn b,.sell-level.warn strong{color:var(--premium-amber)}
+.sell-level-chart{position:relative;min-height:285px;padding:22px 52px 24px 28px;background:linear-gradient(180deg,rgba(4,23,33,.88),rgba(3,15,22,.96))}
+.sell-chart-axis{position:absolute;inset:22px 52px 24px 28px;border-left:1px solid #164052;border-bottom:1px solid #164052;background:repeating-linear-gradient(to bottom,transparent 0,transparent 19%,rgba(30,86,105,.18) 20%)}
+.sell-chart-line{position:absolute;left:28px;right:52px;height:1px;border-top:1px dashed currentColor}
+.sell-chart-line label{position:absolute;right:-47px;top:-8px;font-size:7px;font-weight:900;white-space:nowrap}
+.sell-chart-line.now{color:var(--premium-cyan)}.sell-chart-line.break{color:#98adba}.sell-chart-line.stop{color:var(--premium-amber)}.sell-chart-line.target{color:var(--premium-green)}.sell-chart-line.peak{color:#4f9fc0}
+.sell-guidance{padding:10px;display:grid;gap:8px}.sell-guidance-box{padding:10px;border:1px solid #174b60;border-radius:7px;background:#061923}.sell-guidance-box small{display:block;font-size:7px;color:#7599aa}.sell-guidance-box b{display:block;margin-top:5px;font-size:10px}.sell-guidance-box p{margin:6px 0 0;color:#b7cdd5;font-size:9px;line-height:1.48}
+.sell-bottom-grid{display:grid;grid-template-columns:1.35fr .85fr;gap:10px}.sell-vezir{padding:12px}.sell-vezir p{font-size:10px;line-height:1.55;color:#d6e9f0;margin:0}.sell-vezir-tags{display:flex;gap:6px;flex-wrap:wrap;margin-top:9px}.sell-vezir-tags span{padding:6px 8px;border:1px solid #155069;border-radius:6px;font-size:7px;color:#a8c8d4;background:#061a25}
+.sell-actions{padding:12px;display:grid;grid-template-columns:1fr;gap:8px}.sell-actions .confirm{display:block!important;margin:0;padding:12px;font-size:11px}.sell-wait{height:38px;border:1px solid #285469;border-radius:6px;background:#071a24;color:#b9d3dc;font-weight:900;cursor:pointer}
+.sell-paper-note{font-size:7px;color:#7194a3;text-align:center}
+
+/* Premium acceptance/accounting modal polish */
+.acceptance-card{background:linear-gradient(180deg,#071b26,#031119);border-color:#1b6f8d}
+.acceptance-card h3{font-size:16px;letter-spacing:.01em}
+.acceptance-kpis>div{background:#071d28;border-color:#154c62}
+.acceptance-table th{background:#061923;color:#8fc4d5}
+.acceptance-table tr:hover td{background:rgba(10,54,73,.2)}
+
+@media(max-width:1280px){
+  .premium-shell{grid-template-columns:178px minmax(0,1fr)}
+  .side-brand-name{font-size:18px}.side-nav-item{grid-template-columns:25px 1fr;padding:0 7px}.side-nav-item b{font-size:9px}
+  .premium-shell .topbar{grid-template-columns:90px 90px repeat(5,minmax(100px,1fr)) 165px}
+  .workspace-status .status-chip{min-width:112px}
+}
+@media(max-width:1000px){
+  body{overflow:auto}.premium-shell{height:auto;min-height:100dvh;grid-template-columns:1fr;overflow:visible}.sidebar{display:none}.workspace{height:auto;min-height:100dvh;overflow:visible}.workspace-status{display:none}.premium-shell .topbar{grid-template-columns:repeat(2,1fr)}.premium-shell .controls{grid-column:1/-1}.premium-shell .content.refined-content{grid-template-columns:1fr}.premium-shell .left.refined-left{grid-template-rows:auto auto}.premium-shell .refined-lower{grid-template-columns:1fr}.premium-shell .vezir{min-height:470px}.sell-position-strip{grid-template-columns:repeat(2,1fr)}.sell-main-grid,.sell-bottom-grid{grid-template-columns:1fr}.ticket.premium-sell-ticket{width:min(720px,97vw)}}
+@media(max-width:620px){.workspace{padding:0 5px 5px}.workspace-title{font-size:19px}.premium-shell .topbar{grid-template-columns:1fr 1fr}.sell-position-strip{grid-template-columns:1fr}.sell-position-strip>div{border-right:0;border-bottom:1px solid #123e50}.sell-level-chart{min-height:230px}}

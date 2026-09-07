@@ -5,153 +5,137 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate, max-age=0">
 <meta http-equiv="Pragma" content="no-cache">
-<title>Coinoskobi İşlem Merkezi</title>
-<link rel="stylesheet" href="/static/panel-canonical.css?v=6">
-<link rel="stylesheet" href="/static/panel-refinement-v3.css?v=3">
-<link rel="stylesheet" href="/static/panel-premium-v5.css?v=1">
-<link rel="stylesheet" href="/static/panel-premium-accounting-v5.css?v=1">
-<link rel="stylesheet" href="/static/panel-premium-wallet-v5.css?v=1">
-<link rel="stylesheet" href="/static/panel-premium-intel-v5.css?v=1">
-<link rel="stylesheet" href="/static/panel-visual-acceptance-v5.css?v=1">
+<title>Coinoskobi DEX İşlem Merkezi</title>
+<link rel="stylesheet" href="/static/dex-terminal-v6.css?v=1">
 </head>
 <body>
-<div class="app premium-shell">
-  <aside class="sidebar panel" aria-label="Ana navigasyon">
-    <div class="side-brand">
-      <div class="side-brand-mark" data-icon-slot="brand">♜</div>
+<div class="terminal-shell">
+  <aside class="terminal-sidebar">
+    <div class="brand-block">
+      <div class="brand-mark">♜</div>
       <div>
-        <div class="side-brand-name">Coinoskobi</div>
-        <div class="side-brand-sub">PİYASAYI BİR ADIM ÖNDE OKU</div>
+        <div class="brand-name">Coinoskobi</div>
+        <div class="brand-sub">DEX TRADING INTELLIGENCE</div>
       </div>
     </div>
 
-    <nav class="side-nav">
-      <button class="side-nav-item active" type="button" data-nav="home"><span data-icon-slot="home">⌂</span><b>İşlem Merkezi</b></button>
-      <button class="side-nav-item" type="button" data-nav="radar"><span data-icon-slot="radar">◎</span><b>Radar</b></button>
-      <button class="side-nav-item" type="button" data-nav="positions"><span data-icon-slot="positions">▤</span><b>Açık Pozisyonlar</b></button>
-      <button class="side-nav-item" type="button" data-nav="history"><span data-icon-slot="history">↶</span><b>İşlem Geçmişi</b></button>
-      <button class="side-nav-item" type="button" data-nav="wallet"><span data-icon-slot="wallet">◫</span><b>Cüzdan İstihbaratı</b></button>
-      <button class="side-nav-item" type="button" data-nav="news"><span data-icon-slot="news">▱</span><b>Haber Akışı</b></button>
-      <button class="side-nav-item" type="button" data-nav="market"><span data-icon-slot="market">⌁</span><b>Piyasa Verileri</b></button>
+    <nav class="terminal-nav" aria-label="DEX panel navigasyonu">
+      <button class="nav-item active" data-page-target="home" type="button"><span>⌂</span><b>İşlem Merkezi</b></button>
+      <button class="nav-item" data-page-target="radar" type="button"><span>◎</span><b>Radar</b></button>
+      <button class="nav-item" data-page-target="positions" type="button"><span>▤</span><b>Açık Pozisyonlar</b></button>
+      <button class="nav-item" data-page-target="history" type="button"><span>↶</span><b>İşlem Geçmişi</b></button>
+      <button class="nav-item" data-page-target="wallet" type="button"><span>◫</span><b>Cüzdan İstihbaratı</b></button>
+      <button class="nav-item" data-page-target="news" type="button"><span>▱</span><b>Haber Akışı</b></button>
+      <button class="nav-item" data-page-target="calendar" type="button"><span>□</span><b>Ekonomik Takvim</b></button>
+      <button class="nav-item" data-page-target="launch" type="button"><span>◇</span><b>Airdrop / IDO / ICO</b></button>
+      <button class="nav-item" data-page-target="vezir" type="button"><span>♜</span><b>Vezir 2.0</b></button>
     </nav>
 
-    <div class="side-motto">PLANLI<br>DİSİPLİNLİ<br>DAİMA ÖNDE</div>
-    <div class="side-version">PAPER_10K</div>
+    <div class="sidebar-foot">
+      <div class="mode-card"><b>PAPER_10K</b><span>DEX / READ ONLY</span><span>Live execution kapalı</span></div>
+      <div class="version">Coinoskobi v6.0</div>
+    </div>
   </aside>
 
-  <section class="workspace">
-    <header class="workspace-head">
-      <div class="workspace-title-wrap">
-        <div class="workspace-kicker"><span class="rook-mini">♜</span> COINOSKOBI</div>
-        <div class="workspace-title">İŞLEM MERKEZİ <span>PAPER_10K</span></div>
-        <div class="workspace-subtitle">Veriyi oku. Riski gör. Planlı işlem yap.</div>
+  <section class="terminal-main">
+    <header class="terminal-topbar">
+      <div class="topbar-market">
+        <span class="chain-pill">BSC</span>
+        <span class="market-copy"><b>PancakeSwap odaklı DEX operasyonu</b><small>Pool · likidite · hacim · cüzdan · haber</small></span>
       </div>
-
-      <div class="workspace-status">
-        <div class="status-chip"><i class="dot green"></i><span><b>PAPER MOD</b><small>Sanal portföy</small></span></div>
-        <div class="status-chip"><i class="dot cyan"></i><span><b>PANEL CANLI</b><small>Gerçek backend</small></span></div>
-        <div class="status-chip"><i class="dot blue"></i><span><b>OKUMA / PAPER</b><small>Live execution kapalı</small></span></div>
+      <div class="topbar-status">
+        <span class="status-dot green"></span><b id="topSystemState">PANEL VERİSİ OKUNUYOR</b>
+        <span class="top-time" id="topUpdatedAt">—</span>
+        <span class="mode-switch active">PAPER</span>
+        <span class="mode-switch locked">LIVE KAPALI</span>
       </div>
     </header>
 
-    <section class="topbar compact-topbar" aria-label="Portföy özeti">
-      <section class="panel ticker"><div class="label">BTC/USDT</div><div class="ticker-value" id="btcPrice">—</div><div class="sub" id="btcChange">BAĞLANIYOR</div></section>
-      <section class="panel ticker"><div class="label">ETH/USDT</div><div class="ticker-value" id="ethPrice">—</div><div class="sub" id="ethChange">BAĞLANIYOR</div></section>
-      <section class="panel metric"><div class="metric-icon" data-icon-slot="balance">▣</div><div><div class="label">BAKİYE</div><div class="metric-value" id="balance">—</div><div class="sub">PAPER EQUITY</div></div></section>
-      <section class="panel metric"><div class="metric-icon" data-icon-slot="daily">▥</div><div><div class="label">GÜNLÜK PNL</div><div class="metric-value" id="dailyPnl">—</div><div class="sub" id="dailyDate">—</div></div></section>
-      <section class="panel metric"><div class="metric-icon" data-icon-slot="total">⌁</div><div><div class="label">TOPLAM PNL</div><div class="metric-value" id="totalPnl">—</div><div class="sub" id="totalPnlPct">—</div></div></section>
-      <section class="panel metric"><div class="metric-icon" data-icon-slot="positions">▤</div><div><div class="label">AÇIK POZİSYON</div><div class="metric-value" id="openCount">—</div><div class="sub" id="openInvestment">—</div></div></section>
-      <section class="panel metric risk-metric"><div class="metric-icon amber" data-icon-slot="risk">⬡</div><div class="metric-copy"><div class="label">KULLANILAN RİSK</div><div class="metric-value" id="riskUsed">—</div><div class="risk-track"><span id="riskBar"></span></div><div class="sub" id="riskAmount">—</div></div></section>
-      <section class="panel controls"><button class="ctrl active" id="autoModeButton">OTOMATİK</button><button class="ctrl" id="manualModeButton">MANUEL</button><button class="ctrl" id="accountingButton">MUHASEBE</button><button class="ctrl" disabled>LIVE KAPALI</button><div class="sub" id="autoTradeState" style="grid-column:1/-1">AUTO: YÜKLENİYOR</div></section>
-    </section>
+    <main class="terminal-pages">
+      <section class="terminal-page active" data-page="home">
+        <div class="page-head">
+          <div><div class="eyebrow">DEX OPERASYON MERKEZİ</div><h1>İŞLEM MERKEZİ</h1><p>BSC üzerindeki DEX fırsatlarını, paper pozisyonları ve risk bağlamını tek ekranda izle.</p></div>
+        </div>
 
-    <main class="content refined-content">
-      <section class="left refined-left">
-        <section class="panel radar compact-radar" id="radarPanel">
-          <div class="radar-head">
-            <div>
-              <div class="section-eyebrow">FIRSAT TARAMA</div>
-              <div class="title">RADAR MERKEZİ</div>
-            </div>
-            <div class="tabs">
-              <button class="tab active" data-filter="ALL">TÜMÜ</button>
-              <button class="tab cold" data-filter="COLD">COLD</button>
-              <button class="tab warm" data-filter="WARM">WARM</button>
-              <button class="tab hot" data-filter="HOT">HOT</button>
-              <button class="tab active-pos" data-filter="ACTIVE">AKTİF</button>
-            </div>
-            <div class="meta" id="candidateCount">—</div>
-          </div>
-          <div class="radar-grid"><span>DURUM</span><span>TOKEN / POOL</span><span>SCORE</span><span>24H HACİM</span><span>FİYAT</span><span>5M</span><span>LİKİDİTE</span></div>
-          <div class="radar-body" id="radarBody"></div>
+        <section class="metric-grid" id="homeMetrics">
+          <article class="metric-card"><small>PAPER EQUITY</small><b id="metricEquity">—</b><span>Başlangıç 10.000 USDT</span></article>
+          <article class="metric-card"><small>GÜNLÜK PNL</small><b id="metricDailyPnl">—</b><span id="metricDailyMeta">—</span></article>
+          <article class="metric-card"><small>TOPLAM REALİZE PNL</small><b id="metricRealizedPnl">—</b><span id="metricRealizedPct">—</span></article>
+          <article class="metric-card"><small>AÇIK POZİSYON</small><b id="metricOpenCount">—</b><span id="metricExposure">—</span></article>
+          <article class="metric-card risk"><small>MODELLENEN RİSK</small><b id="metricRisk">—</b><span id="metricRiskAmount">—</span></article>
         </section>
 
-        <section class="lower refined-lower">
-          <section class="panel wallet-panel" id="walletPanel">
-            <div class="head"><div><div class="section-eyebrow">SMART MONEY</div><div class="title">CÜZDAN / BALİNA TAKİP</div></div><button class="panel-action" id="walletDetailButton" type="button">DETAY</button></div>
-            <div class="body">
-              <div class="cards3">
-                <div class="mini"><small>ADAY CÜZDAN</small><b id="walletCount">0</b></div>
-                <div class="mini"><small>BAŞARILI</small><b id="successCount">0</b></div>
-                <div class="mini"><small>HOLDINGS</small><b id="whaleCount">0</b></div>
-              </div>
-              <div class="wallet-context">Aday sayısı kalite skoru değildir. Detay ekranında neden aday oldukları ve başarı örneklemi gösterilir.</div>
-              <div class="scroll wallet-scroll"><table class="table"><thead><tr><th>CÜZDAN</th><th>KAYNAK</th><th>DURUM</th></tr></thead><tbody id="walletRows"></tbody></table></div>
-            </div>
-          </section>
+        <section class="home-grid">
+          <article class="terminal-card radar-card">
+            <div class="card-head"><div><small>DEX FIRSAT TARAMA</small><h2>RADAR</h2></div><div class="card-actions"><span id="homeRadarCount">—</span><button type="button" data-go="radar">TÜMÜNÜ GÖR</button></div></div>
+            <div class="table-wrap"><table><thead><tr><th>DURUM</th><th>POOL / TOKEN</th><th>DEX</th><th>SCORE</th><th>24H HACİM</th><th>5M</th><th>LİKİDİTE</th></tr></thead><tbody id="homeRadarRows"></tbody></table></div>
+          </article>
 
-          <section class="panel market-panel" id="marketPanel">
-            <div class="head"><div><div class="section-eyebrow">PİYASA İSTİHBARATI</div><div class="title" id="newsTitle">PİYASA HABERLERİ</div></div><div class="meta" id="newsMeta">ÖNEME GÖRE</div></div>
-            <div class="body market-body">
-              <div class="intel-tabs"><button class="intel-tab active" data-intel="NEWS">HABER</button><button class="intel-tab" data-intel="CALENDAR">EKONOMİK TAKVİM</button><button class="intel-tab" data-intel="LAUNCH">AIRDROP / IDO / ICO</button></div>
-              <div class="intel-pane active" id="newsPane"><div id="newsStream"></div></div>
-              <div class="intel-pane" id="calendarPane"><div id="calendarStream"></div></div>
-              <div class="intel-pane" id="launchPane"><div id="launchStream"></div></div>
-            </div>
-          </section>
+          <aside class="terminal-card vezir-mini-card">
+            <div class="vezir-mini-head"><img src="/static/vezir.png" alt="Vezir"><div><small>OPERASYON ASİSTANI</small><h2>VEZİR 2.0</h2><span class="online">● READ ONLY</span></div></div>
+            <div class="mini-facts" id="homeVezirFacts"></div>
+            <div class="quick-grid"><button data-quick-ask="Neden işlem açmadık?">NEDEN İŞLEM YOK?</button><button data-quick-ask="Şu an en önemli risk ne?">RİSK</button><button data-quick-ask="Son haberlerin DEX piyasasına etkisi ne?">HABER ETKİSİ</button></div>
+            <div class="mini-chat" id="homeVezirAnswer">Vezir doğrulanmış panel verisini kullanır; fiyat veya başarı oranı uydurmaz.</div>
+            <button class="primary-action" type="button" data-go="vezir">VEZİR 2.0'I AÇ</button>
+          </aside>
+        </section>
+
+        <section class="home-lower-grid">
+          <article class="terminal-card"><div class="card-head"><div><small>PAPER PORTFÖY</small><h2>AÇIK POZİSYONLAR</h2></div><button type="button" data-go="positions">TÜMÜ</button></div><div class="table-wrap compact"><table><thead><tr><th>TOKEN</th><th>GİRİŞ</th><th>SON</th><th>YATIRIM</th><th>PNL</th></tr></thead><tbody id="homePositionRows"></tbody></table></div></article>
+          <article class="terminal-card"><div class="card-head"><div><small>GERÇEKLEŞMİŞ</small><h2>SON İŞLEMLER</h2></div><button type="button" data-go="history">TÜMÜ</button></div><div class="table-wrap compact"><table><thead><tr><th>TOKEN</th><th>ÇIKIŞ</th><th>PNL</th><th>NEDEN</th></tr></thead><tbody id="homeHistoryRows"></tbody></table></div></article>
+          <article class="terminal-card"><div class="card-head"><div><small>PİYASA BAĞLAMI</small><h2>HABER AKIŞI</h2></div><button type="button" data-go="news">TÜMÜ</button></div><div class="feed-list" id="homeNewsRows"></div></article>
         </section>
       </section>
 
-      <aside class="panel vezir" id="vezirPanel">
-        <div class="vezir-head">
-          <img class="vezir-img" src="/static/vezir.png" alt="Vezir">
-          <div><div class="section-eyebrow">AI STRATEJİ ASİSTANI</div><div class="vezir-name">VEZİR</div><div class="vezir-sub">OPERASYON + HABER ETKİ ASİSTANI</div><div class="sub" id="systemState">—</div><div class="sub" id="providerState">—</div></div>
-        </div>
-        <div class="quick"><button data-ask="Neden işlem açmadık?">NEDEN YOK?</button><button data-ask="Şu an en önemli risk ne?">RİSK</button><button data-ask="Son haberlerin piyasamıza olası etkisi ne?">HABER ETKİ</button></div>
-        <div class="vezir-brief-strip"><span><small>PİYASA</small><b id="vezirMarketLabel">VERİ OKUNUYOR</b></span><span><small>ODAK</small><b>RİSK + FIRSAT</b></span><span><small>YETKİ</small><b>PAPER / READ ONLY</b></span></div>
-        <div class="chat" id="chatBody"><div class="bubble">VEZİR hazır. Radar, işlemler, risk, cüzdanlar veya haber etkisini sorabilirsin.</div></div>
-        <div class="chatbar"><input id="vezirInput" maxlength="500" placeholder="VEZİR'e sor..."><button id="vezirSend">GÖNDER</button></div>
-      </aside>
+      <section class="terminal-page" data-page="radar">
+        <div class="page-head split"><div><div class="eyebrow">DEX FIRSAT TARAMA</div><h1>RADAR</h1><p>BSC pool evrenindeki HOT / WARM / COLD adayları gerçek likidite, hacim ve kısa hareket verisiyle izle.</p></div><div class="segmented" id="radarFilters"><button class="active" data-radar-filter="ALL">TÜMÜ</button><button data-radar-filter="HOT">HOT</button><button data-radar-filter="WARM">WARM</button><button data-radar-filter="COLD">COLD</button></div></div>
+        <section class="metric-grid four"><article class="metric-card"><small>HOT</small><b id="radarHot">—</b></article><article class="metric-card"><small>WARM</small><b id="radarWarm">—</b></article><article class="metric-card"><small>COLD</small><b id="radarCold">—</b></article><article class="metric-card"><small>GÖRÜNÜR POOL</small><b id="radarVisible">—</b></article></section>
+        <article class="terminal-card full-card"><div class="card-head"><div><small>UNIVERSE READMODEL</small><h2>DEX POOL LİSTESİ</h2></div><span id="radarSource">—</span></div><div class="table-wrap tall"><table><thead><tr><th>DURUM</th><th>POOL / TOKEN</th><th>DEX</th><th>SCORE</th><th>FİYAT</th><th>5M</th><th>24H HACİM</th><th>LİKİDİTE</th><th>SNAPSHOT</th></tr></thead><tbody id="radarRows"></tbody></table></div></article>
+      </section>
+
+      <section class="terminal-page" data-page="positions">
+        <div class="page-head"><div><div class="eyebrow">PAPER PORTFÖY</div><h1>AÇIK POZİSYONLAR</h1><p>Giriş, son kayıtlı fiyat, yatırım, PNL ve satış incelemesini açık pozisyon bazında takip et.</p></div></div>
+        <section class="metric-grid four"><article class="metric-card"><small>AÇIK POZİSYON</small><b id="positionsCount">—</b></article><article class="metric-card"><small>AÇIK YATIRIM</small><b id="positionsInvestment">—</b></article><article class="metric-card"><small>AÇIK PNL</small><b id="positionsPnl">—</b></article><article class="metric-card"><small>MODELLENEN RİSK</small><b id="positionsRisk">—</b></article></section>
+        <article class="terminal-card full-card"><div class="card-head"><div><small>MANUEL + OTOMATİK PAPER</small><h2>POZİSYON DEFTERİ</h2></div><span>LIVE EXECUTION KAPALI</span></div><div class="table-wrap tall"><table><thead><tr><th>TOKEN</th><th>POOL</th><th>POLİTİKA</th><th>GİRİŞ</th><th>SON</th><th>YATIRIM</th><th>NET PNL</th><th>ROI</th><th>AKSİYON</th></tr></thead><tbody id="positionRows"></tbody></table></div></article>
+        <aside class="detail-drawer" id="positionPreview"><div class="drawer-empty">Bir pozisyonda “SATIŞI İNCELE” seç.</div></aside>
+      </section>
+
+      <section class="terminal-page" data-page="history">
+        <div class="page-head"><div><div class="eyebrow">GERÇEKLEŞMİŞ PAPER SONUÇLARI</div><h1>İŞLEM GEÇMİŞİ</h1><p>Yalnız kapanmış işlemler. Açık pozisyonlar bu ekrana karışmaz.</p></div></div>
+        <section class="metric-grid four"><article class="metric-card"><small>KAPANAN İŞLEM</small><b id="historyCount">—</b></article><article class="metric-card"><small>KAZANAN</small><b id="historyWins">—</b></article><article class="metric-card"><small>KAYBEDEN</small><b id="historyLosses">—</b></article><article class="metric-card"><small>REALİZE PNL</small><b id="historyPnl">—</b></article></section>
+        <article class="terminal-card full-card"><div class="card-head"><div><small>ACCOUNTING LEDGER</small><h2>KAPANMIŞ İŞLEMLER</h2></div><span id="historyMeta">—</span></div><div class="table-wrap tall"><table><thead><tr><th>ID</th><th>TOKEN</th><th>GİRİŞ</th><th>ÇIKIŞ</th><th>NET PNL</th><th>ROI</th><th>KAPANIŞ NEDENİ</th><th>TARİH</th></tr></thead><tbody id="historyRows"></tbody></table></div></article>
+      </section>
+
+      <section class="terminal-page" data-page="wallet">
+        <div class="page-head"><div><div class="eyebrow">BSC ON-CHAIN İSTİHBARAT</div><h1>CÜZDAN İSTİHBARATI</h1><p>Aday cüzdanların neden izlendiğini, başarı örneklemini, balina yönünü ve mevcut holdings kanıtını göster.</p></div></div>
+        <section class="metric-grid five"><article class="metric-card"><small>ADAY CÜZDAN</small><b id="walletCandidateCount">—</b></article><article class="metric-card"><small>BAŞARILI DOĞRULAMA</small><b id="walletSuccessful">—</b></article><article class="metric-card"><small>BALİNA KANITI</small><b id="walletWhaleCount">—</b></article><article class="metric-card"><small>HOLDINGS CÜZDANI</small><b id="walletHoldingsCount">—</b></article><article class="metric-card"><small>PROVIDER</small><b id="walletProvider">—</b></article></section>
+        <section class="two-col-main"><article class="terminal-card"><div class="card-head"><div><small>ADAYLAR</small><h2>CÜZDAN LİSTESİ</h2></div><span>SKOR UYDURULMAZ</span></div><div class="table-wrap tall"><table><thead><tr><th>CÜZDAN</th><th>NEDEN ADAY?</th><th>BAŞARI / ÖRNEKLEM</th><th>BALİNA / YÖN</th><th>SON HAREKET</th><th>DETAY</th></tr></thead><tbody id="walletRows"></tbody></table></div></article><aside class="terminal-card detail-card" id="walletDetail"><div class="empty-state">Bir cüzdan seç.</div></aside></section>
+      </section>
+
+      <section class="terminal-page" data-page="news">
+        <div class="page-head"><div><div class="eyebrow">PİYASA BAĞLAMI</div><h1>HABER AKIŞI</h1><p>DEX kararlarına bağlam sağlayan haberleri Türkçe özet, etki alanı ve operasyon notuyla gösterir. Haber tek başına işlem sinyali değildir.</p></div></div>
+        <article class="terminal-card full-card"><div class="card-head"><div><small>ÖNEM FİLTRESİ</small><h2>PİYASA HABERLERİ</h2></div><span id="newsCount">—</span></div><div class="news-list" id="newsRows"></div></article>
+      </section>
+
+      <section class="terminal-page" data-page="calendar">
+        <div class="page-head"><div><div class="eyebrow">MAKRO RİSK</div><h1>EKONOMİK TAKVİM</h1><p>Kripto risk iştahını etkileyebilecek WARM / HOT makro olaylar. CEX emir ekranı değildir.</p></div></div>
+        <article class="terminal-card full-card"><div class="card-head"><div><small>MAKRO OLAYLAR</small><h2>TAKVİM</h2></div><span id="calendarCount">—</span></div><div class="calendar-grid" id="calendarRows"></div></article>
+      </section>
+
+      <section class="terminal-page" data-page="launch">
+        <div class="page-head"><div><div class="eyebrow">YENİ TOKEN / LAUNCH TAKİBİ</div><h1>AIRDROP / IDO / ICO</h1><p>Launch, TGE, listing ve dağıtım olaylarını DEX fırsat bağlamı olarak izle.</p></div></div>
+        <article class="terminal-card full-card"><div class="card-head"><div><small>LAUNCH AKIŞI</small><h2>YENİ OLAYLAR</h2></div><span id="launchCount">—</span></div><div class="news-list" id="launchRows"></div></article>
+      </section>
+
+      <section class="terminal-page" data-page="vezir">
+        <div class="page-head"><div><div class="eyebrow">OPERASYON YORUMU / READ ONLY</div><h1>VEZİR 2.0</h1><p>Radar, açık paper işlemler, cüzdan kanıtı ve haber bağlamını kısa Türkçe operasyon özetine çevirir.</p></div></div>
+        <section class="vezir-page-grid"><article class="terminal-card vezir-chat-card"><div class="vezir-chat-head"><img src="/static/vezir.png" alt="Vezir"><div><small>COINOSKOBI</small><h2>VEZİR 2.0</h2><span class="online">● Sistem çalışıyor</span></div></div><div class="vezir-quick"><button data-quick-ask="Şu an neye dikkat etmeliyim?">GENEL ÖZET</button><button data-quick-ask="Neden işlem açmadık?">NEDEN İŞLEM YOK?</button><button data-quick-ask="Aday cüzdanlar bize ne söylüyor?">CÜZDANLAR</button><button data-quick-ask="Son haberlerin DEX piyasasına etkisi ne?">HABER ETKİSİ</button></div><div class="chat-stream" id="vezirMessages"><div class="chat-msg vezir">Doğrulanmış panel verisini kullanırım. Live execution, wallet ve signing yetkim yok.</div></div><div class="chat-input"><input id="vezirInput" maxlength="500" placeholder="Vezir'e sor..."><button id="vezirSend" type="button">GÖNDER</button></div></article><aside class="terminal-card ops-card"><div class="card-head"><div><small>GÜNCEL DURUM</small><h2>OPERASYON PANOSU</h2></div></div><div id="vezirOps"></div></aside></section>
+      </section>
     </main>
 
-    <footer class="panel footer"><span>CANLI EXECUTION KAPALI · WALLET AUTHORITY KAPALI · MANUEL İŞLEMLER SADECE PAPER</span><span>SON GÜNCELLEME: <b id="updatedAt">—</b></span></footer>
+    <footer class="terminal-footer"><span>BSC DEX · PAPER MODE · LIVE EXECUTION KAPALI · WALLET AUTHORITY KAPALI</span><span id="footerUpdatedAt">—</span></footer>
   </section>
 </div>
-
-<button id="watchDetailButton" type="button" hidden></button>
-
-<div class="modal" id="orderModal">
-  <div class="ticket">
-    <button class="ticket-close" id="ticketClose">×</button>
-    <div class="section-eyebrow">PAPER İŞLEM BİLETİ</div>
-    <h3 id="ticketTitle">—</h3>
-    <div class="ticket-grid"><span>SERVER REFERANS FİYATI</span><b id="ticketPrice">—</b><span>PARİTE</span><b id="ticketPair">—</b></div>
-    <div id="buyAmountWrap"><input id="orderAmount" type="number" min="0.01" step="0.01" value="10" inputmode="decimal" placeholder="USDT miktarı"><div class="quick-amounts"><button data-amount="1">1</button><button data-amount="10">10</button><button data-amount="25">25</button><button data-amount="50">50</button><button data-amount="100">100</button></div></div>
-    <div class="sub ticket-estimate" id="ticketEstimate">—</div>
-    <div class="ticket-error" id="ticketError"></div>
-    <button class="confirm buy" id="confirmOrder">ONAYLA</button>
-    <div class="sub" style="text-align:center">Bayat fiyatla emir reddedilir. Live execution, wallet ve signing kapalıdır.</div>
-  </div>
-</div>
-
-<script src="/static/panel-performance-v5.js?v=1"></script>
-<script src="/static/panel-canonical-acceptance.js?v=5"></script>
-<script src="/static/panel-canonical.js?v=9"></script>
-<script src="/static/panel-refinement-v3.js?v=6"></script>
-<script src="/static/panel-premium-v5.js?v=1"></script>
-<script src="/static/panel-premium-accounting-v5.js?v=1"></script>
-<script src="/static/panel-premium-wallet-v5.js?v=1"></script>
-<script src="/static/panel-premium-intel-v5.js?v=1"></script>
-<script src="/static/panel-visual-acceptance-v5.js?v=1"></script>
+<script src="/static/dex-terminal-v6.js?v=1"></script>
 </body>
 </html>

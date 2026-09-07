@@ -1,0 +1,93 @@
+/* Coinoskobi premium visual acceptance v5
+   Screenshot-driven polish only. No data or execution authority. */
+
+:root{
+  scrollbar-color:#285c70 #031018;
+  scrollbar-width:thin;
+}
+
+*::-webkit-scrollbar{width:9px;height:9px}
+*::-webkit-scrollbar-track{background:#031018}
+*::-webkit-scrollbar-thumb{background:#285c70;border:2px solid #031018;border-radius:10px}
+*::-webkit-scrollbar-thumb:hover{background:#34748c}
+
+/* Main screen readability and hierarchy. */
+.premium-shell .radar-row{min-height:38px}
+.premium-shell .radar-row .token{font-size:10px}
+.premium-shell .radar-row .small{font-size:8px}
+.premium-shell .table td{line-height:1.35}
+.premium-shell .workspace-subtitle{font-size:9px;color:#9bb4bf}
+.premium-shell .status-chip small{color:#87a9b7}
+.premium-shell .footer{font-size:7px;color:#7397a7}
+
+/* Risk and exposure are intentionally displayed as two different concepts. */
+.premium-shell .risk-metric{position:relative}
+.premium-shell .risk-metric.risk-has-exposure{border-color:#70591f;box-shadow:inset 0 0 0 1px rgba(255,189,67,.05)}
+.premium-shell .risk-exposure-line{display:flex;align-items:center;justify-content:space-between;gap:6px;margin-top:4px;padding-top:4px;border-top:1px solid rgba(255,189,67,.16);font-size:6px;color:#8eaab5;white-space:nowrap}
+.premium-shell .risk-exposure-line b{font-size:7px;color:#ffcc62}
+.premium-shell .risk-exposure-line span:last-child{overflow:hidden;text-overflow:ellipsis}
+.premium-shell .risk-metric.risk-has-exposure .risk-track{background:#20301d}
+
+/* Keep modal chrome dark; screenshots exposed bright native scrollbar gutters. */
+.premium-accounting-modal,.premium-wallet-modal,.premium-intel-modal{overscroll-behavior:contain}
+.premium-accounting-shell,.premium-wallet-shell,.premium-intel-shell{scrollbar-gutter:stable;background-color:#031018}
+.premium-accounting-close,.premium-wallet-close,.premium-intel-close{backdrop-filter:blur(8px)}
+
+/* Accounting: use the viewport better and keep the ledger readable. */
+.premium-accounting-shell{width:min(1380px,96vw);max-height:91vh}
+#premiumAccountingBody{padding:16px}
+.premium-accounting-kpis>div{min-height:70px}
+.premium-accounting-table th,.premium-accounting-table td{padding-left:9px;padding-right:9px}
+.premium-accounting-table td{font-size:8px}
+.premium-accounting-note{position:relative;overflow:hidden}
+.premium-accounting-note:before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:#ffbd43}
+.premium-history-card .premium-accounting-scroll{max-height:330px}
+
+/* Wallet: professional wording and denser use of the right detail column. */
+.premium-wallet-shell{width:min(1320px,96vw);max-height:91vh}
+.premium-wallet-note{border-left-color:#35d7ff}
+.premium-wallet-layout{grid-template-columns:minmax(0,1.65fr) minmax(350px,.85fr)}
+.premium-wallet-side{background:linear-gradient(180deg,#071c28,#04141d)}
+.wallet-selected{padding:14px}
+.wallet-selected p{font-size:9px;line-height:1.55}
+.premium-wallet-table td{line-height:1.42}
+.premium-wallet-table th{letter-spacing:.015em}
+.wallet-evidence.low{background:#081a23;color:#9aafb8}
+
+/* News acceptance: summary cards become a horizontal context strip, then news uses full width. */
+.premium-intel-shell{width:min(1280px,96vw);max-height:91vh}
+.premium-intel-pane.acceptance-news-pane{padding-top:0}
+.acceptance-news-grid{grid-template-columns:1fr!important;gap:8px}
+.acceptance-news-summary{display:grid!important;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px;padding:0;background:transparent;border:0;overflow:visible}
+.acceptance-news-summary .premium-intel-sidebox{min-height:72px;margin:0}
+.premium-news-item{padding:11px 12px}
+.premium-news-title{font-size:11px;line-height:1.4}
+.premium-news-summary{font-size:9px;line-height:1.5;color:#c3d6dd}
+.premium-news-action{font-size:9px;line-height:1.5}
+.premium-news-source{color:#738f9b;line-height:1.4}
+
+/* Vezir acceptance: remove the empty half-screen and make decision support readable. */
+.acceptance-vezir-layout{grid-template-columns:1fr!important;gap:8px}
+.acceptance-vezir-layout .premium-vezir-side{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px;order:-1}
+.acceptance-vezir-layout .premium-vezir-principle{min-height:84px}
+.acceptance-vezir-layout .premium-vezir-chat{min-height:390px}
+.premium-vezir-message{max-width:82%;font-size:10px;line-height:1.62;white-space:pre-line}
+.premium-vezir-message.user{max-width:72%}
+.premium-vezir-message small{opacity:.72}
+.premium-vezir-quick button{min-width:92px}
+.premium-vezir-input input{font-size:10px}
+
+/* Compact Vezir on the main page should remain useful without looking empty. */
+.premium-shell .vezir .chat{padding:9px}
+.premium-shell .vezir .bubble{font-size:9px;line-height:1.5}
+.premium-shell .vezir .chatbar input{font-size:9px}
+
+@media(max-width:1100px){
+  .acceptance-news-summary,.acceptance-vezir-layout .premium-vezir-side{grid-template-columns:1fr}
+  .premium-wallet-layout{grid-template-columns:1fr}
+}
+
+@media(max-width:680px){
+  .premium-accounting-shell,.premium-wallet-shell,.premium-intel-shell{width:100vw;max-height:100dvh;border-radius:0}
+  .premium-vezir-message,.premium-vezir-message.user{max-width:95%}
+}

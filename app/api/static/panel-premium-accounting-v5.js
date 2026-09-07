@@ -42,14 +42,34 @@
       .filter(row => String(row?.status || 'OPEN').toUpperCase() !== 'CLOSED');
   }
 
-  function markRow(row){
+  function marksById(marks){
+    const map = new Map();
+    (Array.isArray(marks?.rows) ? marks.rows : []).forEach(row => {
+      if (row?.id !== null && row?.id !== undefined) map.set(Number(row.id),row);
+    });
+    return map;
+  }
+
+  function markRow(row, markMap){
+    const live = markMap?.get(Number(row?.id)) || null;
+    if (live) {
+      return {
+        current:n(live.mark_price_usd),
+        markValue:n(live.mark_value_usdt),
+        markPnl:n(live.estimated_exit_net_pnl_usdt ?? live.mark_gross_pnl_usdt),
+        markRoi:n(live.estimated_exit_roi_pct),
+        source:String(live.mark_price_source || '—'),
+        age:n(live.mark_price_age_seconds),
+        fresh:Boolean(live.mark_price_fresh)
+      };
+    }
     const tokens = n(row?.token_amount);
     const current = n(row?.current_price ?? row?.entry_price);
     const entryAmount = n(row?.entry_amount_usdt);
     const markValue = tokens !== null && current !== null ? tokens * current : null;
     const markPnl = markValue !== null && entryAmount !== null ? markValue - entryAmount : null;
     const markRoi = markPnl !== null && entryAmount && entryAmount > 0 ? markPnl / entryAmount * 100 : null;
-    return {markValue,markPnl,markRoi};
+    return {current,markValue,markPnl,markRoi,source:'PAPER_DB',age:null,fresh:false};
   }
 
   function sumKnown(rows, getter){
@@ -108,15 +128,17 @@
       .slice(0,6);
   }
 
-  function accountingHtml(dashboard, ledger, watch, mode){
+  function accountingHtml(dashboard, ledger, watch, marks, mode){
     const summary = dashboard?.summary || {};
+    const markSummary = marks?.summary || {};
     const open = openPositions(dashboard);
+    const markMap = marksById(marks);
     const ledgerRows = Array.isArray(ledger?.rows) ? ledger.rows : [];
     const watchRows = Array.isArray(watch?.rows) ? watch.rows : [];
 
     const entryTotal = sumKnown(open,row => row.entry_amount_usdt);
-    const markTotal = sumKnown(open,row => markRow(row).markValue);
-    const markPnl = sumKnown(open,row => markRow(row).markPnl);
+    const markTotal = sumKnown(open,row => markRow(row,markMap).markValue);
+    const markPnl = sumKnown(open,row => markRow(row,markMap).markPnl);
     const realized = sumKnown(
       ledgerRows.filter(row => String(row?.status || '').toUpperCase() === 'CLOSED'),
       row => row.net_pnl_usdt ?? row.net_pnl
@@ -127,19 +149,25 @@
     const exposurePct = startCapital > 0 ? openInvestment / startCapital * 100 : null;
     const modeledRiskPct = n(summary.risk_used_pct);
     const modeledRisk = n(summary.open_risk);
+    const markEquity = n(markSummary.mark_equity_usdt);
+    const freshMarks = n(markSummary.fresh_mark_count) ?? 0;
+    const markCoverage = n(markSummary.net_mark_coverage_count) ?? 0;
     const riskWarning = openInvestment > 0 && (modeledRiskPct === null || modeledRiskPct === 0)
       ? 'Açık yatırım var fakat modellenen risk 0 görünüyor. Bu yüzden maruziyet ayrıca gösteriliyor; ikisi aynı kavram değildir.'
       : 'Modellenen risk backend risk_amount_usdt alanlarından gelir; açık maruziyet ise yatırılan sermayeyi gösterir.';
 
     const openRows = open.map(row => {
-      const mark = markRow(row);
+      const mark = markRow(row,markMap);
       const cls = mark.markPnl === null ? '' : mark.markPnl >= 0 ? 'pos' : 'neg';
       const protect = row.sl_price ?? row.stop_loss_price ?? null;
       const target = row.tp_price ?? row.take_profit_price ?? null;
+      const sourceLabel = mark.fresh
+        ? `${mark.source}${mark.age === null ? '' : ` · ${Math.round(mark.age)} sn`}`
+        : `${mark.source} · TAZE MARK YOK`;
       return `<tr>
         <td><b>${esc(row.symbol || short(row.token))}</b><small>#${esc(row.id ?? '—')} · ${esc(String(row.trade_policy || 'PAPER'))}</small></td>
         <td>${price(row.entry_price)}</td>
-        <td>${price(row.current_price ?? row.entry_price)}</td>
+        <td>${price(mark.current)}<small>${esc(sourceLabel)}</small></td>
         <td>${money(mark.markValue)}</td>
         <td>${money(row.entry_amount_usdt)}</td>
         <td class="${cls}">${money(mark.markPnl)}</td>
@@ -180,22 +208,22 @@
       </div>
 
       <div class="premium-accounting-kpis">
-        <div><small>PAPER EQUITY</small><b>${money(summary.equity)}</b><span>Başlangıç ${money(startCapital)}</span></div>
+        <div><small>MARK EQUITY</small><b>${money(markEquity ?? summary.equity)}</b><span>${freshMarks}/${open.length} taze mark · başlangıç ${money(startCapital)}</span></div>
         <div><small>AÇIK YATIRIM</small><b>${money(openInvestment)}</b><span>${pct(exposurePct)} sermaye maruziyeti</span></div>
-        <div><small>MARK DEĞERİ</small><b>${money(markTotal.known ? markTotal.total : null)}</b><span>${markTotal.known}/${open.length} fiyatlı pozisyon</span></div>
-        <div><small>GERÇEKLEŞMEMİŞ MARK PNL</small><b class="${markPnl.total >= 0 ? 'pos' : 'neg'}">${money(markPnl.known ? markPnl.total : null)}</b><span>Brüt anlık değer farkı</span></div>
+        <div><small>MARK DEĞERİ</small><b>${money(n(markSummary.mark_value_usdt) ?? (markTotal.known ? markTotal.total : null))}</b><span>${freshMarks}/${open.length} taze fiyat</span></div>
+        <div><small>TAHMİNİ ÇIKIŞ PNL</small><b class="${(n(markSummary.open_mark_net_pnl_usdt) ?? markPnl.total) >= 0 ? 'pos' : 'neg'}">${money(n(markSummary.open_mark_net_pnl_usdt) ?? (markPnl.known ? markPnl.total : null))}</b><span>${markCoverage}/${open.length} net mark kapsamı</span></div>
         <div><small>GERÇEKLEŞMİŞ PNL</small><b class="${realized.total >= 0 ? 'pos' : 'neg'}">${money(realized.known ? realized.total : summary.realized_net)}</b><span>Kapanmış işlemler</span></div>
         <div><small>MODELLENEN RİSK</small><b>${pct(modeledRiskPct)}</b><span>${money(modeledRisk)}</span></div>
       </div>
 
-      <div class="premium-accounting-note"><b>RİSK ≠ MARUZİYET</b><span>${esc(riskWarning)}</span></div>
+      <div class="premium-accounting-note"><b>RİSK ≠ MARUZİYET</b><span>${esc(riskWarning)} Mark fiyatları ayrı read-only fiyat katmanından gelir; paper DB değiştirilmez.</span></div>
 
       ${mode !== 'history' ? `
       <div class="premium-accounting-layout">
         <section class="premium-accounting-card premium-accounting-wide">
-          <div class="premium-accounting-card-head"><div><small>CANLI MARK-TO-MARKET</small><b>AÇIK POZİSYONLAR</b></div><span>${open.length} AÇIK</span></div>
+          <div class="premium-accounting-card-head"><div><small>CANLI MARK-TO-MARKET</small><b>AÇIK POZİSYONLAR</b></div><span>${freshMarks}/${open.length} TAZE</span></div>
           <div class="premium-accounting-scroll"><table class="premium-accounting-table">
-            <thead><tr><th>TOKEN</th><th>GİRİŞ</th><th>ANLIK</th><th>MARK DEĞERİ</th><th>YATIRIM</th><th>MARK PNL</th><th>ROI</th><th>KORUMA</th><th>HEDEF</th><th>AKSİYON</th></tr></thead>
+            <thead><tr><th>TOKEN</th><th>GİRİŞ</th><th>ANLIK MARK</th><th>MARK DEĞERİ</th><th>YATIRIM</th><th>TAHMİNİ NET PNL</th><th>ROI</th><th>KORUMA</th><th>HEDEF</th><th>AKSİYON</th></tr></thead>
             <tbody>${openRows || '<tr><td colspan="10">Açık paper pozisyon yok.</td></tr>'}</tbody>
           </table></div>
         </section>
@@ -208,7 +236,7 @@
       </div>
 
       <div class="premium-accounting-info-grid">
-        <div><b>MARK NEDİR?</b><p>Mevcut fiyatla pozisyonun tahmini anlık değeridir. Pozisyon kapanmış sayılmaz.</p></div>
+        <div><b>MARK NEDİR?</b><p>Taze pool fiyatıyla pozisyonun tahmini anlık değeridir. Paper pozisyon kapanmış sayılmaz ve DB muhasebesi değiştirilmez.</p></div>
         <div><b>REALİZE ÇIKIŞ NEDİR?</b><p>Satış tamamlandıktan sonra kayda geçen gerçek kapanış sonucudur. Mark ile aynı olmak zorunda değildir.</p></div>
         <div><b>1 USDT ÖĞRENME PROBELARI</b><p>${watchOpen} açık · ${watchClosed} kapalı. Normal paper pozisyonlardan ayrı counterfactual öğrenme hesabıdır.</p></div>
       </div>` : ''}
@@ -226,15 +254,16 @@
     const modal = ensureModal();
     const body = document.getElementById('premiumAccountingBody');
     modal.classList.add('open');
-    body.innerHTML = '<div class="premium-accounting-loading"><b>MUHASEBE VERİSİ OKUNUYOR...</b><span>Dashboard, ledger ve 1 USDT öğrenme kayıtları birleştiriliyor.</span></div>';
+    body.innerHTML = '<div class="premium-accounting-loading"><b>MUHASEBE VERİSİ OKUNUYOR...</b><span>Dashboard, canlı mark, ledger ve 1 USDT öğrenme kayıtları birleştiriliyor.</span></div>';
     try {
-      const [dashboard,ledger,watch] = await Promise.all([
+      const [dashboard,ledger,watch,marks] = await Promise.all([
         get('/api/dashboard'),
         get('/api/accounting-ledger-v2?limit=100'),
-        get('/api/watch-probes-detail-v2?limit=100')
+        get('/api/watch-probes-detail-v2?limit=100'),
+        get('/api/portfolio-marks-v2')
       ]);
       if (!modal.classList.contains('open')) return;
-      body.innerHTML = accountingHtml(dashboard,ledger,watch,mode);
+      body.innerHTML = accountingHtml(dashboard,ledger,watch,marks,mode);
     } catch (error) {
       body.innerHTML = `<div class="premium-accounting-loading"><b class="neg">MUHASEBE VERİSİ ALINAMADI</b><span>${esc(error.message)}</span></div>`;
     }

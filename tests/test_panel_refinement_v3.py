@@ -40,6 +40,8 @@ def test_launch_news_is_ranked_and_stays_advisory_only():
     assert row["state"] in {"WARM", "HOT"}
     assert row["trade_signal"] is False
     assert row["decision_authority"] is False
+    assert row["market_scope_tr"]
+    assert row["recommendation_tr"]
 
 
 def test_high_impact_calendar_is_hot_and_low_impact_is_filtered():
@@ -145,3 +147,35 @@ def test_refinement_keeps_authority_boundaries():
     assert "WALLET_ADDRESS" not in js
     assert "confirmed:true" not in js.replace(" ", "")
     assert "font-smoothing" in css
+
+
+def test_news_recommendation_is_plain_turkish_and_advisory_only():
+    row = _rank_news_item({
+        "source": "TEST",
+        "title": "Binance announces major BNB listing partnership",
+        "url": "https://example.test/news",
+    })
+
+    assert row is not None
+    assert row["market_scope_tr"] == "BNB / BSC"
+    assert isinstance(
+        row["recommendation_tr"],
+        str,
+    )
+    assert row["recommendation_tr"]
+    assert row["trade_signal"] is False
+    assert row["decision_authority"] is False
+
+
+def test_refinement_explains_wallet_candidate_count_and_news_action():
+    js = JS.read_text(
+        encoding="utf-8"
+    )
+
+    assert (
+        "ADAY CÜZDAN sayısı bir başarı skoru değildir"
+        in js
+    )
+
+    assert "NEDEN ADAY?" in js
+    assert "NE YAPMALI?" in js

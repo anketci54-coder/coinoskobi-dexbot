@@ -83,24 +83,61 @@
       : targetId === 'launchStream'
         ? (marketCache?.launch_items || [])
         : (marketCache?.items || []);
+
     const row = source[index];
+
     if (!row) return;
-    const sourceLine = row.source ? `<div class="acceptance-muted" style="margin-top:8px">KAYNAK: ${esc(row.source)}</div>` : '';
-    const dateLine = row.date || row.published_at ? `<div class="acceptance-muted" style="margin-top:5px">ZAMAN: ${esc(row.date || row.published_at)}</div>` : '';
+
+    const sourceLine = row.source
+      ? `<div class="acceptance-muted" style="margin-top:8px">KAYNAK: ${esc(row.source)}</div>`
+      : '';
+
+    const dateLine = row.date || row.published_at
+      ? `<div class="acceptance-muted" style="margin-top:5px">ZAMAN: ${esc(row.date || row.published_at)}</div>`
+      : '';
+
     const originalTitle = row.source_title
-      ? `<div class="mini" style="margin-top:8px"><small>GERÇEK HABER BAŞLIĞI</small><b style="white-space:normal;line-height:1.45">${esc(row.source_title)}</b></div>`
+      ? `<div class="mini" style="margin-top:8px">
+           <small>ORİJİNAL KAYNAK BAŞLIĞI</small>
+           <b style="white-space:normal;line-height:1.45">${esc(row.source_title)}</b>
+         </div>`
       : '';
-    const sourceUrl = String(row.url || '').trim();
-    const sourceLink = /^https?:\/\//i.test(sourceUrl)
-      ? `<div style="margin-top:10px"><a href="${esc(sourceUrl)}" target="_blank" rel="noopener noreferrer" style="color:var(--cyan);font-weight:900;text-decoration:none">KAYNAĞI AÇ ↗</a></div>`
-      : '';
+
+    const sourceUrl = String(
+      row.url || ''
+    ).trim();
+
+    const sourceLink =
+      /^https?:\/\//i.test(sourceUrl)
+        ? `<div style="margin-top:10px"><a href="${esc(sourceUrl)}" target="_blank" rel="noopener noreferrer" style="color:var(--cyan);font-weight:900;text-decoration:none">KAYNAĞI AÇ ↗</a></div>`
+        : '';
 
     openModal(
       `${row.state || 'COLD'} · ÖNEM ${row.importance_score ?? '—'}/100`,
-      `<div class="mini"><small>SINIF</small><b>${esc(row.title_tr || 'PİYASA')}</b></div>
+      `<div class="mini">
+         <small>OLAY</small>
+         <b>${esc(row.title_tr || 'PİYASA')}</b>
+       </div>
+
+       <div class="mini" style="margin-top:8px">
+         <small>BİZİM PİYASAYA ETKİ ALANI</small>
+         <b>${esc(row.market_scope_tr || 'GENEL KRİPTO')}</b>
+       </div>
+
+       <div class="mini" style="margin-top:8px">
+         <small>OLASI ETKİ</small>
+         <b style="white-space:normal;line-height:1.45">${esc(row.summary_tr || '—')}</b>
+       </div>
+
+       <div class="mini" style="margin-top:8px">
+         <small>NE YAPMALI?</small>
+         <b style="white-space:normal;line-height:1.45">${esc(row.recommendation_tr || 'Teyit bekle; haberi tek başına işlem sinyali olarak kullanma.')}</b>
+       </div>
+
        ${originalTitle}
-       <div class="mini" style="margin-top:8px"><small>OLASI PİYASA ETKİSİ</small><b style="white-space:normal;line-height:1.45">${esc(row.summary_tr || '—')}</b></div>
-       ${sourceLine}${dateLine}${sourceLink}`
+       ${sourceLine}
+       ${dateLine}
+       ${sourceLink}`
     );
   }
 
@@ -155,28 +192,162 @@
 
   async function showWalletDetail() {
     try {
-      const data = await get('/api/wallet-intelligence-v2');
-      const holdings = data.arkham_holdings || {};
-      const wallets = Array.isArray(holdings.wallets) ? holdings.wallets : [];
-      const changes = Array.isArray(holdings.changes) ? holdings.changes : [];
+      const data = await get(
+        '/api/wallet-intelligence-v2'
+      );
+
+      const holdings =
+        data.arkham_holdings || {};
+
+      const wallets =
+        Array.isArray(holdings.wallets)
+          ? holdings.wallets
+          : [];
+
+      const changes =
+        Array.isArray(holdings.changes)
+          ? holdings.changes
+          : [];
+
+      const candidates =
+        Array.isArray(data.rows)
+          ? data.rows
+          : [];
+
+      const candidateRows =
+        candidates.length
+          ? candidates.map(row => {
+              const source = String(
+                row.discovery_source
+                || row.source
+                || 'GÖZLEM'
+              ).toUpperCase();
+
+              const reason =
+                source === 'TRANSACTION_FROM_ONLY'
+                  ? 'BSC işlem akışında gönderen cüzdan olarak gözlendi'
+                  : source.replaceAll('_',' ');
+
+              const success =
+                String(
+                  row.success_state
+                  || 'UNKNOWN'
+                ).toUpperCase();
+
+              const sample =
+                row.success_sample_depth
+                ?? '—';
+
+              const whale =
+                String(
+                  row.whale_state
+                  || 'UNKNOWN'
+                ).toUpperCase();
+
+              const direction =
+                String(
+                  row.whale_direction
+                  || 'UNKNOWN'
+                ).toUpperCase();
+
+              return `<tr>
+                <td title="${esc(row.wallet_uid)}">${esc(short(row.wallet_uid))}</td>
+                <td>${esc(reason)}</td>
+                <td>${esc(success)} · örnek ${esc(sample)}</td>
+                <td>${esc(whale)} · ${esc(direction)}</td>
+              </tr>`;
+            }).join('')
+          : '<tr><td colspan="4">Aday cüzdan ayrıntısı henüz oluşmadı.</td></tr>';
+
       const html = `
         <div class="acceptance-kpis">
-          <div><small>ADAY CÜZDAN</small><b>${esc(walletCache?.candidates ?? '—')}</b></div>
-          <div><small>BAŞARILI</small><b>${esc(walletCache?.successful ?? data.successful_wallets ?? '—')}</b></div>
-          <div><small>HOLDINGS</small><b>${esc(wallets.length)}</b></div>
-          <div><small>DEĞİŞİM</small><b>${esc(changes.length)}</b></div>
+          <div>
+            <small>ADAY CÜZDAN</small>
+            <b>${esc(walletCache?.candidates ?? data.tracked_wallets ?? '—')}</b>
+          </div>
+          <div>
+            <small>BAŞARILI</small>
+            <b>${esc(walletCache?.successful ?? data.successful_wallets ?? '—')}</b>
+          </div>
+          <div>
+            <small>HOLDINGS</small>
+            <b>${esc(wallets.length)}</b>
+          </div>
+          <div>
+            <small>DEĞİŞİM</small>
+            <b>${esc(changes.length)}</b>
+          </div>
         </div>
-        <div class="acceptance-scroll"><table class="acceptance-table">
-          <thead><tr><th>CÜZDAN</th><th>PORTFÖY</th><th>VARLIK</th><th>SON TARAMA</th></tr></thead>
-          <tbody>${wallets.length ? wallets.map(wallet => `<tr>
-            <td title="${esc(wallet.address || wallet.wallet_uid)}">${esc(short(wallet.address || wallet.wallet_uid))}</td>
-            <td>${money(wallet.total_value_usd)}</td><td>${esc(wallet.asset_count ?? 0)}</td>
-            <td>${esc(ageText(num(wallet.last_success_at) === null ? null : Date.now()/1000 - num(wallet.last_success_at)))}</td>
-          </tr>`).join('') : '<tr><td colspan="4">Henüz başarılı cüzdan holdings kaydı yok.</td></tr>'}</tbody>
-        </table></div>`;
-      openModal('CÜZDAN / BALİNA TAKİP', html);
+
+        <div class="acceptance-muted" style="margin:10px 0">
+          ADAY CÜZDAN sayısı bir başarı skoru değildir.
+          Sistem tarafından izlemeye alınmış farklı cüzdanların sayısıdır.
+          Aşağıda neden aday oldukları ve başarı/balina durumu gösterilir.
+        </div>
+
+        <div class="meta" style="margin:8px 0 5px">
+          ADAYLAR · NEDEN İZLENİYOR?
+        </div>
+
+        <div class="acceptance-scroll" style="max-height:230px">
+          <table class="acceptance-table">
+            <thead>
+              <tr>
+                <th>CÜZDAN</th>
+                <th>NEDEN ADAY?</th>
+                <th>BAŞARI</th>
+                <th>BALİNA / YÖN</th>
+              </tr>
+            </thead>
+            <tbody>${candidateRows}</tbody>
+          </table>
+        </div>
+
+        <div class="meta" style="margin:14px 0 5px">
+          DOĞRULANMIŞ HOLDINGS
+        </div>
+
+        <div class="acceptance-scroll">
+          <table class="acceptance-table">
+            <thead>
+              <tr>
+                <th>CÜZDAN</th>
+                <th>PORTFÖY</th>
+                <th>VARLIK</th>
+                <th>SON TARAMA</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${
+                wallets.length
+                  ? wallets.map(wallet => `<tr>
+                      <td title="${esc(wallet.address || wallet.wallet_uid)}">${esc(short(wallet.address || wallet.wallet_uid))}</td>
+                      <td>${money(wallet.total_value_usd)}</td>
+                      <td>${esc(wallet.asset_count ?? 0)}</td>
+                      <td>${esc(
+                        ageText(
+                          num(wallet.last_success_at) === null
+                            ? null
+                            : Date.now()/1000 - num(wallet.last_success_at)
+                        )
+                      )}</td>
+                    </tr>`).join('')
+                  : '<tr><td colspan="4">Henüz başarılı cüzdan holdings kaydı yok.</td></tr>'
+              }
+            </tbody>
+          </table>
+        </div>`;
+
+      openModal(
+        'CÜZDAN / BALİNA TAKİP',
+        html
+      );
+
     } catch (error) {
-      openModal('CÜZDAN / BALİNA TAKİP', `<div class="acceptance-error">${esc(error.message)}</div>`);
+      openModal(
+        'CÜZDAN / BALİNA TAKİP',
+        `<div class="acceptance-error">${esc(error.message)}</div>`
+      );
     }
   }
 

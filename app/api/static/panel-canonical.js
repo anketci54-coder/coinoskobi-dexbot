@@ -80,9 +80,219 @@
   async function askVezir(question){const input=$('vezirInput'),q=String(question??input?.value??'').trim();if(!q||state.asking)return;state.asking=true;if(input){input.disabled=true;input.value=''}$('vezirSend').disabled=true;addBubble(q,'user');try{const codes={WHY_NO_TRADE:'1',RISK:'2',OPPORTUNITY:'3',WATCH:'4',POSITIONS:'5',SYSTEM:'6',GENERAL:'7'},ctx=state.vezirContext.slice(-4),marker=ctx.length?`\n<<VEZIR_CTX:${ctx.join(',')}>>`:'',wire=q.length+marker.length<=500?q+marker:q;const data=await getJSON('/api/vezir/ask',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({question:wire})});addBubble(data.answer||'Yanıt alınamadı.');const intent=String(data.intent||data.ai_routed_intent||'').toUpperCase(),code=codes[intent];if(code)state.vezirContext=[...state.vezirContext,code].slice(-4)}catch(e){addBubble(`Bağlantı hatası: ${e.message}`)}finally{state.asking=false;if(input)input.disabled=false;$('vezirSend').disabled=false;input?.focus()}}
 
   function ensureTicket(){return $('orderModal')}
-  function openTicket(side,row,position){state.order={side,row,position,price:n(row.price_usd??position?.current_price??position?.entry_price)};text('ticketTitle',`${side==='BUY'?'AL':'SAT'} · ${rowName(row)}`);text('ticketPrice',price(state.order.price));text('ticketPair',rowName(row));$('buyAmountWrap').style.display=side==='BUY'?'block':'none';$('confirmOrder').textContent=side==='BUY'?'ALIMI ONAYLA':'SATIŞI ONAYLA';$('confirmOrder').className=`confirm ${side==='BUY'?'buy':'sell'}`;text('ticketError','');refreshEstimate();ensureTicket().classList.add('open')}
+  function openTicket(side,row,position){
+    state.order={
+      side,
+      row,
+      position,
+      price:n(
+        row.price_usd
+        ??position?.current_price
+        ??position?.entry_price
+      ),
+      preview:null
+    };
+
+    text(
+      'ticketTitle',
+      `${side==='BUY'?'AL':'SAT'} · ${rowName(row)}`
+    );
+
+    text(
+      'ticketPrice',
+      price(state.order.price)
+    );
+
+    text(
+      'ticketPair',
+      rowName(row)
+    );
+
+    $('buyAmountWrap').style.display=
+      side==='BUY'
+        ?'block'
+        :'none';
+
+    $('confirmOrder').textContent=
+      side==='BUY'
+        ?'ALIMI ONAYLA'
+        :'SATIŞI ONAYLA';
+
+    $('confirmOrder').className=
+      `confirm ${side==='BUY'?'buy':'sell'}`;
+
+    text('ticketError','');
+
+    refreshEstimate();
+
+    ensureTicket().classList.add('open');
+
+    if(side==='SELL'){
+      loadSellPreview();
+    }
+  }
+
+  async function loadSellPreview(){
+    const order=state.order;
+
+    if(
+      !order
+      ||order.side!=='SELL'
+      ||!order.position
+    ){
+      return;
+    }
+
+    const estimate=$('ticketEstimate');
+
+    if(estimate){
+      estimate.style.whiteSpace='pre-line';
+      estimate.textContent=
+        'Güncel server satış hesabı hazırlanıyor...';
+    }
+
+    try{
+      const data=await getJSON(
+        '/api/manual-paper/preview-v2',
+        {
+          method:'POST',
+          headers:{
+            'Content-Type':'application/json'
+          },
+          body:JSON.stringify({
+            position_id:order.position?.id||null,
+            pool:order.row?.pool||order.position?.pool||null,
+            token:
+              order.row?.base_token
+              ||order.row?.token0
+              ||order.position?.token
+              ||null
+          })
+        }
+      );
+
+      if(state.order!==order){
+        return;
+      }
+
+      order.preview=data;
+
+      if(n(data.reference_price)!==null){
+        order.price=n(
+          data.reference_price
+        );
+
+        text(
+          'ticketPrice',
+          price(order.price)
+        );
+      }
+
+      refreshEstimate();
+
+    }catch(error){
+      if(state.order!==order){
+        return;
+      }
+
+      text(
+        'ticketError',
+        `Satış önizlemesi alınamadı: ${error.message}`
+      );
+
+      refreshEstimate();
+    }
+  }
+
   function closeTicket(){ensureTicket()?.classList.remove('open');state.order=null}
-  function refreshEstimate(){const o=state.order;if(!o)return;const e=$('ticketEstimate');if(o.side==='BUY'){const amount=n($('orderAmount')?.value),tokens=o.price&&amount?amount/o.price:null;e.textContent=`${amount===null?'—':amount.toFixed(2)} USDT → yaklaşık ${tokens===null?'—':tokens.toLocaleString('tr-TR',{maximumFractionDigits:8})} token`}else{const p=o.position||{},tokens=n(p.token_amount)||0,proceeds=o.price?tokens*o.price:null,entry=n(p.entry_amount_usdt)||0,pnl=proceeds===null?null:proceeds-entry;e.textContent=`${tokens.toLocaleString('tr-TR',{maximumFractionDigits:8})} token → yaklaşık ${proceeds===null?'—':proceeds.toFixed(2)} USDT · ham PNL ${pnl===null?'—':pnl.toFixed(2)} USDT`}}
+  function refreshEstimate(){
+    const o=state.order;
+
+    if(!o){
+      return;
+    }
+
+    const e=$('ticketEstimate');
+
+    if(!e){
+      return;
+    }
+
+    if(o.side==='BUY'){
+      e.style.whiteSpace='normal';
+
+      const amount=n(
+        $('orderAmount')?.value
+      );
+
+      const tokens=
+        o.price&&amount
+          ?amount/o.price
+          :null;
+
+      e.textContent=
+        `${amount===null?'—':amount.toFixed(2)} USDT`
+        +` → yaklaşık `
+        +`${tokens===null?'—':tokens.toLocaleString(
+          'tr-TR',
+          {maximumFractionDigits:8}
+        )} token`;
+
+      return;
+    }
+
+    const preview=o.preview;
+
+    if(preview){
+      e.style.whiteSpace='pre-line';
+
+      const result=[
+        `ŞİMDİ SATARSAN: ${money(preview.proceeds_usdt)}`
+          +` · NET ${money(preview.net_pnl_usdt)}`
+          +` (${pct(preview.roi_pct)})`,
+
+        `BAŞA BAŞ: ${price(preview.break_even_price)}`
+          +` · ZİRVE: ${price(preview.highest_price)}`
+          +` · 5M: ${pct(preview.change_5m_pct)}`,
+
+        `REHBER: ${preview.guidance_label||'—'}`
+          +` — ${preview.guidance_text||'—'}`
+      ];
+
+      e.textContent=result.join('
+');
+      return;
+    }
+
+    e.style.whiteSpace='normal';
+
+    const p=o.position||{};
+    const tokens=n(p.token_amount)||0;
+    const proceeds=
+      o.price
+        ?tokens*o.price
+        :null;
+
+    const entry=n(
+      p.entry_amount_usdt
+    )||0;
+
+    const pnl=
+      proceeds===null
+        ?null
+        :proceeds-entry;
+
+    e.textContent=
+      `${tokens.toLocaleString(
+        'tr-TR',
+        {maximumFractionDigits:8}
+      )} token`
+      +` → yaklaşık `
+      +`${proceeds===null?'—':proceeds.toFixed(2)} USDT`
+      +` · ön tahmin PNL `
+      +`${pnl===null?'—':pnl.toFixed(2)} USDT`;
+  }
+
   async function submitOrder(){const o=state.order;if(!o||!state.dashboard){if(o)closeTicket();return}const btn=$('confirmOrder');btn.disabled=true;text('ticketError','');const payload={confirmed:true,side:o.side,pool:o.row?.pool||o.position?.pool||null,token:o.row?.base_token||o.row?.token0||o.position?.token||null,symbol:o.row?.base_symbol||rowName(o.row),position_id:o.position?.id||null};if(o.side==='BUY')payload.amount_usdt=n($('orderAmount')?.value);try{await getJSON('/api/manual-paper/order-v2',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});closeTicket();await refresh()}catch(e){text('ticketError',e.message)}finally{btn.disabled=false}}
 
   function clearRestoredModals(){closeTicket();const shell=$('acceptanceModal');if(shell){shell.classList.remove('open');const title=$('acceptanceTitle'),body=$('acceptanceBody');if(title)title.textContent='';if(body)body.innerHTML=''}}

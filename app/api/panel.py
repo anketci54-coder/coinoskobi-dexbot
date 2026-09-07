@@ -2424,6 +2424,31 @@ def vezir_ask(
         except Exception:
             operations["market"] = {"items": []}
 
+    if any(
+        marker in question.casefold()
+        for marker in (
+            "cüzdan",
+            "cuzdan",
+            "wallet",
+            "balina",
+        )
+    ):
+        try:
+            from app.api.panel_workspace_v3 import wallet_brief
+
+            operations["wallet"] = wallet_brief(
+                PAPER_DB,
+                limit=5,
+            )
+
+        except Exception:
+            operations["wallet"] = {
+                "candidates": 0,
+                "successful": 0,
+                "holdings_wallets": 0,
+                "rows": [],
+            }
+
     baseline = answer_vezir_query(
         question,
         operations,

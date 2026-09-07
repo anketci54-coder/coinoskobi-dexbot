@@ -430,6 +430,294 @@ def _sell_accounting(position: dict[str, Any], price: float) -> dict[str, float]
     }
 
 
+
+def _latest_m5_change(
+    cache_db: Path,
+    *,
+    pool: str | None,
+) -> float | None:
+    if not cache_db.exists() or not pool:
+        return None
+
+    connection = None
+
+    try:
+        connection = sqlite3.connect(
+            f"file:{cache_db}?mode=ro",
+            uri=True,
+            timeout=3,
+        )
+        connection.row_factory = sqlite3.Row
+
+        table = connection.execute(
+            """
+            SELECT 1
+            FROM sqlite_master
+            WHERE type='table'
+              AND name='universe_pool_registry'
+            """
+        ).fetchone()
+
+        if table is None:
+            return None
+
+        columns = {
+            str(row[1])
+            for row in connection.execute(
+                "PRAGMA table_info(universe_pool_registry)"
+            ).fetchall()
+        }
+
+        if "latest_change_5m" not in columns:
+            return None
+
+        row = connection.execute(
+            """
+            SELECT latest_change_5m
+            FROM universe_pool_registry
+            WHERE lower(pool)=lower(?)
+            ORDER BY latest_snapshot_at DESC
+            LIMIT 1
+            """,
+            (pool,),
+        ).fetchone()
+
+        return (
+            _num(row["latest_change_5m"])
+            if row is not None
+            else None
+        )
+
+    except sqlite3.Error:
+        return None
+
+    finally:
+        if connection is not None:
+            connection.close()
+
+
+def _manual_sell_guidance(
+    *,
+    roi_pct: float,
+    change_5m_pct: float | None,
+) -> tuple[str, str, str]:
+    if change_5m_pct is None:
+        if roi_pct > 0:
+            return (
+                "PROFIT_M5_UNKNOWN",
+                "KÂR VAR · M5 TEYİDİ YOK",
+                (
+                    "Pozisyon kârda fakat kısa hareket verisi eksik. "
+                    "Kârı koruma açısından güncel satış fiyatını değerlendir."
+                ),
+            )
+
+        return (
+            "M5_UNKNOWN",
+            "TEYİT EKSİK",
+            (
+                "Kısa hareket verisi eksik. "
+                "Karar vermeden önce güncel fiyat hareketini izle."
+            ),
+        )
+
+    if roi_pct > 0 and change_5m_pct < 0:
+        return (
+            "PROFIT_MOMENTUM_WEAKENING",
+            "KÂRI KORU",
+            (
+                "Pozisyon kârda fakat 5 dakikalık hareket zayıflıyor. "
+                "Satışı değerlendir; kârın geri verilmesini izle."
+            ),
+        )
+
+    if roi_pct > 0 and change_5m_pct > 0:
+        return (
+            "PROFIT_MOMENTUM_POSITIVE",
+            "MOMENTUM SÜRÜYOR",
+            (
+                "Pozisyon kârda ve kısa hareket pozitif. "
+                "Momentum sürerken izle; zayıflama halinde satışı değerlendir."
+            ),
+        )
+
+    if roi_pct <= 0 and change_5m_pct < 0:
+        return (
+            "LOSS_PRESSURE",
+            "ZARAR BASKISI",
+            (
+                "Pozisyon zararda ve kısa hareket de negatif. "
+                "Zararın büyümesine karşı satışı değerlendir."
+            ),
+        )
+
+    return (
+        "RECOVERY_OR_FLAT",
+        "TOPARLANMAYI İZLE",
+        (
+            "Pozisyon henüz kârda değil fakat kısa hareket negatif değil. "
+            "Toparlanmanın devam edip etmediğini izle."
+        ),
+    )
+
+
+def _preview_sell(
+    *,
+    paper_db: Path,
+    cache_db: Path,
+    payload: dict[str, Any],
+) -> dict[str, Any]:
+    token = str(payload.get("token") or "").strip()
+    pool = str(payload.get("pool") or "").strip()
+
+    connection = _connect(paper_db)
+
+    try:
+        row = _open_position(
+            connection,
+            position_id=payload.get("position_id"),
+            pool=pool or None,
+            token=token or None,
+        )
+
+        if row is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Açık paper pozisyon bulunamadı",
+            )
+
+        position = dict(row)
+
+    finally:
+        connection.close()
+
+    quote, price, age = _fresh_quote(
+        cache_db,
+        pool=str(position.get("pool") or pool or ""),
+        token=str(position.get("token") or token or ""),
+    )
+
+    accounting = _sell_accounting(
+        position,
+        price,
+    )
+
+    entry_price = float(
+        position.get("entry_price")
+        or 0.0
+    )
+
+    entry_amount = float(
+        position.get("entry_amount_usdt")
+        or 0.0
+    )
+
+    token_amount = float(
+        position.get("token_amount")
+        or 0.0
+    )
+
+    roi_pct = float(
+        accounting["roi"]
+    ) * 100.0
+
+    change_5m_pct = _latest_m5_change(
+        cache_db,
+        pool=str(position.get("pool") or ""),
+    )
+
+    code, label, guidance = (
+        _manual_sell_guidance(
+            roi_pct=roi_pct,
+            change_5m_pct=change_5m_pct,
+        )
+    )
+
+    break_even_price = None
+
+    if (
+        entry_price > 0
+        and entry_amount > 0
+        and token_amount > 0
+    ):
+        try:
+            at_entry = _sell_accounting(
+                position,
+                entry_price,
+            )
+
+            friction_at_entry = max(
+                0.0,
+                -float(at_entry["net"]),
+            )
+
+            break_even_price = (
+                entry_amount
+                + friction_at_entry
+            ) / token_amount
+
+        except Exception:
+            break_even_price = None
+
+    high = max(
+        float(
+            position.get("highest_price")
+            or entry_price
+            or price
+        ),
+        price,
+    )
+
+    low = min(
+        float(
+            position.get("lowest_price")
+            or entry_price
+            or price
+        ),
+        price,
+    )
+
+    return {
+        "ok": True,
+        "side": "SELL_PREVIEW",
+        "position_id": int(position["id"]),
+        "symbol": position.get("symbol"),
+        "token": position.get("token"),
+        "pool": position.get("pool"),
+
+        "entry_price": entry_price,
+        "reference_price": price,
+        "reference_price_age_seconds": age,
+        "reference_price_source": (
+            quote.get("quote_source")
+        ),
+
+        "break_even_price": break_even_price,
+        "highest_price": high,
+        "lowest_price": low,
+        "change_5m_pct": change_5m_pct,
+
+        "proceeds_usdt": float(
+            accounting["proceeds"]
+        ),
+        "net_pnl_usdt": float(
+            accounting["net"]
+        ),
+        "roi_pct": roi_pct,
+
+        "guidance_code": code,
+        "guidance_label": label,
+        "guidance_text": guidance,
+
+        "paper_only": True,
+        "preview_only": True,
+        "decision_authority": False,
+        "live_execution": False,
+        "wallet_authority": False,
+        "signing_authority": False,
+    }
+
+
 def _sell(*, paper_db: Path, cache_db: Path, payload: dict[str, Any]) -> dict[str, Any]:
     token = str(payload.get("token") or "").strip()
     pool = str(payload.get("pool") or "").strip()
@@ -500,6 +788,14 @@ def _sell(*, paper_db: Path, cache_db: Path, payload: dict[str, Any]) -> dict[st
 
 
 def register_manual_paper_routes_v2(app, *, paper_db: Path, cache_db: Path) -> None:
+    @app.post("/api/manual-paper/preview-v2")
+    def manual_paper_preview_v2(payload: dict[str, Any]) -> dict[str, Any]:
+        return _preview_sell(
+            paper_db=paper_db,
+            cache_db=cache_db,
+            payload=payload,
+        )
+
     @app.post("/api/manual-paper/order-v2")
     def manual_paper_order_v2(payload: dict[str, Any]) -> dict[str, Any]:
         if payload.get("confirmed") is not True:

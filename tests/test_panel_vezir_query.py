@@ -98,3 +98,63 @@ def test_vezir_turkish_capital_i_positions_intent():
     assert r["intent"] == "POSITIONS"
     assert "18 işlem kapanmış" in r["answer"]
     assert "-10.50 USDT" in r["answer"]
+
+
+def test_vezir_wallet_explains_candidate_count_is_not_score():
+    operations = {
+        **BASE,
+        "wallet": {
+            "candidates": 82,
+            "successful": 7,
+            "holdings_wallets": 4,
+        },
+    }
+
+    result = answer_vezir_query(
+        "Aday cüzdan 82 ne demek?",
+        operations,
+    )
+
+    assert result["intent"] == "WALLET"
+    assert "82 aday cüzdan" in result["answer"]
+    assert "başarı skoru değil" in result["answer"]
+    assert "7 cüzdan başarılı" in result["answer"]
+
+
+def test_vezir_news_explains_effect_and_what_to_do():
+    operations = {
+        **BASE,
+        "market": {
+            "items": [
+                {
+                    "title_tr": "REGÜLASYON · NEGATİF",
+                    "importance_score": 90,
+                    "market_scope_tr": "GENEL KRİPTO",
+                    "summary_tr": "GENEL KRİPTO: olası etki negatif.",
+                    "recommendation_tr": "Yeni girişte temkinli ol.",
+                }
+            ]
+        },
+    }
+
+    result = answer_vezir_query(
+        "Son haberlerin piyasamıza etkisi ne?",
+        operations,
+    )
+
+    assert result["intent"] == "NEWS_IMPACT"
+    assert "GENEL KRİPTO" in result["answer"]
+    assert "Ne yapmalı" in result["answer"]
+    assert "temkinli" in result["answer"]
+
+
+def test_vezir_general_answer_is_operational_not_technical():
+    result = answer_vezir_query(
+        "Genel özet ver",
+        BASE,
+    )
+
+    assert result["intent"] == "GENERAL"
+    assert "paper işlem" in result["answer"]
+    assert "WATCH" in result["answer"]
+    assert result["technical"] is None

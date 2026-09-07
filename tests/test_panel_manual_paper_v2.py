@@ -5,7 +5,7 @@ import pytest
 from fastapi import HTTPException
 
 import app.api.panel_manual_paper_v2 as manual_module
-from app.api.panel_manual_paper_v2 import _buy, _sell
+from app.api.panel_manual_paper_v2 import _buy, _preview_sell, _sell
 from app.paper.schema import ensure_paper_schema
 from app.risk.paper_position_sizing import paper_available_capital_usdt
 
@@ -423,4 +423,107 @@ def test_fresh_cache_does_not_make_ondemand_request(
     assert (
         bought["reference_price_source"]
         == "GECKO_POOL_CACHE"
+    )
+
+
+def test_manual_sell_preview_is_read_only_and_uses_fresh_price(
+    tmp_path,
+):
+    paper = tmp_path / "paper.db"
+    cache = tmp_path / "cache.db"
+
+    _paper_db(paper)
+    _cache_db(
+        cache,
+        price=2.0,
+    )
+
+    bought = _buy(
+        paper_db=paper,
+        cache_db=cache,
+        payload={
+            "token": TOKEN,
+            "pool": POOL,
+            "symbol": "TEST",
+            "amount_usdt": 100.0,
+        },
+    )
+
+    _set_price(
+        cache,
+        2.2,
+    )
+
+    preview = _preview_sell(
+        paper_db=paper,
+        cache_db=cache,
+        payload={
+            "position_id": (
+                bought["position_id"]
+            ),
+            "pool": POOL,
+            "token": TOKEN,
+        },
+    )
+
+    assert preview["preview_only"] is True
+    assert preview["paper_only"] is True
+    assert preview["live_execution"] is False
+    assert preview["decision_authority"] is False
+
+    assert preview["reference_price"] == pytest.approx(
+        2.2
+    )
+
+    assert preview["proceeds_usdt"] == pytest.approx(
+        110.0
+    )
+
+    assert preview["net_pnl_usdt"] == pytest.approx(
+        10.0
+    )
+
+    assert preview["roi_pct"] == pytest.approx(
+        10.0
+    )
+
+    assert preview["break_even_price"] == pytest.approx(
+        2.0
+    )
+
+    db = sqlite3.connect(paper)
+
+    status = db.execute(
+        """
+        SELECT status
+        FROM paper_trades
+        WHERE id=?
+        """,
+        (
+            bought["position_id"],
+        ),
+    ).fetchone()[0]
+
+    db.close()
+
+    assert status == "OPEN"
+
+
+def test_manual_preview_route_exists_without_trade_confirmation():
+    source = __import__(
+        "pathlib"
+    ).Path(
+        "app/api/panel_manual_paper_v2.py"
+    ).read_text(
+        encoding="utf-8"
+    )
+
+    assert (
+        '@app.post("/api/manual-paper/preview-v2")'
+        in source
+    )
+
+    assert (
+        '"preview_only": True'
+        in source
     )

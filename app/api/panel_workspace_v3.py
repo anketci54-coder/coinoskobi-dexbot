@@ -86,45 +86,225 @@ def _hours_label(values: Any) -> str:
     return "/".join(str(value).replace("H", "S") for value in values[:3])
 
 
+def _market_scope_tr(
+    title: str,
+    event_type: str,
+) -> str:
+    text = str(title or "").casefold()
+
+    if re.search(
+        r"\b(bnb|binance|bsc|pancake|pancakeswap)\b",
+        text,
+        re.I,
+    ):
+        return "BNB / BSC"
+
+    if re.search(
+        r"\b(bitcoin|btc)\b",
+        text,
+        re.I,
+    ):
+        return "BITCOIN / GENEL KRİPTO"
+
+    if re.search(
+        r"\b(ethereum|eth)\b",
+        text,
+        re.I,
+    ):
+        return "ETHEREUM / GENEL KRİPTO"
+
+    if str(event_type or "").upper() in {
+        "REGULATORY",
+        "HACK",
+        "EXPLOIT",
+    }:
+        return "GENEL KRİPTO"
+
+    return "İLGİLİ TOKEN / KRİPTO"
+
+
+def _news_recommendation_tr(
+    direction: str,
+    risk: str,
+) -> str:
+    direction = str(
+        direction or "UNKNOWN"
+    ).upper()
+
+    risk = str(
+        risk or "LOW"
+    ).upper()
+
+    if direction == "NEGATIVE":
+        return (
+            "Risk artırıyor. Yeni girişte temkinli ol; "
+            "açık pozisyonlarda fiyat zayıflamasını ve satış seviyesini izle."
+        )
+
+    if direction == "POSITIVE":
+        return (
+            "Olumlu destek olabilir. "
+            "Tek başına alım nedeni sayma; fiyat, hacim ve likidite teyidi ara."
+        )
+
+    if direction == "VOLATILE":
+        return (
+            "Ani iki yönlü hareket riski var. "
+            "Hareket başlamadan pozisyon büyütmek yerine teyit bekle."
+        )
+
+    if direction == "CONDITIONAL":
+        return (
+            "Yön henüz net değil. "
+            "Sonuç veya ikinci doğrulama gelene kadar temkinli izle."
+        )
+
+    if risk == "HIGH":
+        return (
+            "Etki yönü net değil fakat risk yüksek. "
+            "Yeni işlem için ekstra fiyat teyidi bekle."
+        )
+
+    return (
+        "Doğrudan yön çıkarılamıyor. "
+        "Haberi tek başına işlem sinyali olarak kullanma."
+    )
+
+
 def _rank_news_item(item: dict[str, Any]) -> dict[str, Any] | None:
-    title = " ".join(str(item.get("title") or "").split())
+    title = " ".join(
+        str(item.get("title") or "").split()
+    )
+
     if not title:
         return None
 
-    forecast = classify_and_forecast(title)
-    event_type = str(forecast.get("event_type") or "").upper()
-    ready = forecast.get("state") == "READY"
+    forecast = classify_and_forecast(
+        title
+    )
+
+    event_type = str(
+        forecast.get("event_type")
+        or ""
+    ).upper()
+
+    ready = (
+        forecast.get("state")
+        == "READY"
+    )
 
     if ready:
-        base = _EVENT_BASE_SCORE.get(event_type, 50)
-        confidence = float(forecast.get("confidence") or 0.0)
-        score = min(100, int(round(base + confidence * 8.0)))
-        direction = str(forecast.get("direction") or "UNKNOWN").upper()
-        label = _EVENT_LABEL_TR.get(event_type, event_type or "PİYASA")
-        horizon = _hours_label(forecast.get("horizons"))
-        summary = f"{label}; olası etki {_DIRECTION_TR.get(direction, 'belirsiz')}."
-        if horizon:
-            summary += f" İzleme ufku {horizon}."
+        base = _EVENT_BASE_SCORE.get(
+            event_type,
+            50,
+        )
+
+        confidence = float(
+            forecast.get("confidence")
+            or 0.0
+        )
+
+        score = min(
+            100,
+            int(
+                round(
+                    base
+                    + confidence * 8.0
+                )
+            ),
+        )
+
+        direction = str(
+            forecast.get("direction")
+            or "UNKNOWN"
+        ).upper()
+
+        risk = str(
+            forecast.get("risk")
+            or "LOW"
+        ).upper()
+
+        label = _EVENT_LABEL_TR.get(
+            event_type,
+            event_type or "PİYASA",
+        )
+
+        horizon = _hours_label(
+            forecast.get("horizons")
+        )
+
     elif _MARKET_KEYWORDS.search(title):
         event_type = "MARKET"
         direction = "UNKNOWN"
+        risk = "LOW"
         score = 48
         label = "PİYASA"
-        summary = "Kripto piyasasını ilgilendiren gelişme; doğrulanmış olay sınıfı oluşmadı."
+        horizon = ""
+
     else:
         return None
+
+    scope = _market_scope_tr(
+        title,
+        event_type,
+    )
+
+    recommendation = (
+        _news_recommendation_tr(
+            direction,
+            risk,
+        )
+    )
+
+    direction_tr = _DIRECTION_TR.get(
+        direction,
+        "belirsiz",
+    )
+
+    summary = (
+        f"{scope}: olası etki "
+        f"{direction_tr}."
+    )
+
+    if horizon:
+        summary += (
+            f" İzleme ufku {horizon}."
+        )
 
     return {
         "state": _state(score),
         "importance_score": score,
         "event_type": event_type,
-        "title_tr": f"{label} · {_DIRECTION_TR.get(direction, 'belirsiz').upper()}",
+
+        "title_tr": (
+            f"{label} · "
+            f"{direction_tr.upper()}"
+        ),
+
         "summary_tr": summary,
+        "market_scope_tr": scope,
+        "risk_label": risk,
+        "recommendation_tr": recommendation,
+
         "source_title": title[:300],
-        "source": str(item.get("source") or "").strip()[:80],
-        "url": str(item.get("url") or "").strip()[:500],
-        "published_at": str(item.get("published_at") or "").strip()[:120],
-        "launch_event": event_type in _LAUNCH_EVENTS,
+        "source": str(
+            item.get("source") or ""
+        ).strip()[:80],
+
+        "url": str(
+            item.get("url") or ""
+        ).strip()[:500],
+
+        "published_at": str(
+            item.get("published_at")
+            or ""
+        ).strip()[:120],
+
+        "launch_event": (
+            event_type
+            in _LAUNCH_EVENTS
+        ),
+
         "trade_signal": False,
         "decision_authority": False,
     }
@@ -164,11 +344,20 @@ def _calendar_title_tr(title: str) -> str:
 
 
 def _rank_calendar_item(item: dict[str, Any]) -> dict[str, Any] | None:
-    title = " ".join(str(item.get("title") or "").split())
+    title = " ".join(
+        str(item.get("title") or "").split()
+    )
+
     if not title:
         return None
-    impact = str(item.get("impact") or "").strip().upper()
-    country = str(item.get("country") or "").strip().upper()
+
+    impact = str(
+        item.get("impact") or ""
+    ).strip().upper()
+
+    country = str(
+        item.get("country") or ""
+    ).strip().upper()
 
     if "HIGH" in impact:
         score = 92
@@ -179,29 +368,77 @@ def _rank_calendar_item(item: dict[str, Any]) -> dict[str, Any] | None:
     else:
         score = 45
 
-    important_country = country in {"USD", "EUR", "CNY", "GBP", "JPY"}
-    if important_country:
-        score = min(100, score + 4)
+    if country in {
+        "USD",
+        "EUR",
+        "CNY",
+        "GBP",
+        "JPY",
+    }:
+        score = min(
+            100,
+            score + 4,
+        )
+
     if score < 55:
         return None
 
     forecast = item.get("forecast")
     previous = item.get("previous")
-    detail_parts = [part for part in (
-        f"ülke {country}" if country else None,
-        f"beklenti {forecast}" if forecast not in (None, "") else None,
-        f"önceki {previous}" if previous not in (None, "") else None,
-    ) if part]
+
+    parts = [
+        part
+        for part in (
+            (
+                f"ülke {country}"
+                if country
+                else None
+            ),
+            (
+                f"beklenti {forecast}"
+                if forecast
+                not in (None, "")
+                else None
+            ),
+            (
+                f"önceki {previous}"
+                if previous
+                not in (None, "")
+                else None
+            ),
+        )
+        if part
+    ]
+
+    recommendation = (
+        "Yüksek etkili veri; açıklama çevresinde BTC/BNB ve genel risk iştahında "
+        "ani hareket olabilir. İşlem öncesi fiyat teyidi bekle."
+        if score >= 80
+        else
+        "Orta etkili veri; piyasa yönünü tek başına belirlemez. Fiyat tepkisini izle."
+    )
 
     return {
         "state": _state(score),
         "importance_score": score,
-        "title_tr": _calendar_title_tr(title),
-        "summary_tr": "; ".join(detail_parts) if detail_parts else "Piyasa etkisi için izleniyor.",
+        "title_tr": _calendar_title_tr(
+            title
+        ),
+        "summary_tr": (
+            "; ".join(parts)
+            if parts
+            else "Piyasa etkisi için izleniyor."
+        ),
+        "market_scope_tr": (
+            "GENEL KRİPTO / RİSK İŞTAHI"
+        ),
+        "recommendation_tr": recommendation,
         "source_title": title[:240],
         "country": country,
         "impact": impact,
-        "date": str(item.get("date") or "").strip()[:80],
+        "date": str(
+            item.get("date") or ""
+        ).strip()[:80],
         "forecast": forecast,
         "previous": previous,
         "trade_signal": False,

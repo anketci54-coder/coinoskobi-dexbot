@@ -12,6 +12,7 @@ from fastapi import HTTPException
 
 from app.paper.manager import PaperManager
 from app.risk.paper_position_sizing import PAPER_CAPITAL_USDT, paper_available_capital_usdt
+from app.scanner.gecko_scanner import GeckoScanner
 from app.strategy.mathematical_trade_plan import decode_plan, exit_net_proceeds
 
 
@@ -155,6 +156,61 @@ def _cache_quotes(
         connection.close()
 
 
+def _ondemand_pool_quote(
+    *,
+    pool: str | None,
+    token: str | None,
+) -> tuple[dict[str, Any], float, float] | None:
+    pool_key = str(pool or "").strip().lower()
+
+    if not pool_key:
+        return None
+
+    try:
+        rows = GeckoScanner().pool_snapshots(
+            [pool_key],
+            max_pools=1,
+            persist_followups=False,
+        )
+    except Exception:
+        return None
+
+    for row in rows or []:
+        row_pool = str(
+            row.get("pool") or ""
+        ).strip().lower()
+
+        price = _num(
+            row.get("price_usd")
+        )
+
+        if (
+            row_pool != pool_key
+            or price is None
+            or price <= 0
+        ):
+            continue
+
+        quote = {
+            "pool": row.get("pool") or pool,
+            "token": (
+                row.get("base_token")
+                or token
+            ),
+            "name": row.get("name"),
+            "dex": row.get("dex"),
+            "price_usd": price,
+            "updated_at": time.time(),
+            "quote_source": (
+                "GECKOTERMINAL_ON_DEMAND"
+            ),
+        }
+
+        return quote, price, 0.0
+
+    return None
+
+
 def _fresh_quote(
     cache_db: Path,
     *,
@@ -190,32 +246,44 @@ def _fresh_quote(
             )
         )
 
-    if not candidates:
-        raise HTTPException(
-            status_code=409,
-            detail="Güncel referans fiyat yok",
+    if candidates:
+        observed, price, quote = max(
+            candidates,
+            key=lambda item: item[0],
         )
 
-    observed, price, quote = max(
-        candidates,
-        key=lambda item: item[0],
+        age = max(
+            0.0,
+            time.time() - observed,
+        )
+
+        if age <= MANUAL_QUOTE_MAX_AGE_SECONDS:
+            return quote, price, age
+
+    ondemand = _ondemand_pool_quote(
+        pool=pool,
+        token=token,
     )
 
-    age = max(
-        0.0,
-        time.time() - observed,
-    )
+    if ondemand is not None:
+        return ondemand
 
-    if age > MANUAL_QUOTE_MAX_AGE_SECONDS:
+    if candidates:
         raise HTTPException(
             status_code=409,
             detail=(
-                "Referans fiyat bayat; "
-                "provider/cache akışını kontrol et"
+                "Referans fiyat bayat ve "
+                "anlık pool fiyatı alınamadı"
             ),
         )
 
-    return quote, price, age
+    raise HTTPException(
+        status_code=409,
+        detail=(
+            "Güncel referans fiyat yok ve "
+            "anlık pool fiyatı alınamadı"
+        ),
+    )
 
 
 def _open_position(connection: sqlite3.Connection, *, position_id=None, pool=None, token=None):

@@ -4,6 +4,7 @@ from datetime import datetime, timedelta, timezone
 import pytest
 from fastapi import HTTPException
 
+import app.api.panel_manual_paper_v2 as manual_module
 from app.api.panel_manual_paper_v2 import _buy, _sell
 from app.paper.schema import ensure_paper_schema
 from app.risk.paper_position_sizing import paper_available_capital_usdt
@@ -298,4 +299,128 @@ def test_manual_buy_prefers_newest_valid_quote_source(
 
     assert bought["token_amount"] == pytest.approx(
         30.0
+    )
+
+
+def test_manual_buy_uses_ondemand_pool_quote_when_all_cache_is_stale(
+    tmp_path,
+    monkeypatch,
+):
+    paper = tmp_path / "paper.db"
+    cache = tmp_path / "cache.db"
+
+    _paper_db(paper)
+
+    _cache_db_with_universe(
+        cache,
+        gecko_price=2.0,
+        gecko_age_seconds=600,
+        universe_price=2.5,
+        universe_age_seconds=600,
+    )
+
+    calls = []
+
+    def pool_snapshots(
+        self,
+        pools,
+        max_pools=30,
+        *,
+        persist_followups=True,
+    ):
+        calls.append(
+            {
+                "pools": list(pools),
+                "max_pools": max_pools,
+                "persist_followups": (
+                    persist_followups
+                ),
+            }
+        )
+
+        return [
+            {
+                "pool": POOL,
+                "base_token": TOKEN,
+                "name": "TEST/USDT",
+                "dex": "pancakeswap_v2",
+                "price_usd": 4.0,
+            }
+        ]
+
+    monkeypatch.setattr(
+        manual_module.GeckoScanner,
+        "pool_snapshots",
+        pool_snapshots,
+    )
+
+    bought = _buy(
+        paper_db=paper,
+        cache_db=cache,
+        payload={
+            "token": TOKEN,
+            "pool": POOL,
+            "symbol": "TEST",
+            "amount_usdt": 100.0,
+        },
+    )
+
+    assert bought["reference_price"] == 4.0
+
+    assert (
+        bought["reference_price_source"]
+        == "GECKOTERMINAL_ON_DEMAND"
+    )
+
+    assert bought["token_amount"] == pytest.approx(
+        25.0
+    )
+
+    assert len(calls) == 1
+    assert calls[0]["pools"] == [POOL.lower()]
+    assert calls[0]["max_pools"] == 1
+    assert calls[0]["persist_followups"] is False
+
+
+def test_fresh_cache_does_not_make_ondemand_request(
+    tmp_path,
+    monkeypatch,
+):
+    paper = tmp_path / "paper.db"
+    cache = tmp_path / "cache.db"
+
+    _paper_db(paper)
+    _cache_db(
+        cache,
+        price=2.0,
+        age_seconds=0,
+    )
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError(
+            "ON_DEMAND_MUST_NOT_RUN"
+        )
+
+    monkeypatch.setattr(
+        manual_module.GeckoScanner,
+        "pool_snapshots",
+        forbidden,
+    )
+
+    bought = _buy(
+        paper_db=paper,
+        cache_db=cache,
+        payload={
+            "token": TOKEN,
+            "pool": POOL,
+            "symbol": "TEST",
+            "amount_usdt": 10.0,
+        },
+    )
+
+    assert bought["reference_price"] == 2.0
+
+    assert (
+        bought["reference_price_source"]
+        == "GECKO_POOL_CACHE"
     )

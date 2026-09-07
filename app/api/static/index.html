@@ -6,35 +6,139 @@
 <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate, max-age=0">
 <meta http-equiv="Pragma" content="no-cache">
 <title>Coinoskobi İşlem Merkezi</title>
-<link rel="stylesheet" href="/static/panel-canonical.css?v=5">
-<link rel="stylesheet" href="/static/panel-refinement-v3.css?v=2">
+<link rel="stylesheet" href="/static/panel-canonical.css?v=6">
+<link rel="stylesheet" href="/static/panel-refinement-v3.css?v=3">
 </head>
 <body>
-<div class="app">
-<header class="topbar compact-topbar">
-<section class="panel brand"><div class="brand-mark">♜</div><div><div class="brand-title">İŞLEM MERKEZİ</div><div class="brand-sub">COINOSKOBI · PAPER_10K</div></div></section>
-<section class="panel ticker"><div class="label">BTC/USDT</div><div class="ticker-value" id="btcPrice">—</div><div class="sub" id="btcChange">BAĞLANIYOR</div></section>
-<section class="panel ticker"><div class="label">ETH/USDT</div><div class="ticker-value" id="ethPrice">—</div><div class="sub" id="ethChange">BAĞLANIYOR</div></section>
-<section class="panel metric"><div class="label">BAKİYE</div><div class="metric-value" id="balance">—</div><div class="sub">PAPER EQUITY</div></section>
-<section class="panel metric"><div class="label">GÜNLÜK PNL</div><div class="metric-value" id="dailyPnl">—</div><div class="sub" id="dailyDate">—</div></section>
-<section class="panel metric"><div class="label">TOPLAM PNL</div><div class="metric-value" id="totalPnl">—</div><div class="sub" id="totalPnlPct">—</div></section>
-<section class="panel metric"><div class="label">AÇIK POZİSYON</div><div class="metric-value" id="openCount">—</div><div class="sub" id="openInvestment">—</div></section>
-<section class="panel metric"><div class="label">KULLANILAN RİSK</div><div class="metric-value" id="riskUsed">—</div><div class="sub" id="riskAmount">—</div></section>
-<section class="panel controls"><button class="ctrl active" id="autoModeButton">OTOMATİK</button><button class="ctrl" id="manualModeButton">MANUEL</button><button class="ctrl" id="accountingButton">MUHASEBE</button><button class="ctrl" disabled>LIVE KAPALI</button><div class="sub" id="autoTradeState" style="grid-column:1/-1">AUTO: YÜKLENİYOR</div></section>
-</header>
-<main class="content refined-content">
-<section class="left refined-left">
-<section class="panel radar compact-radar"><div class="radar-head"><div class="title">RADAR MERKEZİ</div><div class="tabs"><button class="tab active" data-filter="ALL">TÜMÜ</button><button class="tab cold" data-filter="COLD">COLD</button><button class="tab warm" data-filter="WARM">WARM</button><button class="tab hot" data-filter="HOT">HOT</button><button class="tab active-pos" data-filter="ACTIVE">AKTİF</button></div><div class="meta" id="candidateCount">—</div></div><div class="radar-grid"><span>DURUM</span><span>TOKEN / POOL</span><span>SCORE</span><span>24H HACİM</span><span>FİYAT</span><span>5M</span><span>LİKİDİTE</span></div><div class="radar-body" id="radarBody"></div></section>
-<section class="lower refined-lower">
-<section class="panel wallet-panel"><div class="head"><div class="title">CÜZDAN / BALİNA TAKİP</div><button class="panel-action" id="walletDetailButton" type="button">DETAY</button></div><div class="body"><div class="cards3"><div class="mini"><small>ADAY CÜZDAN</small><b id="walletCount">0</b></div><div class="mini"><small>BAŞARILI</small><b id="successCount">0</b></div><div class="mini"><small>HOLDINGS</small><b id="whaleCount">0</b></div></div><div class="scroll wallet-scroll"><table class="table"><thead><tr><th>CÜZDAN</th><th>KAYNAK</th><th>DURUM</th></tr></thead><tbody id="walletRows"></tbody></table></div></div></section>
-<section class="panel market-panel"><div class="head"><div class="title" id="newsTitle">PİYASA HABERLERİ</div><div class="meta" id="newsMeta">ÖNEME GÖRE</div></div><div class="body market-body"><div class="intel-tabs"><button class="intel-tab active" data-intel="NEWS">HABER</button><button class="intel-tab" data-intel="CALENDAR">EKONOMİK TAKVİM</button><button class="intel-tab" data-intel="LAUNCH">AIRDROP / IDO / ICO</button></div><div class="intel-pane active" id="newsPane"><div id="newsStream"></div></div><div class="intel-pane" id="calendarPane"><div id="calendarStream"></div></div><div class="intel-pane" id="launchPane"><div id="launchStream"></div></div></div></section>
-</section></section>
-<aside class="panel vezir"><div class="vezir-head"><img class="vezir-img" src="/static/vezir.png" alt="Vezir"><div><div class="vezir-name">VEZİR</div><div class="vezir-sub">OPERASYON + HABER ETKİ ASİSTANI</div><div class="sub" id="systemState">—</div><div class="sub" id="providerState">—</div></div></div><div class="quick"><button data-ask="Neden işlem açmadık?">NEDEN YOK?</button><button data-ask="Şu an en önemli risk ne?">RİSK</button><button data-ask="Son haberlerin piyasamıza olası etkisi ne?">HABER ETKİ</button></div><div class="chat" id="chatBody"><div class="bubble">VEZİR hazır. Radar, işlemler, risk, cüzdanlar veya haber etkisini sorabilirsin.</div></div><div class="chatbar"><input id="vezirInput" maxlength="500" placeholder="VEZİR'e sor..."><button id="vezirSend">GÖNDER</button></div></aside>
-</main>
-<footer class="panel footer"><span>CANLI EXECUTION KAPALI · WALLET AUTHORITY KAPALI · MANUEL İŞLEMLER SADECE PAPER</span><span>SON GÜNCELLEME: <b id="updatedAt">—</b></span></footer>
+<div class="app premium-shell">
+  <aside class="sidebar panel" aria-label="Ana navigasyon">
+    <div class="side-brand">
+      <div class="side-brand-mark" data-icon-slot="brand">♜</div>
+      <div>
+        <div class="side-brand-name">Coinoskobi</div>
+        <div class="side-brand-sub">PİYASAYI BİR ADIM ÖNDE OKU</div>
+      </div>
+    </div>
+
+    <nav class="side-nav">
+      <button class="side-nav-item active" type="button" data-nav="home"><span data-icon-slot="home">⌂</span><b>İşlem Merkezi</b></button>
+      <button class="side-nav-item" type="button" data-nav="radar"><span data-icon-slot="radar">◎</span><b>Radar</b></button>
+      <button class="side-nav-item" type="button" data-nav="positions"><span data-icon-slot="positions">▤</span><b>Açık Pozisyonlar</b></button>
+      <button class="side-nav-item" type="button" data-nav="history"><span data-icon-slot="history">↶</span><b>İşlem Geçmişi</b></button>
+      <button class="side-nav-item" type="button" data-nav="wallet"><span data-icon-slot="wallet">◫</span><b>Cüzdan İstihbaratı</b></button>
+      <button class="side-nav-item" type="button" data-nav="news"><span data-icon-slot="news">▱</span><b>Haber Akışı</b></button>
+      <button class="side-nav-item" type="button" data-nav="market"><span data-icon-slot="market">⌁</span><b>Piyasa Verileri</b></button>
+    </nav>
+
+    <div class="side-motto">PLANLI<br>DİSİPLİNLİ<br>DAİMA ÖNDE</div>
+    <div class="side-version">PAPER_10K</div>
+  </aside>
+
+  <section class="workspace">
+    <header class="workspace-head">
+      <div class="workspace-title-wrap">
+        <div class="workspace-kicker"><span class="rook-mini">♜</span> COINOSKOBI</div>
+        <div class="workspace-title">İŞLEM MERKEZİ <span>PAPER_10K</span></div>
+        <div class="workspace-subtitle">Veriyi oku. Riski gör. Planlı işlem yap.</div>
+      </div>
+
+      <div class="workspace-status">
+        <div class="status-chip"><i class="dot green"></i><span><b>PAPER MOD</b><small>Sanal portföy</small></span></div>
+        <div class="status-chip"><i class="dot cyan"></i><span><b>PANEL CANLI</b><small>Gerçek backend</small></span></div>
+        <div class="status-chip"><i class="dot blue"></i><span><b>OKUMA / PAPER</b><small>Live execution kapalı</small></span></div>
+      </div>
+    </header>
+
+    <section class="topbar compact-topbar" aria-label="Portföy özeti">
+      <section class="panel ticker"><div class="label">BTC/USDT</div><div class="ticker-value" id="btcPrice">—</div><div class="sub" id="btcChange">BAĞLANIYOR</div></section>
+      <section class="panel ticker"><div class="label">ETH/USDT</div><div class="ticker-value" id="ethPrice">—</div><div class="sub" id="ethChange">BAĞLANIYOR</div></section>
+      <section class="panel metric"><div class="metric-icon" data-icon-slot="balance">▣</div><div><div class="label">BAKİYE</div><div class="metric-value" id="balance">—</div><div class="sub">PAPER EQUITY</div></div></section>
+      <section class="panel metric"><div class="metric-icon" data-icon-slot="daily">▥</div><div><div class="label">GÜNLÜK PNL</div><div class="metric-value" id="dailyPnl">—</div><div class="sub" id="dailyDate">—</div></div></section>
+      <section class="panel metric"><div class="metric-icon" data-icon-slot="total">⌁</div><div><div class="label">TOPLAM PNL</div><div class="metric-value" id="totalPnl">—</div><div class="sub" id="totalPnlPct">—</div></div></section>
+      <section class="panel metric"><div class="metric-icon" data-icon-slot="positions">▤</div><div><div class="label">AÇIK POZİSYON</div><div class="metric-value" id="openCount">—</div><div class="sub" id="openInvestment">—</div></div></section>
+      <section class="panel metric risk-metric"><div class="metric-icon amber" data-icon-slot="risk">⬡</div><div class="metric-copy"><div class="label">KULLANILAN RİSK</div><div class="metric-value" id="riskUsed">—</div><div class="risk-track"><span id="riskBar"></span></div><div class="sub" id="riskAmount">—</div></div></section>
+      <section class="panel controls"><button class="ctrl active" id="autoModeButton">OTOMATİK</button><button class="ctrl" id="manualModeButton">MANUEL</button><button class="ctrl" id="accountingButton">MUHASEBE</button><button class="ctrl" disabled>LIVE KAPALI</button><div class="sub" id="autoTradeState" style="grid-column:1/-1">AUTO: YÜKLENİYOR</div></section>
+    </section>
+
+    <main class="content refined-content">
+      <section class="left refined-left">
+        <section class="panel radar compact-radar" id="radarPanel">
+          <div class="radar-head">
+            <div>
+              <div class="section-eyebrow">FIRSAT TARAMA</div>
+              <div class="title">RADAR MERKEZİ</div>
+            </div>
+            <div class="tabs">
+              <button class="tab active" data-filter="ALL">TÜMÜ</button>
+              <button class="tab cold" data-filter="COLD">COLD</button>
+              <button class="tab warm" data-filter="WARM">WARM</button>
+              <button class="tab hot" data-filter="HOT">HOT</button>
+              <button class="tab active-pos" data-filter="ACTIVE">AKTİF</button>
+            </div>
+            <div class="meta" id="candidateCount">—</div>
+          </div>
+          <div class="radar-grid"><span>DURUM</span><span>TOKEN / POOL</span><span>SCORE</span><span>24H HACİM</span><span>FİYAT</span><span>5M</span><span>LİKİDİTE</span></div>
+          <div class="radar-body" id="radarBody"></div>
+        </section>
+
+        <section class="lower refined-lower">
+          <section class="panel wallet-panel" id="walletPanel">
+            <div class="head"><div><div class="section-eyebrow">SMART MONEY</div><div class="title">CÜZDAN / BALİNA TAKİP</div></div><button class="panel-action" id="walletDetailButton" type="button">DETAY</button></div>
+            <div class="body">
+              <div class="cards3">
+                <div class="mini"><small>ADAY CÜZDAN</small><b id="walletCount">0</b></div>
+                <div class="mini"><small>BAŞARILI</small><b id="successCount">0</b></div>
+                <div class="mini"><small>HOLDINGS</small><b id="whaleCount">0</b></div>
+              </div>
+              <div class="wallet-context">Aday sayısı kalite skoru değildir. Detay ekranında neden aday oldukları ve başarı örneklemi gösterilir.</div>
+              <div class="scroll wallet-scroll"><table class="table"><thead><tr><th>CÜZDAN</th><th>KAYNAK</th><th>DURUM</th></tr></thead><tbody id="walletRows"></tbody></table></div>
+            </div>
+          </section>
+
+          <section class="panel market-panel" id="marketPanel">
+            <div class="head"><div><div class="section-eyebrow">PİYASA İSTİHBARATI</div><div class="title" id="newsTitle">PİYASA HABERLERİ</div></div><div class="meta" id="newsMeta">ÖNEME GÖRE</div></div>
+            <div class="body market-body">
+              <div class="intel-tabs"><button class="intel-tab active" data-intel="NEWS">HABER</button><button class="intel-tab" data-intel="CALENDAR">EKONOMİK TAKVİM</button><button class="intel-tab" data-intel="LAUNCH">AIRDROP / IDO / ICO</button></div>
+              <div class="intel-pane active" id="newsPane"><div id="newsStream"></div></div>
+              <div class="intel-pane" id="calendarPane"><div id="calendarStream"></div></div>
+              <div class="intel-pane" id="launchPane"><div id="launchStream"></div></div>
+            </div>
+          </section>
+        </section>
+      </section>
+
+      <aside class="panel vezir" id="vezirPanel">
+        <div class="vezir-head">
+          <img class="vezir-img" src="/static/vezir.png" alt="Vezir">
+          <div><div class="section-eyebrow">AI STRATEJİ ASİSTANI</div><div class="vezir-name">VEZİR</div><div class="vezir-sub">OPERASYON + HABER ETKİ ASİSTANI</div><div class="sub" id="systemState">—</div><div class="sub" id="providerState">—</div></div>
+        </div>
+        <div class="quick"><button data-ask="Neden işlem açmadık?">NEDEN YOK?</button><button data-ask="Şu an en önemli risk ne?">RİSK</button><button data-ask="Son haberlerin piyasamıza olası etkisi ne?">HABER ETKİ</button></div>
+        <div class="vezir-brief-strip"><span><small>PİYASA</small><b id="vezirMarketLabel">VERİ OKUNUYOR</b></span><span><small>ODAK</small><b>RİSK + FIRSAT</b></span><span><small>YETKİ</small><b>PAPER / READ ONLY</b></span></div>
+        <div class="chat" id="chatBody"><div class="bubble">VEZİR hazır. Radar, işlemler, risk, cüzdanlar veya haber etkisini sorabilirsin.</div></div>
+        <div class="chatbar"><input id="vezirInput" maxlength="500" placeholder="VEZİR'e sor..."><button id="vezirSend">GÖNDER</button></div>
+      </aside>
+    </main>
+
+    <footer class="panel footer"><span>CANLI EXECUTION KAPALI · WALLET AUTHORITY KAPALI · MANUEL İŞLEMLER SADECE PAPER</span><span>SON GÜNCELLEME: <b id="updatedAt">—</b></span></footer>
+  </section>
 </div>
+
 <button id="watchDetailButton" type="button" hidden></button>
-<div class="modal" id="orderModal"><div class="ticket"><button class="ticket-close" id="ticketClose">×</button><div class="meta">PAPER İŞLEM BİLETİ</div><h3 id="ticketTitle">—</h3><div class="ticket-grid"><span>SERVER REFERANS FİYATI</span><b id="ticketPrice">—</b><span>PARİTE</span><b id="ticketPair">—</b></div><div id="buyAmountWrap"><input id="orderAmount" type="number" min="0.01" step="0.01" value="10" inputmode="decimal" placeholder="USDT miktarı"><div class="quick-amounts"><button data-amount="1">1</button><button data-amount="10">10</button><button data-amount="25">25</button><button data-amount="50">50</button><button data-amount="100">100</button></div></div><div class="sub" id="ticketEstimate" style="margin-top:10px">—</div><div class="ticket-error" id="ticketError"></div><button class="confirm buy" id="confirmOrder">ONAYLA</button><div class="sub" style="text-align:center">Bayat fiyatla emir reddedilir. Live execution, wallet ve signing kapalıdır.</div></div></div>
+
+<div class="modal" id="orderModal">
+  <div class="ticket">
+    <button class="ticket-close" id="ticketClose">×</button>
+    <div class="section-eyebrow">PAPER İŞLEM BİLETİ</div>
+    <h3 id="ticketTitle">—</h3>
+    <div class="ticket-grid"><span>SERVER REFERANS FİYATI</span><b id="ticketPrice">—</b><span>PARİTE</span><b id="ticketPair">—</b></div>
+    <div id="buyAmountWrap"><input id="orderAmount" type="number" min="0.01" step="0.01" value="10" inputmode="decimal" placeholder="USDT miktarı"><div class="quick-amounts"><button data-amount="1">1</button><button data-amount="10">10</button><button data-amount="25">25</button><button data-amount="50">50</button><button data-amount="100">100</button></div></div>
+    <div class="sub ticket-estimate" id="ticketEstimate">—</div>
+    <div class="ticket-error" id="ticketError"></div>
+    <button class="confirm buy" id="confirmOrder">ONAYLA</button>
+    <div class="sub" style="text-align:center">Bayat fiyatla emir reddedilir. Live execution, wallet ve signing kapalıdır.</div>
+  </div>
+</div>
+
 <script src="/static/panel-canonical-acceptance.js?v=5"></script>
 <script src="/static/panel-canonical.js?v=9"></script>
 <script src="/static/panel-refinement-v3.js?v=6"></script>

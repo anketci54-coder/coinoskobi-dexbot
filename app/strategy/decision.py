@@ -61,7 +61,7 @@ class UnifiedDecisionEngine:
             reasons.append("EXIT_EVIDENCE_NOT_READY")
 
         return {
-            "model": "unified_decision_v2",
+            "model": "unified_decision_v1",
             "decision": decision,
             "reasons": reasons,
             "opportunity_state": opportunity_state,

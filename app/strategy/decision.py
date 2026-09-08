@@ -1,106 +1,72 @@
 class UnifiedDecisionEngine:
     """
-    Evidence-state decision.
+    Canonical opportunity-state decision.
 
-    No numeric score threshold is used.
+    This layer no longer converts evidence completeness into entry intent.
+    Only a HOT opportunity may become a PAPER_BUY_CANDIDATE. Missing evidence
+    remains observable as WATCH. Confirmed hard risk remains REJECT.
     """
 
-    def evaluate(
-        self,
-        unified_score,
-    ):
+    def evaluate(self, unified_score):
         data = unified_score or {}
-
         reasons = []
 
-        if data.get(
-            "hard_block"
-        ):
+        opportunity_state = str(
+            data.get("opportunity_state") or "WATCH"
+        ).upper()
+
+        opportunity_reason = str(
+            data.get("opportunity_reason") or "OPPORTUNITY_NOT_READY"
+        )
+
+        if data.get("hard_block"):
             decision = "REJECT"
+            reasons.append("HARD_BLOCK")
 
-            reasons.append(
-                "HARD_BLOCK"
-            )
-
-        elif (
-            data.get(
-                "strategy_decision"
-            )
-            == "REJECT"
-        ):
+        elif data.get("strategy_decision") == "REJECT":
             decision = "REJECT"
+            reasons.append("STRUCTURAL_REJECT")
 
-            reasons.append(
-                "STRUCTURAL_REJECT"
-            )
+        elif data.get("sellability") == "UNSELLABLE":
+            decision = "REJECT"
+            reasons.append("SELLABILITY_FAIL")
 
-        elif (
-            data.get(
-                "strategy_decision"
-            )
-            != "PAPER_BUY"
-        ):
+        elif opportunity_state == "REJECT":
+            decision = "REJECT"
+            reasons.append(opportunity_reason)
+
+        elif opportunity_state != "HOT":
             decision = "WATCH"
+            reasons.append(opportunity_reason)
 
-            reasons.append(
-                "STRUCTURAL_EVIDENCE_NOT_READY"
-            )
+        elif data.get("sellability") == "SELLABLE":
+            decision = "PAPER_BUY_CANDIDATE"
+            reasons.extend([
+                "ACTIVE_OPPORTUNITY_HOT",
+                "VERIFIED_SELLABILITY",
+            ])
 
-        elif (
-            data.get(
-                "sellability"
-            )
-            == "UNSELLABLE"
-        ):
-            decision = "REJECT"
-
-            reasons.append(
-                "SELLABILITY_FAIL"
-            )
-
-        elif (
-            data.get(
-                "sellability"
-            )
-            == "SELLABLE"
-        ):
-            decision = (
-                "PAPER_BUY_CANDIDATE"
-            )
-
-            reasons.append(
-                "VERIFIED_SELLABILITY"
-            )
-
-        elif data.get(
-            "local_evidence_complete"
-        ):
-            decision = (
-                "PAPER_BUY_CANDIDATE"
-            )
-
-            reasons.append(
-                "LOCAL_MATHEMATICAL_EVIDENCE_READY"
-            )
+        elif data.get("local_evidence_complete"):
+            # External provider may be unavailable. Local onchain exit evidence
+            # can keep the candidate alive, but final mathematical planning and
+            # sellability policy still decide whether a PAPER order is allowed.
+            decision = "PAPER_BUY_CANDIDATE"
+            reasons.extend([
+                "ACTIVE_OPPORTUNITY_HOT",
+                "LOCAL_EXIT_EVIDENCE_READY",
+            ])
 
         else:
-            decision = (
-                "REQUIRE_MORE_EVIDENCE"
-            )
-
-            reasons.append(
-                "MISSING_ENTRY_EVIDENCE"
-            )
+            decision = "WATCH"
+            reasons.append("EXIT_EVIDENCE_NOT_READY")
 
         return {
-            "model": "unified_decision_v1",
-
+            "model": "unified_decision_v2",
             "decision": decision,
-
             "reasons": reasons,
-
+            "opportunity_state": opportunity_state,
+            "opportunity_reason": opportunity_reason,
             "score_threshold_used": False,
-
             "decision_authority": False,
             "paper_authority": False,
             "live_authority": False,

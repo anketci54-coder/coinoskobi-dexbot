@@ -1,7 +1,13 @@
 from app.strategy.unified_score import UnifiedScoreEngine
 
 
-def evaluate(*, prices, hard_block=False, mev_status="LOW_EXPOSURE"):
+def evaluate(
+    *,
+    prices,
+    hard_block=False,
+    mev_status="LOW_EXPOSURE",
+    reserve_change=0.05,
+):
     return UnifiedScoreEngine().evaluate(
         strategy={
             "decision": "PAPER_BUY",
@@ -16,7 +22,7 @@ def evaluate(*, prices, hard_block=False, mev_status="LOW_EXPOSURE"):
                 "exit_feasibility": {
                     "spot_price_series_usd": prices,
                     "quote_reserve_usd": 10000.0,
-                    "reserve_change_fraction": 0.05,
+                    "reserve_change_fraction": reserve_change,
                 }
             },
         },
@@ -54,6 +60,24 @@ def test_missing_price_history_stays_watch():
     result = evaluate(prices=[1.0, 1.01])
     assert result["opportunity_state"] == "WATCH"
     assert result["opportunity_reason"] == "ACTIVE_PRICE_SERIES_NOT_READY"
+
+
+def test_quote_flow_must_confirm_price_move():
+    result = evaluate(
+        prices=[1.0, 1.05, 1.12],
+        reserve_change=0.0,
+    )
+    assert result["opportunity_state"] == "WATCH"
+    assert result["opportunity_reason"] == "QUOTE_FLOW_NOT_SUPPORTING_MOVE"
+
+
+def test_missing_quote_flow_stays_watch():
+    result = evaluate(
+        prices=[1.0, 1.05, 1.12],
+        reserve_change=None,
+    )
+    assert result["opportunity_state"] == "WATCH"
+    assert result["opportunity_reason"] == "QUOTE_FLOW_CONFIRMATION_NOT_READY"
 
 
 def test_high_execution_exposure_stays_watch():

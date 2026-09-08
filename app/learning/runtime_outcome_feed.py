@@ -1,4 +1,7 @@
 from collections import OrderedDict
+import json
+from pathlib import Path
+import sqlite3
 
 from app.learning.outcome_evidence import (
     build_outcome_evidence,
@@ -53,6 +56,7 @@ class RuntimeLearningOutcomeFeed:
         max_readmodel=256,
         min_samples=20,
         wallet_outcome_observer=None,
+        wallet_outcome_db_path=None,
     ):
         self.chain = (
             str(chain or "")
@@ -79,6 +83,12 @@ class RuntimeLearningOutcomeFeed:
             wallet_outcome_observer
         )
 
+        self.wallet_outcome_db_path = (
+            Path(wallet_outcome_db_path)
+            if wallet_outcome_db_path
+            else None
+        )
+
         self._events = OrderedDict()
         self._phase9_retries = OrderedDict()
         self.max_phase9_retries = self.max_events
@@ -101,6 +111,420 @@ class RuntimeLearningOutcomeFeed:
     @property
     def event_count(self):
         return len(self._events)
+
+    def _persist_wallet_outcome(
+        self,
+        *,
+        wallet_id,
+        position_id,
+        token,
+        observed_at,
+        return_pct,
+    ):
+        path = self.wallet_outcome_db_path
+
+        if path is None:
+            return {
+                "state": "DISABLED",
+                "persisted": False,
+            }
+
+        wallet = str(
+            wallet_id or ""
+        ).strip().lower()
+
+        token_key = str(
+            token or ""
+        ).strip().lower()
+
+        provenance = (
+            "PAPER_MANAGER_CLOSE:"
+            f"paper-position:{position_id}"
+        )
+
+        if (
+            not wallet
+            or position_id is None
+            or return_pct is None
+        ):
+            return {
+                "state": "INVALID",
+                "persisted": False,
+            }
+
+        try:
+            value = float(return_pct)
+        except (TypeError, ValueError):
+            return {
+                "state": "INVALID",
+                "persisted": False,
+            }
+
+        db = sqlite3.connect(
+            str(path),
+            timeout=30,
+        )
+        db.row_factory = sqlite3.Row
+        db.execute(
+            "PRAGMA busy_timeout=30000"
+        )
+
+        try:
+            evidence_exists = db.execute(
+                '''
+                SELECT 1
+                FROM sqlite_master
+                WHERE type='table'
+                  AND name='wallet_outcome_evidence'
+                '''
+            ).fetchone()
+
+            registry_exists = db.execute(
+                '''
+                SELECT 1
+                FROM sqlite_master
+                WHERE type='table'
+                  AND name='wallet_discovery_registry'
+                '''
+            ).fetchone()
+
+            if (
+                evidence_exists is None
+                or registry_exists is None
+            ):
+                return {
+                    "state": "SCHEMA_NOT_READY",
+                    "persisted": False,
+                }
+
+            registered = db.execute(
+                '''
+                SELECT wallet_uid
+                FROM wallet_discovery_registry
+                WHERE lower(wallet_uid)=?
+                LIMIT 1
+                ''',
+                (wallet,),
+            ).fetchone()
+
+            if registered is None:
+                return {
+                    "state": "WALLET_NOT_REGISTERED",
+                    "persisted": False,
+                }
+
+            existing = db.execute(
+                '''
+                SELECT evidence_id
+                FROM wallet_outcome_evidence
+                WHERE lower(wallet_uid)=?
+                  AND evidence_type='REALIZED_RETURN_PCT'
+                  AND provenance=?
+                LIMIT 1
+                ''',
+                (
+                    wallet,
+                    provenance,
+                ),
+            ).fetchone()
+
+            if existing is not None:
+                return {
+                    "state": "DUPLICATE",
+                    "persisted": False,
+                    "evidence_id": int(
+                        existing["evidence_id"]
+                    ),
+                }
+
+            cursor = db.execute(
+                '''
+                INSERT INTO wallet_outcome_evidence(
+                    wallet_uid,
+                    observed_at,
+                    token_key,
+                    evidence_type,
+                    outcome_value,
+                    evidence_quality,
+                    provenance
+                )
+                VALUES(
+                    ?, ?, ?,
+                    'REALIZED_RETURN_PCT',
+                    ?, 1.0, ?
+                )
+                ''',
+                (
+                    str(
+                        registered["wallet_uid"]
+                    ),
+                    str(
+                        observed_at or ""
+                    ),
+                    token_key or None,
+                    value,
+                    provenance,
+                ),
+            )
+
+            db.commit()
+
+            return {
+                "state": "PERSISTED",
+                "persisted": True,
+                "evidence_id": int(
+                    cursor.lastrowid
+                ),
+            }
+
+        finally:
+            db.close()
+
+    def _backfill_wallet_outcomes(self):
+        path = self.wallet_outcome_db_path
+
+        if path is None:
+            return {
+                "scanned": 0,
+                "eligible": 0,
+                "persisted": 0,
+            }
+
+        db = sqlite3.connect(
+            str(path),
+            timeout=30,
+        )
+        db.row_factory = sqlite3.Row
+        db.execute(
+            "PRAGMA busy_timeout=30000"
+        )
+
+        try:
+            table = db.execute(
+                '''
+                SELECT 1
+                FROM sqlite_master
+                WHERE type='table'
+                  AND name='paper_trades'
+                '''
+            ).fetchone()
+
+            if table is None:
+                return {
+                    "scanned": 0,
+                    "eligible": 0,
+                    "persisted": 0,
+                }
+
+            rows = db.execute(
+                '''
+                SELECT
+                    id,
+                    token,
+                    closed_at,
+                    roi,
+                    opening_context_json
+                FROM paper_trades
+                WHERE status='CLOSED'
+                ORDER BY id
+                '''
+            ).fetchall()
+
+        finally:
+            db.close()
+
+        scanned = len(rows)
+        eligible = 0
+        persisted = 0
+
+        for row in rows:
+            try:
+                context = json.loads(
+                    row["opening_context_json"]
+                    or "{}"
+                )
+            except (
+                TypeError,
+                ValueError,
+                json.JSONDecodeError,
+            ):
+                continue
+
+            actor = (
+                context.get("actor_identity")
+                if isinstance(context, dict)
+                else None
+            )
+
+            if not isinstance(actor, dict):
+                continue
+
+            wallet = str(
+                actor.get("wallet_id")
+                or ""
+            ).strip().lower()
+
+            source = str(
+                actor.get("identity_source")
+                or ""
+            ).strip().upper()
+
+            hindsight = actor.get(
+                "hindsight_reconstructed"
+            )
+
+            if (
+                not wallet
+                or source
+                != "TRANSACTION_FROM_ONLY"
+                or hindsight is not False
+                or row["roi"] is None
+            ):
+                continue
+
+            try:
+                return_pct = (
+                    float(row["roi"])
+                    * 100.0
+                )
+            except (TypeError, ValueError):
+                continue
+
+            eligible += 1
+
+            result = (
+                self._persist_wallet_outcome(
+                    wallet_id=wallet,
+                    position_id=row["id"],
+                    token=row["token"],
+                    observed_at=row["closed_at"],
+                    return_pct=return_pct,
+                )
+            )
+
+            if result.get("persisted"):
+                persisted += 1
+
+        return {
+            "scanned": scanned,
+            "eligible": eligible,
+            "persisted": persisted,
+        }
+
+    def hydrate_wallet_outcomes(
+        self,
+        *,
+        limit=4096,
+    ):
+        observer = getattr(
+            self,
+            "wallet_outcome_observer",
+            None,
+        )
+
+        if not callable(observer):
+            return {
+                "state": "UNBOUND",
+                "backfill": {
+                    "scanned": 0,
+                    "eligible": 0,
+                    "persisted": 0,
+                },
+                "hydrated": 0,
+            }
+
+        backfill = (
+            self._backfill_wallet_outcomes()
+        )
+
+        path = self.wallet_outcome_db_path
+
+        if path is None:
+            return {
+                "state": "DISABLED",
+                "backfill": backfill,
+                "hydrated": 0,
+            }
+
+        try:
+            bounded_limit = max(
+                1,
+                min(
+                    16384,
+                    int(limit),
+                ),
+            )
+        except (TypeError, ValueError):
+            bounded_limit = 4096
+
+        db = sqlite3.connect(
+            str(path),
+            timeout=30,
+        )
+        db.row_factory = sqlite3.Row
+
+        try:
+            rows = db.execute(
+                '''
+                SELECT
+                    evidence_id,
+                    wallet_uid,
+                    outcome_value,
+                    provenance
+                FROM wallet_outcome_evidence
+                WHERE evidence_type=
+                    'REALIZED_RETURN_PCT'
+                  AND provenance LIKE
+                    'PAPER_MANAGER_CLOSE:paper-position:%'
+                ORDER BY evidence_id DESC
+                LIMIT ?
+                ''',
+                (bounded_limit,),
+            ).fetchall()
+        finally:
+            db.close()
+
+        hydrated = 0
+
+        for row in reversed(rows):
+            provenance = str(
+                row["provenance"]
+                or ""
+            )
+
+            token_id = provenance.split(
+                "PAPER_MANAGER_CLOSE:",
+                1,
+            )[-1]
+
+            try:
+                result = observer(
+                    str(
+                        row["wallet_uid"]
+                    ).strip().lower(),
+                    token_id,
+                    float(
+                        row["outcome_value"]
+                    ),
+                    realized=True,
+                )
+            except Exception:
+                continue
+
+            if isinstance(result, dict):
+                hydrated += 1
+
+        return {
+            "state": "READY",
+            "backfill": backfill,
+            "hydrated": hydrated,
+            "decision_authority": False,
+            "paper_authority": False,
+            "live_authority": False,
+            "wallet_authority": False,
+            "signing_authority": False,
+            "execution_authority": False,
+        }
 
     def observe_paper_close(
         self,
@@ -319,6 +743,59 @@ class RuntimeLearningOutcomeFeed:
             signal_family="paper_entry",
             freshness="FRESH",
         )
+
+        actor_identity = (
+            opening_context.get(
+                "actor_identity"
+            )
+            if isinstance(
+                opening_context,
+                dict,
+            )
+            else None
+        )
+
+        if isinstance(actor_identity, dict):
+            persistent_wallet = str(
+                actor_identity.get(
+                    "wallet_id"
+                )
+                or ""
+            ).strip().lower()
+
+            persistent_source = str(
+                actor_identity.get(
+                    "identity_source"
+                )
+                or ""
+            ).strip().upper()
+
+            persistent_hindsight = (
+                actor_identity.get(
+                    "hindsight_reconstructed"
+                )
+            )
+
+            if (
+                persistent_wallet
+                and persistent_source
+                == "TRANSACTION_FROM_ONLY"
+                and persistent_hindsight is False
+                and evidence_complete
+                and realized["return"] is not None
+            ):
+                self._persist_wallet_outcome(
+                    wallet_id=persistent_wallet,
+                    position_id=position_id,
+                    token=token,
+                    observed_at=evaluated_at,
+                    return_pct=(
+                        float(
+                            realized["return"]
+                        )
+                        * 100.0
+                    ),
+                )
 
         phase9_wallet_tracking = (
             self._observe_phase9_wallet_outcome(

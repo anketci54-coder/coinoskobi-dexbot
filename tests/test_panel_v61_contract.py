@@ -10,11 +10,11 @@ def test_v61_frontend_contract():
     ).read_text()
 
     js = (
-        ROOT / "app/api/static/dex-terminal-v61.js"
+        ROOT / "app/api/static/dex-terminal.js"
     ).read_text()
 
-    assert "/static/dex-terminal-v61.js" in html
-    assert "/static/dex-terminal-v61.css" in html
+    assert "/static/dex-terminal.js" in html
+    assert "/static/dex-terminal.css" in html
 
     assert "/api/manual-paper/preview-v2" in js
     assert "/api/manual-paper/order-v2" in js

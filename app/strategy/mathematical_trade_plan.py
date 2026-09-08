@@ -1609,7 +1609,7 @@ def build_trade_plan(
                 "NO_VERIFIED_PERSISTENT_LIQUIDITY"
             )
 
-    gross_log_edge = (
+    full_horizon_log_move = (
         _number(
             stats.get(
                 "horizon_log_move"
@@ -1617,6 +1617,47 @@ def build_trade_plan(
         )
         or 0.0
     )
+
+    gross_log_edge = (
+        full_horizon_log_move
+    )
+
+    edge_horizon_source = (
+        "FULL_OBSERVED_SERIES"
+    )
+
+    trailing_positive_returns = []
+
+    if (
+        vur_kac_entry.get("enforced")
+        and vur_kac_entry.get("ready")
+        and vur_kac_entry.get("reason")
+        == "VUR_KAC_ENTRY_SIGNAL_READY"
+    ):
+        for value in reversed(
+            stats.get("log_returns")
+            or ()
+        ):
+            number = _number(value)
+
+            if (
+                number is None
+                or number <= 0
+            ):
+                break
+
+            trailing_positive_returns.append(
+                number
+            )
+
+        if trailing_positive_returns:
+            gross_log_edge = sum(
+                trailing_positive_returns
+            )
+
+            edge_horizon_source = (
+                "TRAILING_POSITIVE_CONTINUATION"
+            )
 
     buy_retention = (
         costs[
@@ -1648,6 +1689,35 @@ def build_trade_plan(
         gross_log_edge
         - friction_log
     )
+
+    stats["edge_horizon"] = {
+        "source": edge_horizon_source,
+        "full_horizon_log_move": (
+            full_horizon_log_move
+        ),
+        "effective_gross_log_edge": (
+            gross_log_edge
+        ),
+        "trailing_positive_return_count": (
+            len(trailing_positive_returns)
+        ),
+        "trailing_positive_log_move": (
+            sum(trailing_positive_returns)
+            if trailing_positive_returns
+            else None
+        ),
+        "friction_log": friction_log,
+        "known_net_log_edge": (
+            known_net_log_edge
+        ),
+        "runtime_vur_kac": bool(
+            vur_kac_entry.get("enforced")
+        ),
+        "decision_authority": False,
+        "live_authority": False,
+        "wallet_authority": False,
+        "execution_authority": False,
+    }
 
     edge_fraction = (
         math.expm1(

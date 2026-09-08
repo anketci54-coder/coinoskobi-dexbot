@@ -68,7 +68,7 @@
         <section class="home-grid">
           <article class="terminal-card radar-card">
             <div class="card-head"><div><small>DEX FIRSAT TARAMA</small><h2>RADAR</h2></div><div class="card-actions"><span id="homeRadarCount">—</span><button type="button" data-go="radar">TÜMÜNÜ GÖR</button></div></div>
-            <div class="table-wrap"><table><thead><tr><th>DURUM</th><th>POOL / TOKEN</th><th>DEX</th><th>SCORE</th><th>24H HACİM</th><th>5M</th><th>LİKİDİTE</th></tr></thead><tbody id="homeRadarRows"></tbody></table></div>
+            <div class="table-wrap"><table><thead><tr><th>DURUM</th><th>POOL / TOKEN</th><th>PİYASA OKUMASI</th><th>5DK İŞLEM</th><th>24H HACİM</th><th>5M</th><th>LİKİDİTE</th></tr></thead><tbody id="homeRadarRows"></tbody></table></div>
           </article>
 
           <aside class="terminal-card vezir-mini-card">
@@ -90,13 +90,13 @@
       <section class="terminal-page" data-page="radar">
         <div class="page-head split"><div><div class="eyebrow">DEX FIRSAT TARAMA</div><h1>RADAR</h1><p>BSC pool evrenindeki HOT / WARM / COLD adayları gerçek likidite, hacim ve kısa hareket verisiyle izle.</p></div><div class="segmented" id="radarFilters"><button class="active" data-radar-filter="ALL">TÜMÜ</button><button data-radar-filter="HOT">HOT</button><button data-radar-filter="WARM">WARM</button><button data-radar-filter="COLD">COLD</button></div></div>
         <section class="metric-grid four"><article class="metric-card"><small>HOT</small><b id="radarHot">—</b></article><article class="metric-card"><small>WARM</small><b id="radarWarm">—</b></article><article class="metric-card"><small>COLD</small><b id="radarCold">—</b></article><article class="metric-card"><small>GÖRÜNÜR POOL</small><b id="radarVisible">—</b></article></section>
-        <article class="terminal-card full-card"><div class="card-head"><div><small>UNIVERSE READMODEL</small><h2>DEX POOL LİSTESİ</h2></div><span id="radarSource">—</span></div><div class="table-wrap tall"><table><thead><tr><th>DURUM</th><th>POOL / TOKEN</th><th>DEX</th><th>SCORE</th><th>FİYAT</th><th>5M</th><th>24H HACİM</th><th>LİKİDİTE</th><th>SNAPSHOT</th></tr></thead><tbody id="radarRows"></tbody></table></div></article>
+        <article class="terminal-card full-card"><div class="card-head"><div><small>UNIVERSE READMODEL</small><h2>DEX POOL LİSTESİ</h2></div><span id="radarSource">—</span></div><div class="table-wrap tall"><table><thead><tr><th>DURUM</th><th>POOL / TOKEN</th><th>PİYASA OKUMASI</th><th>5DK İŞLEM</th><th>FİYAT</th><th>5M</th><th>24H HACİM</th><th>LİKİDİTE</th><th>SNAPSHOT</th></tr></thead><tbody id="radarRows"></tbody></table></div></article>
       </section>
 
       <section class="terminal-page" data-page="positions">
         <div class="page-head"><div><div class="eyebrow">PAPER PORTFÖY</div><h1>AÇIK POZİSYONLAR</h1><p>Giriş, son kayıtlı fiyat, yatırım, PNL ve satış incelemesini açık pozisyon bazında takip et.</p></div></div>
         <section class="metric-grid four"><article class="metric-card"><small>AÇIK POZİSYON</small><b id="positionsCount">—</b></article><article class="metric-card"><small>AÇIK YATIRIM</small><b id="positionsInvestment">—</b></article><article class="metric-card"><small>AÇIK PNL</small><b id="positionsPnl">—</b></article><article class="metric-card"><small>MODELLENEN RİSK</small><b id="positionsRisk">—</b></article></section>
-        <article class="terminal-card full-card"><div class="card-head"><div><small>MANUEL + OTOMATİK PAPER</small><h2>POZİSYON DEFTERİ</h2></div><span>LIVE EXECUTION KAPALI</span></div><div class="table-wrap tall"><table><thead><tr><th>TOKEN</th><th>POOL</th><th>POLİTİKA</th><th>GİRİŞ</th><th>SON</th><th>YATIRIM</th><th>NET PNL</th><th>ROI</th><th>AKSİYON</th></tr></thead><tbody id="positionRows"></tbody></table></div></article>
+        <article class="terminal-card full-card"><div class="card-head"><div><small>MANUEL + OTOMATİK PAPER</small><h2>POZİSYON DEFTERİ</h2></div><div class="card-actions"><button class="primary-action" type="button" data-v61-buy>+ MANUEL PAPER AL</button><span data-auto-paper-status="1">OTOMATİK PAPER · RUNTIME</span><span>LIVE EXECUTION KAPALI</span></div></div><div class="table-wrap tall"><table><thead><tr><th>TOKEN</th><th>POOL</th><th>POLİTİKA</th><th>GİRİŞ</th><th>SON</th><th>YATIRIM</th><th>NET PNL</th><th>ROI</th><th>AKSİYON</th></tr></thead><tbody id="positionRows"></tbody></table></div></article>
         <aside class="detail-drawer" id="positionPreview"><div class="drawer-empty">Bir pozisyonda “SATIŞI İNCELE” seç.</div></aside>
       </section>
 

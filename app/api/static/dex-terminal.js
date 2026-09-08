@@ -3,7 +3,11 @@
 
   const $ = id => document.getElementById(id);
   const $$ = selector => [...document.querySelectorAll(selector)];
-  const n = value => { const x = Number(value); return Number.isFinite(x) ? x : null; };
+  const n = value => {
+    if(value === null || value === undefined || value === '') return null;
+    const x = Number(value);
+    return Number.isFinite(x) ? x : null;
+  };
   const esc = value => String(value ?? '').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'",'&#039;');
   const short = value => { const s = String(value || '').trim(); return !s ? '—' : s.length > 22 ? `${s.slice(0,9)}…${s.slice(-8)}` : s; };
   const money = value => { const x=n(value); return x===null?'—':`${x<0?'-':''}$${Math.abs(x).toLocaleString('tr-TR',{minimumFractionDigits:2,maximumFractionDigits:2})}`; };
@@ -79,14 +83,65 @@
   }
 
   function candidateName(row){ return row.display_name || short(row.token0 || row.token1 || row.pool); }
+
+  function plainMarketRead(row){
+    const seismic=row?.seismic || {};
+    const change=n(row?.change_5m_pct);
+    const volume=n(seismic.volume_z);
+    const txns=n(seismic.txns_z);
+    const liquidity=n(seismic.liquidity_ratio);
+
+    if(liquidity!==null && liquidity<0.70){
+      return 'Likidite hızla zayıflıyor';
+    }
+
+    if(
+      change!==null &&
+      change>0 &&
+      volume!==null &&
+      volume>1 &&
+      txns!==null &&
+      txns>1
+    ){
+      return 'Fiyat, hacim ve ilgi güçleniyor';
+    }
+
+    if(
+      change!==null &&
+      change<0 &&
+      volume!==null &&
+      volume>1
+    ){
+      return 'Satış baskısı güçleniyor';
+    }
+
+    if(
+      volume!==null &&
+      volume>1 &&
+      txns!==null &&
+      txns>1
+    ){
+      return 'Hacim ve işlem ilgisi hızlanıyor';
+    }
+
+    if(change!==null && change>0){
+      return 'Kısa vadeli yön yukarı';
+    }
+
+    if(change!==null && change<0){
+      return 'Kısa vadeli yön aşağı';
+    }
+
+    return 'Dengeli · izleniyor';
+  }
   function radarRows(rows){
     return rows.length ? rows.map(row=>{
       const seismic=row.seismic||{};
       return `<tr>
         <td>${stateBadge(row.state)}</td>
         <td><div class="token-cell"><b>${esc(candidateName(row))}</b><small>${esc(short(row.pool))}</small></div></td>
-        <td>${esc(row.dex||'—')}</td>
-        <td>${num(seismic.score)}</td>
+        <td>${esc(plainMarketRead(row))}</td>
+        <td>${esc(row.txns_5m ?? '—')}</td>
         <td>${num(row.price_usd)}</td>
         <td class="${cls(row.change_5m_pct)}">${pct(row.change_5m_pct)}</td>
         <td>${money(row.volume_24h_usd)}</td>
@@ -138,7 +193,7 @@
   function renderRadar(){
     const counts=universe?.counts||{}; $('radarHot').textContent=counts.HOT??'—'; $('radarWarm').textContent=counts.WARM??'—'; $('radarCold').textContent=counts.COLD??'—'; $('radarVisible').textContent=universe?.visible_count??'—'; $('radarSource').textContent=universe?.source||'—';
     const all=Array.isArray(universe?.rows)?universe.rows:[]; const filtered=radarFilter==='ALL'?all:all.filter(r=>String(r.state||'').toUpperCase()===radarFilter); $('radarRows').innerHTML=radarRows(filtered);
-    const home=all.slice(0,6); $('homeRadarRows').innerHTML=home.length?home.map(row=>{ const seismic=row.seismic||{}; return `<tr><td>${stateBadge(row.state)}</td><td><div class="token-cell"><b>${esc(candidateName(row))}</b><small>${esc(short(row.pool))}</small></div></td><td>${esc(row.dex||'—')}</td><td>${num(seismic.score)}</td><td>${money(row.volume_24h_usd)}</td><td class="${cls(row.change_5m_pct)}">${pct(row.change_5m_pct)}</td><td>${money(row.liquidity_usd)}</td></tr>`; }).join(''):'<tr><td colspan="7" class="muted">Güncel DEX radar kaydı yok.</td></tr>'; $('homeRadarCount').textContent=`${home.length} görünür`;
+    const home=all.slice(0,6); $('homeRadarRows').innerHTML=home.length?home.map(row=>{ const seismic=row.seismic||{}; return `<tr><td>${stateBadge(row.state)}</td><td><div class="token-cell"><b>${esc(candidateName(row))}</b><small>${esc(short(row.pool))}</small></div></td><td>${esc(plainMarketRead(row))}</td><td>${esc(row.txns_5m ?? '—')}</td><td>${money(row.volume_24h_usd)}</td><td class="${cls(row.change_5m_pct)}">${pct(row.change_5m_pct)}</td><td>${money(row.liquidity_usd)}</td></tr>`; }).join(''):'<tr><td colspan="7" class="muted">Güncel DEX radar kaydı yok.</td></tr>'; $('homeRadarCount').textContent=`${home.length} görünür`;
   }
 
   function candidateReason(row){ const source=String(row?.discovery_source||row?.source||'').toUpperCase(); if(source==='TRANSACTION_FROM_ONLY')return 'BSC işlem akışında gönderen cüzdan olarak gözlendi.'; if(source.includes('ARKHAM'))return 'Harici on-chain istihbarat kaynağında gözlendi.'; if(source==='REGISTRY')return 'Canonical aday kayıt defterinde aktif.'; return source?`${source.replaceAll('_',' ')} kaynağından aday.`:'Aday kaynağı henüz ayrıntılandırılmadı.'; }
@@ -545,6 +600,8 @@
     }
   }
 
+  const v61SellPreviews=new Map();
+
   function injectControls(){
     const positionsHead=document.querySelector(
       '.terminal-page[data-page="positions"] .full-card .card-head'
@@ -677,6 +734,16 @@
         }
       );
 
+      v61SellPreviews.set(
+        String(fresh.id),
+        {
+          reference_price:data.reference_price,
+          net_pnl_usdt:data.net_pnl_usdt,
+          roi_pct:data.roi_pct,
+          captured_at:Date.now()
+        }
+      );
+
       openModal(
         `SATIŞ İNCELEMESİ · ${fresh.symbol || fresh.id}`,
         `
@@ -718,6 +785,8 @@
 
     if(!row) return;
 
+    const preview=v61SellPreviews.get(String(id)) || null;
+
     try{
       const data=await post(
         '/api/manual-paper/order-v2',
@@ -726,7 +795,9 @@
           position_id:row.id,
           pool:row.pool,
           token:row.token,
-          confirmed:true
+          confirmed:true,
+          expected_reference_price:preview?.reference_price ?? null,
+          expected_net_pnl_usdt:preview?.net_pnl_usdt ?? null
         }
       );
 
@@ -1101,6 +1172,7 @@
   'use strict';
 
   const num = value => {
+    if(value === null || value === undefined || value === '') return null;
     const x=Number(value);
     return Number.isFinite(x) ? x : null;
   };

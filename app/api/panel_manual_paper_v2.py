@@ -744,6 +744,31 @@ def _sell(*, paper_db: Path, cache_db: Path, payload: dict[str, Any]) -> dict[st
         gross = accounting["gross"]
         net = accounting["net"]
         roi = accounting["roi"]
+
+        expected_net_raw = payload.get("expected_net_pnl_usdt")
+        if expected_net_raw is not None:
+            try:
+                expected_net = float(expected_net_raw)
+            except (TypeError, ValueError):
+                expected_net = None
+
+            if expected_net is not None:
+                sign_flipped = (
+                    (expected_net > 0.0 and net < 0.0)
+                    or
+                    (expected_net < 0.0 and net > 0.0)
+                )
+
+                if sign_flipped:
+                    connection.rollback()
+                    raise HTTPException(
+                        status_code=409,
+                        detail=(
+                            "Fiyat ve PNL önizlemeden sonra yön değiştirdi; "
+                            "satış yapılmadı. Pozisyonu yeniden inceleyin."
+                        ),
+                    )
+
         entry = float(position.get("entry_amount_usdt") or 0.0)
         high = max(float(position.get("highest_price") or price), price)
         low = min(float(position.get("lowest_price") or price), price)

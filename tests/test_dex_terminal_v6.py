@@ -4,8 +4,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 STATIC = ROOT / "app" / "api" / "static"
 HTML = STATIC / "index.html"
-CSS = STATIC / "dex-terminal-v6.css"
-JS = STATIC / "dex-terminal-v6.js"
+CSS = STATIC / "dex-terminal.css"
+JS = STATIC / "dex-terminal.js"
 
 
 LEGACY_ASSETS = {
@@ -31,8 +31,8 @@ LEGACY_ASSETS = {
 def test_v6_is_single_frontend_owner():
     html = HTML.read_text(encoding="utf-8")
 
-    assert '/static/dex-terminal-v6.css?v=1' in html
-    assert '/static/dex-terminal-v6.js?v=1' in html
+    assert '/static/dex-terminal.css?v=2' in html
+    assert '/static/dex-terminal.js?v=2' in html
 
     for asset in LEGACY_ASSETS:
         assert asset not in html

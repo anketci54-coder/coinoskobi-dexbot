@@ -2,7 +2,7 @@ from pathlib import Path
 
 
 HTML = Path("app/api/static/index.html")
-V6 = Path("app/api/static/dex-terminal-v6.js")
+V6 = Path("app/api/static/dex-terminal.js")
 PANEL = Path("app/api/panel.py")
 
 

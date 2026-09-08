@@ -68,6 +68,55 @@ def build_application(
             wallet_outcome_observer
         )
 
+        hydrate_wallet_outcomes = getattr(
+            learning_feed,
+            "hydrate_wallet_outcomes",
+            None,
+        )
+
+        if callable(hydrate_wallet_outcomes):
+            try:
+                hydration = (
+                    hydrate_wallet_outcomes()
+                )
+
+                logging.getLogger(
+                    __name__
+                ).info(
+                    (
+                        "Wallet outcome hydration "
+                        "state=%s hydrated=%s "
+                        "backfill_persisted=%s"
+                    ),
+                    hydration.get("state"),
+                    hydration.get(
+                        "hydrated",
+                        0,
+                    ),
+                    (
+                        hydration.get(
+                            "backfill"
+                        )
+                        or {}
+                    ).get(
+                        "persisted",
+                        0,
+                    ),
+                )
+            except Exception as exc:
+                logging.getLogger(
+                    __name__
+                ).warning(
+                    (
+                        "Wallet outcome hydration "
+                        "failed: %s"
+                    ),
+                    (
+                        f"{type(exc).__name__}: "
+                        f"{exc}"
+                    ),
+                )
+
     services = []
     market_flow_bound = False
     hot_bridge = HotPositionWSSBridge()

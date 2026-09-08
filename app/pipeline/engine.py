@@ -740,7 +740,8 @@ class PipelineEngine:
         self.ingress_gate = IngressGate()
         self.learning_outcome_feed = (
             RuntimeLearningOutcomeFeed(
-                chain="bsc"
+                chain="bsc",
+                wallet_outcome_db_path=PAPER_DB,
             )
         )
         self.counterfactual_store = (

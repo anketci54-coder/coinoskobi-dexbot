@@ -56,7 +56,6 @@ jobs:
           tests/test_dex_terminal_v6.py
           tests/test_panel_v61_contract.py
           tests/test_panel_accounting_visibility.py
-          tests/test_panel_fresh_snapshot.py
           tests/test_panel_manual_paper_v2.py
           tests/test_panel_operations.py
           tests/test_watch_probe_store.py

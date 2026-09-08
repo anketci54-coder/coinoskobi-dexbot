@@ -100,7 +100,7 @@ def test_v6_binds_only_existing_readmodels_and_paper_preview():
     for endpoint in (
         "/api/dashboard",
         "/api/universe-panel",
-        "/api/accounting-ledger-v2?limit=200",
+        "/api/accounting-ledger-v2?limit=",
         "/api/wallet-brief-v3",
         "/api/wallet-intelligence-v2",
         "/api/market-brief-v3",
@@ -109,6 +109,10 @@ def test_v6_binds_only_existing_readmodels_and_paper_preview():
         "/api/vezir/ask",
     ):
         assert endpoint in js
+
+    assert "LEDGER_PAGE_SIZE = 200" in js
+    assert "before_id=${encodeURIComponent(beforeId)}" in js
+    assert "page?.next_before_id" in js
 
     for forbidden in (
         "eth_sendRawTransaction",

@@ -103,9 +103,6 @@ class UnifiedScoreEngine:
             "mev_status": mev_status,
         }
 
-        # Opportunity is active continuation, not historical-average trend.
-        # A flat/weakening latest step stays observable instead of becoming a
-        # permanent rejection, so the runtime can catch a later acceleration.
         if latest_return <= 0:
             return {
                 "state": "WATCH",
@@ -204,7 +201,7 @@ class UnifiedScoreEngine:
         )
 
         return {
-            "model": "unified_opportunity_v1",
+            "model": "unified_score_v1",
             "score": coverage_score,
             "confidence": coverage_score,
             "opportunity_score": None,

@@ -127,13 +127,28 @@ class UnifiedScoreEngine:
                 **diagnostics,
             }
 
-        # Liquidity must exist. Missing reserve evidence remains WATCH; a
-        # negative historical reserve delta is a caution signal, not a hard
-        # reject, because the execution-cost layer still owns sizing.
         if quote_reserve is None or quote_reserve <= 0:
             return {
                 "state": "WATCH",
                 "reason": "EXECUTABLE_LIQUIDITY_NOT_READY",
+                **diagnostics,
+            }
+
+        # On token/WBNB pairs a positive WBNB reserve change is direct onchain
+        # confirmation that quote asset is entering the pool while the target
+        # price advances. It prevents price-only early admission when flow
+        # evidence is incomplete, without inventing a fixed percentage gate.
+        if reserve_change is None:
+            return {
+                "state": "WATCH",
+                "reason": "QUOTE_FLOW_CONFIRMATION_NOT_READY",
+                **diagnostics,
+            }
+
+        if reserve_change <= 0:
+            return {
+                "state": "WATCH",
+                "reason": "QUOTE_FLOW_NOT_SUPPORTING_MOVE",
                 **diagnostics,
             }
 

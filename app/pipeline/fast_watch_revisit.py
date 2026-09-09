@@ -318,6 +318,28 @@ class FastWatchRevisitJob:
             "candidate_quote_token"
         ] = row.get("quote_token")
 
+        actor_runtime = getattr(
+            self.pipeline,
+            "native_actor_intelligence",
+            None,
+        )
+
+        if actor_runtime is not None:
+            actor_snapshot = actor_runtime.snapshot(
+                row.get("pool")
+            )
+
+            if actor_snapshot.get("state") == "READY":
+                market_context["wallet_id"] = actor_snapshot[
+                    "wallet_id"
+                ]
+                market_context[
+                    "adversary_key"
+                ] = actor_snapshot[
+                    "adversary_key"
+                ]
+                market_context["runtime_actor"] = actor_snapshot
+
         result = self.pipeline.run(
             row["token"],
             market_context=market_context,
@@ -396,8 +418,17 @@ class FastWatchRevisitJob:
             None,
         )
         if callable(observer):
+            observed_row = dict(row)
+            current_price = (
+                summary["market_context"].get("price_usd")
+                if isinstance(summary["market_context"], dict)
+                else None
+            )
+            if current_price is not None:
+                observed_row["price_usd"] = current_price
+
             observer(
-                row,
+                observed_row,
                 summary,
             )
 

@@ -36,6 +36,7 @@ jobs:
           tests/test_vur_kac_entry_admission.py
           tests/test_catastrophic_gap_calibration.py
           tests/test_candidate_reevaluation_ledger.py
+          tests/test_opportunity_observability.py
           tests/test_followup_snapshot_cache.py
           tests/test_runtime_performance_observer.py
           tests/test_runtime_outcome_feed.py

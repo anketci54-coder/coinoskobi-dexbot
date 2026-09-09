@@ -259,18 +259,9 @@ def analyze(token, pair):
 
             samples.append({
                 "block": block,
-
-                "token_reserve": (
-                    token_reserve
-                ),
-
-                "wbnb_reserve": (
-                    wbnb_reserve
-                ),
-
-                "token_price_usd": (
-                    token_price_usd
-                ),
+                "token_reserve": token_reserve,
+                "wbnb_reserve": wbnb_reserve,
+                "token_price_usd": token_price_usd,
             })
 
         current = (
@@ -290,10 +281,8 @@ def analyze(token, pair):
         )
 
         liquidity_usd = (
-            2.0
-            * quote_reserve_usd
-            if quote_reserve_usd
-            is not None
+            2.0 * quote_reserve_usd
+            if quote_reserve_usd is not None
             else None
         )
 
@@ -333,26 +322,20 @@ def analyze(token, pair):
         }
 
         if current:
-            one_token_raw = (
-                10 ** decimals
-            )
+            one_token_raw = 10 ** decimals
 
             try:
                 amounts = (
                     router.functions
                     .getAmountsOut(
                         one_token_raw,
-                        [
-                            token_address,
-                            wbnb,
-                        ],
+                        [token_address, wbnb],
                     )
                     .call()
                 )
 
                 route_quote_out_wbnb = (
-                    int(amounts[-1])
-                    / 1e18
+                    int(amounts[-1]) / 1e18
                 )
 
                 spot_out_wbnb = (
@@ -374,16 +357,10 @@ def analyze(token, pair):
                     )
 
                 implied_fee = infer_constant_product_fee(
-                    reserve_in=current[
-                        "token_reserve"
-                    ],
-                    reserve_out=current[
-                        "wbnb_reserve"
-                    ],
+                    reserve_in=current["token_reserve"],
+                    reserve_out=current["wbnb_reserve"],
                     amount_in=1.0,
-                    amount_out=(
-                        route_quote_out_wbnb
-                    ),
+                    amount_out=route_quote_out_wbnb,
                 )
 
             except Exception:
@@ -392,118 +369,74 @@ def analyze(token, pair):
         price_series = [
             row["token_price_usd"]
             for row in samples
-            if (
-                row.get(
-                    "token_price_usd"
-                )
-                is not None
-            )
+            if row.get("token_price_usd") is not None
         ]
 
         reserve_change = None
+        latest_reserve_change = None
 
         if (
             len(samples) >= 2
-            and samples[0][
-                "wbnb_reserve"
-            ] > 0
+            and samples[0]["wbnb_reserve"] > 0
         ):
             reserve_change = (
-                samples[-1][
-                    "wbnb_reserve"
-                ]
-                / samples[0][
-                    "wbnb_reserve"
-                ]
+                samples[-1]["wbnb_reserve"]
+                / samples[0]["wbnb_reserve"]
+                - 1.0
+            )
+
+        if (
+            len(samples) >= 2
+            and samples[-2]["wbnb_reserve"] > 0
+        ):
+            latest_reserve_change = (
+                samples[-1]["wbnb_reserve"]
+                / samples[-2]["wbnb_reserve"]
                 - 1.0
             )
 
         return {
             "success": True,
-            "source": (
-                "exit_feasibility"
-            ),
+            "source": "exit_feasibility",
             "error": None,
             "data": {
                 "pair": pair_address,
-
                 "pair_membership_ok": True,
-
                 "token_decimals": decimals,
-
-                "wbnb_usd_estimate": (
-                    wbnb_usd
-                ),
-
-                "stable_quote_token": (
-                    stable_quote
-                ),
-
-                "quote_reserve_usd": (
-                    quote_reserve_usd
-                ),
-
-                "liquidity_usd_estimate": (
-                    liquidity_usd
-                ),
-
+                "wbnb_usd_estimate": wbnb_usd,
+                "stable_quote_token": stable_quote,
+                "quote_reserve_usd": quote_reserve_usd,
+                "liquidity_usd_estimate": liquidity_usd,
                 "observed_min_quote_reserve_usd": (
                     observed_min_quote_reserve_usd
                 ),
-
                 "reserve_floor_fraction_of_current": (
                     reserve_floor_fraction_of_current
                 ),
-
                 "reserve_observation_count": len(samples),
-
-                "reserve_change_fraction": (
-                    reserve_change
+                "reserve_change_fraction": reserve_change,
+                "latest_reserve_change_fraction": (
+                    latest_reserve_change
                 ),
-
-                "reserve_samples": (
-                    samples
-                ),
-
-                "spot_price_series_usd": (
-                    price_series
-                ),
-
+                "reserve_samples": samples,
+                "spot_price_series_usd": price_series,
                 "route_quote_one_token_wbnb": (
                     route_quote_out_wbnb
                 ),
-
-                "route_friction_fraction": (
-                    route_friction
-                ),
-
+                "route_friction_fraction": route_friction,
                 "implied_v2_fee_fraction": (
-                    implied_fee.get(
-                        "fee_fraction"
-                    )
-                    if implied_fee.get(
-                        "state"
-                    ) == "READY"
+                    implied_fee.get("fee_fraction")
+                    if implied_fee.get("state") == "READY"
                     else None
                 ),
-
-                "implied_v2_fee_state": (
-                    implied_fee.get("state")
-                ),
-
-                "gas_price_wei": int(
-                    w3.eth.gas_price
-                ),
-
+                "implied_v2_fee_state": implied_fee.get("state"),
+                "gas_price_wei": int(w3.eth.gas_price),
                 "evidence_complete": (
                     len(price_series) >= 2
-                    and quote_reserve_usd
-                    is not None
+                    and quote_reserve_usd is not None
                     and quote_reserve_usd > 0
                 ),
-
                 "sellability_proof": False,
-
                 "trade_authority": False,
                 "paper_authority": False,
                 "live_authority": False,
@@ -515,31 +448,21 @@ def analyze(token, pair):
     except Exception as exc:
         return {
             "success": False,
-            "source": (
-                "exit_feasibility"
-            ),
+            "source": "exit_feasibility",
             "error": str(exc),
             "data": {
                 "pair": pair,
-
                 "pair_membership_ok": False,
-
                 "evidence_complete": False,
-
                 "spot_price_series_usd": [],
-
                 "quote_reserve_usd": None,
-
                 "observed_min_quote_reserve_usd": None,
-
                 "reserve_floor_fraction_of_current": None,
-
                 "reserve_observation_count": 0,
-
+                "reserve_change_fraction": None,
+                "latest_reserve_change_fraction": None,
                 "implied_v2_fee_fraction": None,
-
                 "implied_v2_fee_state": "UNKNOWN",
-
                 "trade_authority": False,
                 "paper_authority": False,
                 "live_authority": False,

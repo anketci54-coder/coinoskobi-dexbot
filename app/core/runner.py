@@ -1,20 +1,19 @@
 import signal
 import time
 
+from app.config.scanner import (
+    FAST_WATCH_REVISIT_SECONDS,
+)
 from app.core.application_services import build_application_auxiliary_services
 from app.core.logger import get_logger
 from app.core.scheduler import Scheduler
+from app.pipeline.fast_watch_revisit import FastWatchRevisitJob
 
 log = get_logger()
 
 
-def _application_intelligence(scan_job):
-    """Resolve the PipelineEngine intelligence captured by build_application.
-
-    The production scan job is an application-owned closure over `pipeline`.
-    This keeps the auxiliary service on the exact same intelligence composition
-    without introducing a process-global singleton or scheduler coupling.
-    """
+def _application_pipeline(scan_job):
+    """Resolve the PipelineEngine captured by build_application."""
     code = getattr(scan_job, "__code__", None)
     closure = getattr(scan_job, "__closure__", None)
     if code is None or not closure:
@@ -28,7 +27,12 @@ def _application_intelligence(scan_job):
     except (AttributeError, ValueError):
         return None
 
-    pipeline = captured.get("pipeline")
+    return captured.get("pipeline")
+
+
+def _application_intelligence(scan_job):
+    """Resolve the intelligence owned by the captured PipelineEngine."""
+    pipeline = _application_pipeline(scan_job)
     return getattr(pipeline, "intelligence", None)
 
 
@@ -44,6 +48,11 @@ class Runner:
         auxiliary_service_factory=None,
     ):
         self.scheduler = Scheduler()
+        pipeline = (
+            _application_pipeline(scan_job)
+            if scan_job
+            else None
+        )
 
         if scan_job:
             self.scheduler.every(
@@ -51,6 +60,18 @@ class Runner:
                 func=scan_job,
                 name="scanner",
             )
+
+        if pipeline is not None:
+            self.fast_watch_revisit = FastWatchRevisitJob(
+                pipeline
+            )
+            self.scheduler.every(
+                interval=FAST_WATCH_REVISIT_SECONDS,
+                func=self.fast_watch_revisit.run_cycle,
+                name="fast_watch_revisit",
+            )
+        else:
+            self.fast_watch_revisit = None
 
         if position_job:
             self.scheduler.every(
@@ -72,7 +93,11 @@ class Runner:
 
         if auxiliary_service_factory is None:
             auxiliary = build_application_auxiliary_services(
-                intelligence=_application_intelligence(scan_job),
+                intelligence=getattr(
+                    pipeline,
+                    "intelligence",
+                    None,
+                ),
             )
         else:
             auxiliary = (

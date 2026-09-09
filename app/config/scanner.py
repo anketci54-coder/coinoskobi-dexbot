@@ -43,6 +43,11 @@ MAX_PENDING_CANDIDATES = 100000
 # Aynı token analiz edildikten sonra hemen tekrar RPC'ye girmesin.
 RECENT_ANALYSIS_COOLDOWN_SECONDS = 20
 
+# Structural PAPER_BUY adaylari momentum kaniti beklerken normal 300s
+# scanner turunu beklemesin. Bu yeniden degerlendirme canonical run()
+# yolunu kullanir; ayrica karar/live/wallet/execution authority vermez.
+FAST_WATCH_REVISIT_SECONDS = 20
+
 # Pahali analyzer isleri icin bounded worker havuzu.
 ANALYZER_WORKERS = 8
 

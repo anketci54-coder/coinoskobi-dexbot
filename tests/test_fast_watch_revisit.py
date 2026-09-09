@@ -1,4 +1,5 @@
 import json
+import threading
 
 import app.pipeline.fast_watch_revisit as module
 from app.core.runner import Runner
@@ -27,12 +28,47 @@ class _Store:
 
 
 class _Cache:
-    def all(self):
-        return [{
+    def __init__(self, rows=None):
+        self.rows = rows or [{
             "pool": POOL,
             "token": f"bsc_{TOKEN}",
             "quote_token": QUOTE,
         }]
+
+    def all(self):
+        return list(self.rows)
+
+
+class _Ingress:
+    def __init__(self, *, active=True):
+        self.active = active
+        self.calls = []
+
+    def classify_many(self, rows):
+        self.calls.append(list(rows))
+        return {
+            "active": list(rows) if self.active else [],
+            "deferred": [] if self.active else list(rows),
+            "dropped": [],
+            "stats": {
+                "input": len(rows),
+                "active": len(rows) if self.active else 0,
+                "deferred": 0 if self.active else len(rows),
+                "dropped": 0,
+                "reasons": {},
+            },
+        }
+
+
+class _PaperDB:
+    def __init__(self, traded=None):
+        self.traded = {
+            str(value).lower()
+            for value in (traded or [])
+        }
+
+    def has_trade_history(self, token):
+        return str(token).lower() in self.traded
 
 
 class _Flow:
@@ -45,9 +81,11 @@ class _Flow:
 
 
 class _Pipeline:
-    def __init__(self, rows):
+    def __init__(self, rows, *, ingress_active=True, traded=None):
         self.counterfactual_store = _Store(rows)
         self.cache = _Cache()
+        self.ingress_gate = _Ingress(active=ingress_active)
+        self.paper_db = _PaperDB(traded=traded)
         self.native_market_flow = _Flow()
         self.runs = []
         self.observed = []
@@ -81,11 +119,18 @@ class _Pipeline:
         return {"record": {"stored": True}}
 
 
-def _history_row(reason, *, hard_block=False, token=TOKEN, pool=POOL):
+def _history_row(
+    reason,
+    *,
+    hard_block=False,
+    token=TOKEN,
+    pool=POOL,
+    action="WATCH",
+):
     return {
         "token": token,
         "pool": pool,
-        "decision_action": "WATCH",
+        "decision_action": action,
         "context_json": json.dumps({
             "strategy": "PAPER_BUY",
             "opportunity_state": "WATCH",
@@ -95,14 +140,7 @@ def _history_row(reason, *, hard_block=False, token=TOKEN, pool=POOL):
     }
 
 
-def test_fast_watch_selects_only_active_momentum_reasons(monkeypatch):
-    rows = [
-        _history_row("ACTIVE_MOMENTUM_NOT_POSITIVE"),
-        _history_row("QUOTE_FLOW_NOT_SUPPORTING_MOVE", token="0x03", pool="0x04"),
-        _history_row("POSITIVE_CONTINUATION_NOT_ESTABLISHED", hard_block=True, token="0x05", pool="0x06"),
-    ]
-    pipeline = _Pipeline(rows)
-
+def _patch_normalization(monkeypatch):
     monkeypatch.setattr(
         module,
         "normalize_source_rows",
@@ -123,11 +161,21 @@ def test_fast_watch_selects_only_active_momentum_reasons(monkeypatch):
         lambda row, runtime_feed=None: {},
     )
 
+
+def test_fast_watch_selects_only_active_momentum_reasons(monkeypatch):
+    rows = [
+        _history_row("ACTIVE_MOMENTUM_NOT_POSITIVE"),
+        _history_row("QUOTE_FLOW_NOT_SUPPORTING_MOVE", token="0x03", pool="0x04"),
+        _history_row("POSITIVE_CONTINUATION_NOT_ESTABLISHED", hard_block=True, token="0x05", pool="0x06"),
+    ]
+    pipeline = _Pipeline(rows)
+    _patch_normalization(monkeypatch)
+
     job = FastWatchRevisitJob(
         pipeline,
         max_candidates=30,
     )
-    result = job.run_cycle()
+    result = job._run_cycle_sync()
 
     assert result["state"] == "READY"
     assert result["selected"] == 1
@@ -172,6 +220,102 @@ def test_fast_watch_is_strictly_bounded_and_deduplicated():
     assert len(identities) == 30
     assert len(set(identities)) == 30
     assert job._status(state="READY")["max_candidates"] == 30
+
+
+def test_newer_non_watch_transition_suppresses_older_watch():
+    rows = [
+        _history_row(
+            "STRUCTURAL_REJECT",
+            action="REJECT",
+        ),
+        _history_row(
+            "ACTIVE_MOMENTUM_NOT_POSITIVE",
+            action="WATCH",
+        ),
+    ]
+
+    pipeline = _Pipeline(rows)
+    job = FastWatchRevisitJob(pipeline)
+
+    assert job._watched_identities() == []
+
+
+def test_existing_trade_history_suppresses_old_watch():
+    rows = [
+        _history_row(
+            "ACTIVE_MOMENTUM_NOT_POSITIVE",
+        )
+    ]
+
+    pipeline = _Pipeline(
+        rows,
+        traded=[TOKEN],
+    )
+    job = FastWatchRevisitJob(pipeline)
+
+    assert job._watched_identities() == []
+
+
+def test_ingress_gate_must_still_be_active(monkeypatch):
+    rows = [
+        _history_row(
+            "ACTIVE_MOMENTUM_NOT_POSITIVE",
+        )
+    ]
+    pipeline = _Pipeline(
+        rows,
+        ingress_active=False,
+    )
+    _patch_normalization(monkeypatch)
+
+    job = FastWatchRevisitJob(pipeline)
+    result = job._run_cycle_sync()
+
+    assert result["state"] == "NO_ACTIVE_WATCH_CANDIDATES"
+    assert pipeline.ingress_gate.calls
+    assert pipeline.runs == []
+
+
+def test_missing_ingress_gate_fails_closed(monkeypatch):
+    rows = [
+        _history_row(
+            "ACTIVE_MOMENTUM_NOT_POSITIVE",
+        )
+    ]
+    pipeline = _Pipeline(rows)
+    del pipeline.ingress_gate
+    _patch_normalization(monkeypatch)
+
+    job = FastWatchRevisitJob(pipeline)
+    result = job._run_cycle_sync()
+
+    assert result["state"] == "NO_ACTIVE_WATCH_CANDIDATES"
+    assert pipeline.runs == []
+
+
+def test_run_cycle_dispatches_without_blocking(monkeypatch):
+    pipeline = _Pipeline([])
+    job = FastWatchRevisitJob(pipeline)
+    entered = threading.Event()
+    release = threading.Event()
+
+    def slow_cycle():
+        entered.set()
+        release.wait(timeout=2)
+        return job._status(state="READY")
+
+    monkeypatch.setattr(job, "_run_cycle_sync", slow_cycle)
+
+    first = job.run_cycle()
+    assert first["state"] == "DISPATCHED"
+    assert entered.wait(timeout=1)
+
+    second = job.run_cycle()
+    assert second["state"] == "BUSY"
+
+    release.set()
+    job._thread.join(timeout=1)
+    assert not job._running
 
 
 def test_runner_binds_fast_watch_at_twenty_second_cadence():

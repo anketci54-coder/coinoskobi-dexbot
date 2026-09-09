@@ -5,6 +5,7 @@ import time
 
 from web3 import Web3
 
+from app.analyzer import pair as pair_module
 from app.config.scanner import FAST_WATCH_REVISIT_SECONDS
 from app.config.strategy import SELLABILITY_CACHE_TTL_SECONDS
 from app.pipeline.market_context import build_market_context
@@ -37,6 +38,7 @@ class FastWatchRevisitJob:
         self._state_lock = threading.Lock()
         self._running = False
         self._thread = None
+        self._stop_event = threading.Event()
         self.last_status = self._status(state="IDLE")
 
     @staticmethod
@@ -98,22 +100,54 @@ class FastWatchRevisitJob:
 
         return False
 
-    def _watched_identities(self):
+    def _current_decision_rows(self):
+        """Return the latest durable transition for each current WATCH identity."""
         store = getattr(self.pipeline, "counterfactual_store", None)
-        snapshot = getattr(store, "decision_snapshot", None)
+        db = getattr(store, "_db", None)
+        lock = getattr(store, "_lock", None)
 
+        if db is not None and lock is not None:
+            try:
+                with lock:
+                    rows = db.execute(
+                        """
+                        SELECT d.*
+                        FROM candidate_decision_history d
+                        JOIN (
+                            SELECT token, pool, MAX(id) AS latest_id
+                            FROM candidate_decision_history
+                            GROUP BY token, pool
+                        ) latest
+                          ON latest.latest_id = d.id
+                        WHERE upper(d.decision_action) = 'WATCH'
+                        ORDER BY d.id DESC
+                        """
+                    ).fetchall()
+                return [dict(row) for row in rows]
+            except Exception:
+                logger.exception(
+                    "Fast watch durable latest-decision query failed"
+                )
+                return []
+
+        snapshot = getattr(store, "decision_snapshot", None)
         if not callable(snapshot):
             return []
 
-        rows = snapshot(
+        # Test/non-durable fallback only. Production uses the durable latest
+        # identity query above, so eligible watches cannot starve behind a
+        # fixed global history window.
+        return snapshot(
             limit=max(self.max_candidates * 8, self.max_candidates)
-        )
+        ) or []
 
+    def _watched_identities(self):
+        rows = self._current_decision_rows()
         selected = []
         seen = set()
         now = time.time()
 
-        for item in rows or []:
+        for item in rows:
             if len(selected) >= self.max_candidates:
                 break
 
@@ -124,8 +158,6 @@ class FastWatchRevisitJob:
             if not token or not pool or identity in seen:
                 continue
 
-            # decision_snapshot() is newest-first. Mark before filtering so
-            # an older WATCH can never override a newer non-WATCH transition.
             seen.add(identity)
 
             action = str(item.get("decision_action") or "").upper()
@@ -211,31 +243,52 @@ class FastWatchRevisitJob:
 
         return selected
 
+    def _analysis_pair(self, token):
+        """Resolve the exact pair used by PipelineEngine's pair analyzer."""
+        try:
+            result = pair_module.analyze(token)
+        except Exception:
+            return None
+
+        data = result.get("data") or {}
+        pair = data.get("pair")
+
+        if result.get("success") is not True or not data.get("exists") or not pair:
+            return None
+
+        try:
+            return Web3.to_checksum_address(pair)
+        except Exception:
+            return None
+
     def _refresh_local_sellability_evidence(self, row):
         """
-        Refresh only local on-chain evidence while retaining provider TTL.
+        Refresh local on-chain evidence for the exact pair PipelineEngine uses.
 
-        Provider verdicts remain cached for their canonical TTL. The payload
-        is replaced without touching updated_at, so fast WATCH rechecks get a
-        fresh price/reserve series without increasing external provider load.
+        Provider verdicts retain their canonical TTL. The cache payload update
+        is compare-and-swap guarded by the original updated_at so a concurrent
+        normal analyzer refresh can never be overwritten by an older verdict.
         """
         try:
             token = Web3.to_checksum_address(row.get("token"))
-            pair = Web3.to_checksum_address(row.get("pool"))
         except Exception:
+            return False
+
+        pair = self._analysis_pair(token)
+        if pair is None:
             return False
 
         cache_key = f"bsc:{token.lower()}:{pair.lower()}"
         cache = getattr(sellability_module, "_cache", None)
-        getter = getattr(cache, "get", None)
-        replacer = getattr(cache, "replace_payload_preserve_age", None)
+        getter = getattr(cache, "get_versioned", None)
+        replacer = getattr(cache, "replace_payload_if_version", None)
         local_reader = getattr(sellability_module, "_local_evidence", None)
 
         if not callable(getter) or not callable(replacer) or not callable(local_reader):
             return False
 
         try:
-            cached = getter(
+            versioned = getter(
                 "sellability",
                 cache_key,
                 ttl_seconds=SELLABILITY_CACHE_TTL_SECONDS,
@@ -243,11 +296,12 @@ class FastWatchRevisitJob:
         except Exception:
             return False
 
-        if cached is None:
+        if versioned is None:
             return False
 
         try:
-            result = json.loads(cached)
+            result = json.loads(versioned["payload"])
+            expected_updated_at = float(versioned["updated_at"])
         except Exception:
             return False
 
@@ -266,6 +320,7 @@ class FastWatchRevisitJob:
                     "sellability",
                     cache_key,
                     json.dumps(result, default=str),
+                    expected_updated_at,
                 )
             )
         except Exception:
@@ -334,9 +389,7 @@ class FastWatchRevisitJob:
             "hard_block": bool(risk_gate.get("hard_block")),
             "score": score.get("score"),
             "confidence": score.get("confidence"),
-            "sellability": (
-                analyzer_status.get("sellability", {}).get("status")
-            ),
+            "sellability": analyzer_status.get("sellability", {}).get("status"),
             "market_context": data.get("market_context") or market_context,
             "runtime_intelligence": data.get("runtime_intelligence") or {},
         }
@@ -387,6 +440,9 @@ class FastWatchRevisitJob:
         paper_buys = 0
 
         for row in rows[: self.max_candidates]:
+            if self._stop_event.is_set():
+                break
+
             try:
                 self._refresh_local_sellability_evidence(row)
                 result = self._process(row)
@@ -403,8 +459,11 @@ class FastWatchRevisitJob:
                     row.get("pool"),
                 )
 
+        state = "STOPPING" if self._stop_event.is_set() else (
+            "READY" if failed == 0 else "DEGRADED"
+        )
         self.last_status = self._status(
-            state="READY" if failed == 0 else "DEGRADED",
+            state=state,
             selected=len(rows),
             processed=processed,
             failed=failed,
@@ -425,6 +484,9 @@ class FastWatchRevisitJob:
     def run_cycle(self):
         """Dispatch one bounded revisit cycle without blocking Scheduler.tick."""
         with self._state_lock:
+            if self._stop_event.is_set():
+                return self._status(state="STOPPED")
+
             if self._running:
                 return self._status(state="BUSY")
 
@@ -440,3 +502,19 @@ class FastWatchRevisitJob:
 
         thread.start()
         return dispatched
+
+    def shutdown(self):
+        """Stop admitting new rows and finish the in-flight candidate cleanly."""
+        self._stop_event.set()
+
+        with self._state_lock:
+            thread = self._thread
+
+        if thread is not None and thread.is_alive():
+            thread.join()
+
+        with self._state_lock:
+            self._running = False
+            self.last_status = self._status(state="STOPPED")
+
+        return self.last_status

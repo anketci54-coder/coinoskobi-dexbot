@@ -66,12 +66,13 @@ class AnalyzerCache:
             timezone.utc
         ).timestamp()
 
-    def get(
+    def get_versioned(
         self,
         namespace,
         cache_key,
         ttl_seconds,
     ):
+        """Return a fresh payload with the exact cache version timestamp."""
         with self._lock:
             row = self.db.execute(
                 """
@@ -103,7 +104,25 @@ class AnalyzerCache:
                 return None
 
             self.hits += 1
-            return payload
+            return {
+                "payload": payload,
+                "updated_at": float(updated_at),
+            }
+
+    def get(
+        self,
+        namespace,
+        cache_key,
+        ttl_seconds,
+    ):
+        versioned = self.get_versioned(
+            namespace,
+            cache_key,
+            ttl_seconds,
+        )
+        if versioned is None:
+            return None
+        return versioned["payload"]
 
     def set(
         self,
@@ -156,6 +175,39 @@ class AnalyzerCache:
                     payload,
                     namespace,
                     cache_key,
+                ),
+            )
+
+            self.db.commit()
+            return int(cursor.rowcount or 0)
+
+    def replace_payload_if_version(
+        self,
+        namespace,
+        cache_key,
+        payload,
+        expected_updated_at,
+    ):
+        """
+        Compare-and-swap a payload while preserving the provider TTL.
+
+        If another analyzer refreshed the entry after it was read, rowcount is
+        zero and the newer verdict remains authoritative.
+        """
+        with self._lock:
+            cursor = self.db.execute(
+                """
+                UPDATE analyzer_cache_v1
+                SET payload = ?
+                WHERE namespace = ?
+                  AND cache_key = ?
+                  AND updated_at = ?
+                """,
+                (
+                    payload,
+                    namespace,
+                    cache_key,
+                    float(expected_updated_at),
                 ),
             )
 

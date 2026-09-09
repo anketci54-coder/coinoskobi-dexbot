@@ -178,6 +178,12 @@ class Runner:
                 self.last_service_error,
             )
 
+    def _stop_fast_watch_revisit(self):
+        if self.fast_watch_revisit is None:
+            return
+
+        self.fast_watch_revisit.shutdown()
+
     def service_status(self):
         result = []
 
@@ -225,6 +231,10 @@ class Runner:
                 self.sleep_func(1)
 
         finally:
+            # Finish any in-flight fast revisit before shutting down service
+            # dependencies, so a committed paper decision cannot lose its
+            # durable observer/promotion bookkeeping during SIGTERM.
+            self._stop_fast_watch_revisit()
             self._stop_services()
 
             log.info(

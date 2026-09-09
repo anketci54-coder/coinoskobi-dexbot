@@ -10,6 +10,7 @@ from app.pipeline.fast_watch_revisit import FastWatchRevisitJob
 TOKEN = "0x0000000000000000000000000000000000000001"
 POOL = "0x0000000000000000000000000000000000000002"
 QUOTE = "0x0000000000000000000000000000000000000003"
+ANALYSIS_PAIR = "0x0000000000000000000000000000000000000004"
 
 
 class _Candidate:
@@ -308,23 +309,38 @@ def test_missing_fresh_snapshot_provider_fails_closed():
     assert pipeline.runs == []
 
 
-def test_local_evidence_refresh_preserves_provider_cache_age(monkeypatch):
+def test_local_evidence_refresh_uses_analysis_pair_and_cas(monkeypatch):
     class Cache:
         def __init__(self):
             self.replaced = []
 
-        def get(self, namespace, cache_key, ttl_seconds):
-            return json.dumps({
-                "success": True,
-                "provider_success": True,
-                "data": {
-                    "sellable": True,
-                    "local_evidence": {"completed": False},
-                },
-            })
+        def get_versioned(self, namespace, cache_key, ttl_seconds):
+            assert cache_key.endswith(ANALYSIS_PAIR.lower())
+            return {
+                "payload": json.dumps({
+                    "success": True,
+                    "provider_success": True,
+                    "data": {
+                        "sellable": True,
+                        "local_evidence": {"completed": False},
+                    },
+                }),
+                "updated_at": 1234.5,
+            }
 
-        def replace_payload_preserve_age(self, namespace, cache_key, payload):
-            self.replaced.append((namespace, cache_key, json.loads(payload)))
+        def replace_payload_if_version(
+            self,
+            namespace,
+            cache_key,
+            payload,
+            expected_updated_at,
+        ):
+            self.replaced.append((
+                namespace,
+                cache_key,
+                json.loads(payload),
+                expected_updated_at,
+            ))
             return 1
 
     cache = Cache()
@@ -339,6 +355,17 @@ def test_local_evidence_refresh_preserves_provider_cache_age(monkeypatch):
             },
         },
     )
+    monkeypatch.setattr(
+        module.pair_module,
+        "analyze",
+        lambda token: {
+            "success": True,
+            "data": {
+                "exists": True,
+                "pair": ANALYSIS_PAIR,
+            },
+        },
+    )
 
     job = FastWatchRevisitJob(_Pipeline([]))
     assert job._refresh_local_sellability_evidence({
@@ -350,6 +377,24 @@ def test_local_evidence_refresh_preserves_provider_cache_age(monkeypatch):
     payload = cache.replaced[0][2]
     assert payload["local_evidence_complete"] is True
     assert payload["data"]["local_evidence"]["completed"] is True
+    assert cache.replaced[0][3] == 1234.5
+
+
+def test_local_evidence_refresh_does_not_fallback_to_candidate_pool(monkeypatch):
+    monkeypatch.setattr(
+        module.pair_module,
+        "analyze",
+        lambda token: {
+            "success": True,
+            "data": {"exists": False, "pair": None},
+        },
+    )
+
+    job = FastWatchRevisitJob(_Pipeline([]))
+    assert job._refresh_local_sellability_evidence({
+        "token": TOKEN,
+        "pool": POOL,
+    }) is False
 
 
 def test_run_cycle_dispatches_without_blocking(monkeypatch):
@@ -375,6 +420,38 @@ def test_run_cycle_dispatches_without_blocking(monkeypatch):
     release.set()
     job._thread.join(timeout=1)
     assert not job._running
+
+
+def test_shutdown_waits_for_inflight_worker(monkeypatch):
+    pipeline = _Pipeline([])
+    job = FastWatchRevisitJob(pipeline)
+    entered = threading.Event()
+    release = threading.Event()
+
+    def slow_cycle():
+        entered.set()
+        release.wait(timeout=2)
+        return job._status(state="READY")
+
+    monkeypatch.setattr(job, "_run_cycle_sync", slow_cycle)
+    assert job.run_cycle()["state"] == "DISPATCHED"
+    assert entered.wait(timeout=1)
+
+    done = threading.Event()
+
+    def stop_job():
+        job.shutdown()
+        done.set()
+
+    stopper = threading.Thread(target=stop_job)
+    stopper.start()
+    assert not done.wait(timeout=0.05)
+
+    release.set()
+    stopper.join(timeout=1)
+    assert done.is_set()
+    assert job.last_status["state"] == "STOPPED"
+    assert job.run_cycle()["state"] == "STOPPED"
 
 
 def test_runner_binds_fast_watch_at_twenty_second_cadence():

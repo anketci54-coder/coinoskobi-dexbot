@@ -1,5 +1,6 @@
 import json
 import logging
+import threading
 
 from app.pipeline.market_context import build_market_context
 from app.scanner.adapters.source_router import normalize_source_rows
@@ -22,10 +23,12 @@ class FastWatchRevisitJob:
     on active price-continuation evidence.
 
     No alternate strategy/admission path is introduced. Every selected row is
-    sent through PipelineEngine.run(), then through the existing durable
-    counterfactual observer. Hard risk, sellability, opportunity, sizing and
-    paper-position guards remain canonical. Live/wallet/execution authority is
-    unchanged.
+    re-admitted through the canonical ingress gate and sent through
+    PipelineEngine.run(), then through the existing durable counterfactual
+    observer. The scheduled trigger is non-blocking so slow provider/RPC work
+    cannot delay paper-manager or watch-probe exit jobs. Hard risk,
+    sellability, opportunity, sizing and paper-position guards remain
+    canonical. Live/wallet/execution authority is unchanged.
     """
 
     def __init__(
@@ -39,6 +42,9 @@ class FastWatchRevisitJob:
             1,
             int(max_candidates),
         )
+        self._state_lock = threading.Lock()
+        self._running = False
+        self._thread = None
         self.last_status = self._status(
             state="IDLE",
         )
@@ -73,6 +79,54 @@ class FastWatchRevisitJob:
             "execution_authority": False,
         }
 
+    def _has_trade_history(self, token):
+        databases = []
+
+        direct = getattr(
+            self.pipeline,
+            "paper_db",
+            None,
+        )
+        if direct is not None:
+            databases.append(direct)
+
+        manager = getattr(
+            self.pipeline,
+            "manager",
+            None,
+        )
+        manager_db = getattr(
+            manager,
+            "db",
+            None,
+        )
+        if (
+            manager_db is not None
+            and manager_db not in databases
+        ):
+            databases.append(manager_db)
+
+        for database in databases:
+            reader = getattr(
+                database,
+                "has_trade_history",
+                None,
+            )
+            if not callable(reader):
+                continue
+
+            try:
+                if reader(token):
+                    return True
+            except Exception:
+                logger.exception(
+                    "Fast watch trade-history check failed token=%s",
+                    token,
+                )
+                return True
+
+        return False
+
     def _watched_identities(self):
         store = getattr(
             self.pipeline,
@@ -102,11 +156,30 @@ class FastWatchRevisitJob:
             if len(selected) >= self.max_candidates:
                 break
 
+            token = self._canonical(
+                item.get("token")
+            )
+            pool = self._canonical(
+                item.get("pool")
+            )
+            identity = (token, pool)
+
+            if not token or not pool or identity in seen:
+                continue
+
+            # decision_snapshot() is newest-first. Mark the identity seen
+            # before checking action/reason so an older WATCH can never
+            # override a newer REJECT/non-WATCH transition.
+            seen.add(identity)
+
             action = str(
                 item.get("decision_action")
                 or ""
             ).upper()
             if action != "WATCH":
+                continue
+
+            if self._has_trade_history(token):
                 continue
 
             try:
@@ -136,18 +209,6 @@ class FastWatchRevisitJob:
             if bool(context.get("hard_block")):
                 continue
 
-            token = self._canonical(
-                item.get("token")
-            )
-            pool = self._canonical(
-                item.get("pool")
-            )
-            identity = (token, pool)
-
-            if not token or not pool or identity in seen:
-                continue
-
-            seen.add(identity)
             selected.append(identity)
 
         return selected
@@ -163,8 +224,23 @@ class FastWatchRevisitJob:
             "all",
             None,
         )
+        ingress_gate = getattr(
+            self.pipeline,
+            "ingress_gate",
+            None,
+        )
+        classify_many = getattr(
+            ingress_gate,
+            "classify_many",
+            None,
+        )
 
-        if not callable(reader):
+        # Fast revisit must fail closed if the canonical ingress gate is not
+        # available. It must never become an admission bypass.
+        if (
+            not callable(reader)
+            or not callable(classify_many)
+        ):
             return []
 
         wanted = set(identities)
@@ -192,9 +268,21 @@ class FastWatchRevisitJob:
                 [],
             )
 
-            if candidates:
+            if not candidates:
+                continue
+
+            candidate = candidates[0].to_dict()
+            ingress = classify_many(
+                [candidate]
+            )
+            active = ingress.get(
+                "active",
+                [],
+            )
+
+            if active:
                 selected.append(
-                    candidates[0].to_dict()
+                    active[0]
                 )
 
         return selected
@@ -327,7 +415,7 @@ class FastWatchRevisitJob:
 
         return result
 
-    def run_cycle(self):
+    def _run_cycle_sync(self):
         identities = self._watched_identities()
 
         if not identities:
@@ -337,6 +425,13 @@ class FastWatchRevisitJob:
             return self.last_status
 
         rows = self._cache_rows(identities)
+
+        if not rows:
+            self.last_status = self._status(
+                state="NO_ACTIVE_WATCH_CANDIDATES",
+            )
+            return self.last_status
+
         processed = 0
         failed = 0
         paper_buys = 0
@@ -372,3 +467,41 @@ class FastWatchRevisitJob:
             paper_buys=paper_buys,
         )
         return self.last_status
+
+    def _background_cycle(self):
+        try:
+            self._run_cycle_sync()
+        except Exception:
+            logger.exception(
+                "Fast watch background cycle failed"
+            )
+            self.last_status = self._status(
+                state="DEGRADED",
+                failed=1,
+            )
+        finally:
+            with self._state_lock:
+                self._running = False
+
+    def run_cycle(self):
+        """Dispatch one bounded revisit cycle without blocking Scheduler.tick."""
+        with self._state_lock:
+            if self._running:
+                return self._status(
+                    state="BUSY",
+                )
+
+            self._running = True
+            dispatched = self._status(
+                state="DISPATCHED",
+            )
+            self.last_status = dispatched
+            self._thread = threading.Thread(
+                target=self._background_cycle,
+                name="coinoskobi-fast-watch-revisit",
+                daemon=True,
+            )
+            thread = self._thread
+
+        thread.start()
+        return dispatched

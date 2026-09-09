@@ -23,6 +23,8 @@ FAST_WATCH_REASONS = {
 
 FAST_WATCH_MAX_CANDIDATES = 30
 FAST_WATCH_HISTORY_PAGE_SIZE = 128
+FAST_WATCH_HISTORY_ROW_BUDGET = 2048
+FAST_WATCH_IDENTITY_OVERSAMPLE = 8
 
 
 class FastWatchRevisitJob:
@@ -49,6 +51,15 @@ class FastWatchRevisitJob:
             value = value[4:]
         return value
 
+    def _selection_limit(self):
+        return min(
+            FAST_WATCH_HISTORY_ROW_BUDGET,
+            max(
+                self.max_candidates,
+                self.max_candidates * FAST_WATCH_IDENTITY_OVERSAMPLE,
+            ),
+        )
+
     def _status(
         self,
         *,
@@ -72,7 +83,15 @@ class FastWatchRevisitJob:
             "execution_authority": False,
         }
 
-    def _has_trade_history(self, token):
+    def _has_canonical_trade_history_block(self, token):
+        """
+        Mirror the canonical one-paper-trade-per-token database invariant.
+
+        PaperDatabase.insert_if_below_open_limit() rejects a token when any
+        prior paper row exists, including a closed row. Fast revisit must not
+        spend provider/RPC budget on a token the canonical insert path cannot
+        admit. This is deliberately stricter than an open-position-only check.
+        """
         databases = []
 
         direct = getattr(self.pipeline, "paper_db", None)
@@ -123,7 +142,7 @@ class FastWatchRevisitJob:
         ):
             return None
 
-        if self._has_trade_history(token):
+        if self._has_canonical_trade_history_block(token):
             return None
 
         try:
@@ -144,23 +163,34 @@ class FastWatchRevisitJob:
 
     def _durable_watched_identities(self, db, lock):
         """
-        Find current eligible WATCH identities with indexed keyset pagination.
+        Find a bounded overfetch window of current eligible WATCH identities.
 
-        Each DB read is capped to a small page ordered by the INTEGER PRIMARY
-        KEY. We never materialize/group the full history while holding the
-        counterfactual-store lock. The first row seen for an identity is its
-        newest transition; older rows for that identity are ignored.
+        History is scanned newest-first in small keyset pages, but every cycle
+        has a hard total row budget. The first row seen for an identity is its
+        newest transition, so older WATCH rows cannot override newer states.
+        We intentionally overfetch identities here; the final 30-candidate cap
+        is applied only after fresh Gecko snapshot + ingress admission.
         """
         selected = []
         seen = set()
         now = time.time()
         cursor = None
+        scanned = 0
+        target = self._selection_limit()
         page_size = max(
             FAST_WATCH_HISTORY_PAGE_SIZE,
             self.max_candidates * 2,
         )
 
-        while len(selected) < self.max_candidates:
+        while (
+            len(selected) < target
+            and scanned < FAST_WATCH_HISTORY_ROW_BUDGET
+        ):
+            query_limit = min(
+                page_size,
+                FAST_WATCH_HISTORY_ROW_BUDGET - scanned,
+            )
+
             try:
                 with lock:
                     if cursor is None:
@@ -171,7 +201,7 @@ class FastWatchRevisitJob:
                             ORDER BY id DESC
                             LIMIT ?
                             """,
-                            (page_size,),
+                            (query_limit,),
                         ).fetchall()
                     else:
                         rows = db.execute(
@@ -182,7 +212,7 @@ class FastWatchRevisitJob:
                             ORDER BY id DESC
                             LIMIT ?
                             """,
-                            (cursor, page_size),
+                            (cursor, query_limit),
                         ).fetchall()
             except Exception:
                 logger.exception(
@@ -193,6 +223,7 @@ class FastWatchRevisitJob:
             if not rows:
                 break
 
+            scanned += len(rows)
             cursor = int(rows[-1]["id"])
 
             for raw in rows:
@@ -212,10 +243,10 @@ class FastWatchRevisitJob:
                 eligible = self._eligible_watch_identity(item, now=now)
                 if eligible is not None:
                     selected.append(eligible)
-                    if len(selected) >= self.max_candidates:
+                    if len(selected) >= target:
                         break
 
-            if len(rows) < page_size:
+            if len(rows) < query_limit:
                 break
 
         return selected
@@ -232,8 +263,9 @@ class FastWatchRevisitJob:
         if not callable(snapshot):
             return []
 
+        target = self._selection_limit()
         rows = snapshot(
-            limit=max(self.max_candidates * 8, self.max_candidates)
+            limit=max(target * 2, target)
         ) or []
 
         selected = []
@@ -241,7 +273,7 @@ class FastWatchRevisitJob:
         now = time.time()
 
         for item in rows:
-            if len(selected) >= self.max_candidates:
+            if len(selected) >= target:
                 break
 
             identity = (
@@ -274,9 +306,11 @@ class FastWatchRevisitJob:
         if not pools:
             return []
 
+        # Overfetch current WATCH identities first; apply the actual runtime
+        # cap only after fresh pool availability and ingress have been checked.
         fresh = snapshots(
             pools,
-            max_pools=self.max_candidates,
+            max_pools=len(pools),
             persist_followups=False,
         ) or []
 
@@ -304,6 +338,8 @@ class FastWatchRevisitJob:
             active = ingress.get("active", [])
             if active:
                 selected.append(active[0])
+                if len(selected) >= self.max_candidates:
+                    break
 
         return selected
 

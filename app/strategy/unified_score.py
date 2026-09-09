@@ -81,6 +81,9 @@ class UnifiedScoreEngine:
         reserve_change = cls._number(
             exit_data.get("reserve_change_fraction")
         )
+        latest_reserve_change = cls._number(
+            exit_data.get("latest_reserve_change_fraction")
+        )
         quote_reserve = cls._number(
             exit_data.get("quote_reserve_usd")
         )
@@ -89,7 +92,13 @@ class UnifiedScoreEngine:
         ).upper()
 
         quote_flow_state = "UNKNOWN"
-        if reserve_change is not None:
+        if latest_reserve_change is not None:
+            quote_flow_state = (
+                "SUPPORTING"
+                if latest_reserve_change > 0
+                else "OPPOSING"
+            )
+        elif reserve_change is not None:
             quote_flow_state = (
                 "SUPPORTING"
                 if reserve_change > 0
@@ -108,6 +117,7 @@ class UnifiedScoreEngine:
                 else 0.0
             ),
             "reserve_change_fraction": reserve_change,
+            "latest_reserve_change_fraction": latest_reserve_change,
             "quote_flow_state": quote_flow_state,
             "quote_reserve_usd": quote_reserve,
             "mev_status": mev_status,
@@ -122,9 +132,7 @@ class UnifiedScoreEngine:
 
         # A single green sample is not continuation. Require two consecutive
         # positive observations, but do not reject a still-positive move only
-        # because the second step is smaller than the first one. Overnight
-        # counterfactuals showed that the old acceleration veto suppressed
-        # large continuation winners after their initial impulse.
+        # because the second step is smaller than the first one.
         if len(trailing_positive) < 2:
             return {
                 "state": "WATCH",
@@ -139,10 +147,15 @@ class UnifiedScoreEngine:
                 **diagnostics,
             }
 
-        # UNKNOWN is not BAD. Missing reserve-delta evidence no longer vetoes
-        # a two-step positive continuation. A measured non-positive reserve
-        # change still blocks admission because that is actual opposing flow.
-        if reserve_change is not None and reserve_change <= 0:
+        # Recent measured quote outflow is authoritative. If the latest
+        # interval is unavailable, fall back to the wider observed interval.
+        # Completely missing flow evidence remains UNKNOWN rather than BAD.
+        flow_delta = (
+            latest_reserve_change
+            if latest_reserve_change is not None
+            else reserve_change
+        )
+        if flow_delta is not None and flow_delta <= 0:
             return {
                 "state": "WATCH",
                 "reason": "QUOTE_FLOW_NOT_SUPPORTING_MOVE",

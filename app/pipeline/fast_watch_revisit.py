@@ -22,6 +22,7 @@ FAST_WATCH_REASONS = {
 }
 
 FAST_WATCH_MAX_CANDIDATES = 30
+FAST_WATCH_HISTORY_PAGE_SIZE = 128
 
 
 class FastWatchRevisitJob:
@@ -100,49 +101,141 @@ class FastWatchRevisitJob:
 
         return False
 
-    def _current_decision_rows(self):
-        """Return the latest durable transition for each current WATCH identity."""
+    def _eligible_watch_identity(self, item, *, now):
+        token = self._canonical(item.get("token"))
+        pool = self._canonical(item.get("pool"))
+
+        if not token or not pool:
+            return None
+
+        action = str(item.get("decision_action") or "").upper()
+        if action != "WATCH":
+            return None
+
+        try:
+            observed_at = float(item.get("observed_at") or 0.0)
+        except (TypeError, ValueError):
+            observed_at = 0.0
+
+        if (
+            observed_at > 0
+            and now - observed_at < FAST_WATCH_REVISIT_SECONDS
+        ):
+            return None
+
+        if self._has_trade_history(token):
+            return None
+
+        try:
+            context = json.loads(item.get("context_json") or "{}")
+        except (TypeError, ValueError, json.JSONDecodeError):
+            return None
+
+        if str(context.get("strategy") or "").upper() != "PAPER_BUY":
+            return None
+
+        if str(context.get("opportunity_reason") or "").upper() not in FAST_WATCH_REASONS:
+            return None
+
+        if bool(context.get("hard_block")):
+            return None
+
+        return (token, pool)
+
+    def _durable_watched_identities(self, db, lock):
+        """
+        Find current eligible WATCH identities with indexed keyset pagination.
+
+        Each DB read is capped to a small page ordered by the INTEGER PRIMARY
+        KEY. We never materialize/group the full history while holding the
+        counterfactual-store lock. The first row seen for an identity is its
+        newest transition; older rows for that identity are ignored.
+        """
+        selected = []
+        seen = set()
+        now = time.time()
+        cursor = None
+        page_size = max(
+            FAST_WATCH_HISTORY_PAGE_SIZE,
+            self.max_candidates * 2,
+        )
+
+        while len(selected) < self.max_candidates:
+            try:
+                with lock:
+                    if cursor is None:
+                        rows = db.execute(
+                            """
+                            SELECT *
+                            FROM candidate_decision_history
+                            ORDER BY id DESC
+                            LIMIT ?
+                            """,
+                            (page_size,),
+                        ).fetchall()
+                    else:
+                        rows = db.execute(
+                            """
+                            SELECT *
+                            FROM candidate_decision_history
+                            WHERE id < ?
+                            ORDER BY id DESC
+                            LIMIT ?
+                            """,
+                            (cursor, page_size),
+                        ).fetchall()
+            except Exception:
+                logger.exception(
+                    "Fast watch durable paged-decision query failed"
+                )
+                return []
+
+            if not rows:
+                break
+
+            cursor = int(rows[-1]["id"])
+
+            for raw in rows:
+                item = dict(raw)
+                identity = (
+                    self._canonical(item.get("token")),
+                    self._canonical(item.get("pool")),
+                )
+
+                if not identity[0] or not identity[1] or identity in seen:
+                    continue
+
+                # Mark before filtering: an older WATCH must never override a
+                # newer REJECT/PAPER_BUY transition for the same identity.
+                seen.add(identity)
+
+                eligible = self._eligible_watch_identity(item, now=now)
+                if eligible is not None:
+                    selected.append(eligible)
+                    if len(selected) >= self.max_candidates:
+                        break
+
+            if len(rows) < page_size:
+                break
+
+        return selected
+
+    def _watched_identities(self):
         store = getattr(self.pipeline, "counterfactual_store", None)
         db = getattr(store, "_db", None)
         lock = getattr(store, "_lock", None)
 
         if db is not None and lock is not None:
-            try:
-                with lock:
-                    rows = db.execute(
-                        """
-                        SELECT d.*
-                        FROM candidate_decision_history d
-                        JOIN (
-                            SELECT token, pool, MAX(id) AS latest_id
-                            FROM candidate_decision_history
-                            GROUP BY token, pool
-                        ) latest
-                          ON latest.latest_id = d.id
-                        WHERE upper(d.decision_action) = 'WATCH'
-                        ORDER BY d.id DESC
-                        """
-                    ).fetchall()
-                return [dict(row) for row in rows]
-            except Exception:
-                logger.exception(
-                    "Fast watch durable latest-decision query failed"
-                )
-                return []
+            return self._durable_watched_identities(db, lock)
 
         snapshot = getattr(store, "decision_snapshot", None)
         if not callable(snapshot):
             return []
 
-        # Test/non-durable fallback only. Production uses the durable latest
-        # identity query above, so eligible watches cannot starve behind a
-        # fixed global history window.
-        return snapshot(
+        rows = snapshot(
             limit=max(self.max_candidates * 8, self.max_candidates)
         ) or []
 
-    def _watched_identities(self):
-        rows = self._current_decision_rows()
         selected = []
         seen = set()
         now = time.time()
@@ -151,48 +244,19 @@ class FastWatchRevisitJob:
             if len(selected) >= self.max_candidates:
                 break
 
-            token = self._canonical(item.get("token"))
-            pool = self._canonical(item.get("pool"))
-            identity = (token, pool)
+            identity = (
+                self._canonical(item.get("token")),
+                self._canonical(item.get("pool")),
+            )
 
-            if not token or not pool or identity in seen:
+            if not identity[0] or not identity[1] or identity in seen:
                 continue
 
             seen.add(identity)
+            eligible = self._eligible_watch_identity(item, now=now)
 
-            action = str(item.get("decision_action") or "").upper()
-            if action != "WATCH":
-                continue
-
-            try:
-                observed_at = float(item.get("observed_at") or 0.0)
-            except (TypeError, ValueError):
-                observed_at = 0.0
-
-            if (
-                observed_at > 0
-                and now - observed_at < FAST_WATCH_REVISIT_SECONDS
-            ):
-                continue
-
-            if self._has_trade_history(token):
-                continue
-
-            try:
-                context = json.loads(item.get("context_json") or "{}")
-            except (TypeError, ValueError, json.JSONDecodeError):
-                continue
-
-            if str(context.get("strategy") or "").upper() != "PAPER_BUY":
-                continue
-
-            if str(context.get("opportunity_reason") or "").upper() not in FAST_WATCH_REASONS:
-                continue
-
-            if bool(context.get("hard_block")):
-                continue
-
-            selected.append(identity)
+            if eligible is not None:
+                selected.append(eligible)
 
         return selected
 

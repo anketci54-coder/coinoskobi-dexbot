@@ -137,6 +137,31 @@ class AnalyzerCache:
             self.db.commit()
             self.writes += 1
 
+    def replace_payload_preserve_age(
+        self,
+        namespace,
+        cache_key,
+        payload,
+    ):
+        """Replace a cached payload without extending its provider TTL."""
+        with self._lock:
+            cursor = self.db.execute(
+                """
+                UPDATE analyzer_cache_v1
+                SET payload = ?
+                WHERE namespace = ?
+                  AND cache_key = ?
+                """,
+                (
+                    payload,
+                    namespace,
+                    cache_key,
+                ),
+            )
+
+            self.db.commit()
+            return int(cursor.rowcount or 0)
+
     def delete(
         self,
         namespace,

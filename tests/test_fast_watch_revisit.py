@@ -1,5 +1,6 @@
 import json
 import threading
+import time
 
 import app.pipeline.fast_watch_revisit as module
 from app.core.runner import Runner
@@ -27,16 +28,23 @@ class _Store:
         return self.rows[:limit]
 
 
-class _Cache:
+class _Scanner:
     def __init__(self, rows=None):
         self.rows = rows or [{
             "pool": POOL,
-            "token": f"bsc_{TOKEN}",
+            "base_token": TOKEN,
             "quote_token": QUOTE,
         }]
+        self.calls = []
 
-    def all(self):
-        return list(self.rows)
+    def pool_snapshots(self, pools, max_pools=30, persist_followups=True):
+        self.calls.append((list(pools), max_pools, persist_followups))
+        wanted = {str(value).lower() for value in pools}
+        return [
+            dict(row)
+            for row in self.rows
+            if str(row.get("pool") or "").lower() in wanted
+        ]
 
 
 class _Ingress:
@@ -83,7 +91,7 @@ class _Flow:
 class _Pipeline:
     def __init__(self, rows, *, ingress_active=True, traded=None):
         self.counterfactual_store = _Store(rows)
-        self.cache = _Cache()
+        self.scanner = _Scanner()
         self.ingress_gate = _Ingress(active=ingress_active)
         self.paper_db = _PaperDB(traded=traded)
         self.native_market_flow = _Flow()
@@ -126,10 +134,16 @@ def _history_row(
     token=TOKEN,
     pool=POOL,
     action="WATCH",
+    observed_at=None,
 ):
     return {
         "token": token,
         "pool": pool,
+        "observed_at": (
+            time.time() - 60
+            if observed_at is None
+            else observed_at
+        ),
         "decision_action": action,
         "context_json": json.dumps({
             "strategy": "PAPER_BUY",
@@ -170,11 +184,13 @@ def test_fast_watch_selects_only_active_momentum_reasons(monkeypatch):
     ]
     pipeline = _Pipeline(rows)
     _patch_normalization(monkeypatch)
-
-    job = FastWatchRevisitJob(
-        pipeline,
-        max_candidates=30,
+    monkeypatch.setattr(
+        FastWatchRevisitJob,
+        "_refresh_local_sellability_evidence",
+        lambda self, row: False,
     )
+
+    job = FastWatchRevisitJob(pipeline, max_candidates=30)
     result = job._run_cycle_sync()
 
     assert result["state"] == "READY"
@@ -189,6 +205,7 @@ def test_fast_watch_selects_only_active_momentum_reasons(monkeypatch):
     assert pipeline.native_market_flow.confirmed == [
         (POOL, TOKEN, QUOTE)
     ]
+    assert pipeline.scanner.calls == [([POOL], 30, False)]
     assert result["bounded"] is True
     assert result["decision_authority"] is False
     assert result["live_authority"] is False
@@ -211,10 +228,7 @@ def test_fast_watch_is_strictly_bounded_and_deduplicated():
     rows.insert(0, rows[0])
 
     pipeline = _Pipeline(rows)
-    job = FastWatchRevisitJob(
-        pipeline,
-        max_candidates=30,
-    )
+    job = FastWatchRevisitJob(pipeline, max_candidates=30)
 
     identities = job._watched_identities()
     assert len(identities) == 30
@@ -224,14 +238,8 @@ def test_fast_watch_is_strictly_bounded_and_deduplicated():
 
 def test_newer_non_watch_transition_suppresses_older_watch():
     rows = [
-        _history_row(
-            "STRUCTURAL_REJECT",
-            action="REJECT",
-        ),
-        _history_row(
-            "ACTIVE_MOMENTUM_NOT_POSITIVE",
-            action="WATCH",
-        ),
+        _history_row("STRUCTURAL_REJECT", action="REJECT"),
+        _history_row("ACTIVE_MOMENTUM_NOT_POSITIVE", action="WATCH"),
     ]
 
     pipeline = _Pipeline(rows)
@@ -241,31 +249,30 @@ def test_newer_non_watch_transition_suppresses_older_watch():
 
 
 def test_existing_trade_history_suppresses_old_watch():
+    rows = [_history_row("ACTIVE_MOMENTUM_NOT_POSITIVE")]
+
+    pipeline = _Pipeline(rows, traded=[TOKEN])
+    job = FastWatchRevisitJob(pipeline)
+
+    assert job._watched_identities() == []
+
+
+def test_recent_watch_waits_for_configured_interval():
     rows = [
         _history_row(
             "ACTIVE_MOMENTUM_NOT_POSITIVE",
+            observed_at=time.time(),
         )
     ]
-
-    pipeline = _Pipeline(
-        rows,
-        traded=[TOKEN],
-    )
+    pipeline = _Pipeline(rows)
     job = FastWatchRevisitJob(pipeline)
 
     assert job._watched_identities() == []
 
 
 def test_ingress_gate_must_still_be_active(monkeypatch):
-    rows = [
-        _history_row(
-            "ACTIVE_MOMENTUM_NOT_POSITIVE",
-        )
-    ]
-    pipeline = _Pipeline(
-        rows,
-        ingress_active=False,
-    )
+    rows = [_history_row("ACTIVE_MOMENTUM_NOT_POSITIVE")]
+    pipeline = _Pipeline(rows, ingress_active=False)
     _patch_normalization(monkeypatch)
 
     job = FastWatchRevisitJob(pipeline)
@@ -277,11 +284,7 @@ def test_ingress_gate_must_still_be_active(monkeypatch):
 
 
 def test_missing_ingress_gate_fails_closed(monkeypatch):
-    rows = [
-        _history_row(
-            "ACTIVE_MOMENTUM_NOT_POSITIVE",
-        )
-    ]
+    rows = [_history_row("ACTIVE_MOMENTUM_NOT_POSITIVE")]
     pipeline = _Pipeline(rows)
     del pipeline.ingress_gate
     _patch_normalization(monkeypatch)
@@ -291,6 +294,62 @@ def test_missing_ingress_gate_fails_closed(monkeypatch):
 
     assert result["state"] == "NO_ACTIVE_WATCH_CANDIDATES"
     assert pipeline.runs == []
+
+
+def test_missing_fresh_snapshot_provider_fails_closed():
+    rows = [_history_row("ACTIVE_MOMENTUM_NOT_POSITIVE")]
+    pipeline = _Pipeline(rows)
+    del pipeline.scanner
+
+    job = FastWatchRevisitJob(pipeline)
+    result = job._run_cycle_sync()
+
+    assert result["state"] == "NO_ACTIVE_WATCH_CANDIDATES"
+    assert pipeline.runs == []
+
+
+def test_local_evidence_refresh_preserves_provider_cache_age(monkeypatch):
+    class Cache:
+        def __init__(self):
+            self.replaced = []
+
+        def get(self, namespace, cache_key, ttl_seconds):
+            return json.dumps({
+                "success": True,
+                "provider_success": True,
+                "data": {
+                    "sellable": True,
+                    "local_evidence": {"completed": False},
+                },
+            })
+
+        def replace_payload_preserve_age(self, namespace, cache_key, payload):
+            self.replaced.append((namespace, cache_key, json.loads(payload)))
+            return 1
+
+    cache = Cache()
+    monkeypatch.setattr(module.sellability_module, "_cache", cache)
+    monkeypatch.setattr(
+        module.sellability_module,
+        "_local_evidence",
+        lambda token, pair: {
+            "completed": True,
+            "exit_feasibility": {
+                "spot_price_series_usd": [1.0, 1.1, 1.2],
+            },
+        },
+    )
+
+    job = FastWatchRevisitJob(_Pipeline([]))
+    assert job._refresh_local_sellability_evidence({
+        "token": TOKEN,
+        "pool": POOL,
+    }) is True
+
+    assert len(cache.replaced) == 1
+    payload = cache.replaced[0][2]
+    assert payload["local_evidence_complete"] is True
+    assert payload["data"]["local_evidence"]["completed"] is True
 
 
 def test_run_cycle_dispatches_without_blocking(monkeypatch):

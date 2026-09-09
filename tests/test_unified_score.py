@@ -44,16 +44,22 @@ def test_positive_accelerating_continuation_is_hot():
     assert result["opportunity_score"] is None
 
 
+def test_positive_decelerating_continuation_can_still_be_hot():
+    result = evaluate(prices=[1.0, 1.10, 1.15])
+    assert result["opportunity_state"] == "HOT"
+    assert result["opportunity_reason"] == "ACTIVE_CONTINUATION_READY"
+
+
 def test_negative_latest_move_stays_watch_not_reject():
     result = evaluate(prices=[1.0, 1.08, 1.04])
     assert result["opportunity_state"] == "WATCH"
     assert result["opportunity_reason"] == "ACTIVE_MOMENTUM_NOT_POSITIVE"
 
 
-def test_positive_but_decelerating_move_stays_watch():
-    result = evaluate(prices=[1.0, 1.10, 1.15])
+def test_single_positive_step_is_not_enough():
+    result = evaluate(prices=[1.0, 0.98, 1.02])
     assert result["opportunity_state"] == "WATCH"
-    assert result["opportunity_reason"] == "ACTIVE_MOMENTUM_DECELERATING"
+    assert result["opportunity_reason"] == "POSITIVE_CONTINUATION_NOT_ESTABLISHED"
 
 
 def test_missing_price_history_stays_watch():
@@ -62,7 +68,7 @@ def test_missing_price_history_stays_watch():
     assert result["opportunity_reason"] == "ACTIVE_PRICE_SERIES_NOT_READY"
 
 
-def test_quote_flow_must_confirm_price_move():
+def test_quote_flow_must_not_oppose_price_move():
     result = evaluate(
         prices=[1.0, 1.05, 1.12],
         reserve_change=0.0,
@@ -71,13 +77,14 @@ def test_quote_flow_must_confirm_price_move():
     assert result["opportunity_reason"] == "QUOTE_FLOW_NOT_SUPPORTING_MOVE"
 
 
-def test_missing_quote_flow_stays_watch():
+def test_missing_quote_flow_does_not_veto_valid_continuation():
     result = evaluate(
         prices=[1.0, 1.05, 1.12],
         reserve_change=None,
     )
-    assert result["opportunity_state"] == "WATCH"
-    assert result["opportunity_reason"] == "QUOTE_FLOW_CONFIRMATION_NOT_READY"
+    assert result["opportunity_state"] == "HOT"
+    assert result["opportunity_reason"] == "ACTIVE_CONTINUATION_READY"
+    assert result["opportunity"]["quote_flow_state"] == "UNKNOWN"
 
 
 def test_high_execution_exposure_stays_watch():

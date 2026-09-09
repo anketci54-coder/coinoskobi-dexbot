@@ -418,6 +418,12 @@ class CounterfactualObservationStore:
                 or "UNKNOWN"
             ).upper(),
             "reason": context.get("reason"),
+            "opportunity_state": context.get(
+                "opportunity_state"
+            ),
+            "opportunity_reason": context.get(
+                "opportunity_reason"
+            ),
             "signal_state": str(
                 signal_state or "UNKNOWN"
             ).upper(),

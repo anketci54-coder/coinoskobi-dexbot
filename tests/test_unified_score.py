@@ -7,6 +7,7 @@ def evaluate(
     hard_block=False,
     mev_status="LOW_EXPOSURE",
     reserve_change=0.05,
+    latest_reserve_change=None,
 ):
     return UnifiedScoreEngine().evaluate(
         strategy={
@@ -23,6 +24,9 @@ def evaluate(
                     "spot_price_series_usd": prices,
                     "quote_reserve_usd": 10000.0,
                     "reserve_change_fraction": reserve_change,
+                    "latest_reserve_change_fraction": (
+                        latest_reserve_change
+                    ),
                 }
             },
         },
@@ -77,10 +81,32 @@ def test_quote_flow_must_not_oppose_price_move():
     assert result["opportunity_reason"] == "QUOTE_FLOW_NOT_SUPPORTING_MOVE"
 
 
+def test_latest_quote_outflow_overrides_positive_wide_interval():
+    result = evaluate(
+        prices=[1.0, 2.0, 2.1],
+        reserve_change=0.10,
+        latest_reserve_change=-0.08,
+    )
+    assert result["opportunity_state"] == "WATCH"
+    assert result["opportunity_reason"] == "QUOTE_FLOW_NOT_SUPPORTING_MOVE"
+    assert result["opportunity"]["quote_flow_state"] == "OPPOSING"
+
+
+def test_latest_quote_inflow_can_confirm_after_flat_wide_interval():
+    result = evaluate(
+        prices=[1.0, 1.05, 1.12],
+        reserve_change=0.0,
+        latest_reserve_change=0.02,
+    )
+    assert result["opportunity_state"] == "HOT"
+    assert result["opportunity"]["quote_flow_state"] == "SUPPORTING"
+
+
 def test_missing_quote_flow_does_not_veto_valid_continuation():
     result = evaluate(
         prices=[1.0, 1.05, 1.12],
         reserve_change=None,
+        latest_reserve_change=None,
     )
     assert result["opportunity_state"] == "HOT"
     assert result["opportunity_reason"] == "ACTIVE_CONTINUATION_READY"

@@ -3289,6 +3289,12 @@ class PipelineEngine:
                 "reason": summary.get(
                     "reason"
                 ),
+                "opportunity_state": summary.get(
+                    "opportunity_state"
+                ),
+                "opportunity_reason": summary.get(
+                    "opportunity_reason"
+                ),
                 "hard_block": bool(
                     summary.get("hard_block")
                 ),
@@ -3393,6 +3399,12 @@ class PipelineEngine:
                         "unified": summary.get("unified"),
                         "paper": summary.get("paper"),
                         "reason": summary.get("reason"),
+                        "opportunity_state": summary.get(
+                            "opportunity_state"
+                        ),
+                        "opportunity_reason": summary.get(
+                            "opportunity_reason"
+                        ),
                         "sellability": summary.get("sellability"),
                         "hard_block": summary.get("hard_block"),
                         "market_context": (
@@ -4041,6 +4053,12 @@ class PipelineEngine:
                     "unified": unified.get("decision"),
                     "paper": paper.get("action"),
                     "reason": paper.get("reason"),
+                    "opportunity_state": score.get(
+                        "opportunity_state"
+                    ),
+                    "opportunity_reason": score.get(
+                        "opportunity_reason"
+                    ),
                     "plan_blockers": (
                         paper.get(
                             "plan_blockers"
@@ -4132,6 +4150,7 @@ class PipelineEngine:
                         "Candidate token=%s pool=%s "
                         "strategy=%s unified=%s "
                         "paper=%s reason=%s "
+                        "opportunity=%s opportunity_reason=%s "
                         "plan_blockers=%s sizing_blockers=%s "
                         "sizing_reason=%s entry_amount_usdt=%s "
                         "vur_kac_shadow=%s vur_kac_reason=%s "
@@ -4148,6 +4167,8 @@ class PipelineEngine:
                     summary["unified"],
                     summary["paper"],
                     summary["reason"],
+                    summary["opportunity_state"],
+                    summary["opportunity_reason"],
                     summary["plan_blockers"],
                     summary["sizing_blockers"],
                     summary["sizing_reason"],

@@ -9,6 +9,8 @@ and a conservative one-USDT economic-capacity label.
 import threading
 from pathlib import Path
 
+from app.paper.database import DB as _PAPER_DB
+
 from . import counterfactual_observation as _counterfactual_observation
 from . import horizon_quality as _horizon_quality
 from . import watch_probe_store as _watch_probe_store
@@ -31,15 +33,15 @@ ScientificCounterfactualObservationStore = (
 
 
 # Candidate analysis is concurrent and PipelineEngine intentionally creates the
-# WATCH stores lazily. For the canonical production paper DB, two workers may
+# WATCH stores lazily. For the configured production paper DB, two workers may
 # therefore both pass the engine's ``is None`` check before either publishes its
 # store. Constructor-only locking is insufficient: it can still leave two live
 # store instances with independent runtime locks.
 #
-# Make each canonical WATCH store a process singleton and initialize that single
-# object while holding one shared lock. Every racing constructor call therefore
-# returns the same fully initialized object. Test/non-canonical DB paths retain
-# normal independent-instance semantics.
+# Make each configured WATCH store a process singleton and initialize that
+# single object while holding one shared lock. Every racing constructor call
+# therefore returns the same fully initialized object. Test/non-production DB
+# paths retain normal independent-instance semantics.
 _watch_store_init_lock = threading.RLock()
 _OriginalWatchProbeStore = _watch_probe_store.WatchProbeStore
 _OriginalWatchProbeEntrySnapshotStore = (
@@ -47,15 +49,24 @@ _OriginalWatchProbeEntrySnapshotStore = (
 )
 
 
-def _canonical_paper_db_key(db_path):
+def _resolved_db_key(db_path):
     try:
-        resolved = Path(db_path).resolve(strict=False).as_posix()
+        return Path(db_path).resolve(strict=False).as_posix()
     except (TypeError, ValueError, OSError):
         return None
 
-    if not resolved.endswith("/data/paper_trades.db"):
-        return None
 
+_CONFIGURED_PAPER_DB_KEY = _resolved_db_key(_PAPER_DB)
+
+
+def _canonical_paper_db_key(db_path):
+    resolved = _resolved_db_key(db_path)
+    if (
+        resolved is None
+        or _CONFIGURED_PAPER_DB_KEY is None
+        or resolved != _CONFIGURED_PAPER_DB_KEY
+    ):
+        return None
     return resolved
 
 

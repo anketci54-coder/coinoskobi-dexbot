@@ -66,8 +66,9 @@ class Runner:
             # Keep all runtime market-data consumers behind the canonical
             # provider boundary. The broker adds no decision/execution
             # authority; provider cooldown/failover remains scanner-owned.
-            if not isinstance(pipeline.scanner, MarketDataBroker):
-                pipeline.scanner = MarketDataBroker(pipeline.scanner)
+            scanner = getattr(pipeline, "scanner", None)
+            if scanner is not None and not isinstance(scanner, MarketDataBroker):
+                pipeline.scanner = MarketDataBroker(scanner)
 
             self.fast_watch_revisit = FastWatchRevisitJob(
                 pipeline

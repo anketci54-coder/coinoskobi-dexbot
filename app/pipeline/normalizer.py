@@ -39,11 +39,18 @@ class CandidateNormalizer:
 
             normalized["quote_token"] = quote_token
 
+        provider = str(
+            normalized.get("provider")
+            or "geckoterminal"
+        ).strip().lower()
+        if provider not in {"geckoterminal", "dexscreener"}:
+            provider = "geckoterminal"
+
         return Candidate.from_row(
             normalized,
             chain="bsc",
             chain_id=56,
-            source="geckoterminal",
+            source=provider,
         )
 
     @classmethod

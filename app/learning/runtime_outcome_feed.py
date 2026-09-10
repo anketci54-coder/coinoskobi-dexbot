@@ -462,8 +462,23 @@ class RuntimeLearningOutcomeFeed:
             timeout=30,
         )
         db.row_factory = sqlite3.Row
+        db.execute(
+            "PRAGMA busy_timeout=30000"
+        )
 
         try:
+            evidence_exists = db.execute(
+                "SELECT 1 FROM sqlite_master "
+                "WHERE type='table' AND name='wallet_outcome_evidence'"
+            ).fetchone()
+
+            if evidence_exists is None:
+                return {
+                    "state": "SCHEMA_NOT_READY",
+                    "backfill": backfill,
+                    "hydrated": 0,
+                }
+
             rows = db.execute(
                 '''
                 SELECT

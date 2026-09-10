@@ -105,6 +105,25 @@ class UnifiedScoreEngine:
                 else "OPPOSING"
             )
 
+        flow_delta = (
+            latest_reserve_change
+            if latest_reserve_change is not None
+            else reserve_change
+        )
+
+        # A recovery after a sharp drawdown is not continuation by itself.
+        # However, when price reclaims the entire prior observed range and
+        # quote reserves are still supporting the move, waiting for another
+        # green sample systematically adds latency without adding the same
+        # protection. This is the early breakout lane. It cannot fire on a
+        # simple dead-cat bounce such as [100, 50, 51].
+        recovery_breakout = (
+            latest_return > 0
+            and prices[-1] > max(prices[:-1])
+            and flow_delta is not None
+            and flow_delta > 0
+        )
+
         diagnostics = {
             "price_observations": len(prices),
             "previous_log_return": previous_return,
@@ -116,6 +135,7 @@ class UnifiedScoreEngine:
                 if trailing_positive
                 else 0.0
             ),
+            "recovery_breakout": recovery_breakout,
             "reserve_change_fraction": reserve_change,
             "latest_reserve_change_fraction": latest_reserve_change,
             "quote_flow_state": quote_flow_state,
@@ -130,10 +150,11 @@ class UnifiedScoreEngine:
                 **diagnostics,
             }
 
-        # A single green sample is not continuation. Require two consecutive
-        # positive observations, but do not reject a still-positive move only
-        # because the second step is smaller than the first one.
-        if len(trailing_positive) < 2:
+        # Normal continuation requires two consecutive positive observations.
+        # The only exception is a confirmed recovery breakout: current price
+        # must reclaim the whole prior observed range and quote flow must still
+        # support the move. This avoids turning a dead-cat bounce into an entry.
+        if len(trailing_positive) < 2 and not recovery_breakout:
             return {
                 "state": "WATCH",
                 "reason": "POSITIVE_CONTINUATION_NOT_ESTABLISHED",
@@ -150,11 +171,6 @@ class UnifiedScoreEngine:
         # Recent measured quote outflow is authoritative. If the latest
         # interval is unavailable, fall back to the wider observed interval.
         # Completely missing flow evidence remains UNKNOWN rather than BAD.
-        flow_delta = (
-            latest_reserve_change
-            if latest_reserve_change is not None
-            else reserve_change
-        )
         if flow_delta is not None and flow_delta <= 0:
             return {
                 "state": "WATCH",
@@ -169,9 +185,15 @@ class UnifiedScoreEngine:
                 **diagnostics,
             }
 
+        reason = (
+            "ACTIVE_RECOVERY_BREAKOUT_READY"
+            if recovery_breakout and len(trailing_positive) < 2
+            else "ACTIVE_CONTINUATION_READY"
+        )
+
         return {
             "state": "HOT",
-            "reason": "ACTIVE_CONTINUATION_READY",
+            "reason": reason,
             **diagnostics,
         }
 

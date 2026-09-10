@@ -85,8 +85,8 @@ def test_negative_latest_move_stays_watch_not_reject():
     assert result["opportunity_reason"] == "ACTIVE_MOMENTUM_NOT_POSITIVE"
 
 
-def test_single_positive_step_is_not_enough():
-    result = evaluate(prices=[1.0, 0.98, 1.02])
+def test_single_positive_step_below_prior_range_is_not_enough():
+    result = evaluate(prices=[1.0, 0.98, 0.99])
     assert result["opportunity_state"] == "WATCH"
     assert result["opportunity_reason"] == "POSITIVE_CONTINUATION_NOT_ESTABLISHED"
 

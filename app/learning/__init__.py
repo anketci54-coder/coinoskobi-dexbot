@@ -6,6 +6,7 @@ first scheduling, exact token+pool identity, scientific horizon-label quality
 and a conservative one-USDT economic-capacity label.
 """
 
+import sqlite3
 import threading
 from pathlib import Path
 
@@ -70,6 +71,144 @@ def _canonical_paper_db_key(db_path):
     return resolved
 
 
+def _schema_columns(db, table):
+    try:
+        return {
+            str(row[1])
+            for row in db.execute(
+                f"PRAGMA table_info({table})"
+            ).fetchall()
+        }
+    except sqlite3.Error:
+        return set()
+
+
+def _schema_object_exists(db, object_type, name):
+    try:
+        return (
+            db.execute(
+                """
+                SELECT 1
+                FROM sqlite_master
+                WHERE type=? AND name=?
+                LIMIT 1
+                """,
+                (object_type, name),
+            ).fetchone()
+            is not None
+        )
+    except sqlite3.Error:
+        return False
+
+
+_WATCH_PROBE_COLUMNS = {
+    "id",
+    "token",
+    "pool",
+    "opened_at",
+    "entry_price",
+    "entry_usdt",
+    "token_amount",
+    "last_observed_at",
+    "last_price",
+    "max_price",
+    "min_price",
+    "status",
+    "decision_history_id",
+    "mark_return_pct",
+    "mfe_pct",
+    "mae_pct",
+    "peak_drawdown_pct",
+    "realizable_exit_usdt",
+    "realizable_return_pct",
+    "exit_state",
+    "exit_quality",
+    "exit_reason",
+    "closed_at",
+    "last_exit_probe_at",
+    "context_version",
+}
+
+_WATCH_SNAPSHOT_COLUMNS = {
+    "id",
+    "probe_id",
+    "decision_history_id",
+    "captured_at",
+    "version",
+    "liquidity_usd",
+    "volume_usd",
+    "volume_turnover",
+    "buys",
+    "participant_identity_coverage",
+    "origin_participation_coverage",
+    "flow_coverage",
+    "flow_participant_identity_coverage",
+    "native_event_count",
+    "market_regime",
+    "flow_confirmation",
+    "flow_quality",
+    "flow_divergence",
+    "liquidity_state",
+    "market_evidence_ready",
+    "participant_evidence_ready",
+    "stream_math_state",
+    "volatility_state",
+    "ewma_volatility",
+    "price_log_return",
+    "liquidity_log_change",
+    "raw_context_json",
+}
+
+
+def _watch_probe_schema_ready(db):
+    return (
+        _WATCH_PROBE_COLUMNS.issubset(
+            _schema_columns(db, "watch_probe_trades")
+        )
+        and _schema_object_exists(
+            db,
+            "table",
+            "watch_probe_shadow_exits",
+        )
+        and _schema_object_exists(
+            db,
+            "index",
+            "idx_watch_probe_shadow_exits_probe",
+        )
+        and _schema_object_exists(
+            db,
+            "index",
+            "idx_watch_probe_trades_status",
+        )
+    )
+
+
+def _watch_snapshot_schema_ready(db):
+    return (
+        _WATCH_SNAPSHOT_COLUMNS.issubset(
+            _schema_columns(
+                db,
+                "watch_probe_entry_snapshots",
+            )
+        )
+        and _schema_object_exists(
+            db,
+            "index",
+            "idx_watch_probe_entry_snapshots_decision",
+        )
+    )
+
+
+def _close_failed_store(instance):
+    db = getattr(instance, "_db", None)
+    if db is None:
+        return
+    try:
+        db.close()
+    except sqlite3.Error:
+        pass
+
+
 class _SerializedWatchProbeStore(_OriginalWatchProbeStore):
     _canonical_instance = None
     _canonical_key = None
@@ -85,7 +224,11 @@ class _SerializedWatchProbeStore(_OriginalWatchProbeStore):
                 or cls._canonical_key != key
             ):
                 instance = super().__new__(cls)
-                _OriginalWatchProbeStore.__init__(instance, db_path)
+                try:
+                    _OriginalWatchProbeStore.__init__(instance, db_path)
+                except Exception:
+                    _close_failed_store(instance)
+                    raise
                 cls._canonical_instance = instance
                 cls._canonical_key = key
 
@@ -95,6 +238,17 @@ class _SerializedWatchProbeStore(_OriginalWatchProbeStore):
         if _canonical_paper_db_key(db_path) is not None:
             return
         super().__init__(db_path)
+
+    def _ensure_schema(self):
+        if (
+            _canonical_paper_db_key(
+                getattr(self, "db_path", None)
+            )
+            is not None
+            and _watch_probe_schema_ready(self._db)
+        ):
+            return
+        return _OriginalWatchProbeStore._ensure_schema(self)
 
 
 class _SerializedWatchProbeEntrySnapshotStore(
@@ -114,10 +268,14 @@ class _SerializedWatchProbeEntrySnapshotStore(
                 or cls._canonical_key != key
             ):
                 instance = super().__new__(cls)
-                _OriginalWatchProbeEntrySnapshotStore.__init__(
-                    instance,
-                    db_path,
-                )
+                try:
+                    _OriginalWatchProbeEntrySnapshotStore.__init__(
+                        instance,
+                        db_path,
+                    )
+                except Exception:
+                    _close_failed_store(instance)
+                    raise
                 cls._canonical_instance = instance
                 cls._canonical_key = key
 
@@ -127,6 +285,17 @@ class _SerializedWatchProbeEntrySnapshotStore(
         if _canonical_paper_db_key(db_path) is not None:
             return
         super().__init__(db_path)
+
+    def _ensure_schema(self):
+        if (
+            _canonical_paper_db_key(
+                getattr(self, "db_path", None)
+            )
+            is not None
+            and _watch_snapshot_schema_ready(self._db)
+        ):
+            return
+        return _OriginalWatchProbeEntrySnapshotStore._ensure_schema(self)
 
 
 _watch_probe_store.WatchProbeStore = _SerializedWatchProbeStore

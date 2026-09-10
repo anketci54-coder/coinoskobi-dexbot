@@ -41,6 +41,26 @@ def test_gecko_bsc_normalizes_to_common_candidate():
     )
 
 
+def test_gecko_bsc_preserves_known_fallback_provider():
+    row = gecko_row()
+    row["provider"] = "dexscreener"
+
+    candidate = CandidateNormalizer.gecko_bsc(row)
+
+    assert candidate.source == "dexscreener"
+    assert candidate.chain == "bsc"
+    assert candidate.chain_id == 56
+
+
+def test_gecko_bsc_rejects_unknown_provider_to_canonical_source():
+    row = gecko_row()
+    row["provider"] = "unexpected-provider"
+
+    candidate = CandidateNormalizer.gecko_bsc(row)
+
+    assert candidate.source == "geckoterminal"
+
+
 def test_gecko_bsc_many_isolates_bad_row():
     valid = gecko_row()
 

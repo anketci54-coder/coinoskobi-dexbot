@@ -1,3 +1,4 @@
+import logging
 import time
 
 import requests
@@ -6,16 +7,48 @@ from app.config.scanner import (
     HTTP_429_BACKOFF_SECONDS,
     HTTP_429_MAX_RETRIES,
     HTTP_TIMEOUT,
+    MARKET_PROVIDER_COOLDOWN_SECONDS,
     NETWORK,
 )
 from app.scanner.followup_snapshot_cache import (
     persist_registered_followup_snapshots,
 )
 
+logger = logging.getLogger(__name__)
+
 URL = (
     f"https://api.geckoterminal.com/api/v2/"
     f"networks/{NETWORK}/new_pools"
 )
+
+DEXSCREENER_URL = (
+    "https://api.dexscreener.com/latest/dex/pairs/"
+    f"{NETWORK}"
+)
+
+# Process-local provider state is deliberate: a restart should recover a
+# healthy provider immediately, while a hot provider must stay out of the
+# 20-second fast-watch loop after a rate-limit response.
+_PROVIDER_COOLDOWN_UNTIL = {
+    "geckoterminal": 0.0,
+    "dexscreener": 0.0,
+}
+
+
+def _provider_available(provider):
+    return time.monotonic() >= float(
+        _PROVIDER_COOLDOWN_UNTIL.get(provider, 0.0)
+    )
+
+
+def _cooldown_provider(provider):
+    until = time.monotonic() + float(MARKET_PROVIDER_COOLDOWN_SECONDS)
+    _PROVIDER_COOLDOWN_UNTIL[provider] = until
+    logger.warning(
+        "Market provider rate-limited; cooling down provider=%s seconds=%s",
+        provider,
+        MARKET_PROVIDER_COOLDOWN_SECONDS,
+    )
 
 
 class GeckoScanner:
@@ -92,7 +125,51 @@ class GeckoScanner:
             ),
         }
 
+    @staticmethod
+    def _dex_row_to_candidate(row):
+        base = row.get("baseToken") or {}
+        quote = row.get("quoteToken") or {}
+        liquidity = row.get("liquidity") or {}
+        txns = row.get("txns") or {}
+        volume = row.get("volume") or {}
+        labels = {
+            str(value).strip().lower()
+            for value in (row.get("labels") or [])
+        }
+        dex_id = str(row.get("dexId") or "").strip().lower()
+
+        if dex_id == "pancakeswap" and "v3" in labels:
+            dex = "pancakeswap_v3"
+        elif dex_id == "pancakeswap" and "v2" in labels:
+            dex = "pancakeswap_v2"
+        else:
+            dex = dex_id
+
+        h24 = txns.get("h24") or {}
+
+        return {
+            "pool": row.get("pairAddress"),
+            "base_token": base.get("address"),
+            "quote_token": quote.get("address"),
+            "name": (
+                f"{base.get('symbol') or ''} / "
+                f"{quote.get('symbol') or ''}"
+            ).strip(" /"),
+            "dex": dex,
+            "price_usd": float(row.get("priceUsd") or 0),
+            "fdv": float(row.get("fdv") or 0),
+            "market_cap": float(row.get("marketCap") or 0),
+            "liquidity": float(liquidity.get("usd") or 0),
+            "volume_24h": float(volume.get("h24") or 0),
+            "buys_24h": int(h24.get("buys") or 0),
+            "created_at": None,
+            "provider": "dexscreener",
+        }
+
     def _request_multi(self, addresses):
+        if not _provider_available("geckoterminal"):
+            raise RuntimeError("geckoterminal provider cooling down")
+
         url = (
             "https://api.geckoterminal.com/api/v2/"
             f"networks/{NETWORK}/pools/multi/"
@@ -126,6 +203,7 @@ class GeckoScanner:
                 return response
 
             if attempt >= HTTP_429_MAX_RETRIES:
+                _cooldown_provider("geckoterminal")
                 response.raise_for_status()
 
             time.sleep(
@@ -137,7 +215,26 @@ class GeckoScanner:
             "multi-pool request unavailable"
         )
 
+    def _request_dexscreener(self, addresses):
+        if not _provider_available("dexscreener"):
+            raise RuntimeError("dexscreener provider cooling down")
+
+        response = requests.get(
+            DEXSCREENER_URL + "/" + ",".join(addresses),
+            headers={"Accept": "application/json"},
+            timeout=HTTP_TIMEOUT,
+        )
+
+        if response.status_code == 429:
+            _cooldown_provider("dexscreener")
+
+        response.raise_for_status()
+        return response
+
     def _fetch(self):
+        if not _provider_available("geckoterminal"):
+            raise RuntimeError("geckoterminal provider cooling down")
+
         attempts = HTTP_429_MAX_RETRIES + 1
 
         for attempt in range(attempts):
@@ -157,6 +254,7 @@ class GeckoScanner:
                 return response
 
             if attempt >= HTTP_429_MAX_RETRIES:
+                _cooldown_provider("geckoterminal")
                 response.raise_for_status()
 
             time.sleep(
@@ -168,28 +266,8 @@ class GeckoScanner:
             "unexpected GeckoTerminal retry state"
         )
 
-    def pool_snapshots(
-        self,
-        pools,
-        max_pools=30,
-        *,
-        persist_followups=True,
-    ):
-        """
-        Return fresh exact-pool market facts using one bounded Gecko
-        multi-pool request.
-
-        When a pool is already registered for counterfactual follow-up,
-        the same response also refreshes its preserved cache row. This
-        keeps later reevaluation on current liquidity/volume/activity
-        instead of a stale discovery snapshot.
-        """
-        addresses = self._normalized_addresses(
-            pools,
-            max_pools,
-        )
+    def _pool_snapshots_gecko(self, addresses):
         response = self._request_multi(addresses)
-
         snapshots = []
 
         for raw in response.json().get("data", []):
@@ -200,6 +278,67 @@ class GeckoScanner:
 
             if pool in addresses:
                 snapshots.append(snapshot)
+
+        return snapshots
+
+    def _pool_snapshots_dexscreener(self, addresses):
+        response = self._request_dexscreener(addresses)
+        snapshots = []
+
+        for raw in response.json().get("pairs", []):
+            if not isinstance(raw, dict):
+                continue
+            if str(raw.get("chainId") or "").strip().lower() != NETWORK:
+                continue
+
+            snapshot = self._dex_row_to_candidate(raw)
+            pool = str(
+                snapshot.get("pool") or ""
+            ).strip().lower()
+
+            if pool in addresses:
+                snapshots.append(snapshot)
+
+        return snapshots
+
+    def pool_snapshots(
+        self,
+        pools,
+        max_pools=30,
+        *,
+        persist_followups=True,
+    ):
+        """
+        Return fresh exact-pool market facts using bounded provider failover.
+
+        GeckoTerminal remains the preferred measurement source. A 429 or
+        provider failure places Gecko on cooldown and the same bounded batch
+        is attempted through DexScreener. This prevents the fast-watch 20s
+        cadence from repeatedly exhausting a single market-data provider.
+        """
+        addresses = self._normalized_addresses(
+            pools,
+            max_pools,
+        )
+
+        snapshots = []
+        try:
+            snapshots = self._pool_snapshots_gecko(addresses)
+        except Exception as exc:
+            logger.warning(
+                "GeckoTerminal snapshot unavailable; trying DexScreener: %s",
+                exc,
+            )
+
+        if not snapshots:
+            try:
+                snapshots = self._pool_snapshots_dexscreener(addresses)
+            except Exception as exc:
+                logger.warning(
+                    "DexScreener snapshot fallback unavailable: %s",
+                    exc,
+                )
+                snapshots = []
 
         if persist_followups and snapshots:
             persist_registered_followup_snapshots(
@@ -221,13 +360,15 @@ class GeckoScanner:
 
         return {
             str(row.get("pool") or "")
-            .strip().lower(): float(
+            .strip()
+            .lower(): float(
                 row.get("price_usd") or 0
             )
             for row in snapshots
             if (
                 str(row.get("pool") or "")
-                .strip().lower()
+                .strip()
+                .lower()
                 in addresses
                 and float(
                     row.get("price_usd") or 0

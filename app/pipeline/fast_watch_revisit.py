@@ -25,6 +25,7 @@ FAST_WATCH_MAX_CANDIDATES = 30
 FAST_WATCH_HISTORY_PAGE_SIZE = 128
 FAST_WATCH_HISTORY_ROW_BUDGET = 2048
 FAST_WATCH_IDENTITY_OVERSAMPLE = 8
+FAST_WATCH_PROVIDER_BATCH_SIZE = 30
 
 
 class FastWatchRevisitJob:
@@ -236,8 +237,6 @@ class FastWatchRevisitJob:
                 if not identity[0] or not identity[1] or identity in seen:
                     continue
 
-                # Mark before filtering: an older WATCH must never override a
-                # newer REJECT/PAPER_BUY transition for the same identity.
                 seen.add(identity)
 
                 eligible = self._eligible_watch_identity(item, now=now)
@@ -264,9 +263,7 @@ class FastWatchRevisitJob:
             return []
 
         target = self._selection_limit()
-        rows = snapshot(
-            limit=max(target * 2, target)
-        ) or []
+        rows = snapshot(limit=max(target * 2, target)) or []
 
         selected = []
         seen = set()
@@ -298,53 +295,52 @@ class FastWatchRevisitJob:
         ingress_gate = getattr(self.pipeline, "ingress_gate", None)
         classify_many = getattr(ingress_gate, "classify_many", None)
 
-        # Fail closed: fast revisit must never become an admission bypass.
         if not callable(snapshots) or not callable(classify_many):
             return []
 
-        pools = [pool for _, pool in identities]
-        if not pools:
+        if not identities:
             return []
 
-        # Overfetch current WATCH identities first; apply the actual runtime
-        # cap only after fresh pool availability and ingress have been checked.
-        fresh = snapshots(
-            pools,
-            max_pools=len(pools),
-            persist_followups=False,
-        ) or []
-
-        wanted = set(identities)
         selected = []
 
-        for row in fresh:
-            normalized = normalize_source_rows(
-                "geckoterminal",
-                "bsc",
-                [row],
-            )
-            candidates = normalized.get("candidates", [])
-            if not candidates:
-                continue
+        for start in range(0, len(identities), FAST_WATCH_PROVIDER_BATCH_SIZE):
+            batch = identities[start:start + FAST_WATCH_PROVIDER_BATCH_SIZE]
+            pools = [pool for _, pool in batch]
+            wanted = set(batch)
 
-            candidate = candidates[0].to_dict()
-            token = self._canonical(candidate.get("token"))
-            pool = self._canonical(candidate.get("pool"))
+            fresh = snapshots(
+                pools,
+                max_pools=min(FAST_WATCH_PROVIDER_BATCH_SIZE, len(pools)),
+                persist_followups=False,
+            ) or []
 
-            if (token, pool) not in wanted:
-                continue
+            for row in fresh:
+                normalized = normalize_source_rows(
+                    "geckoterminal",
+                    "bsc",
+                    [row],
+                )
+                candidates = normalized.get("candidates", [])
+                if not candidates:
+                    continue
 
-            ingress = classify_many([candidate])
-            active = ingress.get("active", [])
-            if active:
-                selected.append(active[0])
-                if len(selected) >= self.max_candidates:
-                    break
+                candidate = candidates[0].to_dict()
+                token = self._canonical(candidate.get("token"))
+                pool = self._canonical(candidate.get("pool"))
+
+                if (token, pool) not in wanted:
+                    continue
+
+                ingress = classify_many([candidate])
+                active = ingress.get("active", [])
+                if active:
+                    selected.append(active[0])
+                    if len(selected) >= self.max_candidates:
+                        return selected
 
         return selected
 
     def _analysis_pair(self, token):
-        """Resolve the exact pair used by PipelineEngine's pair analyzer."""
         try:
             result = pair_module.analyze(token)
         except Exception:
@@ -362,13 +358,6 @@ class FastWatchRevisitJob:
             return None
 
     def _refresh_local_sellability_evidence(self, row):
-        """
-        Refresh local on-chain evidence for the exact pair PipelineEngine uses.
-
-        Provider verdicts retain their canonical TTL. The cache payload update
-        is compare-and-swap guarded by the original updated_at so a concurrent
-        normal analyzer refresh can never be overwritten by an older verdict.
-        """
         try:
             token = Web3.to_checksum_address(row.get("token"))
         except Exception:
@@ -582,7 +571,6 @@ class FastWatchRevisitJob:
                 self._running = False
 
     def run_cycle(self):
-        """Dispatch one bounded revisit cycle without blocking Scheduler.tick."""
         with self._state_lock:
             if self._stop_event.is_set():
                 return self._status(state="STOPPED")
@@ -604,7 +592,6 @@ class FastWatchRevisitJob:
         return dispatched
 
     def shutdown(self):
-        """Stop admitting new rows and finish the in-flight candidate cleanly."""
         self._stop_event.set()
 
         with self._state_lock:

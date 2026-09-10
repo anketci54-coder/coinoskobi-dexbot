@@ -68,6 +68,11 @@ HTTP_TIMEOUT = 20
 HTTP_429_MAX_RETRIES = 2
 HTTP_429_BACKOFF_SECONDS = 2
 
+# Market-data provider cooldown after rate-limit/quota responses.
+# This is intentionally longer than the 20s fast-watch cadence so a provider
+# that returns 429 is not hammered again on every cycle.
+MARKET_PROVIDER_COOLDOWN_SECONDS = 300
+
 # İstekler arası bekleme (sn)
 REQUEST_DELAY = 0.15
 

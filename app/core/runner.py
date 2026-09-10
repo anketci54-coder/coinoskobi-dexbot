@@ -7,6 +7,7 @@ from app.config.scanner import (
 from app.core.application_services import build_application_auxiliary_services
 from app.core.logger import get_logger
 from app.core.scheduler import Scheduler
+from app.market_data.broker import MarketDataBroker
 from app.pipeline.fast_watch_revisit import FastWatchRevisitJob
 
 log = get_logger()
@@ -62,6 +63,12 @@ class Runner:
             )
 
         if pipeline is not None:
+            # Keep all runtime market-data consumers behind the canonical
+            # provider boundary. The broker adds no decision/execution
+            # authority; provider cooldown/failover remains scanner-owned.
+            if not isinstance(pipeline.scanner, MarketDataBroker):
+                pipeline.scanner = MarketDataBroker(pipeline.scanner)
+
             self.fast_watch_revisit = FastWatchRevisitJob(
                 pipeline
             )

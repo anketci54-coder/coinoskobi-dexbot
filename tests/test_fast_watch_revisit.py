@@ -206,7 +206,7 @@ def test_fast_watch_selects_only_active_momentum_reasons(monkeypatch):
     assert pipeline.native_market_flow.confirmed == [
         (POOL, TOKEN, QUOTE)
     ]
-    assert pipeline.scanner.calls == [([POOL], 30, False)]
+    assert pipeline.scanner.calls == [([POOL], 1, False)]
     assert result["bounded"] is True
     assert result["decision_authority"] is False
     assert result["live_authority"] is False
@@ -214,9 +214,9 @@ def test_fast_watch_selects_only_active_momentum_reasons(monkeypatch):
     assert result["execution_authority"] is False
 
 
-def test_fast_watch_is_strictly_bounded_and_deduplicated():
+def test_fast_watch_overfetch_is_bounded_and_deduplicated():
     rows = []
-    for index in range(40):
+    for index in range(400):
         token = f"0x{index + 1:040x}"
         pool = f"0x{index + 100:040x}"
         rows.append(
@@ -232,9 +232,51 @@ def test_fast_watch_is_strictly_bounded_and_deduplicated():
     job = FastWatchRevisitJob(pipeline, max_candidates=30)
 
     identities = job._watched_identities()
-    assert len(identities) == 30
-    assert len(set(identities)) == 30
+    assert len(identities) == 240
+    assert len(set(identities)) == 240
     assert job._status(state="READY")["max_candidates"] == 30
+
+
+def test_fresh_rows_batches_provider_calls_and_caps_after_ingress(monkeypatch):
+    identities = []
+    scanner_rows = []
+    for index in range(65):
+        token = f"0x{index + 1:040x}"
+        pool = f"0x{index + 1000:040x}"
+        identities.append((token.lower(), pool.lower()))
+        scanner_rows.append({
+            "pool": pool,
+            "base_token": token,
+            "quote_token": QUOTE,
+        })
+
+    pipeline = _Pipeline([])
+    pipeline.scanner = _Scanner(scanner_rows)
+
+    def normalize(source, chain, source_rows):
+        row = source_rows[0]
+        return {
+            "candidates": [
+                _Candidate({
+                    "chain": "bsc",
+                    "token": row["base_token"],
+                    "pool": row["pool"],
+                    "quote_token": row["quote_token"],
+                })
+            ]
+        }
+
+    monkeypatch.setattr(module, "normalize_source_rows", normalize)
+
+    job = FastWatchRevisitJob(pipeline, max_candidates=30)
+    fresh = job._fresh_rows(identities)
+
+    assert len(fresh) == 30
+    assert len(pipeline.scanner.calls) == 1
+    pools, max_pools, persist = pipeline.scanner.calls[0]
+    assert len(pools) == 30
+    assert max_pools == 30
+    assert persist is False
 
 
 def test_newer_non_watch_transition_suppresses_older_watch():

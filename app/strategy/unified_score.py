@@ -150,6 +150,16 @@ class UnifiedScoreEngine:
                 **diagnostics,
             }
 
+        # A measured opposing quote flow vetoes the move before continuation
+        # classification. This is especially important for recovery breakouts:
+        # a range reclaim without supporting latest flow is not an entry.
+        if flow_delta is not None and flow_delta <= 0:
+            return {
+                "state": "WATCH",
+                "reason": "QUOTE_FLOW_NOT_SUPPORTING_MOVE",
+                **diagnostics,
+            }
+
         # Normal continuation requires two consecutive positive observations.
         # The only exception is a confirmed recovery breakout: current price
         # must reclaim the whole prior observed range and quote flow must still
@@ -165,16 +175,6 @@ class UnifiedScoreEngine:
             return {
                 "state": "WATCH",
                 "reason": "EXECUTABLE_LIQUIDITY_NOT_READY",
-                **diagnostics,
-            }
-
-        # Recent measured quote outflow is authoritative. If the latest
-        # interval is unavailable, fall back to the wider observed interval.
-        # Completely missing flow evidence remains UNKNOWN rather than BAD.
-        if flow_delta is not None and flow_delta <= 0:
-            return {
-                "state": "WATCH",
-                "reason": "QUOTE_FLOW_NOT_SUPPORTING_MOVE",
                 **diagnostics,
             }
 

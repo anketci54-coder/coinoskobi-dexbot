@@ -3,7 +3,6 @@ import sqlite3
 import threading
 import time
 
-import app.universe.runtime as runtime_module
 from app.universe.discovery import PANCAKE_FACTORY_STREAMS, PAIR_CREATED_TOPIC
 from app.universe.registry import UniverseRegistry
 from app.universe.runtime import (
@@ -208,7 +207,7 @@ def test_discovery_failure_does_not_starve_observations_or_new_tail(caplog):
     assert secret not in caplog.text
 
 
-def test_spawn_isolated_uses_worker_owned_rpc_and_sticky_provider(monkeypatch):
+def test_spawn_isolated_uses_worker_owned_rpc_and_broker():
     class Eth:
         block_number = 123
     class WorkerWeb3:
@@ -216,29 +215,36 @@ def test_spawn_isolated_uses_worker_owned_rpc_and_sticky_provider(monkeypatch):
 
     worker_web3 = WorkerWeb3()
     created = []
-    monkeypatch.setattr(
-        runtime_module,
-        "_new_bsc_web3",
-        lambda: created.append(worker_web3) or worker_web3,
-    )
-    monkeypatch.setattr(
-        runtime_module,
-        "UniverseRegistry",
-        lambda: UniverseRegistry(
-            connection=sqlite3.connect(":memory:")
-        ),
-    )
-    monkeypatch.setattr(
-        runtime_module,
-        "ProviderStickySnapshotClient",
-        SnapshotClient,
-    )
+    monkeypatch = None
 
-    template = runtime(
-        UniverseRegistry(connection=sqlite3.connect(":memory:")),
-        LogReader(),
-    )
-    isolated = template.spawn_isolated()
+    def patched_new_bsc_web3():
+        created.append(worker_web3)
+        return worker_web3
+
+    original_new_bsc_web3 = __import__(
+        "app.universe.runtime",
+        fromlist=["_new_bsc_web3"],
+    )._new_bsc_web3
+    original_registry = __import__(
+        "app.universe.runtime",
+        fromlist=["UniverseRegistry"],
+    ).UniverseRegistry
+
+    try:
+        import app.universe.runtime as runtime_module
+        runtime_module._new_bsc_web3 = patched_new_bsc_web3
+        runtime_module.UniverseRegistry = lambda: UniverseRegistry(
+            connection=sqlite3.connect(":memory:")
+        )
+
+        template = runtime(
+            UniverseRegistry(connection=sqlite3.connect(":memory:")),
+            LogReader(),
+        )
+        isolated = template.spawn_isolated()
+    finally:
+        runtime_module._new_bsc_web3 = original_new_bsc_web3
+        runtime_module.UniverseRegistry = original_registry
 
     assert created == [worker_web3, worker_web3]
     assert isinstance(isolated.discovery.log_reader, Web3LogReader)
@@ -247,7 +253,8 @@ def test_spawn_isolated_uses_worker_owned_rpc_and_sticky_provider(monkeypatch):
     assert isolated.tail_discovery.log_reader.web3 is worker_web3
     assert isolated.finalized_block_reader() == 123
     assert isolated.registry is not template.registry
-    assert isinstance(isolated.observer.snapshot_client, SnapshotClient)
+    assert isolated.market_data is isolated.observer.snapshot_client
+    assert isolated.market_data is not template.market_data
     assert isolated.discovery_batches_per_cycle == template.discovery_batches_per_cycle
 
 
@@ -343,7 +350,6 @@ def test_slow_shadow_cycle_does_not_block_caller_thread():
     assert elapsed < 0.5
     release.set()
     assert service.stop() is True
-
 
 
 def test_existing_failure_enters_bounded_backoff_without_starving_tail():

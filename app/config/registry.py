@@ -18,6 +18,7 @@ NETWORKS = {
         "enabled": False,
         "rpc_key": "base",
     },
+
 }
 
 
@@ -44,10 +45,12 @@ DEXES = {
         "chains": {"bsc"},
     },
 
+    # Adapter hazır; runtime discovery bilinçli olarak henüz açılmıyor.
     "uniswap_v3": {
         "enabled": False,
         "chains": {"bsc"},
     },
+
 }
 
 
@@ -65,40 +68,79 @@ SOURCES = {
 
 def get_network(name):
     key = str(name).strip().lower()
+
     network = NETWORKS.get(key)
+
     if network is None:
-        raise KeyError(f"unknown network: {key}")
-    return {"name": key, **network}
+        raise KeyError(
+            f"unknown network: {key}"
+        )
+
+    return {
+        "name": key,
+        **network,
+    }
 
 
 def get_dex(name):
     key = str(name).strip().lower()
+
     dex = DEXES.get(key)
+
     if dex is None:
-        raise KeyError(f"unknown dex: {key}")
-    return {"name": key, **dex}
+        raise KeyError(
+            f"unknown dex: {key}"
+        )
+
+    return {
+        "name": key,
+        **dex,
+    }
 
 
 def get_source(name):
     key = str(name).strip().lower()
+
     source = SOURCES.get(key)
+
     if source is None:
-        raise KeyError(f"unknown source: {key}")
-    return {"name": key, **source}
+        raise KeyError(
+            f"unknown source: {key}"
+        )
+
+    return {
+        "name": key,
+        **source,
+    }
 
 
-def get_source_network(source_name, network_name):
+def get_source_network(
+    source_name,
+    network_name,
+):
     source = get_source(source_name)
     network = get_network(network_name)
+
     if not source["enabled"]:
-        raise RuntimeError(f"source disabled: {source_name}")
+        raise RuntimeError(
+            f"source disabled: {source_name}"
+        )
+
     if not network["enabled"]:
-        raise RuntimeError(f"network disabled: {network_name}")
-    binding = source["networks"].get(network["name"])
+        raise RuntimeError(
+            f"network disabled: {network_name}"
+        )
+
+    binding = source["networks"].get(
+        network["name"]
+    )
+
     if binding is None:
         raise KeyError(
-            f"source {source_name} does not support network {network_name}"
+            f"source {source_name} does not support "
+            f"network {network_name}"
         )
+
     return {
         "source": source["name"],
         "network": network["name"],
@@ -108,23 +150,42 @@ def get_source_network(source_name, network_name):
 
 
 def enabled_networks():
-    return [name for name, config in NETWORKS.items() if config["enabled"]]
+    return [
+        name
+        for name, config in NETWORKS.items()
+        if config["enabled"]
+    ]
 
 
 def enabled_dexes(chain=None):
     result = []
+
     for name, config in DEXES.items():
+
         if not config["enabled"]:
             continue
+
         if chain is not None:
-            normalized_chain = str(chain).strip().lower()
+            normalized_chain = (
+                str(chain).strip().lower()
+            )
+
             if normalized_chain not in config["chains"]:
                 continue
+
         result.append(name)
+
     return result
 
 
-def dex_supports_chain(dex_name, chain):
+def dex_supports_chain(
+    dex_name,
+    chain,
+):
     dex = get_dex(dex_name)
-    normalized_chain = str(chain).strip().lower()
+
+    normalized_chain = (
+        str(chain).strip().lower()
+    )
+
     return normalized_chain in dex["chains"]

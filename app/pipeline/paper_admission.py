@@ -42,11 +42,16 @@ def paper_admission_decision(
             else "WATCH"
         )
 
+    # Paper admission is intentionally less strict than the unified HOT/live
+    # entry lane. A strategy PAPER_BUY with no hard risk and confirmed
+    # sellability is safe to record as a paper position even while unified
+    # opportunity remains WATCH (for example, momentum has not turned
+    # positive yet). Unified REJECT is still a paper-entry veto.
     if (
         unified.get(
             "decision"
         )
-        != "PAPER_BUY_CANDIDATE"
+        == "REJECT"
     ):
         return "WATCH"
 

@@ -3,19 +3,28 @@ from app.market_data.broker import MarketDataBroker
 
 class _Scanner:
     def __init__(self):
-        self.calls = []
+        self.broker = None
 
-    def pool_snapshots(self, pools, *, max_pools=30, persist_followups=False):
-        self.calls.append((list(pools), max_pools, persist_followups))
-        return [{"pool": "0xpool", "provider": "dexscreener"}]
+    def bind_market_data_broker(self, broker):
+        self.broker = broker
 
     def scan(self):
         return ["delegated"]
 
 
-def test_broker_delegates_bounded_pool_snapshots():
+class _SnapshotClient:
+    def __init__(self):
+        self.calls = []
+
+    def fetch(self, pools):
+        self.calls.append(list(pools))
+        return [{"pool": "0xpool", "provider": "geckoterminal"}]
+
+
+def test_broker_owns_bounded_pool_snapshots():
     scanner = _Scanner()
-    broker = MarketDataBroker(scanner)
+    snapshot_client = _SnapshotClient()
+    broker = MarketDataBroker(scanner, snapshot_client=snapshot_client)
 
     result = broker.pool_snapshots(
         ["0xpool"],
@@ -23,21 +32,22 @@ def test_broker_delegates_bounded_pool_snapshots():
         persist_followups=False,
     )
 
-    assert result[0]["provider"] == "dexscreener"
-    assert scanner.calls == [(["0xpool"], 1, False)]
+    assert result[0]["provider"] == "geckoterminal"
+    assert snapshot_client.calls == [["0xpool"]]
+    assert scanner.broker is broker
 
 
 def test_broker_keeps_scanner_operations_compatible():
     scanner = _Scanner()
-    broker = MarketDataBroker(scanner)
+    broker = MarketDataBroker(scanner, snapshot_client=_SnapshotClient())
 
     assert broker.scan() == ["delegated"]
 
 
-def test_broker_requires_scanner():
+def test_broker_requires_scanner_or_snapshot_client():
     try:
         MarketDataBroker(None)
     except ValueError as exc:
-        assert str(exc) == "scanner required"
+        assert str(exc) == "scanner or snapshot_client required"
     else:
         raise AssertionError("expected ValueError")

@@ -3,11 +3,11 @@ import threading
 import time
 
 from app.config.settings import RPC_PROVIDER_COOLDOWN_SECONDS
+from app.market_data.broker import MarketDataBroker
 from app.universe.discovery import PANCAKE_FACTORY_STREAMS, PancakeUniverseDiscovery
 from app.universe.registry import UniverseRegistry
 from app.universe.scheduler import UniverseObservationScheduler
 from app.universe.seismic import SeismicClassifier
-from app.universe.snapshot import ProviderStickySnapshotClient
 
 
 log = logging.getLogger(__name__)
@@ -75,14 +75,15 @@ class FullUniverseObservationRuntime:
         self.discovery_batches_per_cycle = int(discovery_batches_per_cycle)
         if not 1 <= self.discovery_batches_per_cycle <= 8:
             raise ValueError("discovery batches per cycle must be 1..8")
-        self.observer = UniverseObservationScheduler(
-            self.registry, snapshot_client or ProviderStickySnapshotClient()
-        )
-        self.classifier = SeismicClassifier()
-        self.confirmation_depth = max(0, int(confirmation_depth))
         self.observation_batches_per_cycle = int(observation_batches_per_cycle)
         if not 1 <= self.observation_batches_per_cycle <= 4:
             raise ValueError("observation batches per cycle must be 1..4")
+        self.market_data = MarketDataBroker(snapshot_client=snapshot_client)
+        self.observer = UniverseObservationScheduler(
+            self.registry, self.market_data
+        )
+        self.classifier = SeismicClassifier()
+        self.confirmation_depth = max(0, int(confirmation_depth))
         self._stream_cursor = 0
         self.cycles = 0
 
@@ -96,7 +97,7 @@ class FullUniverseObservationRuntime:
             log_reader=Web3LogReader(existing_web3),
             tail_log_reader=Web3LogReader(tail_web3),
             finalized_block_reader=lambda: tail_web3.eth.block_number,
-            snapshot_client=ProviderStickySnapshotClient(),
+            snapshot_client=None,
             confirmation_depth=self.confirmation_depth,
             discovery_block_span=self.discovery.max_block_span,
             discovery_batches_per_cycle=self.discovery_batches_per_cycle,

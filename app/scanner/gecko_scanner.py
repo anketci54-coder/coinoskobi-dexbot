@@ -39,6 +39,12 @@ class GeckoScanner:
             "geckoterminal": 0.0,
             "dexscreener": 0.0,
         }
+        self._market_data_broker = None
+
+    def bind_market_data_broker(self, broker):
+        if broker is None:
+            raise ValueError("market-data broker required")
+        self._market_data_broker = broker
 
     def _provider_available(self, provider):
         return time.monotonic() >= float(
@@ -311,14 +317,14 @@ class GeckoScanner:
         *,
         persist_followups=True,
     ):
-        """
-        Return fresh exact-pool market facts using bounded provider failover.
+        """Return exact-pool market facts through the canonical broker."""
+        if self._market_data_broker is not None:
+            return self._market_data_broker.pool_snapshots(
+                pools,
+                max_pools=max_pools,
+                persist_followups=persist_followups,
+            )
 
-        GeckoTerminal remains the preferred measurement source. A 429 or
-        provider failure places Gecko on cooldown and the same bounded batch
-        is attempted through DexScreener. This prevents the fast-watch 20s
-        cadence from repeatedly exhausting a single market-data provider.
-        """
         addresses = self._normalized_addresses(
             pools,
             max_pools,

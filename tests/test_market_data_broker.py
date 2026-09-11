@@ -44,10 +44,6 @@ def test_broker_keeps_scanner_operations_compatible():
     assert broker.scan() == ["delegated"]
 
 
-def test_broker_requires_scanner_or_snapshot_client():
-    try:
-        MarketDataBroker(None)
-    except ValueError as exc:
-        assert str(exc) == "scanner or snapshot_client required"
-    else:
-        raise AssertionError("expected ValueError")
+def test_broker_defaults_to_shared_snapshot_client():
+    broker = MarketDataBroker()
+    assert broker._snapshot_client is MarketDataBroker._shared_snapshot_client

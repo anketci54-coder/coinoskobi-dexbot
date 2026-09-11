@@ -61,10 +61,9 @@ def test_scanner_retries_429_then_succeeds(
     ]
 
 
-def test_scanner_429_retry_is_bounded(
+def test_scanner_429_retry_is_bounded_and_fails_closed(
     monkeypatch,
 ):
-    import pytest
     import app.scanner.gecko_scanner as module
 
     calls = []
@@ -99,11 +98,7 @@ def test_scanner_429_retry_is_bounded(
         ),
     )
 
-    with pytest.raises(
-        RuntimeError,
-        match="429",
-    ):
-        module.GeckoScanner().scan()
+    assert module.GeckoScanner().scan() == []
 
     assert len(calls) == (
         module.HTTP_429_MAX_RETRIES

@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import requests
 
@@ -17,6 +17,7 @@ GECKOTERMINAL_POOLS_URL = (
 )
 GECKOTERMINAL_TIMEOUT_SECONDS = 10
 GECKOTERMINAL_SOURCE = "geckoterminal"
+GECKOTERMINAL_RATE_LIMIT_COOLDOWN_SECONDS = 300
 
 
 def _number(value):
@@ -207,7 +208,8 @@ class GeckoTerminalSnapshotClient:
     """Exact-pool GeckoTerminal snapshots normalized to the universe contract."""
 
     def __init__(self, *, session=None, timeout=GECKOTERMINAL_TIMEOUT_SECONDS,
-                 now_func=None):
+                 now_func=None, rate_limit_cooldown_seconds=
+                 GECKOTERMINAL_RATE_LIMIT_COOLDOWN_SECONDS):
         self.session = session or requests.Session()
         self.timeout = float(timeout)
         if self.timeout <= 0:
@@ -215,6 +217,43 @@ class GeckoTerminalSnapshotClient:
         self.now_func = now_func or (
             lambda: datetime.now(timezone.utc).isoformat()
         )
+        self.rate_limit_cooldown_seconds = float(rate_limit_cooldown_seconds)
+        if self.rate_limit_cooldown_seconds < 0:
+            raise ValueError("non-negative rate limit cooldown required")
+        self._rate_limited_until = None
+
+    def _now(self):
+        value = self.now_func()
+        if isinstance(value, datetime):
+            parsed = value
+        else:
+            parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        return parsed
+
+    def _rate_limit_active(self):
+        if self._rate_limited_until is None:
+            return False
+        if self._now() < self._rate_limited_until:
+            return True
+        self._rate_limited_until = None
+        return False
+
+    def _set_rate_limit_cooldown(self, response):
+        retry_after = None
+        headers = getattr(response, "headers", {}) or {}
+        raw_retry_after = headers.get("Retry-After")
+        if raw_retry_after is not None:
+            try:
+                retry_after = float(raw_retry_after)
+            except (TypeError, ValueError):
+                retry_after = None
+        seconds = (
+            retry_after if retry_after is not None and retry_after >= 0
+            else self.rate_limit_cooldown_seconds
+        )
+        self._rate_limited_until = self._now() + timedelta(seconds=seconds)
 
     @staticmethod
     def _requested(pools):
@@ -234,7 +273,7 @@ class GeckoTerminalSnapshotClient:
 
     def fetch(self, pools):
         requested = self._requested(pools)
-        if not requested:
+        if not requested or self._rate_limit_active():
             return []
 
         response = self.session.get(
@@ -242,7 +281,11 @@ class GeckoTerminalSnapshotClient:
             headers={"Accept": "application/json;version=20230302"},
             timeout=self.timeout,
         )
+        if getattr(response, "status_code", None) == 429:
+            self._set_rate_limit_cooldown(response)
+            return []
         response.raise_for_status()
+        self._rate_limited_until = None
         payload = response.json()
         raw_pools = payload.get("data") or []
         if not isinstance(raw_pools, list):
@@ -439,6 +482,7 @@ class ProviderStickySnapshotClient:
 __all__ = [
     "DEXSCREENER_MAX_BATCH",
     "DexScreenerSnapshotClient",
+    "GECKOTERMINAL_RATE_LIMIT_COOLDOWN_SECONDS",
     "GECKOTERMINAL_SOURCE",
     "GeckoTerminalSnapshotClient",
     "ProviderStickySnapshotClient",

@@ -15,8 +15,10 @@ def address(value):
 
 
 class Response:
-    def __init__(self, payload):
+    def __init__(self, payload, *, status_code=200, headers=None):
         self.payload = payload
+        self.status_code = status_code
+        self.headers = headers or {}
         self.raised = False
 
     def raise_for_status(self):
@@ -27,8 +29,12 @@ class Response:
 
 
 class Session:
-    def __init__(self, payload):
-        self.response = Response(payload)
+    def __init__(self, payload, *, status_code=200, headers=None):
+        self.response = Response(
+            payload,
+            status_code=status_code,
+            headers=headers,
+        )
         self.calls = []
 
     def get(self, url, **kwargs):
@@ -211,6 +217,51 @@ def test_gecko_exact_pool_normalizes_same_universe_metric_contract():
     assert row["change_m5"] == 0.4
     assert row["observed_at"] == "2026-08-28T15:00:00+00:00"
     assert row["pair_created_at_ms"] is not None
+
+
+def test_gecko_429_starts_cooldown_and_returns_temporary_miss():
+    pool = address(1)
+    now = ["2026-08-28T15:00:00+00:00"]
+    session = Session({"data": []}, status_code=429)
+    client = GeckoTerminalSnapshotClient(
+        session=session,
+        now_func=lambda: now[0],
+        rate_limit_cooldown_seconds=300,
+    )
+
+    assert client.fetch([{"pool": pool, "dex": "pancakeswap_v2"}]) == []
+    assert len(session.calls) == 1
+
+    now[0] = "2026-08-28T15:04:59+00:00"
+    assert client.fetch([{"pool": pool, "dex": "pancakeswap_v2"}]) == []
+    assert len(session.calls) == 1
+
+    now[0] = "2026-08-28T15:05:00+00:00"
+    assert client.fetch([{"pool": pool, "dex": "pancakeswap_v2"}]) == []
+    assert len(session.calls) == 2
+
+
+def test_gecko_429_honors_retry_after():
+    pool = address(1)
+    now = ["2026-08-28T15:00:00+00:00"]
+    session = Session(
+        {"data": []},
+        status_code=429,
+        headers={"Retry-After": "12"},
+    )
+    client = GeckoTerminalSnapshotClient(
+        session=session,
+        now_func=lambda: now[0],
+        rate_limit_cooldown_seconds=300,
+    )
+
+    assert client.fetch([{"pool": pool, "dex": "pancakeswap_v2"}]) == []
+    now[0] = "2026-08-28T15:00:11+00:00"
+    assert client.fetch([{"pool": pool, "dex": "pancakeswap_v2"}]) == []
+    assert len(session.calls) == 1
+    now[0] = "2026-08-28T15:00:12+00:00"
+    assert client.fetch([{"pool": pool, "dex": "pancakeswap_v2"}]) == []
+    assert len(session.calls) == 2
 
 
 def test_gecko_rejects_non_pancake_response_without_inventing_snapshot():

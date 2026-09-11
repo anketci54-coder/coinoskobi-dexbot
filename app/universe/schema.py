@@ -7,9 +7,11 @@ CHAIN_BSC = "bsc"
 
 DEX_PANCAKESWAP_V2 = "pancakeswap_v2"
 DEX_PANCAKESWAP_V3 = "pancakeswap_v3"
+DEX_UNISWAP_V3 = "uniswap_v3"
 SUPPORTED_DEXES = frozenset({
     DEX_PANCAKESWAP_V2,
     DEX_PANCAKESWAP_V3,
+    DEX_UNISWAP_V3,
 })
 
 DISCOVERY_EXISTING = "EXISTING"

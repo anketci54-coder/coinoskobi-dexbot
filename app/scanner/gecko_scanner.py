@@ -177,7 +177,7 @@ class GeckoScanner:
 
     def _request_multi(self, addresses):
         if not self._provider_available("geckoterminal"):
-            raise RuntimeError("geckoterminal provider cooling down")
+            return None
 
         url = (
             "https://api.geckoterminal.com/api/v2/"
@@ -213,16 +213,14 @@ class GeckoScanner:
 
             if attempt >= HTTP_429_MAX_RETRIES:
                 self._cooldown_provider("geckoterminal")
-                response.raise_for_status()
+                return None
 
             time.sleep(
                 HTTP_429_BACKOFF_SECONDS
                 * (2 ** attempt)
             )
 
-        raise RuntimeError(
-            "multi-pool request unavailable"
-        )
+        return None
 
     def _request_dexscreener(self, addresses):
         if not self._provider_available("dexscreener"):
@@ -242,7 +240,7 @@ class GeckoScanner:
 
     def _fetch(self):
         if not self._provider_available("geckoterminal"):
-            raise RuntimeError("geckoterminal provider cooling down")
+            return None
 
         attempts = HTTP_429_MAX_RETRIES + 1
 
@@ -264,19 +262,20 @@ class GeckoScanner:
 
             if attempt >= HTTP_429_MAX_RETRIES:
                 self._cooldown_provider("geckoterminal")
-                response.raise_for_status()
+                return None
 
             time.sleep(
                 HTTP_429_BACKOFF_SECONDS
                 * (2 ** attempt)
             )
 
-        raise RuntimeError(
-            "unexpected GeckoTerminal retry state"
-        )
+        return None
 
     def _pool_snapshots_gecko(self, addresses):
         response = self._request_multi(addresses)
+        if response is None:
+            return []
+
         snapshots = []
 
         for raw in response.json().get("data", []):
@@ -398,6 +397,8 @@ class GeckoScanner:
 
     def scan(self):
         response = self._fetch()
+        if response is None:
+            return []
 
         return [
             self._row_to_candidate(row)

@@ -1,4 +1,5 @@
 import logging
+from collections import OrderedDict
 from app.config.contracts import WBNB
 from app.config.settings import (
     UNIVERSE_SHADOW_ENABLED,
@@ -31,6 +32,15 @@ from app.pipeline.engine import (
 
 
 SCAN_NATIVE_WSS_LIMIT = 16
+
+# Keep recently verified scanner candidates subscribed long enough for
+# native flow state to mature across repeated observations:
+# spread -> velocity -> acceleration.
+#
+# This cache grants no trading authority and does not fabricate evidence.
+# It only prevents scanner ordering churn from tearing down WSS observation
+# before the existing mathematical flow contract can mature.
+SCAN_NATIVE_WSS_RETENTION_LIMIT = 64
 
 
 def build_application(
@@ -121,6 +131,12 @@ def build_application(
     market_flow_bound = False
     hot_bridge = HotPositionWSSBridge()
     base_wss_targets = []
+
+    # Pair-keyed bounded LRU of verified scanner WSS targets.
+    # Current candidates are refreshed to the newest end. Targets naturally
+    # age out when enough newer verified candidates arrive.
+    scan_wss_target_cache = OrderedDict()
+
     hot_signature = {
         "value": None,
     }
@@ -217,15 +233,37 @@ def build_application(
                 continue
 
             seen.add(pair)
-            targets.append({
+
+            target = {
                 "pair": pair,
                 "token": token,
                 "quote_token": quote,
                 "membership_verified": True,
                 "selection_reason": "SCAN_CANDIDATE",
-            })
+            }
 
-        return targets
+            targets.append(target)
+
+            # Refresh this verified pair's LRU position without resetting
+            # RuntimeMarketFlowStore state. The WSS subscription therefore
+            # survives scanner result reordering long enough for native flow
+            # acceleration to become measurable.
+            scan_wss_target_cache.pop(pair, None)
+            scan_wss_target_cache[pair] = target
+
+        while (
+            len(scan_wss_target_cache)
+            > SCAN_NATIVE_WSS_RETENTION_LIMIT
+        ):
+            scan_wss_target_cache.popitem(last=False)
+
+        # Newest verified scanner candidates first, while keeping recent
+        # verified targets observed under the same global WSS bound.
+        return list(
+            reversed(
+                scan_wss_target_cache.values()
+            )
+        )
 
     async def on_native_event(event):
         hot_bridge.observe_event(

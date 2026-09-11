@@ -391,6 +391,28 @@ def _migrate_to_v2(
     )
 
 
+def _ensure_wallet_observation_schemas(conn):
+    from app.paper.wallet_discovery_evidence_schema import (
+        ensure_wallet_discovery_evidence_schema,
+    )
+    from app.paper.wallet_holdings_schema import (
+        ensure_wallet_holdings_schema,
+    )
+    from app.paper.wallet_intelligence_schema import (
+        ensure_wallet_intelligence_schema,
+    )
+
+    intelligence = ensure_wallet_intelligence_schema(conn)
+    discovery = ensure_wallet_discovery_evidence_schema(conn)
+    holdings = ensure_wallet_holdings_schema(conn)
+
+    return {
+        "intelligence": intelligence,
+        "discovery": discovery,
+        "holdings": holdings,
+    }
+
+
 def ensure_paper_schema(
     conn,
 ):
@@ -536,6 +558,8 @@ def ensure_paper_schema(
 
         raise
 
+    wallet_schemas = _ensure_wallet_observation_schemas(conn)
+
     return {
         "state": "READY",
 
@@ -552,4 +576,6 @@ def ensure_paper_schema(
         "unique_open_index": (
             "idx_paper_trades_one_open_per_token"
         ),
+
+        "wallet_observation_schemas": wallet_schemas,
     }

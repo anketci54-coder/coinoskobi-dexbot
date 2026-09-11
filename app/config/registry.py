@@ -45,10 +45,10 @@ DEXES = {
         "chains": {"bsc"},
     },
 
-    # Gelecek örnekleri.
+    # Adapter hazır; runtime discovery bilinçli olarak henüz açılmıyor.
     "uniswap_v3": {
         "enabled": False,
-        "chains": {"ethereum", "base"},
+        "chains": {"bsc"},
     },
 
 }

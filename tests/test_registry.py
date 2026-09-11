@@ -61,14 +61,14 @@ def test_enabled_bsc_dexes():
     assert "pancakeswap_v3" in dexes
 
 
-def test_future_uniswap_v3_disabled():
+def test_uniswap_v3_bsc_registered_but_disabled():
     dex = get_dex(
         "uniswap_v3"
     )
 
     assert dex["enabled"] is False
-    assert "ethereum" in dex["chains"]
-    assert "base" in dex["chains"]
+    assert dex["chains"] == {"bsc"}
+    assert dex_supports_chain("uniswap_v3", "bsc")
 
 
 def test_gecko_source_binding():
@@ -100,10 +100,7 @@ def test_unknown_registry_entries_fail():
         get_source("unknown")
 
 
-
 def test_disabled_network_cannot_route_source():
-    import pytest
-
     with pytest.raises(RuntimeError):
         get_source_network(
             "geckoterminal",
@@ -112,8 +109,6 @@ def test_disabled_network_cannot_route_source():
 
 
 def test_source_network_binding_is_explicit():
-    import pytest
-
     with pytest.raises(RuntimeError):
         get_source_network(
             "geckoterminal",

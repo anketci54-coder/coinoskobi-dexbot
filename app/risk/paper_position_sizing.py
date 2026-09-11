@@ -759,15 +759,12 @@ def calculate_paper_position_size(
 
     # Paper-only calibration bootstrap.
     #
-    # The normal sizing model deliberately waits for empirical gap,
-    # account-loss and cost-residual observations. That creates a
-    # bootstrap deadlock when there are no closed paper outcomes yet.
-    #
-    # Bootstrap is allowed only when the mathematical plan itself is
-    # already paper-eligible and has produced a positive data-derived
-    # amount, positive known edge, known exit capacity and known risk
-    # distance. It never bypasses hard safety, sellability, liquidity
-    # protection, or negative economic edge.
+    # The normal model cannot estimate gap/account-loss risk before it has
+    # durable closed paper outcomes. Bootstrap therefore treats the unknown
+    # tail conservatively as a complete loss, while deriving the maximum
+    # calibration loss budget from the plan's own stop distance. This keeps
+    # bootstrap useful for gathering evidence without granting the raw plan
+    # amount an uncalibrated exception to the risk model.
     bootstrap_blockers = {
         "GAP_RISK_UNOBSERVED",
         "ACCOUNT_RISK_BUDGET_UNOBSERVED",
@@ -793,18 +790,32 @@ def calculate_paper_position_size(
     )
 
     if paper_calibration_bootstrap:
-        bootstrap_amount = min(
-            raw_amount,
-            available,
-            safe_quote_reserve,
+        risk_retention = math.exp(-risk_log_distance)
+        stop_loss_fraction = 1.0 - risk_retention
+        base_risk_notional = min(raw_amount, available)
+        bootstrap_risk_budget = (
+            base_risk_notional * stop_loss_fraction
+        )
+
+        # Gap risk is unobserved during bootstrap. Fail closed by assuming
+        # the calibration position can lose its entire notional before the
+        # next trustworthy observation. Therefore notional cannot exceed
+        # the plan-derived stop-risk budget.
+        bootstrap_tail_loss_fraction = 1.0
+        bootstrap_amount = max(
+            0.0,
+            min(
+                raw_amount,
+                available,
+                safe_quote_reserve,
+                bootstrap_risk_budget,
+            ),
         )
 
         if bootstrap_amount > 0:
-            risk_retention = math.exp(-risk_log_distance)
-            stop_loss_fraction = 1.0 - risk_retention
             risk = (
                 bootstrap_amount
-                * stop_loss_fraction
+                * bootstrap_tail_loss_fraction
             )
 
             bound_plan = _bind_final_trade_plan(
@@ -832,7 +843,7 @@ def calculate_paper_position_size(
                 "formula_authority": "DATA_DERIVED",
                 "magic_percentage_rule": False,
                 "sizing_model": (
-                    "PAPER_CALIBRATION_BOOTSTRAP_V1"
+                    "PAPER_CALIBRATION_BOOTSTRAP_V2"
                 ),
                 "paper_calibration_bootstrap": True,
                 "blockers": [],
@@ -840,7 +851,16 @@ def calculate_paper_position_size(
                 "safe_quote_reserve_usd": safe_quote_reserve,
                 "risk_log_distance": risk_log_distance,
                 "risk_retention": risk_retention,
-                "stop_risk_budget_usdt": risk,
+                "stop_loss_fraction": stop_loss_fraction,
+                "bootstrap_tail_loss_fraction": (
+                    bootstrap_tail_loss_fraction
+                ),
+                "bootstrap_risk_budget_usdt": (
+                    bootstrap_risk_budget
+                ),
+                "stop_risk_budget_usdt": (
+                    bootstrap_risk_budget
+                ),
                 "known_net_edge_fraction": known_edge,
                 "empirical_cost_uncertainty_fraction": (
                     empirical_cost_uncertainty

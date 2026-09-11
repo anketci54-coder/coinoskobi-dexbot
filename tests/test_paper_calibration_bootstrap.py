@@ -1,13 +1,25 @@
+import math
+
+import pytest
+
 from app.risk.paper_position_sizing import calculate_paper_position_size
 
 
-def _bootstrap_plan(*, known_edge=0.10, paper_eligible=True):
+def _bootstrap_plan(
+    *,
+    known_edge=0.10,
+    paper_eligible=True,
+    entry_amount_usdt=1000.0,
+    available_usdt=10000.0,
+    safe_quote_reserve_usd=5000.0,
+    risk_log_distance=0.20,
+):
     return {
         "paper_eligible": paper_eligible,
         "capital": {
-            "entry_amount_usdt": 1000.0,
-            "available_usdt": 10000.0,
-            "safe_quote_reserve_usd": 5000.0,
+            "entry_amount_usdt": entry_amount_usdt,
+            "available_usdt": available_usdt,
+            "safe_quote_reserve_usd": safe_quote_reserve_usd,
             "liquidity_capacity_source": "VERIFIED_LP_PROTECTION",
         },
         "expected": {
@@ -18,26 +30,63 @@ def _bootstrap_plan(*, known_edge=0.10, paper_eligible=True):
             "cost_complete": False,
         },
         "market_statistics": {
-            "risk_log_distance": 0.20,
+            "risk_log_distance": risk_log_distance,
         },
         "entry": {"price": 1.0},
-        "sl": {"initial_price": 0.80},
+        "sl": {"initial_price": math.exp(-risk_log_distance)},
         "position": {},
     }
 
 
-def test_paper_calibration_bootstrap_uses_plan_derived_amount(tmp_path):
+def test_paper_calibration_bootstrap_is_bounded_by_plan_stop_risk(tmp_path):
     result = calculate_paper_position_size(
         mathematical_plan=_bootstrap_plan(),
         available_capital_usdt=10000.0,
         db_path=str(tmp_path / "missing.db"),
     )
 
-    assert result["entry_amount_usdt"] > 0
-    assert result["entry_amount_usdt"] <= 1000.0
+    stop_loss_fraction = 1.0 - math.exp(-0.20)
+    expected_budget = 1000.0 * stop_loss_fraction
+
+    assert result["entry_amount_usdt"] == pytest.approx(expected_budget)
+    assert result["risk_amount_usdt"] == pytest.approx(expected_budget)
+    assert result["bootstrap_risk_budget_usdt"] == pytest.approx(expected_budget)
+    assert result["bootstrap_tail_loss_fraction"] == 1.0
     assert result["sizing_reason"] == "PAPER_CALIBRATION_BOOTSTRAP"
+    assert result["sizing_model"] == "PAPER_CALIBRATION_BOOTSTRAP_V2"
     assert result["paper_calibration_bootstrap"] is True
     assert result["blockers"] == []
+
+
+def test_hotdog_shape_cannot_bootstrap_sixty_percent_of_account(tmp_path):
+    raw_amount = 5974.6173336504025
+    available = 9372.54877751162
+    risk_log_distance = 0.07563632051428575
+
+    result = calculate_paper_position_size(
+        mathematical_plan=_bootstrap_plan(
+            known_edge=0.23102489735017798,
+            entry_amount_usdt=raw_amount,
+            available_usdt=available,
+            safe_quote_reserve_usd=25861.356945413227,
+            risk_log_distance=risk_log_distance,
+        ),
+        available_capital_usdt=available,
+        db_path=str(tmp_path / "missing.db"),
+    )
+
+    expected_budget = raw_amount * (
+        1.0 - math.exp(-risk_log_distance)
+    )
+
+    assert result["entry_amount_usdt"] == pytest.approx(expected_budget)
+    assert result["entry_amount_usdt"] < raw_amount
+    assert result["position_size_pct"] == pytest.approx(
+        100.0 * expected_budget / available
+    )
+    assert result["position_size_pct"] < 5.0
+    assert result["risk_amount_usdt"] == pytest.approx(expected_budget)
+    assert result["bootstrap_tail_loss_fraction"] == 1.0
 
 
 def test_paper_calibration_bootstrap_never_overrides_negative_edge(tmp_path):

@@ -24,8 +24,6 @@ class MarketDataBroker:
     )
 
     def __init__(self, scanner=None, *, snapshot_client=None):
-        if scanner is None and snapshot_client is None:
-            raise ValueError("scanner or snapshot_client required")
         self._scanner = scanner
         self._snapshot_client = snapshot_client or self._shared_snapshot_client
         if scanner is not None:

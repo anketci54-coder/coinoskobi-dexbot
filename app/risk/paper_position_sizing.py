@@ -757,6 +757,118 @@ def calculate_paper_position_size(
     if effective_edge is None or effective_edge <= 0:
         blockers.append("NET_EDGE_NOT_POSITIVE")
 
+    # Paper-only calibration bootstrap.
+    #
+    # The normal sizing model deliberately waits for empirical gap,
+    # account-loss and cost-residual observations. That creates a
+    # bootstrap deadlock when there are no closed paper outcomes yet.
+    #
+    # Bootstrap is allowed only when the mathematical plan itself is
+    # already paper-eligible and has produced a positive data-derived
+    # amount, positive known edge, known exit capacity and known risk
+    # distance. It never bypasses hard safety, sellability, liquidity
+    # protection, or negative economic edge.
+    bootstrap_blockers = {
+        "GAP_RISK_UNOBSERVED",
+        "ACCOUNT_RISK_BUDGET_UNOBSERVED",
+        "COST_UNCERTAINTY_UNOBSERVED",
+    }
+
+    paper_calibration_bootstrap = (
+        bool(plan.get("paper_eligible"))
+        and raw_amount > 0
+        and available > 0
+        and safe_quote_reserve is not None
+        and risk_log_distance is not None
+        and known_edge is not None
+        and known_edge > 0
+        and liquidity_capacity_source != "EMPIRICAL_RESERVE_FLOOR"
+        and set(blockers).issubset(
+            bootstrap_blockers
+            | {
+                "COST_UNCERTAINTY_UNOBSERVED",
+                "NET_EDGE_NOT_POSITIVE",
+            }
+        )
+    )
+
+    if paper_calibration_bootstrap:
+        bootstrap_amount = min(
+            raw_amount,
+            available,
+            safe_quote_reserve,
+        )
+
+        if bootstrap_amount > 0:
+            risk_retention = math.exp(-risk_log_distance)
+            stop_loss_fraction = 1.0 - risk_retention
+            risk = (
+                bootstrap_amount
+                * stop_loss_fraction
+            )
+
+            bound_plan = _bind_final_trade_plan(
+                plan,
+                bootstrap_amount,
+                available,
+            )
+
+            return {
+                "entry_amount_usdt": bootstrap_amount,
+                "risk_amount_usdt": risk,
+                "capital_before_usdt": available,
+                "capital_after_entry_usdt": max(
+                    0.0,
+                    available - bootstrap_amount,
+                ),
+                "position_size_pct": (
+                    100.0 * bootstrap_amount / available
+                    if available > 0
+                    else 0.0
+                ),
+                "sizing_reason": (
+                    "PAPER_CALIBRATION_BOOTSTRAP"
+                ),
+                "formula_authority": "DATA_DERIVED",
+                "magic_percentage_rule": False,
+                "sizing_model": (
+                    "PAPER_CALIBRATION_BOOTSTRAP_V1"
+                ),
+                "paper_calibration_bootstrap": True,
+                "blockers": [],
+                "raw_plan_amount_usdt": raw_amount,
+                "safe_quote_reserve_usd": safe_quote_reserve,
+                "risk_log_distance": risk_log_distance,
+                "risk_retention": risk_retention,
+                "stop_risk_budget_usdt": risk,
+                "known_net_edge_fraction": known_edge,
+                "empirical_cost_uncertainty_fraction": (
+                    empirical_cost_uncertainty
+                ),
+                "gap_samples": calibration.get(
+                    "gap_samples"
+                ),
+                "cost_samples": calibration.get(
+                    "cost_samples"
+                ),
+                "account_risk_samples": calibration.get(
+                    "account_risk_samples"
+                ),
+                "canonical_token_amount": (
+                    bound_plan["token_amount"]
+                ),
+                "canonical_initial_sl": (
+                    bound_plan["initial_sl"]
+                ),
+                "canonical_initial_net_risk_usdt": (
+                    bound_plan["initial_net_risk_usdt"]
+                ),
+                "canonical_tp1_activation_price": (
+                    bound_plan["tp1_activation_price"]
+                ),
+                "kelly_diagnostic_only": True,
+            }
+
     if blockers:
         return _zero_result(
             available=available,

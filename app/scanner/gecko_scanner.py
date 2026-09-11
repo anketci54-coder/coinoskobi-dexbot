@@ -29,29 +29,32 @@ DEXSCREENER_URL = (
 # Process-local provider state is deliberate: a restart should recover a
 # healthy provider immediately, while a hot provider must stay out of the
 # 20-second fast-watch loop after a rate-limit response.
-_PROVIDER_COOLDOWN_UNTIL = {
-    "geckoterminal": 0.0,
-    "dexscreener": 0.0,
-}
-
-
-def _provider_available(provider):
-    return time.monotonic() >= float(
-        _PROVIDER_COOLDOWN_UNTIL.get(provider, 0.0)
-    )
-
-
-def _cooldown_provider(provider):
-    until = time.monotonic() + float(MARKET_PROVIDER_COOLDOWN_SECONDS)
-    _PROVIDER_COOLDOWN_UNTIL[provider] = until
-    logger.warning(
-        "Market provider rate-limited; cooling down provider=%s seconds=%s",
-        provider,
-        MARKET_PROVIDER_COOLDOWN_SECONDS,
-    )
-
-
 class GeckoScanner:
+
+    def __init__(self):
+        # Provider cooldown is scanner-instance state.
+        # A fresh scanner starts healthy; the long-lived production
+        # scanner still preserves cooldown across its own scan cycles.
+        self._provider_cooldown_until = {
+            "geckoterminal": 0.0,
+            "dexscreener": 0.0,
+        }
+
+    def _provider_available(self, provider):
+        return time.monotonic() >= float(
+            self._provider_cooldown_until.get(provider, 0.0)
+        )
+
+    def _cooldown_provider(self, provider):
+        until = time.monotonic() + float(
+            MARKET_PROVIDER_COOLDOWN_SECONDS
+        )
+        self._provider_cooldown_until[provider] = until
+        logger.warning(
+            "Market provider rate-limited; cooling down provider=%s seconds=%s",
+            provider,
+            MARKET_PROVIDER_COOLDOWN_SECONDS,
+        )
 
     @staticmethod
     def _normalized_addresses(pools, max_pools):
@@ -167,7 +170,7 @@ class GeckoScanner:
         }
 
     def _request_multi(self, addresses):
-        if not _provider_available("geckoterminal"):
+        if not self._provider_available("geckoterminal"):
             raise RuntimeError("geckoterminal provider cooling down")
 
         url = (
@@ -203,7 +206,7 @@ class GeckoScanner:
                 return response
 
             if attempt >= HTTP_429_MAX_RETRIES:
-                _cooldown_provider("geckoterminal")
+                self._cooldown_provider("geckoterminal")
                 response.raise_for_status()
 
             time.sleep(
@@ -216,7 +219,7 @@ class GeckoScanner:
         )
 
     def _request_dexscreener(self, addresses):
-        if not _provider_available("dexscreener"):
+        if not self._provider_available("dexscreener"):
             raise RuntimeError("dexscreener provider cooling down")
 
         response = requests.get(
@@ -226,13 +229,13 @@ class GeckoScanner:
         )
 
         if response.status_code == 429:
-            _cooldown_provider("dexscreener")
+            self._cooldown_provider("dexscreener")
 
         response.raise_for_status()
         return response
 
     def _fetch(self):
-        if not _provider_available("geckoterminal"):
+        if not self._provider_available("geckoterminal"):
             raise RuntimeError("geckoterminal provider cooling down")
 
         attempts = HTTP_429_MAX_RETRIES + 1
@@ -254,7 +257,7 @@ class GeckoScanner:
                 return response
 
             if attempt >= HTTP_429_MAX_RETRIES:
-                _cooldown_provider("geckoterminal")
+                self._cooldown_provider("geckoterminal")
                 response.raise_for_status()
 
             time.sleep(

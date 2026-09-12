@@ -33,7 +33,6 @@ MAX_FDV_USD = 100000000
 ALLOWED_DEX = [
     "pancakeswap_v2",
     "pancakeswap_v3",
-    "four-meme"
 ]
 
 # Admission queue kapasitesi.

@@ -36,12 +36,17 @@ class FastWatchRevisitJob:
         pipeline,
         *,
         max_candidates=FAST_WATCH_MAX_CANDIDATES,
+        interval_seconds=FAST_WATCH_REVISIT_SECONDS,
     ):
         self.pipeline = pipeline
         self.max_candidates = max(1, int(max_candidates))
+        self.interval_seconds = float(interval_seconds)
+        if self.interval_seconds <= 0:
+            raise ValueError("fast watch interval must be positive")
         self._state_lock = threading.Lock()
         self._running = False
         self._thread = None
+        self._ticker_thread = None
         self._stop_event = threading.Event()
         self.last_status = self._status(state="IDLE")
 
@@ -289,6 +294,52 @@ class FastWatchRevisitJob:
 
         return selected
 
+    def _fetch_snapshot_batch(self, snapshots, pools):
+        """
+        Keep one unsupported DEX identity from aborting the whole WATCH batch.
+
+        The canonical market-data boundary remains strict. Failed batches are
+        bisected until the unsupported pool is isolated; only that pool is
+        skipped. Other ValueError types still propagate.
+        """
+        pools = list(pools or [])
+
+        if not pools:
+            return []
+
+        try:
+            return snapshots(
+                pools,
+                max_pools=min(
+                    FAST_WATCH_PROVIDER_BATCH_SIZE,
+                    len(pools),
+                ),
+                persist_followups=False,
+            ) or []
+        except ValueError as exc:
+            if str(exc) != "unsupported DEX":
+                raise
+
+            if len(pools) == 1:
+                logger.warning(
+                    "Fast watch skipping unsupported DEX pool=%s",
+                    pools[0],
+                )
+                return []
+
+            midpoint = max(1, len(pools) // 2)
+
+            return (
+                self._fetch_snapshot_batch(
+                    snapshots,
+                    pools[:midpoint],
+                )
+                + self._fetch_snapshot_batch(
+                    snapshots,
+                    pools[midpoint:],
+                )
+            )
+
     def _fresh_rows(self, identities):
         scanner = getattr(self.pipeline, "scanner", None)
         snapshots = getattr(scanner, "pool_snapshots", None)
@@ -308,11 +359,10 @@ class FastWatchRevisitJob:
             pools = [pool for _, pool in batch]
             wanted = set(batch)
 
-            fresh = snapshots(
+            fresh = self._fetch_snapshot_batch(
+                snapshots,
                 pools,
-                max_pools=min(FAST_WATCH_PROVIDER_BATCH_SIZE, len(pools)),
-                persist_followups=False,
-            ) or []
+            )
 
             for row in fresh:
                 normalized = normalize_source_rows(
@@ -560,6 +610,33 @@ class FastWatchRevisitJob:
         )
         return self.last_status
 
+    def _ticker_loop(self):
+        while not self._stop_event.wait(self.interval_seconds):
+            logger.info(
+                "Fast watch ticker dispatch interval=%ss",
+                self.interval_seconds,
+            )
+            self.run_cycle()
+
+    def start(self):
+        with self._state_lock:
+            if self._stop_event.is_set():
+                return False
+
+            ticker = self._ticker_thread
+            if ticker is not None and ticker.is_alive():
+                return False
+
+            ticker = threading.Thread(
+                target=self._ticker_loop,
+                name="coinoskobi-fast-watch-ticker",
+                daemon=True,
+            )
+            self._ticker_thread = ticker
+
+        ticker.start()
+        return True
+
     def _background_cycle(self):
         try:
             self._run_cycle_sync()
@@ -595,12 +672,27 @@ class FastWatchRevisitJob:
         self._stop_event.set()
 
         with self._state_lock:
+            ticker = self._ticker_thread
             thread = self._thread
 
-        if thread is not None and thread.is_alive():
+        current = threading.current_thread()
+
+        if (
+            ticker is not None
+            and ticker.is_alive()
+            and ticker is not current
+        ):
+            ticker.join()
+
+        if (
+            thread is not None
+            and thread.is_alive()
+            and thread is not current
+        ):
             thread.join()
 
         with self._state_lock:
+            self._ticker_thread = None
             self._running = False
             self.last_status = self._status(state="STOPPED")
 

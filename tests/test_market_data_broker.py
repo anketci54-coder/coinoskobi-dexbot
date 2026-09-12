@@ -27,13 +27,19 @@ def test_broker_owns_bounded_pool_snapshots():
     broker = MarketDataBroker(scanner, snapshot_client=snapshot_client)
 
     result = broker.pool_snapshots(
-        ["0xpool"],
+        [{
+            "pool": "0xpool",
+            "dex": "pancakeswap_v2",
+        }],
         max_pools=1,
         persist_followups=False,
     )
 
     assert result[0]["provider"] == "geckoterminal"
-    assert snapshot_client.calls == [["0xpool"]]
+    assert snapshot_client.calls == [[{
+        "pool": "0xpool",
+        "dex": "pancakeswap_v2",
+    }]]
     assert scanner.broker is broker
 
 

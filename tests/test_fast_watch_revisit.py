@@ -279,6 +279,74 @@ def test_fresh_rows_batches_provider_calls_and_caps_after_ingress(monkeypatch):
     assert persist is False
 
 
+def test_fresh_rows_isolates_unsupported_dex_without_losing_valid_pool(
+    monkeypatch,
+):
+    bad_token = "0x0000000000000000000000000000000000000011"
+    bad_pool = "0x0000000000000000000000000000000000000012"
+    good_token = "0x0000000000000000000000000000000000000021"
+    good_pool = "0x0000000000000000000000000000000000000022"
+
+    class _MixedDexScanner:
+        def __init__(self):
+            self.calls = []
+
+        def pool_snapshots(
+            self,
+            pools,
+            max_pools=30,
+            persist_followups=True,
+        ):
+            pools = [str(value).lower() for value in pools]
+            self.calls.append(list(pools))
+
+            if bad_pool.lower() in pools:
+                raise ValueError("unsupported DEX")
+
+            if good_pool.lower() in pools:
+                return [{
+                    "pool": good_pool,
+                    "base_token": good_token,
+                    "quote_token": QUOTE,
+                }]
+
+            return []
+
+    def normalize(source, chain, source_rows):
+        row = source_rows[0]
+        return {
+            "candidates": [
+                _Candidate({
+                    "chain": "bsc",
+                    "token": row["base_token"],
+                    "pool": row["pool"],
+                    "quote_token": row["quote_token"],
+                })
+            ]
+        }
+
+    pipeline = _Pipeline([])
+    pipeline.scanner = _MixedDexScanner()
+    monkeypatch.setattr(module, "normalize_source_rows", normalize)
+
+    job = FastWatchRevisitJob(pipeline, max_candidates=30)
+
+    fresh = job._fresh_rows([
+        (bad_token.lower(), bad_pool.lower()),
+        (good_token.lower(), good_pool.lower()),
+    ])
+
+    assert len(fresh) == 1
+    assert fresh[0]["token"] == good_token
+    assert fresh[0]["pool"] == good_pool
+
+    assert pipeline.scanner.calls == [
+        [bad_pool.lower(), good_pool.lower()],
+        [bad_pool.lower()],
+        [good_pool.lower()],
+    ]
+
+
 def test_newer_non_watch_transition_suppresses_older_watch():
     rows = [
         _history_row("STRUCTURAL_REJECT", action="REJECT"),
@@ -496,7 +564,32 @@ def test_shutdown_waits_for_inflight_worker(monkeypatch):
     assert job.run_cycle()["state"] == "STOPPED"
 
 
-def test_runner_binds_fast_watch_at_twenty_second_cadence():
+def test_fast_watch_ticker_dispatches_independently(monkeypatch):
+    pipeline = _Pipeline([])
+    job = FastWatchRevisitJob(
+        pipeline,
+        interval_seconds=0.02,
+    )
+
+    dispatched = threading.Event()
+
+    def dispatch():
+        dispatched.set()
+        return job._status(state="DISPATCHED")
+
+    monkeypatch.setattr(job, "run_cycle", dispatch)
+
+    assert job.start() is True
+    assert job.start() is False
+    assert dispatched.wait(timeout=1.0)
+
+    result = job.shutdown()
+
+    assert result["state"] == "STOPPED"
+    assert job._ticker_thread is None
+
+
+def test_runner_binds_fast_watch_to_independent_ticker():
     pipeline = _Pipeline([])
 
     def scan_job():
@@ -513,8 +606,9 @@ def test_runner_binds_fast_watch_at_twenty_second_cadence():
     }
 
     assert jobs["scanner"]["interval"] == 300
-    assert jobs["fast_watch_revisit"]["interval"] == 20
+    assert "fast_watch_revisit" not in jobs
     assert runner.fast_watch_revisit.pipeline is pipeline
+    assert runner.fast_watch_revisit.interval_seconds == 20
 
 
 def test_runner_without_pipeline_capture_has_no_fast_watch_job():

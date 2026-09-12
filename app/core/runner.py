@@ -1,9 +1,6 @@
 import signal
 import time
 
-from app.config.scanner import (
-    FAST_WATCH_REVISIT_SECONDS,
-)
 from app.core.application_services import build_application_auxiliary_services
 from app.core.logger import get_logger
 from app.core.scheduler import Scheduler
@@ -72,11 +69,6 @@ class Runner:
 
             self.fast_watch_revisit = FastWatchRevisitJob(
                 pipeline
-            )
-            self.scheduler.every(
-                interval=FAST_WATCH_REVISIT_SECONDS,
-                func=self.fast_watch_revisit.run_cycle,
-                name="fast_watch_revisit",
             )
         else:
             self.fast_watch_revisit = None
@@ -186,6 +178,12 @@ class Runner:
                 self.last_service_error,
             )
 
+    def _start_fast_watch_revisit(self):
+        if self.fast_watch_revisit is None:
+            return False
+
+        return self.fast_watch_revisit.start()
+
     def _stop_fast_watch_revisit(self):
         if self.fast_watch_revisit is None:
             return
@@ -233,6 +231,7 @@ class Runner:
 
         try:
             self._start_services()
+            self._start_fast_watch_revisit()
 
             while self.running:
                 self.scheduler.tick()

@@ -74,6 +74,15 @@ def test_unsupported_dex_is_dropped():
     assert result["reason"] == "UNSUPPORTED_DEX"
 
 
+def test_four_meme_is_dropped_from_active_ingress():
+    result = IngressGate().classify(
+        good_row(dex="four-meme")
+    )
+
+    assert result["lane"] == LANE_DROP
+    assert result["reason"] == "UNSUPPORTED_DEX"
+
+
 def test_missing_token_is_dropped():
     result = IngressGate().classify(
         good_row(token=None)

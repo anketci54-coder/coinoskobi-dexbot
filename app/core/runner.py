@@ -125,6 +125,9 @@ class Runner:
 
         self.running = False
 
+        if self.fast_watch_revisit is not None:
+            self.fast_watch_revisit.request_stop()
+
     def _start_services(self):
         if self.services_started:
             return

@@ -668,6 +668,17 @@ class FastWatchRevisitJob:
         thread.start()
         return dispatched
 
+    def request_stop(self):
+        """
+        Signal-only stop request.
+
+        Safe for Runner signal handling: stop ticker dispatch immediately,
+        but do not join an in-flight worker here. Full shutdown/join remains
+        the responsibility of shutdown().
+        """
+        self._stop_event.set()
+        return self._status(state="STOPPING")
+
     def shutdown(self):
         self._stop_event.set()
 

@@ -625,3 +625,34 @@ def test_runner_without_pipeline_capture_has_no_fast_watch_job():
     assert "scanner" in names
     assert "fast_watch_revisit" not in names
     assert runner.fast_watch_revisit is None
+
+
+def test_request_stop_is_nonblocking_and_prevents_new_dispatch():
+    job = FastWatchRevisitJob(_Pipeline([]))
+
+    result = job.request_stop()
+
+    assert result["state"] == "STOPPING"
+    assert job._stop_event.is_set()
+    assert job.run_cycle()["state"] == "STOPPED"
+    assert job.start() is False
+
+
+def test_runner_stop_requests_fast_watch_stop_immediately():
+    pipeline = _Pipeline([])
+
+    def scan_job():
+        return pipeline
+
+    runner = Runner(
+        scan_job=scan_job,
+        auxiliary_service_factory=lambda: [],
+    )
+
+    assert runner.running is True
+    assert runner.fast_watch_revisit._stop_event.is_set() is False
+
+    runner.stop()
+
+    assert runner.running is False
+    assert runner.fast_watch_revisit._stop_event.is_set() is True

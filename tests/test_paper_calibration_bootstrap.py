@@ -8,12 +8,17 @@ from app.risk.paper_position_sizing import calculate_paper_position_size
 def _bootstrap_plan(
     *,
     known_edge=0.10,
+    full_edge=None,
+    cost_complete=True,
     paper_eligible=True,
     entry_amount_usdt=1000.0,
     available_usdt=10000.0,
     safe_quote_reserve_usd=5000.0,
     risk_log_distance=0.20,
 ):
+    if full_edge is None and cost_complete:
+        full_edge = known_edge
+
     return {
         "paper_eligible": paper_eligible,
         "capital": {
@@ -24,10 +29,10 @@ def _bootstrap_plan(
         },
         "expected": {
             "known_net_edge_fraction": known_edge,
-            "full_net_edge_fraction": None,
+            "full_net_edge_fraction": full_edge,
         },
         "cost_model": {
-            "cost_complete": False,
+            "cost_complete": cost_complete,
         },
         "market_statistics": {
             "risk_log_distance": risk_log_distance,
@@ -97,6 +102,23 @@ def test_paper_calibration_bootstrap_never_overrides_negative_edge(tmp_path):
     )
 
     assert result["entry_amount_usdt"] == 0.0
+    assert "NET_EDGE_NOT_POSITIVE" in result["blockers"]
+    assert result.get("paper_calibration_bootstrap") is not True
+
+
+def test_paper_calibration_bootstrap_requires_complete_cost_edge(tmp_path):
+    result = calculate_paper_position_size(
+        mathematical_plan=_bootstrap_plan(
+            known_edge=0.10,
+            full_edge=None,
+            cost_complete=False,
+        ),
+        available_capital_usdt=10000.0,
+        db_path=str(tmp_path / "missing.db"),
+    )
+
+    assert result["entry_amount_usdt"] == 0.0
+    assert "COST_UNCERTAINTY_UNOBSERVED" in result["blockers"]
     assert "NET_EDGE_NOT_POSITIVE" in result["blockers"]
     assert result.get("paper_calibration_bootstrap") is not True
 

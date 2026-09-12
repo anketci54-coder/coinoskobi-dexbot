@@ -757,18 +757,23 @@ def calculate_paper_position_size(
     if effective_edge is None or effective_edge <= 0:
         blockers.append("NET_EDGE_NOT_POSITIVE")
 
+    accounting_quantum = (
+        available
+        - math.nextafter(
+            available,
+            -math.inf,
+        )
+        if available > 0.0
+        else 0.0
+    )
+
     # Paper-only calibration bootstrap.
-    #
-    # The normal model cannot estimate gap/account-loss risk before it has
-    # durable closed paper outcomes. Bootstrap therefore treats the unknown
-    # tail conservatively as a complete loss, while deriving the maximum
-    # calibration loss budget from the plan's own stop distance. This keeps
-    # bootstrap useful for gathering evidence without granting the raw plan
-    # amount an uncalibrated exception to the risk model.
+    # Bootstrap is allowed only when the complete cost model already proves
+    # a positive full-net edge. It may fill the unknown gap/account-risk
+    # calibration, but it may not bypass uncertain or non-positive economics.
     bootstrap_blockers = {
         "GAP_RISK_UNOBSERVED",
         "ACCOUNT_RISK_BUDGET_UNOBSERVED",
-        "COST_UNCERTAINTY_UNOBSERVED",
     }
 
     paper_calibration_bootstrap = (
@@ -777,15 +782,12 @@ def calculate_paper_position_size(
         and available > 0
         and safe_quote_reserve is not None
         and risk_log_distance is not None
-        and known_edge is not None
-        and known_edge > 0
+        and cost_complete
+        and effective_edge is not None
+        and effective_edge > 0
         and liquidity_capacity_source != "EMPIRICAL_RESERVE_FLOOR"
         and set(blockers).issubset(
             bootstrap_blockers
-            | {
-                "COST_UNCERTAINTY_UNOBSERVED",
-                "NET_EDGE_NOT_POSITIVE",
-            }
         )
     )
 
@@ -811,6 +813,29 @@ def calculate_paper_position_size(
                 bootstrap_risk_budget,
             ),
         )
+
+        if (
+            bootstrap_amount > 0.0
+            and accounting_quantum > 0.0
+            and bootstrap_amount < accounting_quantum
+        ):
+            return _zero_result(
+                available=available,
+                raw_amount=raw_amount,
+                safe_quote_reserve=safe_quote_reserve,
+                risk_log_distance=risk_log_distance,
+                gap_multiplier=gap_multiplier,
+                calibration=calibration,
+                empirical_cost_uncertainty=(
+                    empirical_cost_uncertainty
+                ),
+                effective_edge=effective_edge,
+                cost_complete=cost_complete,
+                blockers=[
+                    "ENTRY_AMOUNT_BELOW_"
+                    "ACCOUNTING_PRECISION"
+                ],
+            )
 
         if bootstrap_amount > 0:
             risk = (
@@ -862,6 +887,8 @@ def calculate_paper_position_size(
                     bootstrap_risk_budget
                 ),
                 "known_net_edge_fraction": known_edge,
+                "full_net_edge_fraction": full_edge,
+                "effective_edge_fraction": effective_edge,
                 "empirical_cost_uncertainty_fraction": (
                     empirical_cost_uncertainty
                 ),
@@ -946,16 +973,6 @@ def calculate_paper_position_size(
     # downward account-capital step cannot be represented
     # faithfully by float accounting. Derive the floor from
     # IEEE-754 spacing instead of inventing a trade minimum.
-    accounting_quantum = (
-        available
-        - math.nextafter(
-            available,
-            -math.inf,
-        )
-        if available > 0.0
-        else 0.0
-    )
-
     if (
         amount > 0.0
         and accounting_quantum > 0.0

@@ -1,4 +1,8 @@
 from app.market_data.broker import MarketDataBroker
+from app.universe.snapshot import (
+    DexScreenerSnapshotClient,
+    GeckoTerminalSnapshotClient,
+)
 
 
 class _Scanner:
@@ -52,4 +56,13 @@ def test_broker_keeps_scanner_operations_compatible():
 
 def test_broker_defaults_to_shared_snapshot_client():
     broker = MarketDataBroker()
+
     assert broker._snapshot_client is MarketDataBroker._shared_snapshot_client
+    assert isinstance(
+        broker._snapshot_client.primary,
+        DexScreenerSnapshotClient,
+    )
+    assert isinstance(
+        broker._snapshot_client.fallback,
+        GeckoTerminalSnapshotClient,
+    )

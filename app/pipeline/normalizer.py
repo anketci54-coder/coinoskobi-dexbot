@@ -16,6 +16,23 @@ class CandidateNormalizer:
     def gecko_bsc(row):
         normalized = dict(row)
 
+        # Exact-pool snapshot clients use the canonical universe contract,
+        # while legacy scanner rows use Candidate field names. Preserve
+        # real measured values when crossing that boundary.
+        canonical_aliases = {
+            "liquidity": "liquidity_usd",
+            "volume_24h": "volume_h24_usd",
+            "buys_24h": "buys_h24",
+            "fdv": "fdv_usd",
+        }
+
+        for target, source in canonical_aliases.items():
+            if (
+                normalized.get(target) is None
+                and normalized.get(source) is not None
+            ):
+                normalized[target] = normalized[source]
+
         token = (
             normalized.get("token")
             or normalized.get("base_token")
@@ -41,6 +58,7 @@ class CandidateNormalizer:
 
         provider = str(
             normalized.get("provider")
+            or normalized.get("source")
             or "geckoterminal"
         ).strip().lower()
         if provider not in {"geckoterminal", "dexscreener"}:

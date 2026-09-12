@@ -26,8 +26,8 @@ class MarketDataBroker:
     """
 
     _shared_snapshot_client = ProviderStickySnapshotClient(
-        primary=GeckoTerminalSnapshotClient(),
-        fallback=DexScreenerSnapshotClient(),
+        primary=DexScreenerSnapshotClient(),
+        fallback=GeckoTerminalSnapshotClient(),
     )
     _default_identity_db_path = Path("data/cache/cache.db")
 

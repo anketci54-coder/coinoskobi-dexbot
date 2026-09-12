@@ -42,6 +42,40 @@ def test_source_router_uses_source_network_binding():
     )
 
 
+def test_source_router_preserves_canonical_snapshot_market_fields():
+    snapshot = {
+        "schema_version": "GECKOTERMINAL_SNAPSHOT_V1",
+        "chain": "bsc",
+        "source": "geckoterminal",
+        "dex": "pancakeswap_v2",
+        "pool": "0xabcdef",
+        "base_token": "0x123456",
+        "quote_token": "0x999999",
+        "price_usd": 0.001,
+        "liquidity_usd": 35264.3232,
+        "volume_h24_usd": 16192.275,
+        "buys_h24": 45,
+        "fdv_usd": 116845.6517,
+        "observed_at": "2026-09-12T15:40:14+00:00",
+    }
+
+    result = normalize_source_rows(
+        "geckoterminal",
+        "bsc",
+        [snapshot],
+    )
+
+    assert result["rejected"] == 0
+    candidate = result["candidates"][0]
+
+    assert candidate.source == "geckoterminal"
+    assert candidate.liquidity == 35264.3232
+    assert candidate.volume_24h == 16192.275
+    assert candidate.buys_24h == 45
+    assert candidate.fdv == 116845.6517
+    assert candidate.price_usd == 0.001
+
+
 def test_source_router_isolates_bad_row():
     bad = row()
     bad["pool"] = None

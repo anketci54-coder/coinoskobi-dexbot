@@ -1490,24 +1490,6 @@ class PaperManager:
                 "MATHEMATICAL_NO_UPSIDE_EXIT",
             )
 
-        if (
-            new_stop > 0
-            and current <= new_stop
-        ):
-            self.db.update_position(
-                pos["id"],
-                common_update,
-            )
-
-            return self._close_math(
-                pos,
-                current,
-                highest,
-                lowest,
-                plan,
-                "MATHEMATICAL_TREND_FLOOR",
-            )
-
         tokens = float(
             pos.get(
                 "token_amount"
@@ -2049,6 +2031,28 @@ class PaperManager:
                         ),
                     },
                 }
+
+        # Give profitable VUR_KAC positions their TP1/TP2 realization
+        # opportunity before a non-hard dynamic trend-floor closes the
+        # entire position. If no partial realization is due, the floor
+        # remains authoritative for the residual position.
+        if (
+            new_stop > 0
+            and current <= new_stop
+        ):
+            self.db.update_position(
+                pos["id"],
+                common_update,
+            )
+
+            return self._close_math(
+                pos,
+                current,
+                highest,
+                lowest,
+                plan,
+                "MATHEMATICAL_TREND_FLOOR",
+            )
 
         (
             gross,

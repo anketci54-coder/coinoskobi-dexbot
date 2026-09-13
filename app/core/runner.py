@@ -285,13 +285,11 @@ class Runner:
             if thread is threading.current_thread():
                 continue
 
-            thread.join(timeout=5.0)
-
-            if thread.is_alive():
-                log.warning(
-                    "Paper runtime thread still active: {}",
-                    thread.name,
-                )
+            # Provider calls used by open-position refreshes are bounded, so
+            # shutdown must wait for the in-flight lifecycle region to exit
+            # instead of declaring the runtime stopped while it can still
+            # mutate paper state or use services that are about to stop.
+            thread.join()
 
         self._paper_runtime_started = False
 

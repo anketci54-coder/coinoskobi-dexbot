@@ -209,3 +209,55 @@ def test_shutdown_waits_for_inflight_paper_lifecycle():
     assert runner.paper_runtime_status()[
         "threads_alive"
     ] == 0
+
+
+def test_shutdown_prevents_queued_paper_lifecycle_from_starting():
+    active_entered = threading.Event()
+    active_release = threading.Event()
+    queued_called = threading.Event()
+
+    runner = Runner(
+        auxiliary_service_factory=lambda: [],
+    )
+
+    active_job = {
+        "name": "paper_manager",
+        "interval": 10,
+        "func": lambda: (
+            active_entered.set(),
+            active_release.wait(1.0),
+        ),
+    }
+    queued_job = {
+        "name": "paper_hot_manager",
+        "interval": 1,
+        "func": lambda: queued_called.set(),
+    }
+
+    active_thread = threading.Thread(
+        target=runner._paper_runtime_loop,
+        args=(active_job,),
+        daemon=True,
+    )
+    queued_thread = threading.Thread(
+        target=runner._paper_runtime_loop,
+        args=(queued_job,),
+        daemon=True,
+    )
+
+    active_thread.start()
+    assert active_entered.wait(0.5)
+
+    queued_thread.start()
+    time.sleep(0.05)
+
+    runner.running = False
+    runner._paper_runtime_stop.set()
+
+    active_release.set()
+    active_thread.join(timeout=1.0)
+    queued_thread.join(timeout=1.0)
+
+    assert active_thread.is_alive() is False
+    assert queued_thread.is_alive() is False
+    assert queued_called.is_set() is False

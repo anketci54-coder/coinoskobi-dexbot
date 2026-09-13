@@ -81,38 +81,49 @@ def test_hot_and_fallback_paper_jobs_leave_main_scheduler():
     assert status["state"] == "RUNNING"
     assert status["threads_alive"] == 2
     assert status["scanner_independent"] is True
+    assert status[
+        "serialized_lifecycle_context"
+    ] is True
 
     runner._stop_paper_runtime()
 
 
-def test_manager_process_is_serialized_across_runtime_paths():
-    class Manager:
-        def __init__(self):
-            self.guard = threading.Lock()
-            self.active = 0
-            self.max_active = 0
+def test_full_lifecycle_context_is_serialized_across_paths():
+    guard = threading.Lock()
+    release = threading.Event()
+    hot_entered = threading.Event()
+    pipeline_entered = threading.Event()
+    state = {
+        "active": 0,
+        "max_active": 0,
+    }
 
-        def process(self):
-            with self.guard:
-                self.active += 1
-                self.max_active = max(
-                    self.max_active,
-                    self.active,
-                )
+    def critical(label):
+        with guard:
+            state["active"] += 1
+            state["max_active"] = max(
+                state["max_active"],
+                state["active"],
+            )
 
-            time.sleep(0.05)
+        if label == "hot":
+            hot_entered.set()
+            release.wait(0.5)
+        else:
+            pipeline_entered.set()
 
-            with self.guard:
-                self.active -= 1
+        time.sleep(0.02)
 
-            return []
+        with guard:
+            state["active"] -= 1
 
     class Pipeline:
         scanner = None
+        intelligence = None
 
-        def __init__(self):
-            self.manager = Manager()
-            self.intelligence = None
+        def process_positions(self):
+            critical("pipeline")
+            return []
 
         def run_cycle(self):
             return {"state": "RAN"}
@@ -122,23 +133,37 @@ def test_manager_process_is_serialized_across_runtime_paths():
     def scan_job():
         return pipeline.run_cycle()
 
-    Runner(
+    runner = Runner(
         scan_job=scan_job,
         auxiliary_service_factory=lambda: [],
     )
 
-    first = threading.Thread(
-        target=pipeline.manager.process
-    )
-    second = threading.Thread(
-        target=pipeline.manager.process
+    runner.scheduler.every(
+        interval=1,
+        func=lambda: critical("hot"),
+        name="paper_hot_manager",
     )
 
-    first.start()
-    second.start()
-    first.join(timeout=1.0)
-    second.join(timeout=1.0)
+    assert runner._start_paper_runtime() is True
+    assert hot_entered.wait(0.5)
 
-    assert first.is_alive() is False
-    assert second.is_alive() is False
-    assert pipeline.manager.max_active == 1
+    scanner_lifecycle = threading.Thread(
+        target=pipeline.process_positions,
+        daemon=True,
+    )
+    scanner_lifecycle.start()
+
+    time.sleep(0.05)
+
+    # The hot path is still inside its full setup/process/teardown
+    # critical region, so the scanner lifecycle must not enter yet.
+    assert pipeline_entered.is_set() is False
+    assert state["max_active"] == 1
+
+    release.set()
+    scanner_lifecycle.join(timeout=1.0)
+    runner._stop_paper_runtime()
+
+    assert scanner_lifecycle.is_alive() is False
+    assert pipeline_entered.is_set() is True
+    assert state["max_active"] == 1

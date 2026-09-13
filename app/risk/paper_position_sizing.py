@@ -11,6 +11,11 @@ from app.strategy.mathematical_trade_plan import (
 
 
 PAPER_CAPITAL_USDT = 10_000.0
+PAPER_OUTCOME_EXCLUSIONS_PATH = (
+    Path(__file__).resolve().parents[2]
+    / "config"
+    / "paper_outcome_exclusions.json"
+)
 
 
 def _number(value):
@@ -61,6 +66,135 @@ def _json_dict(raw):
         return {}
 
     return value if isinstance(value, dict) else {}
+
+
+def _load_outcome_exclusions(path=None):
+    path = Path(
+        path
+        or PAPER_OUTCOME_EXCLUSIONS_PATH
+    )
+
+    try:
+        payload = json.loads(
+            path.read_text(
+                encoding="utf-8"
+            )
+        )
+    except (
+        OSError,
+        TypeError,
+        ValueError,
+        json.JSONDecodeError,
+    ):
+        return []
+
+    raw_rows = (
+        payload.get("exclusions")
+        if isinstance(payload, dict)
+        else payload
+    )
+
+    if not isinstance(raw_rows, list):
+        return []
+
+    exclusions = []
+
+    for raw in raw_rows:
+        if not isinstance(raw, dict):
+            continue
+
+        try:
+            position_id = int(
+                raw.get("position_id")
+            )
+        except (TypeError, ValueError):
+            continue
+
+        if position_id <= 0:
+            continue
+
+        source_table = str(
+            raw.get("source_table")
+            or "paper_trades"
+        ).strip()
+
+        if source_table not in {
+            "paper_trades",
+            "paper_trades_archive",
+        }:
+            continue
+
+        exclusions.append({
+            "source_table": source_table,
+            "position_id": position_id,
+            "created_at": (
+                str(raw.get("created_at"))
+                if raw.get("created_at")
+                else None
+            ),
+            "closed_at": (
+                str(raw.get("closed_at"))
+                if raw.get("closed_at")
+                else None
+            ),
+            "reason": str(
+                raw.get("reason")
+                or "OUTCOME_EXCLUDED"
+            ),
+        })
+
+    return exclusions
+
+
+def _outcome_is_excluded(
+    row,
+    table_name,
+    exclusions,
+):
+    position_id = row["position_id"]
+    if position_id is None:
+        return False
+
+    try:
+        position_id = int(position_id)
+    except (TypeError, ValueError):
+        return False
+
+    created_at = row["created_at"]
+    closed_at = row["closed_at"]
+
+    for exclusion in exclusions:
+        if (
+            exclusion.get("source_table")
+            != table_name
+            or exclusion.get("position_id")
+            != position_id
+        ):
+            continue
+
+        expected_created = exclusion.get(
+            "created_at"
+        )
+        if (
+            expected_created is not None
+            and str(created_at or "")
+            != expected_created
+        ):
+            continue
+
+        expected_closed = exclusion.get(
+            "closed_at"
+        )
+        if (
+            expected_closed is not None
+            and str(closed_at or "")
+            != expected_closed
+        ):
+            continue
+
+        return True
+
+    return False
 
 
 def _find_number(node, names):
@@ -156,6 +290,7 @@ def _calibration_empty(reason):
         "gap_samples": 0,
         "cost_samples": 0,
         "account_risk_samples": 0,
+        "excluded_samples": 0,
     }
 
 
@@ -199,6 +334,9 @@ def _closed_outcome_rows(db, table_name):
         return []
 
     names = (
+        "id",
+        "created_at",
+        "closed_at",
         "current_price",
         "exit_price",
         "net_pnl",
@@ -214,6 +352,9 @@ def _closed_outcome_rows(db, table_name):
     return db.execute(
         f"""
         SELECT
+            {expressions['id']} AS position_id,
+            {expressions['created_at']} AS created_at,
+            {expressions['closed_at']} AS closed_at,
             entry_price,
             entry_amount_usdt,
             mathematical_plan_json,
@@ -353,10 +494,16 @@ def _empirical_outcome_calibration(
     Learn gap overshoot, cost uncertainty, and realized account-loss
     budget from durable closed paper outcomes only. No fixed risk
     percentage is introduced.
+
+    Outcomes explicitly listed in the audited exclusion registry are
+    omitted from calibration only. Their durable accounting remains intact.
     """
     path = Path(db_path)
     if not path.exists():
         return _calibration_empty("OUTCOME_DB_MISSING")
+
+    exclusions = _load_outcome_exclusions()
+    excluded_samples = 0
 
     try:
         db = sqlite3.connect(
@@ -395,9 +542,19 @@ def _empirical_outcome_calibration(
             "paper_trades_archive",
             "paper_trades",
         ):
-            rows.extend(
-                _closed_outcome_rows(db, table_name)
-            )
+            for row in _closed_outcome_rows(
+                db,
+                table_name,
+            ):
+                if _outcome_is_excluded(
+                    row,
+                    table_name,
+                    exclusions,
+                ):
+                    excluded_samples += 1
+                    continue
+
+                rows.append(row)
 
         db.close()
 
@@ -514,6 +671,7 @@ def _empirical_outcome_calibration(
         "gap_samples": len(gap_ratios),
         "cost_samples": len(positive_costs),
         "account_risk_samples": len(account_losses),
+        "excluded_samples": excluded_samples,
     }
 
 

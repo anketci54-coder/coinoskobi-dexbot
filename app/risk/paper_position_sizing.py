@@ -945,6 +945,14 @@ def calculate_paper_position_size(
 
     blockers = []
 
+    if (
+        calibration.get("reason")
+        == "OUTCOME_EXCLUSION_REGISTRY_INVALID"
+    ):
+        blockers.append(
+            "OUTCOME_EXCLUSION_REGISTRY_INVALID"
+        )
+
     if liquidity_capacity_source == "EMPIRICAL_RESERVE_FLOOR":
         blockers.append(
             "LP_WITHDRAWAL_PROTECTION_UNVERIFIED"

@@ -125,6 +125,73 @@ def test_missing_registry_blocks_learning_fail_closed(tmp_path):
     assert feed.integrity_blocked_count == 1
 
 
+def test_invalid_registry_timestamp_blocks_learning_fail_closed(tmp_path):
+    registry = tmp_path / "exclusions.json"
+    registry.write_text(
+        json.dumps({
+            "version": 1,
+            "exclusions": [
+                {
+                    "source_table": "paper_trades",
+                    "position_id": 37,
+                    "created_at": "not-a-date",
+                    "closed_at": CLOSED_37,
+                    "reason": "BUG_CONTAMINATED",
+                }
+            ],
+        }),
+        encoding="utf-8",
+    )
+
+    feed = RuntimeLearningOutcomeFeed(
+        outcome_exclusions_path=registry,
+    )
+
+    result = _observe(feed, position_id=38)
+
+    assert result["state"] == "INTEGRITY_BLOCKED"
+    assert feed.outcome_integrity.available is False
+    assert feed.event_count == 0
+
+
+def test_malformed_runtime_timestamp_never_enters_learning(tmp_path):
+    registry = _registry(tmp_path / "exclusions.json")
+    feed = RuntimeLearningOutcomeFeed(
+        outcome_exclusions_path=registry,
+    )
+
+    result = _observe(
+        feed,
+        position_id=38,
+        created_at="not-a-date",
+        closed_at="also-not-a-date",
+    )
+
+    assert result["state"] == "INTEGRITY_BLOCKED"
+    assert result["payload"]["outcome_integrity"]["reason"] == (
+        "OUTCOME_FINGERPRINT_INVALID"
+    )
+    assert feed.event_count == 0
+    assert feed.memory.size == 0
+
+
+def test_naive_runtime_timestamp_never_enters_learning(tmp_path):
+    registry = _registry(tmp_path / "exclusions.json")
+    feed = RuntimeLearningOutcomeFeed(
+        outcome_exclusions_path=registry,
+    )
+
+    result = _observe(
+        feed,
+        position_id=38,
+        created_at="2026-09-13T17:00:00",
+        closed_at="2026-09-13T17:05:00",
+    )
+
+    assert result["state"] == "INTEGRITY_BLOCKED"
+    assert feed.event_count == 0
+
+
 def test_clean_outcome_preserves_existing_learning_path(tmp_path):
     registry = _registry(tmp_path / "exclusions.json")
     feed = RuntimeLearningOutcomeFeed(

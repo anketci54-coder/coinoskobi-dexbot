@@ -34,6 +34,16 @@ def _bootstrap_plan():
     }
 
 
+def _assert_registry_block(result):
+    assert result["entry_amount_usdt"] == 0.0
+    assert result["risk_amount_usdt"] == 0.0
+    assert (
+        "OUTCOME_EXCLUSION_REGISTRY_INVALID"
+        in result["blockers"]
+    )
+    assert result.get("paper_calibration_bootstrap") is not True
+
+
 def test_registry_integrity_failure_cannot_bootstrap_paper_entry(
     tmp_path,
     monkeypatch,
@@ -53,10 +63,25 @@ def test_registry_integrity_failure_cannot_bootstrap_paper_entry(
         db_path=str(db_path),
     )
 
-    assert result["entry_amount_usdt"] == 0.0
-    assert result["risk_amount_usdt"] == 0.0
-    assert (
-        "OUTCOME_EXCLUSION_REGISTRY_INVALID"
-        in result["blockers"]
+    _assert_registry_block(result)
+
+
+def test_registry_integrity_is_checked_before_missing_database_bootstrap(
+    tmp_path,
+    monkeypatch,
+):
+    db_path = tmp_path / "not-created.db"
+
+    monkeypatch.setattr(
+        sizing,
+        "PAPER_OUTCOME_EXCLUSIONS_PATH",
+        tmp_path / "missing-registry.json",
     )
-    assert result.get("paper_calibration_bootstrap") is not True
+
+    result = sizing.calculate_paper_position_size(
+        mathematical_plan=_bootstrap_plan(),
+        available_capital_usdt=10000.0,
+        db_path=str(db_path),
+    )
+
+    _assert_registry_block(result)

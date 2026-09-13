@@ -18,6 +18,10 @@ PAPER_OUTCOME_EXCLUSIONS_PATH = (
 )
 
 
+class OutcomeExclusionRegistryError(ValueError):
+    pass
+
+
 def _number(value):
     try:
         if value is None:
@@ -85,58 +89,90 @@ def _load_outcome_exclusions(path=None):
         TypeError,
         ValueError,
         json.JSONDecodeError,
+    ) as exc:
+        raise OutcomeExclusionRegistryError(
+            "OUTCOME_EXCLUSION_REGISTRY_UNREADABLE"
+        ) from exc
+
+    if (
+        not isinstance(payload, dict)
+        or payload.get("version") != 1
+        or not isinstance(
+            payload.get("exclusions"),
+            list,
+        )
     ):
-        return []
-
-    raw_rows = (
-        payload.get("exclusions")
-        if isinstance(payload, dict)
-        else payload
-    )
-
-    if not isinstance(raw_rows, list):
-        return []
+        raise OutcomeExclusionRegistryError(
+            "OUTCOME_EXCLUSION_REGISTRY_INVALID"
+        )
 
     exclusions = []
 
-    for raw in raw_rows:
+    for raw in payload["exclusions"]:
         if not isinstance(raw, dict):
-            continue
+            raise OutcomeExclusionRegistryError(
+                "OUTCOME_EXCLUSION_ROW_INVALID"
+            )
+
+        required = (
+            "source_table",
+            "position_id",
+            "created_at",
+            "closed_at",
+        )
+
+        if any(
+            name not in raw
+            for name in required
+        ):
+            raise OutcomeExclusionRegistryError(
+                "OUTCOME_EXCLUSION_FINGERPRINT_INCOMPLETE"
+            )
+
+        source_table = str(
+            raw.get("source_table")
+            or ""
+        ).strip()
+        created_at = str(
+            raw.get("created_at")
+            or ""
+        ).strip()
+        closed_at = str(
+            raw.get("closed_at")
+            or ""
+        ).strip()
+
+        if (
+            source_table not in {
+                "paper_trades",
+                "paper_trades_archive",
+            }
+            or not created_at
+            or not closed_at
+        ):
+            raise OutcomeExclusionRegistryError(
+                "OUTCOME_EXCLUSION_FINGERPRINT_INVALID"
+            )
 
         try:
             position_id = int(
                 raw.get("position_id")
             )
-        except (TypeError, ValueError):
-            continue
+        except (TypeError, ValueError) as exc:
+            raise OutcomeExclusionRegistryError(
+                "OUTCOME_EXCLUSION_POSITION_INVALID"
+            ) from exc
 
         if position_id <= 0:
-            continue
-
-        source_table = str(
-            raw.get("source_table")
-            or "paper_trades"
-        ).strip()
-
-        if source_table not in {
-            "paper_trades",
-            "paper_trades_archive",
-        }:
-            continue
+            raise OutcomeExclusionRegistryError(
+                "OUTCOME_EXCLUSION_POSITION_INVALID"
+            )
 
         exclusions.append({
             "source_table": source_table,
             "position_id": position_id,
-            "created_at": (
-                str(raw.get("created_at"))
-                if raw.get("created_at")
-                else None
-            ),
-            "closed_at": (
-                str(raw.get("closed_at"))
-                if raw.get("closed_at")
-                else None
-            ),
+            "created_at": created_at,
+            "closed_at": closed_at,
             "reason": str(
                 raw.get("reason")
                 or "OUTCOME_EXCLUDED"
@@ -160,39 +196,23 @@ def _outcome_is_excluded(
     except (TypeError, ValueError):
         return False
 
-    created_at = row["created_at"]
-    closed_at = row["closed_at"]
+    created_at = str(
+        row["created_at"]
+        or ""
+    )
+    closed_at = str(
+        row["closed_at"]
+        or ""
+    )
 
     for exclusion in exclusions:
         if (
-            exclusion.get("source_table")
-            != table_name
-            or exclusion.get("position_id")
-            != position_id
+            exclusion["source_table"] == table_name
+            and exclusion["position_id"] == position_id
+            and exclusion["created_at"] == created_at
+            and exclusion["closed_at"] == closed_at
         ):
-            continue
-
-        expected_created = exclusion.get(
-            "created_at"
-        )
-        if (
-            expected_created is not None
-            and str(created_at or "")
-            != expected_created
-        ):
-            continue
-
-        expected_closed = exclusion.get(
-            "closed_at"
-        )
-        if (
-            expected_closed is not None
-            and str(closed_at or "")
-            != expected_closed
-        ):
-            continue
-
-        return True
+            return True
 
     return False
 
@@ -497,12 +517,20 @@ def _empirical_outcome_calibration(
 
     Outcomes explicitly listed in the audited exclusion registry are
     omitted from calibration only. Their durable accounting remains intact.
+    Registry integrity is fail-closed: if exclusions cannot be proven,
+    calibration is unavailable rather than silently ingesting bad outcomes.
     """
     path = Path(db_path)
     if not path.exists():
         return _calibration_empty("OUTCOME_DB_MISSING")
 
-    exclusions = _load_outcome_exclusions()
+    try:
+        exclusions = _load_outcome_exclusions()
+    except OutcomeExclusionRegistryError:
+        return _calibration_empty(
+            "OUTCOME_EXCLUSION_REGISTRY_INVALID"
+        )
+
     excluded_samples = 0
 
     try:

@@ -56,8 +56,12 @@ def test_rate_limited_gecko_cools_down_and_falls_back_to_dexscreener(monkeypatch
         get,
     )
     monkeypatch.setattr(
-        "app.scanner.gecko_scanner.time.sleep",
-        lambda seconds: sleeps.append(seconds),
+        GeckoScanner,
+        "_wait_backoff",
+        lambda self, seconds: (
+            sleeps.append(seconds)
+            or False
+        ),
     )
     monkeypatch.setattr(
         "app.scanner.gecko_scanner.persist_registered_followup_snapshots",
@@ -93,8 +97,9 @@ def test_gecko_cooldown_skips_provider_on_next_cycle(monkeypatch):
         get,
     )
     monkeypatch.setattr(
-        "app.scanner.gecko_scanner.time.sleep",
-        lambda seconds: None,
+        GeckoScanner,
+        "_wait_backoff",
+        lambda self, seconds: False,
     )
     monkeypatch.setattr(
         "app.scanner.gecko_scanner.persist_registered_followup_snapshots",

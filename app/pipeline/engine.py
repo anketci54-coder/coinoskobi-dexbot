@@ -36,7 +36,10 @@ from app.pipeline.simulation_drift_composition import (
 )
 from app.pipeline.candidate_queue import CandidateAdmissionQueue
 from app.pipeline.conveyor import ConveyorLabeler
-from app.pipeline.work_scheduler import WorkScheduler
+from app.pipeline.work_scheduler import (
+    WorkScheduler,
+    WorkSchedulerCancelled,
+)
 from app.pipeline.market_context import build_market_context
 from app.pipeline.execution_context import build_execution_context
 from app.pipeline.paper_admission import paper_admission_decision
@@ -1432,12 +1435,35 @@ class PipelineEngine:
                 previous_evidence
             )
 
+    def _raise_if_stopping(self):
+        scheduler = getattr(
+            self,
+            "work_scheduler",
+            None,
+        )
+
+        is_stopping = getattr(
+            scheduler,
+            "is_stopping",
+            None,
+        )
+
+        if (
+            callable(is_stopping)
+            and is_stopping()
+        ):
+            raise WorkSchedulerCancelled(
+                "pipeline shutdown requested"
+            )
+
     def run(
         self,
         token_address: str,
         market_context=None,
         operator_input=None,
     ):
+
+        self._raise_if_stopping()
 
         market_context = dict(
             market_context or {}
@@ -1473,9 +1499,16 @@ class PipelineEngine:
             )
         )
 
+        self._raise_if_stopping()
+
         token_result = token_analyze(token_address)
+        self._raise_if_stopping()
+
         pair_result = pair_analyze(token_address)
+        self._raise_if_stopping()
+
         risk_result = risk_analyze(token_address)
+        self._raise_if_stopping()
 
         token = token_result.get("data", {})
         pair = pair_result.get("data", {})
@@ -1540,12 +1573,16 @@ class PipelineEngine:
         ):
             sellability_attempted = True
 
+            self._raise_if_stopping()
+
             sellability_result = (
                 sellability_analyze(
                     token_address,
                     pair=pair.get("pair"),
                 )
             )
+
+            self._raise_if_stopping()
 
             if sellability_result.get(
                 "success"
@@ -3676,6 +3713,65 @@ class PipelineEngine:
             "execution_authority": False,
         }
 
+    def _shutdown_requested(self):
+        scheduler = getattr(
+            self,
+            "work_scheduler",
+            None,
+        )
+
+        is_stopping = getattr(
+            scheduler,
+            "is_stopping",
+            None,
+        )
+
+        return bool(
+            callable(is_stopping)
+            and is_stopping()
+        )
+
+    def _stopped_cycle_status(
+        self,
+        stage,
+    ):
+        status = {
+            "state": "STOPPED",
+            "shutdown_stage": stage,
+            "scanner": dict(
+                getattr(
+                    self,
+                    "last_scanner_refresh",
+                    {},
+                )
+                or {}
+            ),
+            "ingress": {},
+            "queue": {},
+            "scheduler": {
+                "stopped": True,
+                "processed": 0,
+                "failed": 0,
+            },
+            "decision_count": 0,
+            "paper_actions": {},
+            "decisions": [],
+            "paper_manager_count": 0,
+            "paper_manager_error": None,
+            "decision_authority": False,
+            "live_authority": False,
+            "execution_authority": False,
+        }
+
+        self.last_cycle_status = status
+
+        logger.info(
+            "Cycle stopped stage=%s",
+            stage,
+        )
+
+        return status
+
     def refresh_candidate_cache(self):
         scanner = getattr(
             self,
@@ -3693,6 +3789,15 @@ class PipelineEngine:
             return result
 
         rows = scanner.scan()
+
+        if self._shutdown_requested():
+            result = {
+                "state": "STOPPED",
+                "rows": 0,
+                "error": None,
+            }
+            self.last_scanner_refresh = result
+            return result
 
         for row in rows:
             self.cache.replace(row)
@@ -3814,11 +3919,65 @@ class PipelineEngine:
         self.last_scanner_refresh = result
         return result
 
+    def request_stop(self):
+        scanner = getattr(
+            self,
+            "scanner",
+            None,
+        )
+        scanner_request_stop = getattr(
+            scanner,
+            "request_stop",
+            None,
+        )
+
+        if callable(scanner_request_stop):
+            scanner_request_stop()
+
+        native_market_flow = getattr(
+            self,
+            "native_market_flow",
+            None,
+        )
+        native_request_stop = getattr(
+            native_market_flow,
+            "request_stop",
+            None,
+        )
+
+        if callable(native_request_stop):
+            native_request_stop()
+
+        self.work_scheduler.request_stop()
+
+        from app.chains.bsc import w3
+
+        provider = getattr(
+            w3,
+            "provider",
+            None,
+        )
+        request_stop = getattr(
+            provider,
+            "request_stop",
+            None,
+        )
+
+        if callable(request_stop):
+            request_stop()
+
+        return True
+
     def run_cycle(
         self,
         *,
         pre_analysis_hook=None,
     ):
+
+        if self._shutdown_requested():
+            return self._stopped_cycle_status(
+                "START"
+            )
 
         try:
             self.refresh_candidate_cache()
@@ -3836,7 +3995,17 @@ class PipelineEngine:
                 self.last_scanner_refresh["error"],
             )
 
+        if self._shutdown_requested():
+            return self._stopped_cycle_status(
+                "SCANNER_REFRESH"
+            )
+
         rows = self.cache.all()
+
+        if self._shutdown_requested():
+            return self._stopped_cycle_status(
+                "CACHE_READ"
+            )
 
         normalized_result = normalize_source_rows(
             "geckoterminal",
@@ -3849,6 +4018,11 @@ class PipelineEngine:
             for candidate
             in normalized_result["candidates"]
         ]
+
+        if self._shutdown_requested():
+            return self._stopped_cycle_status(
+                "NORMALIZE"
+            )
 
         if hasattr(self, "ingress_gate"):
             ingress = self.ingress_gate.classify_many(
@@ -3884,6 +4058,11 @@ class PipelineEngine:
                 ),
             }
 
+        if self._shutdown_requested():
+            return self._stopped_cycle_status(
+                "INGRESS"
+            )
+
         # Candidate identities are now known but none has
         # entered analysis yet. Bind current pools and allow
         # real native BUY/SELL evidence to arrive first.
@@ -3897,6 +4076,11 @@ class PipelineEngine:
                     "Pre-analysis observation binding failed: %s",
                     f"{type(exc).__name__}: {exc}",
                 )
+
+        if self._shutdown_requested():
+            return self._stopped_cycle_status(
+                "PRE_ANALYSIS"
+            )
 
         if not hasattr(self, "candidate_queue"):
             self.candidate_queue = CandidateAdmissionQueue(
@@ -3918,7 +4102,17 @@ class PipelineEngine:
                 "cold": len(candidates),
             }
 
+        if self._shutdown_requested():
+            return self._stopped_cycle_status(
+                "CONVEYOR"
+            )
+
         self.candidate_queue.enqueue_many(candidates)
+
+        if self._shutdown_requested():
+            return self._stopped_cycle_status(
+                "QUEUE"
+            )
 
         if not hasattr(self, "work_scheduler"):
             self.work_scheduler = WorkScheduler(
@@ -4248,6 +4442,9 @@ class PipelineEngine:
                         token,
                     )
 
+            except WorkSchedulerCancelled:
+                raise
+
             except Exception:
                 logger.exception(
                     "Pipeline exception: %s",
@@ -4270,24 +4467,25 @@ class PipelineEngine:
         manager_results = []
         manager_error = None
 
-        try:
-            # Scanner cycle must use the same position
-            # lifecycle entrypoint as the scheduled
-            # paper-manager job. This guarantees that
-            # bounded open-position prices are refreshed
-            # before TP/SL/trailing evaluation.
-            manager_results = (
-                self.process_positions()
-                or []
-            )
-        except Exception as exc:
-            manager_error = (
-                f"{type(exc).__name__}: {exc}"
-            )
+        if not self.work_scheduler.is_stopping():
+            try:
+                # Scanner cycle must use the same position
+                # lifecycle entrypoint as the scheduled
+                # paper-manager job. This guarantees that
+                # bounded open-position prices are refreshed
+                # before TP/SL/trailing evaluation.
+                manager_results = (
+                    self.process_positions()
+                    or []
+                )
+            except Exception as exc:
+                manager_error = (
+                    f"{type(exc).__name__}: {exc}"
+                )
 
-            logger.exception(
-                "Paper manager exception"
-            )
+                logger.exception(
+                    "Paper manager exception"
+                )
 
         paper_counts = {}
 

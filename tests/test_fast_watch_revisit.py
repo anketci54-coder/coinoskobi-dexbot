@@ -652,7 +652,18 @@ def test_runner_stop_requests_fast_watch_stop_immediately():
     assert runner.running is True
     assert runner.fast_watch_revisit._stop_event.is_set() is False
 
+    class _StoppingWorkScheduler:
+        def __init__(self):
+            self.stop_requested = False
+
+        def request_stop(self):
+            self.stop_requested = True
+
+    stopping_scheduler = _StoppingWorkScheduler()
+    pipeline.work_scheduler = stopping_scheduler
+
     runner.stop()
 
     assert runner.running is False
     assert runner.fast_watch_revisit._stop_event.is_set() is True
+    assert stopping_scheduler.stop_requested is True

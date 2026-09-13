@@ -2052,21 +2052,12 @@ def build_trade_plan(
 
     blocker_set = set(blockers)
 
-    # PAPER-only early continuation admission.
+    # Positive early price continuation remains diagnostic
+    # evidence only. It must never grant PAPER admission while
+    # the enforced VUR_KAC entry gate is not ready.
     #
-    # Do not wait for slow evidence to mature when real price
-    # observations already show two positive, non-weakening moves.
-    #
-    # Only evidence-readiness blockers may be bypassed. Economic,
-    # liquidity, suspicious-volume, concentration, sellability,
-    # hard-risk and sizing blockers remain authoritative.
-    early_soft_blockers = {
-        "VUR_KAC_ENTRY_NOT_READY",
-        "VUR_KAC_FLOW_EVIDENCE_NOT_READY",
-        "MARKET_QUALITY_EVIDENCE_NOT_READY",
-        "PARTICIPATION_EVIDENCE_UNKNOWN",
-    }
-
+    # Risk/readiness blockers remain authoritative and are never
+    # cleared by price continuation alone.
     latest_entry_return = _number(
         vur_kac_entry.get(
             "latest_log_return"
@@ -2104,22 +2095,10 @@ def build_trade_plan(
         and entry_acceleration >= 0
     )
 
-    early_paper_admission = (
-        early_price_continuation
-        and bool(blocker_set)
-        and blocker_set.issubset(
-            early_soft_blockers
-        )
-    )
-
-    bypassed_soft_blockers = (
-        sorted(blocker_set)
-        if early_paper_admission
-        else []
-    )
-
-    if early_paper_admission:
-        blockers = []
+    # Admission authority is intentionally disabled for this
+    # diagnostic signal. Full readiness is required.
+    early_paper_admission = False
+    bypassed_soft_blockers = []
 
     paper_eligible = (
         not blockers

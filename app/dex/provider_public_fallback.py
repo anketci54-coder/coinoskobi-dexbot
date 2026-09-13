@@ -7,6 +7,10 @@ from typing import Any
 from web3.providers import HTTPProvider
 from web3.providers.base import BaseProvider
 
+from app.dex.provider_broker import (
+    DEFAULT_RPC_HTTP_TIMEOUT_SECONDS,
+)
+
 
 OFFICIAL_BNB_PUBLIC_RPC_URLS = (
     "https://bsc-dataseed.bnbchain.org",
@@ -54,6 +58,9 @@ class ReadOnlyPublicFallbackProvider(BaseProvider):
         provider_factory=HTTPProvider,
         cooldown_seconds: float = 15.0,
         now_func=None,
+        request_timeout_seconds: float = (
+            DEFAULT_RPC_HTTP_TIMEOUT_SECONDS
+        ),
     ):
         super().__init__()
         self.primary_provider = primary_provider
@@ -61,6 +68,11 @@ class ReadOnlyPublicFallbackProvider(BaseProvider):
         self.cooldown_seconds = max(1.0, float(cooldown_seconds))
         self._now = now_func or time.monotonic
         self._lock = threading.RLock()
+        self._stop_event = threading.Event()
+        self.request_timeout_seconds = max(
+            1.0,
+            float(request_timeout_seconds),
+        )
         self._cursor = 0
         self._providers = []
 
@@ -72,7 +84,16 @@ class ReadOnlyPublicFallbackProvider(BaseProvider):
                     continue
                 seen.add(value)
                 self._providers.append({
-                    "client": provider_factory(value),
+                    "client": (
+                        provider_factory(
+                            value,
+                            request_kwargs={
+                                "timeout": self.request_timeout_seconds,
+                            },
+                        )
+                        if provider_factory is HTTPProvider
+                        else provider_factory(value)
+                    ),
                     "requests": 0,
                     "successes": 0,
                     "failures": 0,
@@ -85,6 +106,25 @@ class ReadOnlyPublicFallbackProvider(BaseProvider):
         self.public_failures = 0
         self.public_skips = 0
         self.last_source = "PRIVATE"
+
+    def request_stop(self):
+        self._stop_event.set()
+
+        request_stop = getattr(
+            self.primary_provider,
+            "request_stop",
+            None,
+        )
+        if callable(request_stop):
+            request_stop()
+
+        return True
+
+    def _raise_if_stopping(self):
+        if self._stop_event.is_set():
+            raise ConnectionError(
+                "RPC provider shutdown requested"
+            )
 
     def _public_candidates(self, now: float):
         with self._lock:
@@ -104,6 +144,7 @@ class ReadOnlyPublicFallbackProvider(BaseProvider):
         indexes = self._public_candidates(now)
 
         for index in indexes:
+            self._raise_if_stopping()
             item = self._providers[index]
             with self._lock:
                 item["requests"] += 1
@@ -130,6 +171,8 @@ class ReadOnlyPublicFallbackProvider(BaseProvider):
         return None
 
     def make_request(self, method, params):
+        self._raise_if_stopping()
+
         private_response = None
         private_exception = None
 
@@ -144,6 +187,8 @@ class ReadOnlyPublicFallbackProvider(BaseProvider):
 
         with self._lock:
             self.private_failures += 1
+
+        self._raise_if_stopping()
 
         if (
             not self.enabled

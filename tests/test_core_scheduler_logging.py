@@ -25,3 +25,30 @@ def test_scheduler_job_log_uses_loguru_formatting(monkeypatch):
     assert recording_log.calls == [
         ("[JOB] {}", ("scanner",))
     ]
+
+
+def test_scheduler_stop_aborts_remaining_jobs_in_current_tick():
+    scheduler = Scheduler()
+    calls = []
+
+    def first():
+        calls.append("first")
+        scheduler.request_stop()
+
+    def second():
+        calls.append("second")
+
+    scheduler.every(
+        0,
+        first,
+        name="first",
+    )
+    scheduler.every(
+        0,
+        second,
+        name="second",
+    )
+
+    scheduler.tick()
+
+    assert calls == ["first"]

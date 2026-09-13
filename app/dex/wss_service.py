@@ -243,6 +243,33 @@ class NativeWSSService:
 
             return True
 
+    def request_stop(self):
+        with self._lock:
+            thread = self._thread
+            loop = self._loop
+            runtime = self._runtime
+
+            if thread is None:
+                return False
+
+            self._stopping = True
+
+            if runtime is not None:
+                runtime.request_stop()
+
+            if (
+                loop is not None
+                and loop.is_running()
+            ):
+                try:
+                    loop.call_soon_threadsafe(
+                        lambda: None
+                    )
+                except RuntimeError:
+                    pass
+
+        return True
+
     def stop(self):
         with self._lock:
             thread = self._thread

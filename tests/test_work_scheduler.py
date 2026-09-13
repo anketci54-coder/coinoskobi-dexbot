@@ -1,7 +1,10 @@
 import time
 
 from app.pipeline.candidate_queue import CandidateAdmissionQueue
-from app.pipeline.work_scheduler import WorkScheduler
+from app.pipeline.work_scheduler import (
+    WorkScheduler,
+    WorkSchedulerCancelled,
+)
 
 
 def row(index):
@@ -239,3 +242,84 @@ def test_missing_conveyor_state_defaults_to_cold():
     assert scheduler.lane(
         row(1)
     ) == "COLD"
+
+
+def test_stop_request_prevents_worker_pool_refill():
+    import threading
+
+    queue = CandidateAdmissionQueue(
+        max_pending=100,
+        cooldown_seconds=0,
+    )
+    queue.enqueue_many(
+        [row(i) for i in range(100)]
+    )
+
+    scheduler = WorkScheduler(
+        max_workers=2
+    )
+
+    release = threading.Event()
+    both_started = threading.Event()
+    lock = threading.Lock()
+    started = []
+    result_box = {}
+
+    def worker(item):
+        with lock:
+            started.append(item["token"])
+            if len(started) == 2:
+                both_started.set()
+
+        release.wait(timeout=2)
+
+    def run():
+        result_box["result"] = scheduler.process_queue(
+            queue,
+            worker,
+        )
+
+    thread = threading.Thread(target=run)
+    thread.start()
+
+    assert both_started.wait(timeout=1)
+
+    scheduler.request_stop()
+    release.set()
+
+    thread.join(timeout=2)
+    assert not thread.is_alive()
+
+    result = result_box["result"]
+
+    assert len(started) == 2
+    assert result["processed"] == 2
+    assert result["failed"] == 0
+    assert result["stopped"] is True
+    assert result["skipped"] == 98
+
+
+def test_cancelled_worker_is_not_counted_as_failure():
+    queue = CandidateAdmissionQueue(
+        max_pending=10,
+        cooldown_seconds=0,
+    )
+    queue.enqueue(row(1))
+
+    scheduler = WorkScheduler(
+        max_workers=1
+    )
+
+    def worker(_):
+        raise WorkSchedulerCancelled(
+            "shutdown"
+        )
+
+    result = scheduler.process_queue(
+        queue,
+        worker,
+    )
+
+    assert result["processed"] == 0
+    assert result["failed"] == 0
+    assert result["skipped"] == 1

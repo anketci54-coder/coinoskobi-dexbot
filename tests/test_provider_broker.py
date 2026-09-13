@@ -6,6 +6,9 @@ from app.dex.provider_broker import (
     ProviderBrokerHTTPProvider,
     ProviderBrokerWSSRuntime,
 )
+from app.dex.provider_public_fallback import (
+    ReadOnlyPublicFallbackProvider,
+)
 from app.dex.provider_resilience import (
     classify_provider_failure,
 )
@@ -546,3 +549,54 @@ def test_wss_primary_success_keeps_fallbacks_cold():
         ]
         == 0
     )
+
+
+def test_real_http_providers_use_bounded_request_timeout():
+    private = ProviderBrokerHTTPProvider(
+        ["http://127.0.0.1:1"],
+        request_timeout_seconds=1.25,
+    )
+
+    assert (
+        private._providers[0]["client"]
+        ._request_kwargs["timeout"]
+        == 1.25
+    )
+
+    public = ReadOnlyPublicFallbackProvider(
+        private,
+        public_urls=["http://127.0.0.1:2"],
+        request_timeout_seconds=1.25,
+    )
+
+    assert (
+        public._providers[0]["client"]
+        ._request_kwargs["timeout"]
+        == 1.25
+    )
+
+
+def test_rpc_shutdown_request_fails_fast_without_provider_call():
+    reset_http()
+
+    FakeHTTPProvider.responses = {
+        "primary": {"result": "0x1"},
+    }
+
+    provider = broker(
+        "primary",
+        cache_ttls={"eth_call": 0.0},
+    )
+
+    provider.request_stop()
+
+    with pytest.raises(
+        ConnectionError,
+        match="shutdown requested",
+    ):
+        provider.make_request(
+            "eth_call",
+            [],
+        )
+
+    assert FakeHTTPProvider.calls == []

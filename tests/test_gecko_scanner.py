@@ -44,15 +44,18 @@ def test_scanner_retries_429_then_succeeds(
         fake_get,
     )
 
+    scanner = module.GeckoScanner()
+
     monkeypatch.setattr(
-        module.time,
-        "sleep",
-        lambda value: sleeps.append(
-            value
+        scanner,
+        "_wait_backoff",
+        lambda value: (
+            sleeps.append(value)
+            or False
         ),
     )
 
-    result = module.GeckoScanner().scan()
+    result = scanner.scan()
 
     assert result == []
     assert len(calls) == 2
@@ -90,15 +93,18 @@ def test_scanner_429_retry_is_bounded_and_fails_closed(
         fake_get,
     )
 
+    scanner = module.GeckoScanner()
+
     monkeypatch.setattr(
-        module.time,
-        "sleep",
-        lambda value: sleeps.append(
-            value
+        scanner,
+        "_wait_backoff",
+        lambda value: (
+            sleeps.append(value)
+            or False
         ),
     )
 
-    assert module.GeckoScanner().scan() == []
+    assert scanner.scan() == []
 
     assert len(calls) == (
         module.HTTP_429_MAX_RETRIES
@@ -108,3 +114,35 @@ def test_scanner_429_retry_is_bounded_and_fails_closed(
     assert len(sleeps) == (
         module.HTTP_429_MAX_RETRIES
     )
+
+
+def test_scanner_stop_interrupts_429_backoff(
+    monkeypatch,
+):
+    import app.scanner.gecko_scanner as module
+
+    calls = []
+    scanner = module.GeckoScanner()
+
+    class Response:
+        status_code = 429
+
+        def raise_for_status(self):
+            raise RuntimeError(
+                "http 429"
+            )
+
+    def fake_get(*args, **kwargs):
+        calls.append(1)
+        scanner.request_stop()
+        return Response()
+
+    monkeypatch.setattr(
+        module.requests,
+        "get",
+        fake_get,
+    )
+
+    assert scanner.scan() == []
+    assert len(calls) == 1
+    assert scanner.is_stopping() is True

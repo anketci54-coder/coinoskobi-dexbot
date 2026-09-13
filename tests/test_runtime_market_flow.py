@@ -1,3 +1,6 @@
+import threading
+import time
+
 from app.dex.native_ingestion import SWAP_TOPIC
 from app.dex.runtime_market_flow import (
     RuntimeMarketFlowStore,
@@ -647,3 +650,40 @@ def test_stream_math_state_is_removed_with_pair_eviction():
     assert len(
         store._stream_math_state
     ) == 0
+
+
+def test_stop_interrupts_market_evidence_wait():
+    store = RuntimeMarketFlowStore()
+
+    store.register_pair(
+        PAIR,
+        TOKEN,
+        QUOTE,
+    )
+
+    result = {}
+
+    def waiter():
+        result.update(
+            store.wait_for_market_evidence(
+                [PAIR],
+                timeout=10.0,
+            )
+        )
+
+    thread = threading.Thread(
+        target=waiter,
+    )
+    thread.start()
+
+    time.sleep(0.05)
+
+    started = time.monotonic()
+    assert store.request_stop() is True
+
+    thread.join(timeout=1.0)
+    elapsed = time.monotonic() - started
+
+    assert thread.is_alive() is False
+    assert elapsed < 1.0
+    assert result["state"] == "STOPPED"

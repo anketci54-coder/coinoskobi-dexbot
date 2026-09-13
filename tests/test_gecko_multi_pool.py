@@ -207,8 +207,12 @@ def test_multi_pool_prices_back_off_and_retry_429(
         get,
     )
     monkeypatch.setattr(
-        "app.scanner.gecko_scanner.time.sleep",
-        lambda seconds: sleeps.append(seconds),
+        GeckoScanner,
+        "_wait_backoff",
+        lambda self, seconds: (
+            sleeps.append(seconds)
+            or False
+        ),
     )
     monkeypatch.setattr(
         (

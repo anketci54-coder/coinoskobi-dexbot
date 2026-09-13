@@ -1,5 +1,10 @@
+import pytest
 import app.pipeline.engine as pipeline_module
 from app.pipeline.engine import PipelineEngine
+from app.pipeline.work_scheduler import (
+    WorkScheduler,
+    WorkSchedulerCancelled,
+)
 
 
 def test_pipeline_methods_exist():
@@ -1259,4 +1264,88 @@ def test_pipeline_execution_uses_known_context_only(
     assert (
         execution["net_edge_pct"]
         is not None
+    )
+
+
+def test_pipeline_run_aborts_before_analysis_when_stopping():
+    engine = PipelineEngine.__new__(
+        PipelineEngine
+    )
+    engine.work_scheduler = WorkScheduler(
+        max_workers=1
+    )
+    engine.work_scheduler.request_stop()
+
+    with pytest.raises(
+        WorkSchedulerCancelled
+    ):
+        engine.run(
+            "0x0000000000000000000000000000000000000001"
+        )
+
+
+def test_candidate_refresh_stops_after_scanner_shutdown():
+    engine = PipelineEngine.__new__(
+        PipelineEngine
+    )
+    engine.work_scheduler = WorkScheduler(
+        max_workers=1
+    )
+
+    class Scanner:
+        def scan(self):
+            engine.work_scheduler.request_stop()
+            return [{
+                "pool": "0xpool",
+                "token": "0xtoken",
+            }]
+
+    class Cache:
+        def replace(self, _):
+            raise AssertionError(
+                "cache write after shutdown"
+            )
+
+    engine.scanner = Scanner()
+    engine.cache = Cache()
+
+    result = engine.refresh_candidate_cache()
+
+    assert result["state"] == "STOPPED"
+    assert result["rows"] == 0
+
+
+def test_run_cycle_stops_before_cache_processing_after_shutdown():
+    engine = PipelineEngine.__new__(
+        PipelineEngine
+    )
+    engine.work_scheduler = WorkScheduler(
+        max_workers=1
+    )
+    engine.last_scanner_refresh = {}
+
+    class Cache:
+        def all(self):
+            raise AssertionError(
+                "cache read after shutdown"
+            )
+
+    engine.cache = Cache()
+
+    def refresh():
+        engine.work_scheduler.request_stop()
+        engine.last_scanner_refresh = {
+            "state": "STOPPED",
+            "rows": 0,
+            "error": None,
+        }
+        return engine.last_scanner_refresh
+
+    engine.refresh_candidate_cache = refresh
+
+    result = engine.run_cycle()
+
+    assert result["state"] == "STOPPED"
+    assert result["shutdown_stage"] == (
+        "SCANNER_REFRESH"
     )

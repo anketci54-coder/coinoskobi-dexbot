@@ -21,7 +21,7 @@ def _exit_evidence():
     }
 
 
-def test_price_continuation_can_enter_while_flow_evidence_matures():
+def test_price_continuation_cannot_bypass_flow_readiness():
     plan = build_trade_plan(
         entry_price=1.05,
         available_capital_usdt=10000.0,
@@ -42,25 +42,40 @@ def test_price_continuation_can_enter_while_flow_evidence_matures():
         },
     )
 
-    assert plan["paper_eligible"] is True
-    assert plan["blockers"] == []
-    assert plan["capital"]["entry_amount_usdt"] > 0
+    assert plan["paper_eligible"] is False
+
+    assert (
+        "VUR_KAC_ENTRY_NOT_READY"
+        in plan["blockers"]
+    )
+
+    assert (
+        "VUR_KAC_FLOW_EVIDENCE_NOT_READY"
+        in plan["blockers"]
+    )
+
+    gate = plan["vur_kac_entry"]
+
+    assert gate["ready"] is False
 
     admission = plan["paper_admission"]
 
+    # Positive continuation is still observable,
+    # but it has no admission authority.
     assert (
-        admission["mode"]
-        == "EARLY_PRICE_CONTINUATION"
+        admission["early_price_continuation"]
+        is True
     )
 
-    assert set(
-        admission[
-            "bypassed_soft_blockers"
-        ]
-    ) == {
-        "VUR_KAC_ENTRY_NOT_READY",
-        "VUR_KAC_FLOW_EVIDENCE_NOT_READY",
-    }
+    assert (
+        admission["mode"]
+        == "BLOCKED"
+    )
+
+    assert (
+        admission["bypassed_soft_blockers"]
+        == []
+    )
 
     assert (
         admission["hard_safety_bypassed"]
@@ -71,7 +86,6 @@ def test_price_continuation_can_enter_while_flow_evidence_matures():
         admission["economic_edge_bypassed"]
         is False
     )
-
 
 def test_weakening_price_cannot_use_early_admission():
     plan = build_trade_plan(

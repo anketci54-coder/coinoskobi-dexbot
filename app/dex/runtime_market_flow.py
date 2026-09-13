@@ -214,11 +214,20 @@ class RuntimeMarketFlowStore:
         self._stream_math_state = {}
 
         self._event_condition = threading.Condition()
+        self._stop_event = threading.Event()
 
         self.accepted_events = 0
         self.retracted_events = 0
         self.unknown_events = 0
         self.dropped_events = 0
+
+    def request_stop(self):
+        self._stop_event.set()
+
+        with self._event_condition:
+            self._event_condition.notify_all()
+
+        return True
 
     @property
     def pair_count(self):
@@ -562,6 +571,10 @@ class RuntimeMarketFlowStore:
         with self._event_condition:
             while True:
                 ready = ready_pairs()
+
+                if self._stop_event.is_set():
+                    state = "STOPPED"
+                    break
 
                 if len(ready) == len(
                     requested

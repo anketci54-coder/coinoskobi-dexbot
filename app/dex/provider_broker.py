@@ -55,6 +55,9 @@ CACHE_TTLS = {
 
 MAX_CACHE_ENTRIES = 1024
 
+# Bound one already in-flight RPC during cooperative shutdown.
+DEFAULT_RPC_HTTP_TIMEOUT_SECONDS = 5.0
+
 
 def _unique_urls(urls):
     result = []
@@ -91,6 +94,7 @@ class ProviderBrokerHTTPProvider(
         transient_cooldown_seconds=15.0,
         now_func=None,
         cache_ttls=None,
+        request_timeout_seconds=DEFAULT_RPC_HTTP_TIMEOUT_SECONDS,
     ):
         super().__init__()
 
@@ -122,6 +126,11 @@ class ProviderBrokerHTTPProvider(
         self._lock = (
             threading.RLock()
         )
+        self._stop_event = threading.Event()
+        self.request_timeout_seconds = max(
+            1.0,
+            float(request_timeout_seconds),
+        )
         self._cache = OrderedDict()
         self._inflight = {}
         self._heavy_cursor = 0
@@ -133,7 +142,14 @@ class ProviderBrokerHTTPProvider(
             self._providers.append({
                 "role": ROLES[index],
                 "client": (
-                    provider_factory(url)
+                    provider_factory(
+                        url,
+                        request_kwargs={
+                            "timeout": self.request_timeout_seconds,
+                        },
+                    )
+                    if provider_factory is HTTPProvider
+                    else provider_factory(url)
                 ),
                 "requests": 0,
                 "successes": 0,
@@ -151,6 +167,25 @@ class ProviderBrokerHTTPProvider(
         self.coalesced_wait_count = 0
         self.circuit_open_reject_count = 0
         self.last_provider = None
+
+    def request_stop(self):
+        self._stop_event.set()
+
+        with self._lock:
+            inflight = list(
+                self._inflight.values()
+            )
+
+        for event in inflight:
+            event.set()
+
+        return True
+
+    def _raise_if_stopping(self):
+        if self._stop_event.is_set():
+            raise ConnectionError(
+                "RPC provider shutdown requested"
+            )
 
     @staticmethod
     def _response_failure(
@@ -374,6 +409,7 @@ class ProviderBrokerHTTPProvider(
         method,
         params,
     ):
+        self._raise_if_stopping()
         now = self._now()
 
         indexes = (
@@ -394,6 +430,8 @@ class ProviderBrokerHTTPProvider(
         for position, index in enumerate(
             indexes
         ):
+            self._raise_if_stopping()
+
             item = self._providers[
                 index
             ]
@@ -480,6 +518,8 @@ class ProviderBrokerHTTPProvider(
         method,
         params,
     ):
+        self._raise_if_stopping()
+
         with self._lock:
             self.request_count += 1
 

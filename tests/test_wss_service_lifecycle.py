@@ -546,3 +546,72 @@ def test_runner_position_job_uses_ten_second_cadence():
         jobs["paper_manager"]["interval"]
         == 10
     )
+
+
+def test_wss_request_stop_is_nonblocking():
+    service = NativeWSSService(
+        "wss://example",
+        "0xpair",
+        runtime_factory=ForceClosableRuntime,
+        join_timeout=0.05,
+    )
+
+    assert service.start() is True
+    assert wait_for(
+        lambda: service.status()[
+            "runtime_present"
+        ]
+    )
+
+    runtime = service._runtime
+
+    started = time.monotonic()
+    assert service.request_stop() is True
+    elapsed = time.monotonic() - started
+
+    assert elapsed < 0.05
+    assert runtime.stop_requested is True
+    assert service.status()[
+        "thread_alive"
+    ] is True
+
+    assert service.stop() is True
+
+
+def test_runner_stop_requests_service_stop_immediately():
+    events = []
+
+    class Service:
+        name = "request-stop-test"
+
+        def request_stop(self):
+            events.append(
+                "request_stop"
+            )
+
+        def stop(self):
+            events.append(
+                "stop"
+            )
+
+        def start(self):
+            events.append(
+                "start"
+            )
+
+        def status(self):
+            return {
+                "name": self.name,
+                "state": "OK",
+            }
+
+    runner = Runner(
+        services=[Service()],
+        auxiliary_service_factory=lambda: [],
+    )
+
+    runner.stop()
+
+    assert events == [
+        "request_stop",
+    ]

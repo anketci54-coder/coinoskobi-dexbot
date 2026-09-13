@@ -1,4 +1,5 @@
 import logging
+import threading
 import time
 
 import requests
@@ -40,6 +41,19 @@ class GeckoScanner:
             "dexscreener": 0.0,
         }
         self._market_data_broker = None
+        self._stop_event = threading.Event()
+
+    def request_stop(self):
+        self._stop_event.set()
+        return True
+
+    def is_stopping(self):
+        return self._stop_event.is_set()
+
+    def _wait_backoff(self, seconds):
+        return self._stop_event.wait(
+            float(seconds)
+        )
 
     def bind_market_data_broker(self, broker):
         if broker is None:
@@ -189,6 +203,9 @@ class GeckoScanner:
         response = None
 
         for attempt in range(attempts):
+            if self._stop_event.is_set():
+                return None
+
             response = requests.get(
                 url,
                 headers={
@@ -215,14 +232,20 @@ class GeckoScanner:
                 self._cooldown_provider("geckoterminal")
                 return None
 
-            time.sleep(
+            if self._wait_backoff(
                 HTTP_429_BACKOFF_SECONDS
                 * (2 ** attempt)
-            )
+            ):
+                return None
 
         return None
 
     def _request_dexscreener(self, addresses):
+        if self._stop_event.is_set():
+            raise RuntimeError(
+                "scanner shutdown requested"
+            )
+
         if not self._provider_available("dexscreener"):
             raise RuntimeError("dexscreener provider cooling down")
 
@@ -245,6 +268,9 @@ class GeckoScanner:
         attempts = HTTP_429_MAX_RETRIES + 1
 
         for attempt in range(attempts):
+            if self._stop_event.is_set():
+                return None
+
             response = requests.get(
                 URL,
                 headers={
@@ -264,10 +290,11 @@ class GeckoScanner:
                 self._cooldown_provider("geckoterminal")
                 return None
 
-            time.sleep(
+            if self._wait_backoff(
                 HTTP_429_BACKOFF_SECONDS
                 * (2 ** attempt)
-            )
+            ):
+                return None
 
         return None
 

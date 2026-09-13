@@ -52,6 +52,8 @@ class Runner:
             else None
         )
 
+        self.pipeline = pipeline
+
         if scan_job:
             self.scheduler.every(
                 interval=300,
@@ -124,9 +126,53 @@ class Runner:
         )
 
         self.running = False
+        self.scheduler.request_stop()
 
         if self.fast_watch_revisit is not None:
             self.fast_watch_revisit.request_stop()
+
+        pipeline_stop = getattr(
+            self.pipeline,
+            "request_stop",
+            None,
+        )
+
+        if callable(pipeline_stop):
+            pipeline_stop()
+        else:
+            work_scheduler = getattr(
+                self.pipeline,
+                "work_scheduler",
+                None,
+            )
+            request_stop = getattr(
+                work_scheduler,
+                "request_stop",
+                None,
+            )
+
+            if callable(request_stop):
+                request_stop()
+
+        for service in self.services:
+            service_request_stop = getattr(
+                service,
+                "request_stop",
+                None,
+            )
+
+            if callable(service_request_stop):
+                try:
+                    service_request_stop()
+                except Exception:
+                    log.exception(
+                        "Service stop request failed: {}",
+                        getattr(
+                            service,
+                            "name",
+                            type(service).__name__,
+                        ),
+                    )
 
     def _start_services(self):
         if self.services_started:

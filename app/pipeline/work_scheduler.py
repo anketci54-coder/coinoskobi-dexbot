@@ -1,5 +1,10 @@
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor, as_completed
+import threading
+
+
+class WorkSchedulerCancelled(Exception):
+    pass
 
 
 LANE_WARM = "WARM"
@@ -31,6 +36,14 @@ class WorkScheduler:
 
     def __init__(self, max_workers=8):
         self.max_workers = max_workers
+        self._stop_event = threading.Event()
+
+    def request_stop(self):
+        self._stop_event.set()
+        return True
+
+    def is_stopping(self):
+        return self._stop_event.is_set()
 
     @staticmethod
     def lane(row):
@@ -172,8 +185,19 @@ class WorkScheduler:
                 or futures
             ):
 
+                if self._stop_event.is_set():
+                    exhausted = True
+
+                    for future in list(futures):
+                        if future.cancel():
+                            futures.pop(future, None)
+
+                    if not futures:
+                        break
+
                 while (
                     not exhausted
+                    and not self._stop_event.is_set()
                     and len(futures)
                     < self.max_workers
                 ):
@@ -225,6 +249,9 @@ class WorkScheduler:
                         + 1
                     )
 
+                except WorkSchedulerCancelled:
+                    pass
+
                 except Exception:
                     failed += 1
 
@@ -242,10 +269,21 @@ class WorkScheduler:
                         + 1
                     )
 
+        total_input = sum(
+            lane_counts.values()
+        )
+
+        skipped = max(
+            0,
+            total_input - processed - failed,
+        )
+
         return {
             "processed": processed,
             "failed": failed,
             "pending": queue.pending_count,
+            "stopped": self._stop_event.is_set(),
+            "skipped": skipped,
             "warm": {
                 "input": lane_counts[
                     LANE_WARM

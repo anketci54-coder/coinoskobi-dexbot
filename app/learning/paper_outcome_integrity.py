@@ -53,20 +53,14 @@ class PaperOutcomeIntegrity:
             ValueError,
             json.JSONDecodeError,
         ):
-            self._state = INTEGRITY_UNAVAILABLE
-            self._reason = "OUTCOME_EXCLUSION_REGISTRY_INVALID"
-            self._exclusions = []
-            return self.status()
+            return self._invalidate()
 
         if (
             not isinstance(payload, dict)
             or payload.get("version") != 1
             or not isinstance(payload.get("exclusions"), list)
         ):
-            self._state = INTEGRITY_UNAVAILABLE
-            self._reason = "OUTCOME_EXCLUSION_REGISTRY_INVALID"
-            self._exclusions = []
-            return self.status()
+            return self._invalidate()
 
         exclusions = []
         seen = set()
@@ -112,6 +106,7 @@ class PaperOutcomeIntegrity:
                 created_at.strip(),
                 closed_at.strip(),
             )
+
             if fingerprint in seen:
                 return self._invalidate()
             seen.add(fingerprint)
@@ -138,39 +133,35 @@ class PaperOutcomeIntegrity:
         closed_at,
     ):
         if not self.available:
-            return {
-                "state": INTEGRITY_UNAVAILABLE,
-                "reason": self._reason,
-                "trusted_for_learning": False,
-            }
-
-        try:
-            position_id = int(position_id)
-        except (TypeError, ValueError):
-            return {
-                "state": INTEGRITY_UNAVAILABLE,
-                "reason": "OUTCOME_FINGERPRINT_INVALID",
-                "trusted_for_learning": False,
-            }
-
-        fingerprint = (
-            str(source_table or "").strip(),
-            position_id,
-            str(created_at or "").strip(),
-            str(closed_at or "").strip(),
-        )
+            return self._classification(
+                INTEGRITY_UNAVAILABLE,
+                self._reason,
+                False,
+            )
 
         if (
-            fingerprint[0] not in _ALLOWED_TABLES
-            or fingerprint[1] <= 0
-            or not fingerprint[2]
-            or not fingerprint[3]
+            not isinstance(source_table, str)
+            or source_table.strip() not in _ALLOWED_TABLES
+            or isinstance(position_id, bool)
+            or not isinstance(position_id, int)
+            or position_id <= 0
+            or not isinstance(created_at, str)
+            or not created_at.strip()
+            or not isinstance(closed_at, str)
+            or not closed_at.strip()
         ):
-            return {
-                "state": INTEGRITY_UNAVAILABLE,
-                "reason": "OUTCOME_FINGERPRINT_INVALID",
-                "trusted_for_learning": False,
-            }
+            return self._classification(
+                INTEGRITY_UNAVAILABLE,
+                "OUTCOME_FINGERPRINT_INVALID",
+                False,
+            )
+
+        fingerprint = (
+            source_table.strip(),
+            position_id,
+            created_at.strip(),
+            closed_at.strip(),
+        )
 
         for exclusion in self._exclusions:
             if (
@@ -179,23 +170,36 @@ class PaperOutcomeIntegrity:
                 and exclusion["created_at"] == fingerprint[2]
                 and exclusion["closed_at"] == fingerprint[3]
             ):
-                return {
-                    "state": BUG_CONTAMINATED,
-                    "reason": exclusion["reason"],
-                    "trusted_for_learning": False,
-                }
+                return self._classification(
+                    BUG_CONTAMINATED,
+                    exclusion["reason"],
+                    False,
+                )
 
-        return {
-            "state": TRUSTED,
-            "reason": "OUTCOME_INTEGRITY_TRUSTED",
-            "trusted_for_learning": True,
-        }
+        return self._classification(
+            TRUSTED,
+            "OUTCOME_INTEGRITY_TRUSTED",
+            True,
+        )
 
     def status(self):
         return {
             "state": self._state,
             "reason": self._reason,
             "exclusion_count": len(self._exclusions),
+            "decision_authority": False,
+            "paper_authority": False,
+            "live_authority": False,
+            "wallet_authority": False,
+            "execution_authority": False,
+        }
+
+    @staticmethod
+    def _classification(state, reason, trusted):
+        return {
+            "state": state,
+            "reason": reason,
+            "trusted_for_learning": trusted,
             "decision_authority": False,
             "paper_authority": False,
             "live_authority": False,

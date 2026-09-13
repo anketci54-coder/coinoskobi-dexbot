@@ -100,24 +100,34 @@ def _build_db(path):
     return db
 
 
-def _write_exclusions(path, *, created_at=None):
+def _valid_exclusion():
+    return {
+        "source_table": "paper_trades",
+        "position_id": 37,
+        "created_at": "2026-09-13T15:18:35.118255+00:00",
+        "closed_at": "2026-09-13T16:25:18.506054+00:00",
+        "reason": "BUG_CONTAMINATED_RUNTIME_LIFECYCLE_STARVATION_PR147",
+    }
+
+
+def _write_registry(path, exclusions):
     path.write_text(
         json.dumps({
             "version": 1,
-            "exclusions": [
-                {
-                    "source_table": "paper_trades",
-                    "position_id": 37,
-                    "created_at": (
-                        created_at
-                        or "2026-09-13T15:18:35.118255+00:00"
-                    ),
-                    "closed_at": "2026-09-13T16:25:18.506054+00:00",
-                    "reason": "BUG_CONTAMINATED_RUNTIME_LIFECYCLE_STARVATION_PR147",
-                }
-            ],
+            "exclusions": exclusions,
         }),
         encoding="utf-8",
+    )
+
+
+def _calibration(db_path, exclusion_path, monkeypatch):
+    monkeypatch.setattr(
+        sizing,
+        "PAPER_OUTCOME_EXCLUSIONS_PATH",
+        exclusion_path,
+    )
+    return sizing._empirical_outcome_calibration(
+        str(db_path)
     )
 
 
@@ -129,16 +139,15 @@ def test_contaminated_outcome_is_excluded_only_from_calibration(
     exclusion_path = tmp_path / "exclusions.json"
 
     db = _build_db(db_path)
-    _write_exclusions(exclusion_path)
-
-    monkeypatch.setattr(
-        sizing,
-        "PAPER_OUTCOME_EXCLUSIONS_PATH",
+    _write_registry(
         exclusion_path,
+        [_valid_exclusion()],
     )
 
-    calibration = sizing._empirical_outcome_calibration(
-        str(db_path)
+    calibration = _calibration(
+        db_path,
+        exclusion_path,
+        monkeypatch,
     )
 
     assert calibration["excluded_samples"] == 1
@@ -156,7 +165,7 @@ def test_contaminated_outcome_is_excluded_only_from_calibration(
     db.close()
 
 
-def test_exclusion_requires_full_incident_fingerprint(
+def test_exclusion_requires_exact_incident_fingerprint(
     tmp_path,
     monkeypatch,
 ):
@@ -166,19 +175,17 @@ def test_exclusion_requires_full_incident_fingerprint(
     db = _build_db(db_path)
     db.close()
 
-    _write_exclusions(
+    exclusion = _valid_exclusion()
+    exclusion["created_at"] = "2099-01-01T00:00:00+00:00"
+    _write_registry(
         exclusion_path,
-        created_at="2099-01-01T00:00:00+00:00",
+        [exclusion],
     )
 
-    monkeypatch.setattr(
-        sizing,
-        "PAPER_OUTCOME_EXCLUSIONS_PATH",
+    calibration = _calibration(
+        db_path,
         exclusion_path,
-    )
-
-    calibration = sizing._empirical_outcome_calibration(
-        str(db_path)
+        monkeypatch,
     )
 
     assert calibration["excluded_samples"] == 0
@@ -186,3 +193,117 @@ def test_exclusion_requires_full_incident_fingerprint(
     assert calibration["gap_multiplier"] == pytest.approx(2.0)
     assert calibration["account_risk_samples"] == 2
     assert calibration["account_risk_budget_usdt"] == pytest.approx(30.0)
+
+
+def test_missing_registry_fails_calibration_closed(
+    tmp_path,
+    monkeypatch,
+):
+    db_path = tmp_path / "paper.db"
+    exclusion_path = tmp_path / "missing.json"
+
+    db = _build_db(db_path)
+    db.close()
+
+    calibration = _calibration(
+        db_path,
+        exclusion_path,
+        monkeypatch,
+    )
+
+    assert calibration["ready"] is False
+    assert calibration["reason"] == "OUTCOME_EXCLUSION_REGISTRY_INVALID"
+    assert calibration["gap_samples"] == 0
+    assert calibration["account_risk_samples"] == 0
+
+
+def test_invalid_json_registry_fails_calibration_closed(
+    tmp_path,
+    monkeypatch,
+):
+    db_path = tmp_path / "paper.db"
+    exclusion_path = tmp_path / "exclusions.json"
+
+    db = _build_db(db_path)
+    db.close()
+    exclusion_path.write_text(
+        "{not-json",
+        encoding="utf-8",
+    )
+
+    calibration = _calibration(
+        db_path,
+        exclusion_path,
+        monkeypatch,
+    )
+
+    assert calibration["ready"] is False
+    assert calibration["reason"] == "OUTCOME_EXCLUSION_REGISTRY_INVALID"
+    assert calibration["gap_samples"] == 0
+    assert calibration["account_risk_samples"] == 0
+
+
+def test_wrong_registry_shape_fails_calibration_closed(
+    tmp_path,
+    monkeypatch,
+):
+    db_path = tmp_path / "paper.db"
+    exclusion_path = tmp_path / "exclusions.json"
+
+    db = _build_db(db_path)
+    db.close()
+    exclusion_path.write_text(
+        json.dumps({
+            "version": 1,
+            "exclusions": {},
+        }),
+        encoding="utf-8",
+    )
+
+    calibration = _calibration(
+        db_path,
+        exclusion_path,
+        monkeypatch,
+    )
+
+    assert calibration["ready"] is False
+    assert calibration["reason"] == "OUTCOME_EXCLUSION_REGISTRY_INVALID"
+
+
+@pytest.mark.parametrize(
+    "missing_key",
+    [
+        "source_table",
+        "position_id",
+        "created_at",
+        "closed_at",
+    ],
+)
+def test_incomplete_fingerprint_fails_calibration_closed(
+    tmp_path,
+    monkeypatch,
+    missing_key,
+):
+    db_path = tmp_path / "paper.db"
+    exclusion_path = tmp_path / "exclusions.json"
+
+    db = _build_db(db_path)
+    db.close()
+
+    exclusion = _valid_exclusion()
+    exclusion.pop(missing_key)
+    _write_registry(
+        exclusion_path,
+        [exclusion],
+    )
+
+    calibration = _calibration(
+        db_path,
+        exclusion_path,
+        monkeypatch,
+    )
+
+    assert calibration["ready"] is False
+    assert calibration["reason"] == "OUTCOME_EXCLUSION_REGISTRY_INVALID"
+    assert calibration["gap_samples"] == 0
+    assert calibration["account_risk_samples"] == 0

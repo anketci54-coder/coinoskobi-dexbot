@@ -516,8 +516,6 @@ def _empirical_outcome_calibration(
     calibration is unavailable rather than silently ingesting bad outcomes.
     """
     path = Path(db_path)
-    if not path.exists():
-        return _calibration_empty("OUTCOME_DB_MISSING")
 
     try:
         exclusions = _load_outcome_exclusions()
@@ -525,6 +523,9 @@ def _empirical_outcome_calibration(
         return _calibration_empty(
             "OUTCOME_EXCLUSION_REGISTRY_INVALID"
         )
+
+    if not path.exists():
+        return _calibration_empty("OUTCOME_DB_MISSING")
 
     excluded_samples = 0
 

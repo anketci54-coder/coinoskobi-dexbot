@@ -129,43 +129,38 @@ def _load_outcome_exclusions(path=None):
                 "OUTCOME_EXCLUSION_FINGERPRINT_INCOMPLETE"
             )
 
-        source_table = str(
-            raw.get("source_table")
-            or ""
-        ).strip()
-        created_at = str(
-            raw.get("created_at")
-            or ""
-        ).strip()
-        closed_at = str(
-            raw.get("closed_at")
-            or ""
-        ).strip()
+        source_raw = raw.get("source_table")
+        position_raw = raw.get("position_id")
+        created_raw = raw.get("created_at")
+        closed_raw = raw.get("closed_at")
+
+        if (
+            not isinstance(source_raw, str)
+            or not isinstance(created_raw, str)
+            or not isinstance(closed_raw, str)
+            or isinstance(position_raw, bool)
+            or not isinstance(position_raw, int)
+        ):
+            raise OutcomeExclusionRegistryError(
+                "OUTCOME_EXCLUSION_FINGERPRINT_INVALID"
+            )
+
+        source_table = source_raw.strip()
+        created_at = created_raw.strip()
+        closed_at = closed_raw.strip()
+        position_id = position_raw
 
         if (
             source_table not in {
                 "paper_trades",
                 "paper_trades_archive",
             }
+            or position_id <= 0
             or not created_at
             or not closed_at
         ):
             raise OutcomeExclusionRegistryError(
                 "OUTCOME_EXCLUSION_FINGERPRINT_INVALID"
-            )
-
-        try:
-            position_id = int(
-                raw.get("position_id")
-            )
-        except (TypeError, ValueError) as exc:
-            raise OutcomeExclusionRegistryError(
-                "OUTCOME_EXCLUSION_POSITION_INVALID"
-            ) from exc
-
-        if position_id <= 0:
-            raise OutcomeExclusionRegistryError(
-                "OUTCOME_EXCLUSION_POSITION_INVALID"
             )
 
         exclusions.append({

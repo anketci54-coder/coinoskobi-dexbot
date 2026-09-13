@@ -213,9 +213,16 @@ class Runner:
             try:
                 # The lock covers the caller's complete lifecycle region,
                 # including temporary manager.price / hybrid_exit_evidence
-                # setup, manager processing and teardown. This prevents the
-                # fallback and hot paths from exchanging runtime context.
+                # setup, manager processing and teardown. Recheck shutdown
+                # after acquiring it so a queued paper job cannot begin a new
+                # lifecycle after stop() has already been requested.
                 with self._paper_lifecycle_lock:
+                    if (
+                        not self.running
+                        or self._paper_runtime_stop.is_set()
+                    ):
+                        break
+
                     func()
             except Exception:
                 log.exception(

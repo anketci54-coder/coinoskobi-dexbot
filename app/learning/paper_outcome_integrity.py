@@ -1,4 +1,5 @@
 import json
+from datetime import datetime
 from pathlib import Path
 
 
@@ -16,6 +17,25 @@ _ALLOWED_TABLES = {
     "paper_trades",
     "paper_trades_archive",
 }
+
+
+def _valid_timestamp(value):
+    if not isinstance(value, str):
+        return False
+
+    value = value.strip()
+    if not value:
+        return False
+
+    try:
+        parsed = datetime.fromisoformat(value)
+    except ValueError:
+        return False
+
+    return (
+        parsed.tzinfo is not None
+        and parsed.utcoffset() is not None
+    )
 
 
 class PaperOutcomeIntegrity:
@@ -91,10 +111,8 @@ class PaperOutcomeIntegrity:
                 or isinstance(position_id, bool)
                 or not isinstance(position_id, int)
                 or position_id <= 0
-                or not isinstance(created_at, str)
-                or not created_at.strip()
-                or not isinstance(closed_at, str)
-                or not closed_at.strip()
+                or not _valid_timestamp(created_at)
+                or not _valid_timestamp(closed_at)
                 or not isinstance(reason, str)
                 or not reason.strip()
             ):
@@ -145,10 +163,8 @@ class PaperOutcomeIntegrity:
             or isinstance(position_id, bool)
             or not isinstance(position_id, int)
             or position_id <= 0
-            or not isinstance(created_at, str)
-            or not created_at.strip()
-            or not isinstance(closed_at, str)
-            or not closed_at.strip()
+            or not _valid_timestamp(created_at)
+            or not _valid_timestamp(closed_at)
         ):
             return self._classification(
                 INTEGRITY_UNAVAILABLE,

@@ -56,6 +56,7 @@ jobs:
           tests/test_application_market_flow_binding.py
           tests/test_application_dynamic_wss_pairs.py
           tests/test_application_paper_lifecycle.py
+          tests/test_runner_paper_runtime_isolation.py
           tests/test_dex_terminal_v6.py
           tests/test_panel_v61_contract.py
           tests/test_panel_accounting_visibility.py

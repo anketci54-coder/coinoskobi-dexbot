@@ -50,12 +50,14 @@ jobs:
           tests/test_phase9_panel_bridge.py
           tests/test_phase9_panel_detail.py
           tests/test_gecko_multi_pool.py
+          tests/test_gecko_cache_thread_safety.py
           tests/test_scanner_cache_lifecycle.py
           tests/test_true_composition_root_e2e.py
           tests/test_open_position_hot_path.py
           tests/test_application_market_flow_binding.py
           tests/test_application_dynamic_wss_pairs.py
           tests/test_application_paper_lifecycle.py
+          tests/test_runner_paper_runtime_isolation.py
           tests/test_dex_terminal_v6.py
           tests/test_panel_v61_contract.py
           tests/test_panel_accounting_visibility.py

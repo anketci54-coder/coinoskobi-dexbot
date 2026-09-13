@@ -167,3 +167,45 @@ def test_full_lifecycle_context_is_serialized_across_paths():
     assert scanner_lifecycle.is_alive() is False
     assert pipeline_entered.is_set() is True
     assert state["max_active"] == 1
+
+
+def test_shutdown_waits_for_inflight_paper_lifecycle():
+    entered = threading.Event()
+    release = threading.Event()
+    completed = threading.Event()
+
+    def position_job():
+        entered.set()
+        release.wait(1.0)
+        completed.set()
+        return []
+
+    runner = Runner(
+        position_job=position_job,
+        auxiliary_service_factory=lambda: [],
+    )
+
+    assert runner._start_paper_runtime() is True
+    assert entered.wait(0.5)
+
+    shutdown = threading.Thread(
+        target=runner._stop_paper_runtime,
+        daemon=True,
+    )
+    shutdown.start()
+
+    time.sleep(0.05)
+
+    assert shutdown.is_alive() is True
+    assert runner._paper_runtime_started is True
+    assert completed.is_set() is False
+
+    release.set()
+    shutdown.join(timeout=1.0)
+
+    assert shutdown.is_alive() is False
+    assert completed.is_set() is True
+    assert runner._paper_runtime_started is False
+    assert runner.paper_runtime_status()[
+        "threads_alive"
+    ] == 0

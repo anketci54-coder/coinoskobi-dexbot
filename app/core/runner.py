@@ -60,7 +60,7 @@ class Runner:
         )
 
         self.pipeline = pipeline
-        self._manager_process_lock = threading.RLock()
+        self._paper_lifecycle_lock = threading.RLock()
         self._paper_runtime_stop = threading.Event()
         self._paper_runtime_threads = []
         self._paper_runtime_jobs = []
@@ -84,7 +84,7 @@ class Runner:
             self.fast_watch_revisit = FastWatchRevisitJob(
                 pipeline
             )
-            self._bind_serialized_manager_process()
+            self._bind_serialized_pipeline_positions()
         else:
             self.fast_watch_revisit = None
 
@@ -133,43 +133,38 @@ class Runner:
         self.services_started = False
         self.last_service_error = None
 
-    def _bind_serialized_manager_process(self):
-        manager = getattr(
+    def _bind_serialized_pipeline_positions(self):
+        positions = getattr(
             self.pipeline,
-            "manager",
-            None,
-        )
-        process = getattr(
-            manager,
-            "process",
+            "process_positions",
             None,
         )
 
-        if not callable(process):
+        if not callable(positions):
             return False
 
         if getattr(
-            process,
-            "_coinoskobi_serialized_manager_process",
+            positions,
+            "_coinoskobi_serialized_paper_lifecycle",
             False,
         ):
             return True
 
-        lock = self._manager_process_lock
-        original = process
+        lock = self._paper_lifecycle_lock
+        original = positions
 
-        def serialized_manager_process(*args, **kwargs):
+        def serialized_positions(*args, **kwargs):
             with lock:
                 return original(*args, **kwargs)
 
-        serialized_manager_process.__name__ = getattr(
+        serialized_positions.__name__ = getattr(
             original,
             "__name__",
-            "process",
+            "process_positions",
         )
-        serialized_manager_process._coinoskobi_serialized_manager_process = True
+        serialized_positions._coinoskobi_serialized_paper_lifecycle = True
 
-        manager.process = serialized_manager_process
+        self.pipeline.process_positions = serialized_positions
         return True
 
     def _detach_paper_runtime_jobs(self):
@@ -216,7 +211,12 @@ class Runner:
             started = time.monotonic()
 
             try:
-                func()
+                # The lock covers the caller's complete lifecycle region,
+                # including temporary manager.price / hybrid_exit_evidence
+                # setup, manager processing and teardown. This prevents the
+                # fallback and hot paths from exchanging runtime context.
+                with self._paper_lifecycle_lock:
+                    func()
             except Exception:
                 log.exception(
                     "Independent paper runtime failed: {}",
@@ -312,7 +312,7 @@ class Runner:
                 if thread.is_alive()
             ),
             "scanner_independent": True,
-            "serialized_manager_process": True,
+            "serialized_lifecycle_context": True,
             "decision_authority": False,
             "paper_authority": False,
             "live_authority": False,

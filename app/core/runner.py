@@ -1,4 +1,5 @@
 import signal
+import threading
 import time
 
 from app.core.application_services import build_application_auxiliary_services
@@ -8,6 +9,12 @@ from app.market_data.broker import MarketDataBroker
 from app.pipeline.fast_watch_revisit import FastWatchRevisitJob
 
 log = get_logger()
+
+
+PAPER_RUNTIME_JOB_NAMES = {
+    "paper_manager",
+    "paper_hot_manager",
+}
 
 
 def _application_pipeline(scan_job):
@@ -53,6 +60,11 @@ class Runner:
         )
 
         self.pipeline = pipeline
+        self._manager_process_lock = threading.RLock()
+        self._paper_runtime_stop = threading.Event()
+        self._paper_runtime_threads = []
+        self._paper_runtime_jobs = []
+        self._paper_runtime_started = False
 
         if scan_job:
             self.scheduler.every(
@@ -72,6 +84,7 @@ class Runner:
             self.fast_watch_revisit = FastWatchRevisitJob(
                 pipeline
             )
+            self._bind_serialized_manager_process()
         else:
             self.fast_watch_revisit = None
 
@@ -120,6 +133,193 @@ class Runner:
         self.services_started = False
         self.last_service_error = None
 
+    def _bind_serialized_manager_process(self):
+        manager = getattr(
+            self.pipeline,
+            "manager",
+            None,
+        )
+        process = getattr(
+            manager,
+            "process",
+            None,
+        )
+
+        if not callable(process):
+            return False
+
+        if getattr(
+            process,
+            "_coinoskobi_serialized_manager_process",
+            False,
+        ):
+            return True
+
+        lock = self._manager_process_lock
+        original = process
+
+        def serialized_manager_process(*args, **kwargs):
+            with lock:
+                return original(*args, **kwargs)
+
+        serialized_manager_process.__name__ = getattr(
+            original,
+            "__name__",
+            "process",
+        )
+        serialized_manager_process._coinoskobi_serialized_manager_process = True
+
+        manager.process = serialized_manager_process
+        return True
+
+    def _detach_paper_runtime_jobs(self):
+        if self._paper_runtime_jobs:
+            return list(self._paper_runtime_jobs)
+
+        detached = []
+        remaining = []
+
+        for job in self.scheduler.jobs:
+            if job.get("name") in PAPER_RUNTIME_JOB_NAMES:
+                detached.append(job)
+            else:
+                remaining.append(job)
+
+        if detached:
+            self.scheduler.jobs = remaining
+            self._paper_runtime_jobs = detached
+
+        return list(detached)
+
+    def _paper_runtime_loop(self, job):
+        name = str(
+            job.get("name")
+            or "paper_runtime"
+        )
+        func = job.get("func")
+
+        try:
+            interval = max(
+                0.1,
+                float(job.get("interval") or 1.0),
+            )
+        except (TypeError, ValueError):
+            interval = 1.0
+
+        if not callable(func):
+            return
+
+        while (
+            self.running
+            and not self._paper_runtime_stop.is_set()
+        ):
+            started = time.monotonic()
+
+            try:
+                func()
+            except Exception:
+                log.exception(
+                    "Independent paper runtime failed: {}",
+                    name,
+                )
+
+            elapsed = (
+                time.monotonic()
+                - started
+            )
+            delay = max(
+                0.01,
+                interval - elapsed,
+            )
+
+            if self._paper_runtime_stop.wait(delay):
+                break
+
+    def _start_paper_runtime(self):
+        if self._paper_runtime_started:
+            return False
+
+        jobs = self._detach_paper_runtime_jobs()
+
+        if not jobs:
+            return False
+
+        self._paper_runtime_stop.clear()
+        self._paper_runtime_threads = []
+
+        for job in jobs:
+            name = str(
+                job.get("name")
+                or "paper_runtime"
+            )
+            thread = threading.Thread(
+                target=self._paper_runtime_loop,
+                args=(job,),
+                name=f"coinoskobi-{name}",
+                daemon=True,
+            )
+            self._paper_runtime_threads.append(
+                thread
+            )
+            thread.start()
+
+        self._paper_runtime_started = True
+
+        log.info(
+            "Independent paper runtime started jobs={}",
+            [
+                job.get("name")
+                for job in jobs
+            ],
+        )
+
+        return True
+
+    def _stop_paper_runtime(self):
+        if not self._paper_runtime_started:
+            return
+
+        self._paper_runtime_stop.set()
+
+        for thread in self._paper_runtime_threads:
+            if thread is threading.current_thread():
+                continue
+
+            thread.join(timeout=5.0)
+
+            if thread.is_alive():
+                log.warning(
+                    "Paper runtime thread still active: {}",
+                    thread.name,
+                )
+
+        self._paper_runtime_started = False
+
+    def paper_runtime_status(self):
+        return {
+            "state": (
+                "RUNNING"
+                if self._paper_runtime_started
+                else "STOPPED"
+            ),
+            "jobs": [
+                job.get("name")
+                for job in self._paper_runtime_jobs
+            ],
+            "threads_alive": sum(
+                1
+                for thread in self._paper_runtime_threads
+                if thread.is_alive()
+            ),
+            "scanner_independent": True,
+            "serialized_manager_process": True,
+            "decision_authority": False,
+            "paper_authority": False,
+            "live_authority": False,
+            "wallet_authority": False,
+            "execution_authority": False,
+        }
+
     def stop(self, *_):
         log.info(
             "Shutdown requested..."
@@ -127,6 +327,7 @@ class Runner:
 
         self.running = False
         self.scheduler.request_stop()
+        self._paper_runtime_stop.set()
 
         if self.fast_watch_revisit is not None:
             self.fast_watch_revisit.request_stop()
@@ -281,6 +482,7 @@ class Runner:
         try:
             self._start_services()
             self._start_fast_watch_revisit()
+            self._start_paper_runtime()
 
             while self.running:
                 self.scheduler.tick()
@@ -291,6 +493,7 @@ class Runner:
             # dependencies, so a committed paper decision cannot lose its
             # durable observer/promotion bookkeeping during SIGTERM.
             self._stop_fast_watch_revisit()
+            self._stop_paper_runtime()
             self._stop_services()
 
             log.info(

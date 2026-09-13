@@ -816,3 +816,96 @@ def test_id51_sub_quantum_micro_notional_is_blocked(
         "ENTRY_AMOUNT_BELOW_ACCOUNTING_PRECISION"
         in result["blockers"]
     )
+
+
+
+def test_legacy_float_dust_does_not_poison_calibration(
+    tmp_path,
+):
+    import json
+    import sqlite3
+
+    from app.risk.paper_position_sizing import (
+        _empirical_outcome_calibration,
+    )
+
+    db_path = tmp_path / "dust_calibration.db"
+    db = sqlite3.connect(db_path)
+
+    db.execute(
+        """
+        CREATE TABLE paper_trades (
+            status TEXT,
+            entry_price REAL,
+            current_price REAL,
+            exit_price REAL,
+            entry_amount_usdt REAL,
+            net_pnl REAL,
+            net_pnl_usdt REAL,
+            gross_pnl_usdt REAL,
+            mathematical_plan_json TEXT,
+            math_state_json TEXT
+        )
+        """
+    )
+
+    plan = json.dumps({
+        "entry": {
+            "band_low": 90.0,
+        }
+    })
+
+    state = json.dumps({})
+
+    samples = (
+        (
+            1.0e-26,
+            -1.0e-27,
+        ),
+        (
+            100.0,
+            -20.0,
+        ),
+    )
+
+    for amount, net_pnl in samples:
+        db.execute(
+            """
+            INSERT INTO paper_trades (
+                status,
+                entry_price,
+                current_price,
+                exit_price,
+                entry_amount_usdt,
+                net_pnl,
+                net_pnl_usdt,
+                gross_pnl_usdt,
+                mathematical_plan_json,
+                math_state_json
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "CLOSED",
+                100.0,
+                80.0,
+                80.0,
+                amount,
+                net_pnl,
+                net_pnl,
+                net_pnl,
+                plan,
+                state,
+            ),
+        )
+
+    db.commit()
+    db.close()
+
+    result = _empirical_outcome_calibration(
+        str(db_path)
+    )
+
+    assert result["gap_samples"] == 1
+    assert result["account_risk_samples"] == 1
+    assert result["account_risk_budget_usdt"] == 20.0

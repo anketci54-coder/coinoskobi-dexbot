@@ -34,6 +34,21 @@ def _positive(value):
     return value
 
 
+def _accounting_quantum(balance):
+    balance = _positive(balance)
+
+    if balance is None:
+        return 0.0
+
+    return (
+        balance
+        - math.nextafter(
+            balance,
+            -math.inf,
+        )
+    )
+
+
 def _json_dict(raw):
     if isinstance(raw, dict):
         return raw
@@ -393,7 +408,29 @@ def _empirical_outcome_calibration(
     cost_residuals = []
     account_losses = []
 
+    calibration_quantum = _accounting_quantum(
+        PAPER_CAPITAL_USDT
+    )
+
     for row in rows:
+        entry_amount = _positive(
+            row["entry_amount_usdt"]
+        )
+
+        # Historical trades whose notional could not change the
+        # PAPER_10K_V2 account balance at IEEE-754 precision are
+        # accounting artifacts, not empirical risk observations.
+        # Exclude them from every calibration statistic rather
+        # than allowing legacy float dust to poison the sample.
+        if (
+            entry_amount is None
+            or (
+                calibration_quantum > 0.0
+                and entry_amount < calibration_quantum
+            )
+        ):
+            continue
+
         planned_loss = _planned_loss_fraction(row)
         observed_loss = _observed_market_loss_fraction(row)
         cost_fraction = _observed_cost_fraction(row)
@@ -757,14 +794,8 @@ def calculate_paper_position_size(
     if effective_edge is None or effective_edge <= 0:
         blockers.append("NET_EDGE_NOT_POSITIVE")
 
-    accounting_quantum = (
+    accounting_quantum = _accounting_quantum(
         available
-        - math.nextafter(
-            available,
-            -math.inf,
-        )
-        if available > 0.0
-        else 0.0
     )
 
     # Paper-only calibration bootstrap.

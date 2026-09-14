@@ -728,6 +728,129 @@
 
   let v61BuyDraft=null;
 
+  let paperControlMode='AUTO';
+  let paperControlBusy=false;
+
+  function renderPaperControlMode(){
+    document.querySelectorAll(
+      '[data-control-mode]'
+    ).forEach(button=>{
+      const mode=String(
+        button.dataset.controlMode||''
+      ).toUpperCase();
+
+      button.classList.toggle(
+        'is-active',
+        mode===paperControlMode
+      );
+
+      button.disabled=paperControlBusy;
+    });
+
+    const status=document.querySelector(
+      '[data-auto-paper-status="1"]'
+    );
+
+    if(status){
+      status.textContent=
+        paperControlMode==='AUTO'
+          ? 'OTOMATİK PAPER · AKTİF'
+          : 'OTOMATİK YENİ GİRİŞ · KAPALI';
+    }
+  }
+
+  async function loadPaperControlMode(){
+    try{
+      const response=await fetch(
+        '/api/paper-control-mode',
+        {cache:'no-store'}
+      );
+
+      if(!response.ok){
+        throw new Error(
+          `HTTP ${response.status}`
+        );
+      }
+
+      const data=await response.json();
+
+      paperControlMode=String(
+        data.control_mode||'AUTO'
+      ).toUpperCase();
+
+      renderPaperControlMode();
+
+    }catch(error){
+      console.error(
+        'paper control mode load failed',
+        error
+      );
+    }
+  }
+
+  async function setPaperControlMode(mode){
+    const normalized=String(
+      mode||''
+    ).toUpperCase();
+
+    if(
+      paperControlBusy
+      || !['AUTO','MANUAL'].includes(normalized)
+      || normalized===paperControlMode
+    ){
+      return;
+    }
+
+    const message=
+      normalized==='MANUAL'
+        ? 'MANUAL modda yeni otomatik paper girişleri durur. Açık pozisyonların mevcut planları ve çıkış yönetimi değişmez.'
+        : 'AUTO modda yeni paper girişleri tekrar otomatik değerlendirilir. Açık pozisyonların mevcut planları değişmez.';
+
+    if(!window.confirm(message)){
+      return;
+    }
+
+    paperControlBusy=true;
+    renderPaperControlMode();
+
+    try{
+      const response=await fetch(
+        '/api/paper-control-mode',
+        {
+          method:'POST',
+          headers:{
+            'Content-Type':'application/json'
+          },
+          body:JSON.stringify({
+            control_mode:normalized
+          })
+        }
+      );
+
+      const data=await response.json();
+
+      if(!response.ok){
+        throw new Error(
+          data.detail
+          || `HTTP ${response.status}`
+        );
+      }
+
+      paperControlMode=String(
+        data.control_mode||normalized
+      ).toUpperCase();
+
+    }catch(error){
+      window.alert(
+        `Kontrol modu değiştirilemedi: ${error.message}`
+      );
+
+    }finally{
+      paperControlBusy=false;
+      renderPaperControlMode();
+    }
+  }
+
   function manualBuy(){
     v61BuyDraft=null;
 
@@ -1387,6 +1510,20 @@
       return;
     }
 
+    const modeButton=e.target.closest(
+      '[data-control-mode]'
+    );
+
+    if(modeButton){
+      e.preventDefault();
+      e.stopImmediatePropagation();
+
+      await setPaperControlMode(
+        modeButton.dataset.controlMode
+      );
+      return;
+    }
+
     if(e.target.closest('[data-v61-buy]')){
       manualBuy();
       return;
@@ -1462,6 +1599,7 @@
     });
 
   injectControls();
+  loadPaperControlMode();
   refreshData();
 
   setInterval(()=>{

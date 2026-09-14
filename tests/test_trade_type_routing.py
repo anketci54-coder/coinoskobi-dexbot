@@ -1,5 +1,9 @@
+import sqlite3
+
 import pytest
 
+from app.paper.database import PaperDatabase
+from app.paper.schema import ensure_paper_schema
 from app.paper.trade_routing import (
     canonicalize_trade_axes,
     lifecycle_trade_type,
@@ -78,3 +82,42 @@ def test_invalid_explicit_trade_type_never_falls_back_to_legacy():
         "trade_type": "BROKEN",
         "trade_policy": "VUR_KAC",
     }) is None
+
+
+def test_database_insert_dual_writes_canonical_axes():
+    database = object.__new__(PaperDatabase)
+    database.conn = sqlite3.connect(":memory:")
+    ensure_paper_schema(database.conn)
+
+    database._insert_unlocked({
+        "token": "0xmanual",
+        "status": "CLOSED",
+        "trade_policy": "MANUAL_PANEL",
+    })
+
+    row = database.conn.execute(
+        """
+        SELECT trade_policy, control_mode, trade_type
+        FROM paper_trades
+        WHERE token='0xmanual'
+        """
+    ).fetchone()
+
+    assert row == (
+        "MANUAL_PANEL",
+        "MANUAL",
+        "NORMAL",
+    )
+
+
+def test_database_insert_rejects_invalid_explicit_trade_type():
+    database = object.__new__(PaperDatabase)
+    database.conn = sqlite3.connect(":memory:")
+    ensure_paper_schema(database.conn)
+
+    with pytest.raises(ValueError, match="invalid trade_type"):
+        database._insert_unlocked({
+            "token": "0xbad",
+            "status": "CLOSED",
+            "trade_type": "MANUAL_PANEL",
+        })

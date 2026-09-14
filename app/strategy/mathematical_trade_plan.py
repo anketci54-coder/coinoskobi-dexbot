@@ -1003,6 +1003,7 @@ def vur_kac_entry_admission_state(
     *,
     stats,
     market_context,
+    trade_type=None,
 ):
     """
     Canonical VUR_KAC entry continuation gate.
@@ -1025,10 +1026,22 @@ def vur_kac_entry_admission_state(
         else {}
     )
 
-    enforced = (
-        "runtime_intelligence"
-        in context
+    normalized_trade_type = (
+        str(trade_type or "")
+        .strip()
+        .upper()
     )
+
+    if normalized_trade_type:
+        enforced = (
+            normalized_trade_type
+            == "VUR_KAC"
+        )
+    else:
+        enforced = (
+            "runtime_intelligence"
+            in context
+        )
 
     def result(
         *,
@@ -1438,6 +1451,7 @@ def build_trade_plan(
     sellability_data=None,
     exit_evidence=None,
     market_context=None,
+    trade_type=None,
 ):
     entry = _number(
         entry_price
@@ -1532,6 +1546,7 @@ def build_trade_plan(
         vur_kac_entry_admission_state(
             stats=stats,
             market_context=market_context,
+            trade_type=trade_type,
         )
     )
 

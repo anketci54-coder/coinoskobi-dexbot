@@ -48,6 +48,8 @@ class GeckoCache:
 
                 buys24 INTEGER,
 
+                sells24 INTEGER,
+
                 fdv REAL,
 
                 price_usd REAL DEFAULT 0,
@@ -73,6 +75,12 @@ class GeckoCache:
                     "ADD COLUMN quote_token TEXT"
                 )
 
+            if "sells24" not in columns:
+                self.db.execute(
+                    "ALTER TABLE gecko_pool_cache "
+                    "ADD COLUMN sells24 INTEGER"
+                )
+
             self.db.execute("""
             CREATE TABLE IF NOT EXISTS market_observation_history(
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -87,6 +95,7 @@ class GeckoCache:
                 liquidity_usd REAL,
                 volume_24h REAL,
                 buys_24h INTEGER,
+                sells_24h INTEGER,
                 fdv_usd REAL,
                 market_cap_usd REAL,
                 pool_created_at TEXT,
@@ -94,6 +103,19 @@ class GeckoCache:
                 ingested_at TEXT NOT NULL
             )
             """)
+
+            history_columns = {
+                row[1]
+                for row in self.db.execute(
+                    "PRAGMA table_info(market_observation_history)"
+                )
+            }
+
+            if "sells_24h" not in history_columns:
+                self.db.execute(
+                    "ALTER TABLE market_observation_history "
+                    "ADD COLUMN sells_24h INTEGER"
+                )
 
             self.db.execute("""
             CREATE INDEX IF NOT EXISTS
@@ -150,6 +172,7 @@ class GeckoCache:
                 liquidity,
                 volume24,
                 buys24,
+                sells24,
                 fdv,
                 price_usd,
                 created_at,
@@ -157,7 +180,7 @@ class GeckoCache:
 
             )
 
-            VALUES(?,?,?,?,?,?,?,?,?,?,?,datetime('now'))
+            VALUES(?,?,?,?,?,?,?,?,?,?,?,?,datetime('now'))
 
             """,(
 
@@ -169,6 +192,7 @@ class GeckoCache:
                 row["liquidity"],
                 row["volume_24h"],
                 row["buys_24h"],
+                row.get("sells_24h"),
                 row["fdv"],
                 row["price_usd"],
                 row["created_at"]
@@ -189,6 +213,7 @@ class GeckoCache:
                     liquidity_usd,
                     volume_24h,
                     buys_24h,
+                    sells_24h,
                     fdv_usd,
                     market_cap_usd,
                     pool_created_at,
@@ -196,7 +221,7 @@ class GeckoCache:
                     ingested_at
                 )
                 VALUES(
-                    ?,?,?,?,?,?,?,?,?,?,?,?,?,?,
+                    ?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,
                     COALESCE(
                         ?,
                         strftime(
@@ -233,6 +258,7 @@ class GeckoCache:
                     row.get("liquidity"),
                     row.get("volume_24h"),
                     row.get("buys_24h"),
+                    row.get("sells_24h"),
                     row.get("fdv"),
                     row.get("market_cap"),
                     row.get("created_at"),
@@ -277,6 +303,7 @@ class GeckoCache:
                 liquidity_usd,
                 volume_24h,
                 buys_24h,
+                sells_24h,
                 fdv_usd,
                 market_cap_usd,
                 pool_created_at,
@@ -478,6 +505,7 @@ class GeckoCache:
             liquidity,
             volume24 AS volume_24h,
             buys24 AS buys_24h,
+            sells24 AS sells_24h,
             fdv,
             price_usd,
             created_at,

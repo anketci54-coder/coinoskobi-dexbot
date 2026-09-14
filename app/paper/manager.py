@@ -1428,18 +1428,216 @@ class PaperManager:
                         },
                     }
 
-        if (
-            static_tp > 0
-            and current >= static_tp
-        ):
-            return self._close_math(
-                pos,
-                current,
-                highest,
-                lowest,
-                plan,
-                "NORMAL_TAKE_PROFIT",
+        realized_proceeds = float(
+            pos.get(
+                "realized_proceeds_usdt"
             )
+            or 0.0
+        )
+
+        if (
+            int(
+                pos.get(
+                    "tp1_done"
+                )
+                or 0
+            )
+            and not int(
+                pos.get(
+                    "tp2_done"
+                )
+                or 0
+            )
+        ):
+            fraction = (
+                tp2_required_fraction(
+                    token_amount=tokens,
+                    current_price=current,
+                    original_entry_usdt=(
+                        pos.get(
+                            "entry_amount_usdt"
+                        )
+                    ),
+                    realized_proceeds_usdt=(
+                        realized_proceeds
+                    ),
+                    cost_model=cost_model,
+                )
+            )
+
+            state[
+                "tp2_required_fraction"
+            ] = fraction
+
+            if fraction == 0:
+                self.db.update_position(
+                    pos["id"],
+                    {
+                        "tp2_done": 1,
+                        "runner_active": 1,
+                        "math_state_json": (
+                            json.dumps(
+                                state,
+                                sort_keys=True,
+                            )
+                        ),
+                    },
+                )
+
+                pos["tp2_done"] = 1
+                pos["runner_active"] = 1
+
+            elif (
+                fraction is not None
+                and 0 < fraction < 1
+            ):
+                realization = (
+                    realization_values(
+                        token_amount=tokens,
+                        fraction=fraction,
+                        current_price=current,
+                        remaining_cost_basis_usdt=basis,
+                        cost_model=cost_model,
+                    )
+                )
+
+                if (
+                    realization
+                    and self.db.apply_partial_realization(
+                        pos["id"],
+                        stage="TP2",
+                        price=current,
+                        realization=realization,
+                        math_state_json=json.dumps(
+                            state,
+                            sort_keys=True,
+                        ),
+                    )
+                ):
+                    self.db.update_position(
+                        pos["id"],
+                        {
+                            "highest_price": highest,
+                            "lowest_price": lowest,
+                            "sl_price": static_stop,
+                        },
+                    )
+
+                    return {
+                        "success": True,
+                        "source": "paper",
+                        "data": {
+                            "action": "PARTIAL_TP2",
+                            "token": pos["token"],
+                            "entry_price": pos[
+                                "entry_price"
+                            ],
+                            "current_price": current,
+                            "status": "OPEN",
+                            "reason": (
+                                "NORMAL_PRINCIPAL_RECOVERY"
+                            ),
+                            "realization": realization,
+                            "runner_active": True,
+                            "trade_type": "NORMAL",
+                            "mathematical_exit": True,
+                        },
+                    }
+
+        runner_active = bool(
+            pos.get(
+                "runner_active"
+            )
+        ) or bool(
+            pos.get(
+                "tp2_done"
+            )
+        )
+
+        runner_stop = None
+
+        if runner_active:
+            post_entry_history = (
+                self.db.price_observations(
+                    pos["id"]
+                )
+            )
+
+            history = list(
+                (
+                    plan.get(
+                        "statistics"
+                    )
+                    or {}
+                ).get(
+                    "prices"
+                )
+                or []
+            )
+
+            history.extend(
+                post_entry_history
+            )
+
+            fallback_distance = (
+                plan.get(
+                    "sl"
+                )
+                or {}
+            ).get(
+                "risk_log_distance"
+            )
+
+            runner_stop = (
+                dynamic_stop_price(
+                    prices=history,
+                    highest_price=highest,
+                    previous_stop=static_stop,
+                    fallback_distance=(
+                        fallback_distance
+                    ),
+                )
+                or static_stop
+            )
+
+            state[
+                "tp3_mode"
+            ] = "TREND_RUNNER"
+
+            state[
+                "tp3_runner_stop"
+            ] = runner_stop
+
+            self.db.update_position(
+                pos["id"],
+                {
+                    "sl_price": runner_stop,
+                    "runner_active": 1,
+                    "math_state_json": (
+                        json.dumps(
+                            state,
+                            sort_keys=True,
+                        )
+                    ),
+                },
+            )
+
+            if (
+                runner_stop > 0
+                and current <= runner_stop
+            ):
+                pos["sl_price"] = (
+                    runner_stop
+                )
+
+                return self._close_math(
+                    pos,
+                    current,
+                    highest,
+                    lowest,
+                    plan,
+                    "NORMAL_TP3_TREND_EXIT",
+                )
 
         (
             gross,
@@ -1487,11 +1685,30 @@ class PaperManager:
                 "gross_pnl_usdt": gross,
                 "net_pnl_usdt": net,
                 "static_sl": static_stop,
-                "static_tp": static_tp,
+                "tp1_activation_price": static_tp,
                 "tp1_done": bool(
                     pos.get(
                         "tp1_done"
                     )
+                ),
+                "tp2_done": bool(
+                    pos.get(
+                        "tp2_done"
+                    )
+                ),
+                "runner_active": bool(
+                    pos.get(
+                        "runner_active"
+                    )
+                ),
+                "tp3_mode": (
+                    "TREND_RUNNER"
+                    if bool(
+                        pos.get(
+                            "runner_active"
+                        )
+                    )
+                    else None
                 ),
                 "trade_type": "NORMAL",
             },

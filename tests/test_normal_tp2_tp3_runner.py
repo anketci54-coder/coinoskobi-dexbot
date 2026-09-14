@@ -1,0 +1,242 @@
+import json
+
+import app.paper.manager as manager_module
+from app.paper.manager import PaperManager
+
+
+class FakeDB:
+    def __init__(self):
+        self.partial_calls = []
+        self.updates = []
+        self.closed = []
+
+    def record_price_observation(
+        self,
+        position_id,
+        price,
+    ):
+        return None
+
+    def price_observations(
+        self,
+        position_id,
+    ):
+        return [
+            1.0,
+            1.3,
+            1.6,
+        ]
+
+    def update_position(
+        self,
+        position_id,
+        values,
+    ):
+        self.updates.append(
+            (
+                position_id,
+                dict(values),
+            )
+        )
+        return True
+
+    def apply_partial_realization(
+        self,
+        position_id,
+        *,
+        stage,
+        price,
+        realization,
+        math_state_json,
+    ):
+        self.partial_calls.append({
+            "position_id": position_id,
+            "stage": stage,
+            "price": price,
+            "realization": dict(
+                realization
+            ),
+            "math_state_json": (
+                math_state_json
+            ),
+        })
+        return True
+
+    def close_position(
+        self,
+        position_id,
+        values,
+    ):
+        self.closed.append(
+            (
+                position_id,
+                dict(values),
+            )
+        )
+        return True
+
+
+def manager():
+    m = PaperManager.__new__(
+        PaperManager
+    )
+    m.db = FakeDB()
+    m.learning_feed = None
+    m.hybrid_exit_evidence = None
+    return m
+
+
+def plan():
+    return {
+        "statistics": {
+            "prices": [
+                1.0,
+                1.2,
+                1.4,
+            ],
+        },
+        "sl": {
+            "risk_log_distance": 0.20,
+        },
+        "cost_model": {
+            "sell_retention_known": 1.0,
+            "sell_gas_usd": 0.0,
+        },
+    }
+
+
+def position(
+    *,
+    tp1_done=1,
+    tp2_done=0,
+    runner_active=0,
+):
+    return {
+        "id": 1,
+        "token": "0xtoken",
+        "trade_type": "NORMAL",
+        "entry_price": 1.0,
+        "entry_amount_usdt": 100.0,
+        "token_amount": 80.0,
+        "remaining_cost_basis_usdt": 80.0,
+        "realized_pnl_usdt": 20.0,
+        "realized_proceeds_usdt": 40.0,
+        "realized_gross_proceeds_usdt": 40.0,
+        "sl_price": 0.50,
+        "tp_price": 1.20,
+        "risk_amount_usdt": 20.0,
+        "math_state_json": json.dumps({
+            "initial_net_risk_usdt": 20.0,
+        }),
+        "tp1_done": tp1_done,
+        "tp2_done": tp2_done,
+        "runner_active": runner_active,
+    }
+
+
+def test_normal_tp2_recovers_principal():
+    m = manager()
+
+    result = (
+        m._process_normal_math_position(
+            position(),
+            2.0,
+            2.0,
+            1.0,
+            plan(),
+        )
+    )
+
+    assert (
+        result["data"]["action"]
+        == "PARTIAL_TP2"
+    )
+
+    assert (
+        result["data"]["reason"]
+        == "NORMAL_PRINCIPAL_RECOVERY"
+    )
+
+    assert len(
+        m.db.partial_calls
+    ) == 1
+
+    assert (
+        m.db.partial_calls[0][
+            "stage"
+        ]
+        == "TP2"
+    )
+
+    assert (
+        result["data"][
+            "runner_active"
+        ]
+        is True
+    )
+
+
+def test_normal_tp3_runner_uses_dynamic_floor(
+    monkeypatch,
+):
+    m = manager()
+
+    monkeypatch.setattr(
+        manager_module,
+        "dynamic_stop_price",
+        lambda **kwargs: 1.50,
+    )
+
+    result = (
+        m._process_normal_math_position(
+            position(
+                tp2_done=1,
+                runner_active=1,
+            ),
+            1.40,
+            2.0,
+            1.0,
+            plan(),
+        )
+    )
+
+    assert (
+        result["data"]["action"]
+        == "CLOSE"
+    )
+
+    assert (
+        result["data"]["reason"]
+        == "NORMAL_TP3_TREND_EXIT"
+    )
+
+    assert len(
+        m.db.closed
+    ) == 1
+
+
+def test_tp1_activation_price_is_not_full_exit():
+    m = manager()
+
+    pos = position(
+        tp1_done=1,
+        tp2_done=0,
+        runner_active=0,
+    )
+
+    result = (
+        m._process_normal_math_position(
+            pos,
+            1.25,
+            1.25,
+            1.0,
+            plan(),
+        )
+    )
+
+    assert not (
+        result["data"]["action"]
+        == "CLOSE"
+        and result["data"]["reason"]
+        == "NORMAL_TAKE_PROFIT"
+    )

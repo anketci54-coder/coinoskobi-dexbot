@@ -14,6 +14,7 @@ class Candidate:
     liquidity: float
     volume_24h: float
     buys_24h: int
+    sells_24h: int
     fdv: float
     price_usd: float
     created_at: str | None
@@ -101,6 +102,13 @@ class Candidate:
                 row.get(
                     "buys_24h",
                     row.get("buys24") or 0,
+                )
+                or 0
+            ),
+            sells_24h=int(
+                row.get(
+                    "sells_24h",
+                    row.get("sells24") or 0,
                 )
                 or 0
             ),

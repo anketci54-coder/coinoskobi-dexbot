@@ -90,6 +90,19 @@ def persist_registered_followup_snapshots(
                 "history": 0,
             }
 
+        cache_columns = {
+            row[1]
+            for row in db.execute(
+                "PRAGMA table_info(gecko_pool_cache)"
+            )
+        }
+
+        if "sells24" not in cache_columns:
+            db.execute(
+                "ALTER TABLE gecko_pool_cache "
+                "ADD COLUMN sells24 INTEGER"
+            )
+
         history_exists = db.execute(
             """
             SELECT 1
@@ -98,6 +111,19 @@ def persist_registered_followup_snapshots(
               AND name='market_observation_history'
             """
         ).fetchone()
+
+        if history_exists is not None:
+            history_columns = {
+                row[1]
+                for row in db.execute(
+                    "PRAGMA table_info(market_observation_history)"
+                )
+            }
+            if "sells_24h" not in history_columns:
+                db.execute(
+                    "ALTER TABLE market_observation_history "
+                    "ADD COLUMN sells_24h INTEGER"
+                )
 
         updated = 0
         history = 0
@@ -153,6 +179,7 @@ def persist_registered_followup_snapshots(
                     liquidity=COALESCE(?, liquidity),
                     volume24=COALESCE(?, volume24),
                     buys24=COALESCE(?, buys24),
+                    sells24=COALESCE(?, sells24),
                     fdv=COALESCE(?, fdv),
                     price_usd=COALESCE(?, price_usd),
                     created_at=COALESCE(?, created_at),
@@ -167,6 +194,7 @@ def persist_registered_followup_snapshots(
                     row.get("liquidity"),
                     row.get("volume_24h"),
                     row.get("buys_24h"),
+                    row.get("sells_24h"),
                     row.get("fdv"),
                     row.get("price_usd"),
                     row.get("created_at"),
@@ -191,6 +219,7 @@ def persist_registered_followup_snapshots(
                         liquidity_usd,
                         volume_24h,
                         buys_24h,
+                        sells_24h,
                         fdv_usd,
                         market_cap_usd,
                         pool_created_at,
@@ -201,7 +230,7 @@ def persist_registered_followup_snapshots(
                         'MARKET_OBSERVATION_V1',
                         'bsc',
                         'geckoterminal_followup',
-                        ?,?,?,?,?,?,?,?,?,?,?,?,
+                        ?,?,?,?,?,?,?,?,?,?,?,?,?,
                         strftime(
                             '%Y-%m-%dT%H:%M:%fZ',
                             'now'
@@ -217,6 +246,7 @@ def persist_registered_followup_snapshots(
                         row.get("liquidity"),
                         row.get("volume_24h"),
                         row.get("buys_24h"),
+                        row.get("sells_24h"),
                         row.get("fdv"),
                         row.get("market_cap"),
                         row.get("created_at"),

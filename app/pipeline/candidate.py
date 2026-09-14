@@ -18,6 +18,7 @@ class Candidate:
     price_usd: float
     created_at: str | None
     observed_at: str
+    sells_24h: int = 0
 
     @staticmethod
     def normalize_chain(value):
@@ -112,6 +113,13 @@ class Candidate:
             ),
             created_at=row.get("created_at"),
             observed_at=observed_at,
+            sells_24h=int(
+                row.get(
+                    "sells_24h",
+                    row.get("sells24") or 0,
+                )
+                or 0
+            ),
         )
 
     @property

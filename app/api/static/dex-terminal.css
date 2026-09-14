@@ -226,3 +226,28 @@ td{
   .v61-grid,.v61-form{grid-template-columns:1fr}
   .v61-holding{grid-template-columns:1.5fr 1fr}
 }
+
+.control-mode-switch{
+  display:inline-flex;
+  gap:4px;
+  align-items:center;
+}
+
+.control-mode-switch button{
+  border:1px solid currentColor;
+  border-radius:8px;
+  padding:6px 10px;
+  background:transparent;
+  cursor:pointer;
+  opacity:.55;
+}
+
+.control-mode-switch button.is-active{
+  opacity:1;
+  font-weight:700;
+}
+
+.control-mode-switch button:disabled{
+  cursor:wait;
+  opacity:.35;
+}

@@ -2,6 +2,7 @@ import json
 import math
 import sqlite3
 import statistics
+from datetime import datetime
 from pathlib import Path
 
 from app.strategy.mathematical_trade_plan import (
@@ -70,6 +71,25 @@ def _json_dict(raw):
         return {}
 
     return value if isinstance(value, dict) else {}
+
+
+def _valid_timestamp(value):
+    if not isinstance(value, str):
+        return False
+
+    value = value.strip()
+    if not value:
+        return False
+
+    try:
+        parsed = datetime.fromisoformat(value)
+    except ValueError:
+        return False
+
+    return (
+        parsed.tzinfo is not None
+        and parsed.utcoffset() is not None
+    )
 
 
 def _load_outcome_exclusions(path=None):
@@ -156,8 +176,8 @@ def _load_outcome_exclusions(path=None):
                 "paper_trades_archive",
             }
             or position_id <= 0
-            or not created_at
-            or not closed_at
+            or not _valid_timestamp(created_at)
+            or not _valid_timestamp(closed_at)
         ):
             raise OutcomeExclusionRegistryError(
                 "OUTCOME_EXCLUSION_FINGERPRINT_INVALID"

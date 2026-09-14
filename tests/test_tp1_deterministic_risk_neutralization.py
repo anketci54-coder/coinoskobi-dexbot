@@ -107,11 +107,7 @@ def _flow_not_ready(**kwargs):
     }
 
 
-def test_tp1_neutralizes_initial_risk_without_flow_confirmation(
-    monkeypatch,
-):
-    manager = _manager()
-
+def _patch_unknown_flow(monkeypatch):
     monkeypatch.setattr(
         manager_module,
         "dynamic_stop_price",
@@ -122,6 +118,13 @@ def test_tp1_neutralizes_initial_risk_without_flow_confirmation(
         "mathematical_vur_kac_state",
         _flow_not_ready,
     )
+
+
+def test_tp1_neutralizes_initial_risk_without_flow_confirmation(
+    monkeypatch,
+):
+    manager = _manager()
+    _patch_unknown_flow(monkeypatch)
 
     result = manager._process_vur_kac_position(
         _position(tp1_done=0),
@@ -143,21 +146,29 @@ def test_tp1_neutralizes_initial_risk_without_flow_confirmation(
     assert call["realization"]["fraction"] == pytest.approx(0.20)
 
 
+def test_tp1_waits_when_initial_risk_cannot_be_neutralized(
+    monkeypatch,
+):
+    manager = _manager()
+    _patch_unknown_flow(monkeypatch)
+
+    result = manager._process_vur_kac_position(
+        _position(tp1_done=0),
+        1.10,
+        1.10,
+        1.0,
+        _plan(),
+    )
+
+    assert result["data"]["action"] == "HOLD"
+    assert manager.db.partial_calls == []
+
+
 def test_tp2_still_waits_for_persistent_vur_kac_when_flow_is_unknown(
     monkeypatch,
 ):
     manager = _manager()
-
-    monkeypatch.setattr(
-        manager_module,
-        "dynamic_stop_price",
-        lambda **kwargs: 0.50,
-    )
-    monkeypatch.setattr(
-        manager_module,
-        "mathematical_vur_kac_state",
-        _flow_not_ready,
-    )
+    _patch_unknown_flow(monkeypatch)
 
     result = manager._process_vur_kac_position(
         _position(tp1_done=1),

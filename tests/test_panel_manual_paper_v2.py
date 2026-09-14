@@ -1,4 +1,6 @@
+import json
 import sqlite3
+import time
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -17,6 +19,103 @@ POOL = "0x2222222222222222222222222222222222222222"
 def _paper_db(path):
     db = sqlite3.connect(path)
     ensure_paper_schema(db)
+
+    db.execute(
+        """
+        CREATE TABLE IF NOT EXISTS
+        candidate_decision_history(
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            token TEXT NOT NULL,
+            pool TEXT NOT NULL,
+            observed_at REAL NOT NULL,
+            context_json TEXT NOT NULL
+        )
+        """
+    )
+
+    plan = {
+        "contract": (
+            "mathematical_trade_plan"
+        ),
+        "hard_block": False,
+        "sellability_status": (
+            "SELLABILITY_OK"
+        ),
+        "entry": {
+            "price": 2.0,
+        },
+        "capital": {
+            "entry_amount_usdt": 0.0,
+        },
+        "position": {
+            "token_amount": 0.0,
+            "initial_risk_usdt": 0.0,
+        },
+        "sl": {
+            "initial_price": (
+                2.0
+                * __import__(
+                    "math"
+                ).exp(-0.10)
+            ),
+            "risk_log_distance": 0.10,
+        },
+        "tp1": {
+            "activation_price": None,
+        },
+        "tp2": {
+            "activation_price": None,
+        },
+        "runner": {
+            "rule": (
+                "FOLLOW_MONOTONIC_EMPIRICAL_TREND_FLOOR_UNTIL_BREAK"
+            ),
+        },
+        "statistics": {
+            "risk_log_distance": 0.10,
+            "prices": [
+                1.8,
+                1.9,
+                2.0,
+            ],
+        },
+        "cost_model": {
+            "buy_gas_usd": 0.0,
+            "sell_gas_usd": 0.0,
+            "buy_retention_known": 1.0,
+            "sell_retention_known": 1.0,
+            "cost_complete": False,
+        },
+    }
+
+    context = {
+        "hard_block": False,
+        "sellability": (
+            "SELLABILITY_OK"
+        ),
+        "mathematical_plan": plan,
+    }
+
+    db.execute(
+        """
+        INSERT INTO
+        candidate_decision_history(
+            token,
+            pool,
+            observed_at,
+            context_json
+        )
+        VALUES(?,?,?,?)
+        """,
+        (
+            TOKEN,
+            POOL,
+            time.time(),
+            json.dumps(context),
+        ),
+    )
+
+    db.commit()
     db.close()
 
 
@@ -77,6 +176,14 @@ def test_manual_paper_buy_sell_round_trip_and_balance_conservation(tmp_path):
     row = dict(db.execute("SELECT * FROM paper_trades WHERE id=?", (bought["position_id"],)).fetchone())
     assert row["status"] == "OPEN"
     assert row["trade_policy"] == "MANUAL_PANEL"
+    assert row["control_mode"] == "MANUAL"
+    assert row["trade_type"] == "NORMAL"
+    assert row["level_source"] == "SYSTEM"
+    assert row["sl_price"] > 0
+    assert row["sl_price"] < row["entry_price"]
+    assert row["tp_price"] > row["entry_price"]
+    assert row["mathematical_plan_json"]
+    assert row["math_state_json"]
     assert row["initial_token_amount"] == 50.0
     assert row["remaining_cost_basis_usdt"] == 100.0
     assert paper_available_capital_usdt(db) == 9900.0
@@ -526,4 +633,238 @@ def test_manual_preview_route_exists_without_trade_confirmation():
     assert (
         '"preview_only": True'
         in source
+    )
+
+
+
+def test_manual_buy_preview_returns_canonical_normal_plan(
+    tmp_path,
+):
+    paper = tmp_path / "paper.db"
+    cache = tmp_path / "cache.db"
+
+    _paper_db(paper)
+    _cache_db(
+        cache,
+        price=2.0,
+    )
+
+    preview = (
+        manual_module._preview_buy(
+            paper_db=paper,
+            cache_db=cache,
+            payload={
+                "side": "BUY",
+                "token": TOKEN,
+                "pool": POOL,
+                "symbol": "TEST",
+                "amount_usdt": 100.0,
+            },
+        )
+    )
+
+    assert preview[
+        "preview_only"
+    ] is True
+
+    assert preview[
+        "control_mode"
+    ] == "MANUAL"
+
+    assert preview[
+        "trade_type"
+    ] == "NORMAL"
+
+    assert preview[
+        "level_source"
+    ] == "SYSTEM"
+
+    assert preview[
+        "sl_price"
+    ] < preview[
+        "reference_price"
+    ]
+
+    assert preview[
+        "tp1_price"
+    ] > preview[
+        "reference_price"
+    ]
+
+    assert preview[
+        "tp2_mode"
+    ] == "DYNAMIC_PRINCIPAL_RECOVERY"
+
+    assert preview[
+        "tp3_mode"
+    ] == "TREND_RUNNER"
+
+
+def test_manual_buy_level_override_provenance(
+    tmp_path,
+):
+    paper = tmp_path / "paper.db"
+    cache = tmp_path / "cache.db"
+
+    _paper_db(paper)
+    _cache_db(
+        cache,
+        price=2.0,
+    )
+
+    bought = _buy(
+        paper_db=paper,
+        cache_db=cache,
+        payload={
+            "token": TOKEN,
+            "pool": POOL,
+            "symbol": "TEST",
+            "amount_usdt": 100.0,
+            "sl_price": 1.70,
+            "tp1_price": 2.50,
+        },
+    )
+
+    assert bought[
+        "level_source"
+    ] == "USER_OVERRIDDEN"
+
+    db = sqlite3.connect(
+        paper
+    )
+    db.row_factory = sqlite3.Row
+
+    row = dict(
+        db.execute(
+            """
+            SELECT *
+            FROM paper_trades
+            WHERE id=?
+            """,
+            (
+                bought[
+                    "position_id"
+                ],
+            ),
+        ).fetchone()
+    )
+
+    assert row[
+        "control_mode"
+    ] == "MANUAL"
+
+    assert row[
+        "trade_type"
+    ] == "NORMAL"
+
+    assert row[
+        "level_source"
+    ] == "USER_OVERRIDDEN"
+
+    assert row[
+        "sl_price"
+    ] == pytest.approx(
+        1.70
+    )
+
+    assert row[
+        "tp_price"
+    ] == pytest.approx(
+        2.50
+    )
+
+    context = json.loads(
+        row[
+            "opening_context_json"
+        ]
+    )
+
+    assert (
+        context[
+            "level_sources"
+        ]["sl"]
+        == "USER_OVERRIDDEN"
+    )
+
+    assert (
+        context[
+            "level_sources"
+        ]["tp1"]
+        == "USER_OVERRIDDEN"
+    )
+
+    db.close()
+
+
+def test_manual_buy_hard_block_fails_closed(
+    tmp_path,
+):
+    paper = tmp_path / "paper.db"
+    cache = tmp_path / "cache.db"
+
+    _paper_db(paper)
+    _cache_db(
+        cache,
+        price=2.0,
+    )
+
+    db = sqlite3.connect(
+        paper
+    )
+
+    context = {
+        "hard_block": True,
+        "sellability": (
+            "SELLABILITY_OK"
+        ),
+        "mathematical_plan": {
+            "hard_block": True,
+        },
+    }
+
+    db.execute(
+        """
+        INSERT INTO
+        candidate_decision_history(
+            token,
+            pool,
+            observed_at,
+            context_json
+        )
+        VALUES(?,?,?,?)
+        """,
+        (
+            TOKEN,
+            POOL,
+            time.time() + 1,
+            json.dumps(context),
+        ),
+    )
+
+    db.commit()
+    db.close()
+
+    with pytest.raises(
+        HTTPException
+    ) as exc:
+        _buy(
+            paper_db=paper,
+            cache_db=cache,
+            payload={
+                "token": TOKEN,
+                "pool": POOL,
+                "amount_usdt": 100.0,
+            },
+        )
+
+    assert (
+        exc.value.status_code
+        == 409
+    )
+
+    assert (
+        "hard block"
+        in str(
+            exc.value.detail
+        ).lower()
     )

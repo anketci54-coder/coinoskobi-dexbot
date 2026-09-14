@@ -14,11 +14,11 @@ class Candidate:
     liquidity: float
     volume_24h: float
     buys_24h: int
-    sells_24h: int
     fdv: float
     price_usd: float
     created_at: str | None
     observed_at: str
+    sells_24h: int = 0
 
     @staticmethod
     def normalize_chain(value):
@@ -105,13 +105,6 @@ class Candidate:
                 )
                 or 0
             ),
-            sells_24h=int(
-                row.get(
-                    "sells_24h",
-                    row.get("sells24") or 0,
-                )
-                or 0
-            ),
             fdv=float(
                 row.get("fdv") or 0
             ),
@@ -120,6 +113,13 @@ class Candidate:
             ),
             created_at=row.get("created_at"),
             observed_at=observed_at,
+            sells_24h=int(
+                row.get(
+                    "sells_24h",
+                    row.get("sells24") or 0,
+                )
+                or 0
+            ),
         )
 
     @property

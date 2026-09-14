@@ -23,7 +23,7 @@ _TIMESTAMP_RE = re.compile(
     r"^\d{4}-\d{2}-\d{2}T"
     r"\d{2}:\d{2}:\d{2}"
     r"(?:\.\d{1,6})?"
-    r"(?:Z|[+-]\d{2}:\d{2})$"
+    r"(?:Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)$"
 )
 
 
@@ -1016,6 +1016,10 @@ def calculate_paper_position_size(
         available
     )
 
+    # Paper-only calibration bootstrap.
+    # Bootstrap is allowed only when the complete cost model already proves
+    # a positive full-net edge. It may fill the unknown gap/account-risk
+    # calibration, but it may not bypass uncertain or non-positive economics.
     bootstrap_blockers = {
         "GAP_RISK_UNOBSERVED",
         "ACCOUNT_RISK_BUDGET_UNOBSERVED",
@@ -1044,6 +1048,10 @@ def calculate_paper_position_size(
             base_risk_notional * stop_loss_fraction
         )
 
+        # Gap risk is unobserved during bootstrap. Fail closed by assuming
+        # the calibration position can lose its entire notional before the
+        # next trustworthy observation. Therefore notional cannot exceed
+        # the plan-derived stop-risk budget.
         bootstrap_tail_loss_fraction = 1.0
         bootstrap_amount = max(
             0.0,
@@ -1210,6 +1218,10 @@ def calculate_paper_position_size(
         ),
     )
 
+    # A paper debit smaller than the next representable
+    # downward account-capital step cannot be represented
+    # faithfully by float accounting. Derive the floor from
+    # IEEE-754 spacing instead of inventing a trade minimum.
     if (
         amount > 0.0
         and accounting_quantum > 0.0

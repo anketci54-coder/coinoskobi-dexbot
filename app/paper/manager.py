@@ -1155,17 +1155,6 @@ class PaperManager:
         lowest,
         plan,
     ):
-        """
-        NORMAL policy.
-
-        Entry, stop and take-profit are fixed at
-        position creation from the mathematical plan.
-
-        This path deliberately does not execute
-        Vur-Kac realization, principal-recovery,
-        TP1/TP2 partial realization, or runner logic.
-        """
-
         self.db.record_price_observation(
             pos["id"],
             current,
@@ -1226,6 +1215,219 @@ class PaperManager:
                 "NORMAL_STOP_LOSS",
             )
 
+        tokens = float(
+            pos.get(
+                "token_amount"
+            )
+            or 0.0
+        )
+
+        stored_basis = pos.get(
+            "remaining_cost_basis_usdt"
+        )
+
+        basis = float(
+            (
+                pos.get(
+                    "entry_amount_usdt"
+                )
+                or 0.0
+            )
+            if stored_basis is None
+            else stored_basis
+        )
+
+        realized_pnl = float(
+            pos.get(
+                "realized_pnl_usdt"
+            )
+            or 0.0
+        )
+
+        cost_model = (
+            plan.get(
+                "cost_model"
+            )
+            or {}
+        )
+
+        state = self._json_dict(
+            pos.get(
+                "math_state_json"
+            )
+        )
+
+        stored_initial_risk = state.get(
+            "initial_net_risk_usdt"
+        )
+
+        if stored_initial_risk is None:
+            initial_stop = (
+                static_stop
+                if static_stop > 0
+                else None
+            )
+
+            if initial_stop is None:
+                sl_plan = (
+                    plan.get(
+                        "sl"
+                    )
+                    or {}
+                )
+
+                for key in (
+                    "price",
+                    "stop_price",
+                    "stop_loss_price",
+                    "initial_stop_price",
+                ):
+                    try:
+                        candidate_stop = float(
+                            sl_plan.get(key)
+                        )
+                    except (
+                        TypeError,
+                        ValueError,
+                    ):
+                        candidate_stop = 0.0
+
+                    if candidate_stop > 0:
+                        initial_stop = candidate_stop
+                        break
+
+            initial_risk = (
+                initial_net_risk_usdt(
+                    token_amount=tokens,
+                    entry_amount_usdt=(
+                        pos.get(
+                            "entry_amount_usdt"
+                        )
+                    ),
+                    stop_price=initial_stop,
+                    cost_model=cost_model,
+                )
+                if initial_stop
+                else None
+            )
+
+            if initial_risk is None:
+                initial_risk = float(
+                    pos.get(
+                        "risk_amount_usdt"
+                    )
+                    or pos.get(
+                        "entry_amount_usdt"
+                    )
+                    or 0.0
+                )
+
+            state[
+                "initial_net_risk_usdt"
+            ] = float(initial_risk)
+
+            self.db.update_position(
+                pos["id"],
+                {
+                    "risk_amount_usdt": (
+                        float(initial_risk)
+                    ),
+                    "math_state_json": (
+                        json.dumps(
+                            state,
+                            sort_keys=True,
+                        )
+                    ),
+                },
+            )
+
+            pos[
+                "risk_amount_usdt"
+            ] = float(initial_risk)
+
+        else:
+            initial_risk = float(
+                stored_initial_risk
+            )
+
+        if not int(
+            pos.get(
+                "tp1_done"
+            )
+            or 0
+        ):
+            fraction = (
+                tp1_required_fraction(
+                    token_amount=tokens,
+                    remaining_cost_basis_usdt=basis,
+                    current_price=current,
+                    initial_risk_usdt=initial_risk,
+                    realized_pnl_usdt=realized_pnl,
+                    cost_model=cost_model,
+                )
+            )
+
+            state[
+                "tp1_required_fraction"
+            ] = fraction
+
+            if (
+                fraction is not None
+                and 0 < fraction < 1
+            ):
+                realization = (
+                    realization_values(
+                        token_amount=tokens,
+                        fraction=fraction,
+                        current_price=current,
+                        remaining_cost_basis_usdt=basis,
+                        cost_model=cost_model,
+                    )
+                )
+
+                if (
+                    realization
+                    and self.db.apply_partial_realization(
+                        pos["id"],
+                        stage="TP1",
+                        price=current,
+                        realization=realization,
+                        math_state_json=json.dumps(
+                            state,
+                            sort_keys=True,
+                        ),
+                    )
+                ):
+                    self.db.update_position(
+                        pos["id"],
+                        {
+                            "highest_price": highest,
+                            "lowest_price": lowest,
+                            "sl_price": static_stop,
+                        },
+                    )
+
+                    return {
+                        "success": True,
+                        "source": "paper",
+                        "data": {
+                            "action": "PARTIAL_TP1",
+                            "token": pos["token"],
+                            "entry_price": pos[
+                                "entry_price"
+                            ],
+                            "current_price": current,
+                            "status": "OPEN",
+                            "reason": (
+                                "NORMAL_RISK_NEUTRALIZATION"
+                            ),
+                            "realization": realization,
+                            "static_sl": static_stop,
+                            "trade_type": "NORMAL",
+                            "mathematical_exit": True,
+                        },
+                    }
+
         if (
             static_tp > 0
             and current >= static_tp
@@ -1260,39 +1462,38 @@ class PaperManager:
                 "roi": roi,
                 "gross_pnl_usdt": gross,
                 "net_pnl_usdt": net,
+                "math_state_json": json.dumps(
+                    state,
+                    sort_keys=True,
+                ),
             },
         )
 
         return {
             "success": True,
             "source": "paper",
-
             "data": {
                 "action": "HOLD",
-
-                "token": (
-                    pos["token"]
-                ),
-
-                "entry_price": (
-                    pos["entry_price"]
-                ),
-
+                "token": pos["token"],
+                "entry_price": pos[
+                    "entry_price"
+                ],
                 "current_price": current,
                 "roi": roi,
                 "status": "OPEN",
-
                 "reason": (
                     "NORMAL_PLAN_ACTIVE"
                 ),
-
                 "gross_pnl_usdt": gross,
                 "net_pnl_usdt": net,
-
                 "static_sl": static_stop,
                 "static_tp": static_tp,
-
-                "trade_policy": "NORMAL",
+                "tp1_done": bool(
+                    pos.get(
+                        "tp1_done"
+                    )
+                ),
+                "trade_type": "NORMAL",
             },
         }
 
@@ -1350,15 +1551,8 @@ class PaperManager:
         new_stop = (
             dynamic_stop_price(
                 prices=history,
-
-                highest_price=(
-                    highest
-                ),
-
-                previous_stop=(
-                    previous_stop
-                ),
-
+                highest_price=highest,
+                previous_stop=previous_stop,
                 fallback_distance=(
                     fallback_distance
                 ),
@@ -1377,11 +1571,9 @@ class PaperManager:
             current_stop=new_stop,
         )
 
-        state = (
-            self._json_dict(
-                pos.get(
-                    "math_state_json"
-                )
+        state = self._json_dict(
+            pos.get(
+                "math_state_json"
             )
         )
 
@@ -1439,31 +1631,20 @@ class PaperManager:
         )
 
         common_update = {
-            "current_price": (
-                current
-            ),
-
-            "highest_price": (
-                highest
-            ),
-
-            "lowest_price": (
-                lowest
-            ),
-
-            "sl_price": (
-                new_stop
-            ),
-
-            "math_state_json": (
-                json.dumps(
-                    state,
-                    sort_keys=True,
-                )
-            ),
+            "current_price": current,
+            "highest_price": highest,
+            "lowest_price": lowest,
+            "sl_price": new_stop,
         }
 
         if hard_exit:
+            common_update[
+                "math_state_json"
+            ] = json.dumps(
+                state,
+                sort_keys=True,
+            )
+
             self.db.update_position(
                 pos["id"],
                 common_update,
@@ -1479,6 +1660,13 @@ class PaperManager:
             )
 
         if no_upside_failure:
+            common_update[
+                "math_state_json"
+            ] = json.dumps(
+                state,
+                sort_keys=True,
+            )
+
             self.db.update_position(
                 pos["id"],
                 common_update,
@@ -1515,135 +1703,11 @@ class PaperManager:
             else stored_basis
         )
 
-        realized_pnl = float(
-            pos.get(
-                "realized_pnl_usdt"
-            )
-            or 0.0
-        )
-
-        realized_proceeds = float(
-            pos.get(
-                "realized_proceeds_usdt"
-            )
-            or 0.0
-        )
-
         cost_model = (
             plan.get(
                 "cost_model"
             )
             or {}
-        )
-
-        stored_initial_risk = state.get(
-            "initial_net_risk_usdt"
-        )
-
-        if stored_initial_risk is None:
-            initial_stop = (
-                previous_stop
-                if previous_stop > 0
-                else None
-            )
-
-            if initial_stop is None:
-                sl_plan = (
-                    plan.get(
-                        "sl"
-                    )
-                    or {}
-                )
-
-                for key in (
-                    "price",
-                    "stop_price",
-                    "stop_loss_price",
-                    "initial_stop_price",
-                ):
-                    try:
-                        candidate_stop = float(
-                            sl_plan.get(key)
-                        )
-                    except (
-                        TypeError,
-                        ValueError,
-                    ):
-                        candidate_stop = 0.0
-
-                    if candidate_stop > 0:
-                        initial_stop = (
-                            candidate_stop
-                        )
-                        break
-
-            initial_risk = (
-                initial_net_risk_usdt(
-                    token_amount=tokens,
-                    entry_amount_usdt=(
-                        pos.get(
-                            "entry_amount_usdt"
-                        )
-                    ),
-                    stop_price=(
-                        initial_stop
-                    ),
-                    cost_model=(
-                        cost_model
-                    ),
-                )
-                if initial_stop
-                else None
-            )
-
-            if initial_risk is None:
-                initial_risk = float(
-                    pos.get(
-                        "risk_amount_usdt"
-                    )
-                    or pos.get(
-                        "entry_amount_usdt"
-                    )
-                    or 0.0
-                )
-
-            state[
-                "initial_net_risk_usdt"
-            ] = float(
-                initial_risk
-            )
-
-            self.db.update_position(
-                pos["id"],
-                {
-                    "risk_amount_usdt": (
-                        float(
-                            initial_risk
-                        )
-                    ),
-                    "math_state_json": (
-                        json.dumps(
-                            state,
-                            sort_keys=True,
-                        )
-                    ),
-                },
-            )
-
-            pos[
-                "risk_amount_usdt"
-            ] = float(
-                initial_risk
-            )
-        else:
-            initial_risk = float(
-                stored_initial_risk
-            )
-
-        common_update[
-            "risk_amount_usdt"
-        ] = float(
-            initial_risk
         )
 
         signal_bundle = (
@@ -1665,65 +1729,13 @@ class PaperManager:
 
         vur_kac = (
             mathematical_vur_kac_state(
-                prices=(
-                    post_entry_history
-                ),
-
-                token_amount=(
-                    tokens
-                ),
-
-                remaining_cost_basis_usdt=(
-                    basis
-                ),
-
-                current_price=(
-                    current
-                ),
-
-                cost_model=(
-                    cost_model
-                ),
-
-                signal_bundle=(
-                    signal_bundle
-                ),
+                prices=post_entry_history,
+                token_amount=tokens,
+                remaining_cost_basis_usdt=basis,
+                current_price=current,
+                cost_model=cost_model,
+                signal_bundle=signal_bundle,
             )
-        )
-
-        current_ce = vur_kac.get(
-            "continuation_edge_usdt"
-        )
-
-        previous_ce = state.get(
-            "vur_kac_continuation_edge_usdt"
-        )
-
-        try:
-            previous_ce = (
-                float(previous_ce)
-                if previous_ce
-                is not None
-                else None
-            )
-        except (
-            TypeError,
-            ValueError,
-        ):
-            previous_ce = None
-
-        persistent_vur_kac = (
-            bool(
-                vur_kac.get(
-                    "realize"
-                )
-            )
-            and current_ce
-            is not None
-            and previous_ce
-            is not None
-            and float(current_ce)
-            <= float(previous_ce)
         )
 
         state[
@@ -1749,14 +1761,10 @@ class PaperManager:
         )
 
         state[
-            "vur_kac_persistent"
-        ] = bool(
-            persistent_vur_kac
-        )
-
-        state[
             "vur_kac_continuation_edge_usdt"
-        ] = current_ce
+        ] = vur_kac.get(
+            "continuation_edge_usdt"
+        )
 
         state[
             "vur_kac_remaining_net_profit_usdt"
@@ -1764,28 +1772,22 @@ class PaperManager:
             "remaining_net_profit_usdt"
         )
 
-        # Once TP2 has already recovered principal,
-        # the remaining inventory is the runner.
-        #
-        # If the mathematically negative continuation
-        # edge persists or worsens for another actual
-        # observation, close the remaining runner.
-        if (
-            int(
-                pos.get(
-                    "runner_active"
-                )
-                or 0
-            )
-            and persistent_vur_kac
-        ):
-            common_update[
-                "math_state_json"
-            ] = json.dumps(
-                state,
-                sort_keys=True,
-            )
+        state[
+            "vur_kac_full_exit_only"
+        ] = True
 
+        common_update[
+            "math_state_json"
+        ] = json.dumps(
+            state,
+            sort_keys=True,
+        )
+
+        if bool(
+            vur_kac.get(
+                "realize"
+            )
+        ):
             self.db.update_position(
                 pos["id"],
                 common_update,
@@ -1800,244 +1802,6 @@ class PaperManager:
                 "MATHEMATICAL_VUR_KAC_EXIT",
             )
 
-        stage = None
-        fraction = None
-
-        if not int(
-            pos.get(
-                "tp1_done"
-            )
-            or 0
-        ):
-            fraction = (
-                tp1_required_fraction(
-                    token_amount=tokens,
-
-                    remaining_cost_basis_usdt=(
-                        basis
-                    ),
-
-                    current_price=(
-                        current
-                    ),
-
-                    initial_risk_usdt=(
-                        initial_risk
-                    ),
-
-                    realized_pnl_usdt=(
-                        realized_pnl
-                    ),
-
-                    cost_model=(
-                        cost_model
-                    ),
-                )
-            )
-
-            if (
-                fraction is not None
-                and 0 < fraction < 1
-            ):
-                # TP1 is deterministic risk protection:
-                # once measured net profit can neutralize
-                # the remaining initial net risk, realize
-                # only the minimum required fraction.
-                #
-                # Flow/VUR_KAC continuation evidence remains
-                # authoritative for TP2 and runner decisions,
-                # but cannot block this first risk reduction.
-                stage = "TP1"
-
-                state[
-                    "tp1_required_fraction"
-                ] = fraction
-
-        elif not int(
-            pos.get(
-                "tp2_done"
-            )
-            or 0
-        ):
-            fraction = (
-                tp2_required_fraction(
-                    token_amount=tokens,
-
-                    current_price=(
-                        current
-                    ),
-
-                    original_entry_usdt=(
-                        pos.get(
-                            "entry_amount_usdt"
-                        )
-                    ),
-
-                    realized_proceeds_usdt=(
-                        realized_proceeds
-                    ),
-
-                    cost_model=(
-                        cost_model
-                    ),
-                )
-            )
-
-            if fraction == 0:
-                self.db.update_position(
-                    pos["id"],
-                    {
-                        **common_update,
-
-                        "tp2_done": 1,
-
-                        "runner_active": 1,
-                    },
-                )
-
-            else:
-                if (
-                    fraction is not None
-                    and 0 < fraction < 1
-                ):
-                    # Continued/worsening exhaustion
-                    # after TP1:
-                    # sell only the minimum fraction
-                    # needed to recover original entry.
-                    if persistent_vur_kac:
-                        stage = "TP2"
-
-                    state[
-                        "tp2_required_fraction"
-                    ] = fraction
-
-        # tp1_required_fraction / tp2_required_fraction
-        # are search-state measurements. They must survive
-        # a cycle even when no realization is executed yet.
-        #
-        # common_update was created before those state
-        # measurements were calculated, so serialize the
-        # current state again here.
-        common_update[
-            "math_state_json"
-        ] = json.dumps(
-            state,
-            sort_keys=True,
-        )
-
-        if stage is not None:
-            realization = (
-                realization_values(
-                    token_amount=tokens,
-
-                    fraction=fraction,
-
-                    current_price=(
-                        current
-                    ),
-
-                    remaining_cost_basis_usdt=(
-                        basis
-                    ),
-
-                    cost_model=(
-                        cost_model
-                    ),
-                )
-            )
-
-            if (
-                realization
-                and (
-                    self.db
-                    .apply_partial_realization(
-                        pos["id"],
-
-                        stage=stage,
-
-                        price=current,
-
-                        realization=(
-                            realization
-                        ),
-
-                        math_state_json=(
-                            json.dumps(
-                                state,
-                                sort_keys=True,
-                            )
-                        ),
-                    )
-                )
-            ):
-                self.db.update_position(
-                    pos["id"],
-                    {
-                        "highest_price": (
-                            highest
-                        ),
-
-                        "lowest_price": (
-                            lowest
-                        ),
-
-                        "sl_price": (
-                            new_stop
-                        ),
-                    },
-                )
-
-                return {
-                    "success": True,
-                    "source": "paper",
-
-                    "data": {
-                        "action": (
-                            f"PARTIAL_{stage}"
-                        ),
-
-                        "token": (
-                            pos["token"]
-                        ),
-
-                        "entry_price": (
-                            pos[
-                                "entry_price"
-                            ]
-                        ),
-
-                        "current_price": (
-                            current
-                        ),
-
-                        "status": "OPEN",
-
-                        "reason": (
-                            "MATHEMATICAL_REALIZATION"
-                        ),
-
-                        "realization": (
-                            realization
-                        ),
-
-                        "dynamic_sl": (
-                            new_stop
-                        ),
-
-                        "runner_active": (
-                            stage == "TP2"
-                        ),
-
-                        "mathematical_exit": (
-                            True
-                        ),
-                    },
-                }
-
-        # Give profitable VUR_KAC positions their TP1/TP2 realization
-        # opportunity before a non-hard dynamic trend-floor closes the
-        # entire position. If no partial realization is due, the floor
-        # remains authoritative for the residual position.
         if (
             new_stop > 0
             and current <= new_stop
@@ -2070,82 +1834,39 @@ class PaperManager:
             pos["id"],
             {
                 **common_update,
-
                 "gross_pnl": gross,
-
                 "net_pnl": net,
-
                 "roi": roi,
-
-                "gross_pnl_usdt": (
-                    gross
-                ),
-
-                "net_pnl_usdt": (
-                    net
-                ),
+                "gross_pnl_usdt": gross,
+                "net_pnl_usdt": net,
             },
         )
 
         return {
             "success": True,
             "source": "paper",
-
             "data": {
                 "action": "HOLD",
-
-                "token": (
-                    pos["token"]
-                ),
-
-                "entry_price": (
-                    pos[
-                        "entry_price"
-                    ]
-                ),
-
-                "current_price": (
-                    current
-                ),
-
+                "token": pos["token"],
+                "entry_price": pos[
+                    "entry_price"
+                ],
+                "current_price": current,
                 "roi": roi,
-
                 "status": "OPEN",
-
                 "reason": (
-                    "MATHEMATICAL_TREND_CONTINUES"
+                    "VUR_KAC_CONTINUES"
                 ),
-
-                "gross_pnl_usdt": (
-                    gross
-                ),
-
-                "net_pnl_usdt": (
-                    net
-                ),
-
-                "dynamic_sl": (
-                    new_stop
-                ),
-
-                "tp1_done": bool(
-                    pos.get(
-                        "tp1_done"
+                "gross_pnl_usdt": gross,
+                "net_pnl_usdt": net,
+                "dynamic_sl": new_stop,
+                "trade_type": "VUR_KAC",
+                "full_exit_only": True,
+                "vur_kac_reason": (
+                    vur_kac.get(
+                        "reason"
                     )
                 ),
-
-                "tp2_done": bool(
-                    pos.get(
-                        "tp2_done"
-                    )
-                ),
-
-                "runner_active": bool(
-                    pos.get(
-                        "runner_active"
-                    )
-                ),
-
                 "mathematical_exit": True,
             },
         }

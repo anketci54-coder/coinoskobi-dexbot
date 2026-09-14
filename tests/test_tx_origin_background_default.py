@@ -104,9 +104,12 @@ def test_default_provider_background_lookup_retries_once_after_miss():
         resolver.forget("0xbackground-retry")
 
 
-def test_default_provider_background_capacity_fails_closed_without_waiting():
-    def fetcher(_):
-        time.sleep(0.15)
+def test_default_provider_background_capacity_queues_without_blocking():
+    calls = []
+
+    def fetcher(tx_hash):
+        calls.append(tx_hash)
+        time.sleep(0.08)
         return {"from": WALLET}
 
     resolver = TransactionOriginResolver(
@@ -114,6 +117,7 @@ def test_default_provider_background_capacity_fails_closed_without_waiting():
         negative_ttl_seconds=0.01,
         retry_delay_seconds=0.03,
         max_pending_retries=1,
+        max_deferred_background=4,
     )
     resolver.fetcher = fetcher
 
@@ -126,16 +130,15 @@ def test_default_provider_background_capacity_fails_closed_without_waiting():
 
         assert first["source"] == "PROVIDER_LOOKUP_PENDING"
         assert second["state"] == "UNKNOWN"
-        assert second["source"] == "PROVIDER_LOOKUP_CAPACITY"
+        assert second["source"] == "PROVIDER_LOOKUP_QUEUED"
         assert elapsed < 0.05
-        assert resolved_transaction_origin(
-            "0xbackground-capacity-b"
-        ) is None
 
         status = resolver.status()
         assert status["background_scheduled"] == 1
-        assert status["background_dropped"] == 1
+        assert status["background_queued"] == 1
+        assert status["background_dropped"] == 0
         assert status["pending_background_lookups"] == 1
+        assert status["deferred_background_lookups"] == 1
 
         await asyncio.sleep(0.25)
 
@@ -144,10 +147,54 @@ def test_default_provider_background_capacity_fails_closed_without_waiting():
         ) == WALLET
         assert resolved_transaction_origin(
             "0xbackground-capacity-b"
-        ) is None
+        ) == WALLET
+
+        status = resolver.status()
+        assert status["background_scheduled"] == 2
+        assert status["background_drained"] == 1
+        assert status["deferred_background_lookups"] == 0
+        assert status["background_dropped"] == 0
+        assert len(calls) == 2
 
     try:
         asyncio.run(scenario())
     finally:
         resolver.forget("0xbackground-capacity-a")
         resolver.forget("0xbackground-capacity-b")
+
+
+def test_default_provider_deferred_queue_remains_bounded():
+    def fetcher(_):
+        time.sleep(0.2)
+        return {"from": WALLET}
+
+    resolver = TransactionOriginResolver(
+        timeout_seconds=0.5,
+        negative_ttl_seconds=0.01,
+        retry_delay_seconds=0.03,
+        max_pending_retries=1,
+        max_deferred_background=1,
+    )
+    resolver.fetcher = fetcher
+
+    async def scenario():
+        first = await resolver.resolve("0xbackground-bound-a")
+        second = await resolver.resolve("0xbackground-bound-b")
+        third = await resolver.resolve("0xbackground-bound-c")
+
+        assert first["source"] == "PROVIDER_LOOKUP_PENDING"
+        assert second["source"] == "PROVIDER_LOOKUP_QUEUED"
+        assert third["source"] == "PROVIDER_LOOKUP_CAPACITY"
+
+        status = resolver.status()
+        assert status["pending_background_lookups"] == 1
+        assert status["deferred_background_lookups"] == 1
+        assert status["max_deferred_background"] == 1
+        assert status["background_dropped"] == 1
+
+    try:
+        asyncio.run(scenario())
+    finally:
+        resolver.forget("0xbackground-bound-a")
+        resolver.forget("0xbackground-bound-b")
+        resolver.forget("0xbackground-bound-c")

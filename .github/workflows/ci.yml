@@ -39,6 +39,7 @@ jobs:
           tests/test_paper_outcome_integrity_exclusion.py
           tests/test_trade_contract_schema.py
           tests/test_trade_type_routing.py
+          tests/test_paper_manager_trade_type_routing.py
           tests/test_tp1_deterministic_risk_neutralization.py
           tests/test_candidate_reevaluation_ledger.py
           tests/test_opportunity_observability.py

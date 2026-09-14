@@ -12,6 +12,9 @@ from app.paper.database import (
 from app.paper.cache_price import (
     CachePrice,
 )
+from app.paper.trade_routing import (
+    lifecycle_trade_type,
+)
 from app.risk.hybrid_exit_controller import (
     evaluate_hybrid_exit,
 )
@@ -2630,14 +2633,11 @@ class PaperManager:
                     "mathematical_trade_plan"
                 )
             ):
-                policy = str(
-                    pos.get(
-                        "trade_policy"
-                    )
-                    or "NORMAL"
-                ).strip().upper()
+                trade_type = lifecycle_trade_type(
+                    pos
+                )
 
-                if policy == "VUR_KAC":
+                if trade_type == "VUR_KAC":
                     result = (
                         self._process_vur_kac_position(
                             pos,
@@ -2649,12 +2649,12 @@ class PaperManager:
                     )
 
                 else:
-                    if policy != "NORMAL":
+                    if trade_type != "NORMAL":
                         logger.warning(
-                            "Unknown trade policy=%s "
+                            "Unknown trade type=%s "
                             "position_id=%s; "
                             "using NORMAL fail-safe",
-                            policy,
+                            trade_type,
                             pos.get("id"),
                         )
 

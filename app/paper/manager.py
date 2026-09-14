@@ -1836,16 +1836,15 @@ class PaperManager:
                 fraction is not None
                 and 0 < fraction < 1
             ):
-                # First confirmed exhaustion:
-                # sell only the minimum fraction
-                # needed to neutralize measured
-                # initial net risk.
-                if bool(
-                    vur_kac.get(
-                        "realize"
-                    )
-                ):
-                    stage = "TP1"
+                # TP1 is deterministic risk protection:
+                # once measured net profit can neutralize
+                # the remaining initial net risk, realize
+                # only the minimum required fraction.
+                #
+                # Flow/VUR_KAC continuation evidence remains
+                # authoritative for TP2 and runner decisions,
+                # but cannot block this first risk reduction.
+                stage = "TP1"
 
                 state[
                     "tp1_required_fraction"

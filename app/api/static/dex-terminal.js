@@ -177,7 +177,101 @@
   }
   function renderPositions(){
     const rows=dashboard?.positions||[];
-    $('positionRows').innerHTML=rows.length?rows.map(row=>`<tr><td><div class="token-cell"><b>${esc(row.symbol||short(row.token))}</b><small>#${esc(row.id??'—')}</small></div></td><td>${esc(short(row.pool))}</td><td>${esc(row.trade_policy||'PAPER')}</td><td>${num(row.entry_price)}</td><td>${num(row.current_price??row.entry_price)}</td><td>${money(row.entry_amount_usdt)}</td><td class="${cls(row.net_pnl_usdt??row.net_pnl)}">${money(row.net_pnl_usdt??row.net_pnl)}</td><td class="${cls(row.roi_pct)}">${pct(row.roi_pct)}</td><td><button class="action-btn" data-preview-position="${esc(row.id)}">SATIŞI İNCELE</button></td></tr>`).join(''):'<tr><td colspan="9" class="muted">Açık paper pozisyon yok.</td></tr>';
+
+    $('positionRows').innerHTML=rows.length
+      ? rows.map(row=>{
+          const control=String(
+            row.control_mode ||
+            (
+              String(row.trade_policy||'')
+                .toUpperCase()==='MANUAL_PANEL'
+                ? 'MANUAL'
+                : 'AUTO'
+            )
+          ).toUpperCase();
+
+          const tradeType=String(
+            row.trade_type ||
+            row.trade_policy ||
+            'NORMAL'
+          ).toUpperCase();
+
+          const tp1Done=
+            Number(row.tp1_done||0)===1;
+
+          const tp2Done=
+            Number(row.tp2_done||0)===1;
+
+          const runner=
+            Number(row.runner_active||0)===1;
+
+          const tp1State=tp1Done
+            ? 'ALINDI'
+            : num(row.tp_price);
+
+          const tp2State=tp2Done
+            ? 'ANA PARA ALINDI'
+            : 'BEKLİYOR';
+
+          const tp3State=runner
+            ? 'TREND AKTİF'
+            : 'BEKLİYOR';
+
+          return `<tr>
+            <td>
+              <div class="token-cell">
+                <b>${esc(row.symbol||short(row.token))}</b>
+                <small>#${esc(row.id??'—')}</small>
+              </div>
+            </td>
+
+            <td>${esc(short(row.pool))}</td>
+
+            <td>
+              ${esc(control)}
+              <br>
+              <small>${esc(tradeType)}</small>
+            </td>
+
+            <td>${num(row.entry_price)}</td>
+
+            <td>${num(
+              row.current_price ??
+              row.entry_price
+            )}</td>
+
+            <td>${num(row.sl_price)}</td>
+
+            <td>${esc(tp1State)}</td>
+
+            <td>${esc(tp2State)}</td>
+
+            <td>${esc(tp3State)}</td>
+
+            <td class="${cls(
+              row.net_pnl_usdt ??
+              row.net_pnl
+            )}">
+              ${money(
+                row.net_pnl_usdt ??
+                row.net_pnl
+              )}
+            </td>
+
+            <td class="${cls(row.roi_pct)}">
+              ${pct(row.roi_pct)}
+            </td>
+
+            <td>
+              <button
+                class="action-btn"
+                data-preview-position="${esc(row.id)}">
+                SAT
+              </button>
+            </td>
+          </tr>`;
+        }).join('')
+      : '<tr><td colspan="12" class="muted">Açık paper pozisyon yok.</td></tr>';
   }
   function renderHistory(){
     const rows=closedRows();
@@ -632,68 +726,270 @@
     }
   }
 
+  let v61BuyDraft=null;
+
   function manualBuy(){
+    v61BuyDraft=null;
+
     openModal(
-      'MANUEL PAPER AL',
+      'MANUEL NORMAL · PAPER AL',
       `
       <div class="v61-box v61-warning">
         <small>YETKİ SINIRI</small>
-        <p>Bu işlem yalnız PAPER_10K defterine yazılır. Live emir, wallet signing veya zincir işlemi oluşturmaz.</p>
+        <p>
+          Yalnız PAPER_10K defteridir.
+          Risk Gate ve sellability bypass edilemez.
+          Live emir, wallet signing veya zincir işlemi yoktur.
+        </p>
       </div>
 
       <div class="v61-form" style="margin-top:12px">
         <label>TOKEN ADRESİ
           <input id="v61BuyToken" placeholder="0x...">
         </label>
+
         <label>POOL ADRESİ
           <input id="v61BuyPool" placeholder="0x...">
         </label>
+
         <label>SEMBOL
           <input id="v61BuySymbol" placeholder="TOKEN">
         </label>
+
         <label>YATIRIM · USDT
-          <input id="v61BuyAmount" type="number" min="0.01" step="0.01" value="100">
+          <input
+            id="v61BuyAmount"
+            type="number"
+            min="0.01"
+            step="0.01"
+            value="100">
         </label>
       </div>
 
       <div class="v61-actions">
-        <button class="v61-button paper" type="button" data-v61-buy-confirm>
-          PAPER ALIMI ONAYLA
+        <button
+          class="v61-button paper"
+          type="button"
+          data-v61-buy-preview>
+          SİSTEM PLANINI HESAPLA
         </button>
       </div>`
     );
   }
 
-  async function confirmBuy(){
+  async function previewBuy(){
     const payload={
       side:'BUY',
       token:$('v61BuyToken')?.value?.trim(),
       pool:$('v61BuyPool')?.value?.trim(),
       symbol:$('v61BuySymbol')?.value?.trim(),
-      amount_usdt:Number($('v61BuyAmount')?.value),
+      amount_usdt:Number(
+        $('v61BuyAmount')?.value
+      )
+    };
+
+    openModal(
+      'MANUEL NORMAL · PLAN HESAPLANIYOR',
+      '<div class="v61-box">Taze fiyat, Risk Gate ve matematiksel plan kontrol ediliyor...</div>'
+    );
+
+    try{
+      const data=await post(
+        '/api/manual-paper/preview-v2',
+        payload
+      );
+
+      v61BuyDraft={
+        token:payload.token,
+        pool:payload.pool,
+        symbol:payload.symbol,
+        amount_usdt:payload.amount_usdt,
+        preview:data
+      };
+
+      openModal(
+        'MANUEL NORMAL · ALIM PLANI',
+        `
+        <div class="v61-grid">
+          <div class="v61-box">
+            <small>TAZE ENTRY</small>
+            <b>${esc(data.reference_price)}</b>
+          </div>
+
+          <div class="v61-box">
+            <small>QUOTE YAŞI</small>
+            <b>${esc(
+              Number(data.reference_price_age_seconds || 0)
+                .toFixed(1)
+            )} sn</b>
+          </div>
+
+          <div class="v61-box">
+            <small>BAŞLANGIÇ RİSKİ</small>
+            <b>${money(data.initial_risk_usdt)}</b>
+          </div>
+
+          <div class="v61-box">
+            <small>MOD</small>
+            <b>MANUAL · NORMAL</b>
+          </div>
+
+          <div class="v61-box">
+            <small>TP2</small>
+            <b>ANA PARA GERİ ALIMI</b>
+          </div>
+
+          <div class="v61-box">
+            <small>TP3</small>
+            <b>TREND RUNNER</b>
+          </div>
+        </div>
+
+        <div class="v61-box" style="margin-top:10px">
+          <small>SİSTEM ÖNERİSİ</small>
+          <p>SL: ${esc(data.system_sl_price)}</p>
+          <p>TP1: ${esc(data.system_tp1_price)}</p>
+          <p>
+            TP2 ve TP3 sabit fiyat değildir.
+            TP2 matematiksel ana para geri alımı,
+            TP3 dinamik trend runner olarak yönetilir.
+          </p>
+        </div>
+
+        <div class="v61-form" style="margin-top:12px">
+          <label>YATIRIM · USDT
+            <input
+              id="v61BuyFinalAmount"
+              type="number"
+              min="0.01"
+              step="0.01"
+              value="${esc(data.amount_usdt)}">
+          </label>
+
+          <label>SL
+            <input
+              id="v61BuyFinalSl"
+              type="number"
+              min="0"
+              step="any"
+              value="${esc(data.sl_price)}">
+          </label>
+
+          <label>TP1
+            <input
+              id="v61BuyFinalTp1"
+              type="number"
+              min="0"
+              step="any"
+              value="${esc(data.tp1_price)}">
+          </label>
+        </div>
+
+        <div class="v61-box v61-warning" style="margin-top:10px">
+          <small>ONAY ANI</small>
+          <p>
+            Onayda fiyat yeniden okunur.
+            Entry preview fiyatı değil,
+            confirmation-time fresh quote olur.
+          </p>
+        </div>
+
+        <div class="v61-actions">
+          <button
+            class="v61-button paper"
+            type="button"
+            data-v61-buy-confirm>
+            PAPER ALIMI ONAYLA
+          </button>
+        </div>`
+      );
+
+    }catch(e){
+      v61BuyDraft=null;
+
+      openModal(
+        'MANUEL ALIM PLANI REDDEDİLDİ',
+        `<div class="v61-box v61-negative">
+          <p>${esc(e.message)}</p>
+        </div>`
+      );
+    }
+  }
+
+  async function confirmBuy(){
+    if(!v61BuyDraft){
+      openModal(
+        'PAPER ALIM REDDEDİLDİ',
+        `<div class="v61-box v61-negative">
+          Önce sistem planı oluşturulmalı.
+        </div>`
+      );
+      return;
+    }
+
+    const amount=Number(
+      $('v61BuyFinalAmount')?.value
+    );
+
+    const sl=Number(
+      $('v61BuyFinalSl')?.value
+    );
+
+    const tp1=Number(
+      $('v61BuyFinalTp1')?.value
+    );
+
+    const payload={
+      side:'BUY',
+      token:v61BuyDraft.token,
+      pool:v61BuyDraft.pool,
+      symbol:v61BuyDraft.symbol,
+      amount_usdt:amount,
+      sl_price:Number.isFinite(sl) ? sl : null,
+      tp1_price:Number.isFinite(tp1) ? tp1 : null,
       confirmed:true
     };
 
     try{
-      const data=await post('/api/manual-paper/order-v2',payload);
+      const data=await post(
+        '/api/manual-paper/order-v2',
+        payload
+      );
 
       openModal(
         'PAPER ALIM TAMAMLANDI',
         `<div class="v61-box v61-positive">
           <small>POZİSYON #${esc(data.position_id)}</small>
-          <b>${esc(data.symbol || payload.symbol || 'TOKEN')}</b>
-          <p>Referans fiyat: ${esc(data.reference_price)}</p>
+          <b>${esc(
+            data.symbol ||
+            payload.symbol ||
+            'TOKEN'
+          )}</b>
+
+          <p>Fresh entry: ${esc(data.reference_price)}</p>
           <p>Yatırım: ${money(data.amount_usdt)}</p>
+          <p>SL: ${esc(data.sl_price)}</p>
+          <p>TP1: ${esc(data.tp1_price)}</p>
+          <p>TP2: Dinamik principal recovery</p>
+          <p>TP3: Trend runner</p>
+          <p>Seviye kaynağı: ${esc(data.level_source)}</p>
           <p>Paper bakiye: ${money(data.paper_balance_after)}</p>
         </div>`
       );
 
-      setTimeout(()=>location.reload(),1200);
+      v61BuyDraft=null;
+
+      setTimeout(
+        ()=>location.reload(),
+        1200
+      );
 
     }catch(e){
       openModal(
         'PAPER ALIM REDDEDİLDİ',
-        `<div class="v61-box v61-negative"><p>${esc(e.message)}</p></div>`
+        `<div class="v61-box v61-negative">
+          <p>${esc(e.message)}</p>
+        </div>`
       );
     }
   }
@@ -1093,6 +1389,11 @@
 
     if(e.target.closest('[data-v61-buy]')){
       manualBuy();
+      return;
+    }
+
+    if(e.target.closest('[data-v61-buy-preview]')){
+      await previewBuy();
       return;
     }
 

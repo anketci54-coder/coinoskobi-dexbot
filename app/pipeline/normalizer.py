@@ -23,6 +23,7 @@ class CandidateNormalizer:
             "liquidity": "liquidity_usd",
             "volume_24h": "volume_h24_usd",
             "buys_24h": "buys_h24",
+            "sells_24h": "sells_h24",
             "fdv": "fdv_usd",
         }
 

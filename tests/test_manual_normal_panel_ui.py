@@ -32,12 +32,32 @@ def test_manual_normal_buy_uses_preview_before_confirm():
     )
 
     assert (
-        "sl_price:Number.isFinite(sl)"
+        "payload.sl_price=sl"
         in js
     )
 
     assert (
-        "tp1_price:Number.isFinite(tp1)"
+        "payload.tp1_price=tp1"
+        in js
+    )
+
+    assert (
+        "!sameNumber(\n        sl,\n        systemSl"
+        in js
+    )
+
+    assert (
+        "!sameNumber(\n        tp1,\n        systemTp1"
+        in js
+    )
+
+    assert (
+        "PLAN YENİDEN HESAPLANMALI"
+        in js
+    )
+
+    assert (
+        "Yatırım miktarı preview sonrasında değişti."
         in js
     )
 
@@ -94,5 +114,56 @@ def test_manual_panel_keeps_paper_only_language():
     assert (
         "Risk Gate ve sellability "
         "bypass edilemez."
+        in js
+    )
+
+
+def test_manual_normal_unchanged_system_levels_are_not_overrides():
+    js = Path(
+        "app/api/static/dex-terminal.js"
+    ).read_text(
+        encoding="utf-8"
+    )
+
+    assert "preview.system_sl_price" in js
+    assert "preview.system_tp1_price" in js
+
+    payload_start = js.index(
+        "const payload={",
+        js.index("async function confirmBuy()"),
+    )
+    payload_end = js.index(
+        "    };",
+        payload_start,
+    )
+    payload_block = js[
+        payload_start:payload_end
+    ]
+
+    assert "sl_price:" not in payload_block
+    assert "tp1_price:" not in payload_block
+
+
+def test_vur_kac_position_does_not_render_normal_tp_lifecycle():
+    js = Path(
+        "app/api/static/dex-terminal.js"
+    ).read_text(
+        encoding="utf-8"
+    )
+
+    assert "const isVurKac=" in js
+
+    assert (
+        "const tp1State=isVurKac"
+        in js
+    )
+
+    assert (
+        "const tp2State=isVurKac"
+        in js
+    )
+
+    assert (
+        "const tp3State=isVurKac"
         in js
     )

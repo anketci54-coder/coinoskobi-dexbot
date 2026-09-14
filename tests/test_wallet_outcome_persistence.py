@@ -41,6 +41,7 @@ def make_db(path):
 
         CREATE TABLE paper_trades(
             id INTEGER PRIMARY KEY,
+            created_at TEXT,
             token TEXT,
             closed_at TEXT,
             roi REAL,
@@ -94,15 +95,17 @@ def test_historical_backfill_and_hydration(tmp_path):
         """
         INSERT INTO paper_trades(
             id,
+            created_at,
             token,
             closed_at,
             roi,
             opening_context_json,
             status
         )
-        VALUES(1, '0xtoken', ?, 0.125, ?, 'CLOSED')
+        VALUES(1, ?, '0xtoken', ?, 0.125, ?, 'CLOSED')
         """,
         (
+            "2026-09-08T11:45:00+00:00",
             "2026-09-08T12:00:00+00:00",
             json.dumps(
                 eligible_context()
@@ -194,15 +197,17 @@ def test_backfill_is_deduplicated(tmp_path):
         """
         INSERT INTO paper_trades(
             id,
+            created_at,
             token,
             closed_at,
             roi,
             opening_context_json,
             status
         )
-        VALUES(2, '0xtoken2', ?, -0.05, ?, 'CLOSED')
+        VALUES(2, ?, '0xtoken2', ?, -0.05, ?, 'CLOSED')
         """,
         (
+            "2026-09-08T11:46:00+00:00",
             "2026-09-08T12:01:00+00:00",
             json.dumps(
                 eligible_context()

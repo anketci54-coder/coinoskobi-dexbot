@@ -28,9 +28,13 @@ from app.learning.calibration_readmodel import (
     CalibrationReadModel,
     build_calibration_bucket,
 )
-
 from app.learning.outcome_segmentation import (
     build_outcome_segments,
+)
+from app.learning.paper_outcome_integrity import (
+    BUG_CONTAMINATED,
+    INTEGRITY_UNAVAILABLE,
+    PaperOutcomeIntegrity,
 )
 
 
@@ -40,6 +44,7 @@ class RuntimeLearningOutcomeFeed:
 
     Scope:
     - completed PAPER positions only
+    - integrity-approved outcomes only
     - proposal-only learning
     - bounded runtime memory/readmodel
     - no hindsight reconstruction
@@ -57,6 +62,7 @@ class RuntimeLearningOutcomeFeed:
         min_samples=20,
         wallet_outcome_observer=None,
         wallet_outcome_db_path=None,
+        outcome_exclusions_path=None,
     ):
         self.chain = (
             str(chain or "")
@@ -89,6 +95,12 @@ class RuntimeLearningOutcomeFeed:
             else None
         )
 
+        self.outcome_integrity = (
+            PaperOutcomeIntegrity(
+                outcome_exclusions_path
+            )
+        )
+
         self._events = OrderedDict()
         self._phase9_retries = OrderedDict()
         self.max_phase9_retries = self.max_events
@@ -107,10 +119,27 @@ class RuntimeLearningOutcomeFeed:
         self.duplicate_count = 0
         self.unknown_count = 0
         self.dropped_count = 0
+        self.excluded_count = 0
+        self.integrity_blocked_count = 0
 
     @property
     def event_count(self):
         return len(self._events)
+
+    def _classify_integrity(
+        self,
+        *,
+        position_id,
+        created_at,
+        closed_at,
+        source_table="paper_trades",
+    ):
+        return self.outcome_integrity.classify(
+            source_table=source_table,
+            position_id=position_id,
+            created_at=created_at,
+            closed_at=closed_at,
+        )
 
     def _persist_wallet_outcome(
         self,
@@ -285,9 +314,23 @@ class RuntimeLearningOutcomeFeed:
 
         if path is None:
             return {
+                "state": "DISABLED",
                 "scanned": 0,
                 "eligible": 0,
                 "persisted": 0,
+                "excluded": 0,
+                "integrity_blocked": 0,
+            }
+
+        if not self.outcome_integrity.available:
+            self.integrity_blocked_count += 1
+            return {
+                "state": "INTEGRITY_BLOCKED",
+                "scanned": 0,
+                "eligible": 0,
+                "persisted": 0,
+                "excluded": 0,
+                "integrity_blocked": 1,
             }
 
         db = sqlite3.connect(
@@ -311,15 +354,19 @@ class RuntimeLearningOutcomeFeed:
 
             if table is None:
                 return {
+                    "state": "SCHEMA_NOT_READY",
                     "scanned": 0,
                     "eligible": 0,
                     "persisted": 0,
+                    "excluded": 0,
+                    "integrity_blocked": 0,
                 }
 
             rows = db.execute(
                 '''
                 SELECT
                     id,
+                    created_at,
                     token,
                     closed_at,
                     roi,
@@ -336,8 +383,26 @@ class RuntimeLearningOutcomeFeed:
         scanned = len(rows)
         eligible = 0
         persisted = 0
+        excluded = 0
+        integrity_blocked = 0
 
         for row in rows:
+            integrity = self._classify_integrity(
+                position_id=row["id"],
+                created_at=row["created_at"],
+                closed_at=row["closed_at"],
+            )
+
+            if integrity["state"] == BUG_CONTAMINATED:
+                excluded += 1
+                self.excluded_count += 1
+                continue
+
+            if integrity["state"] == INTEGRITY_UNAVAILABLE:
+                integrity_blocked += 1
+                self.integrity_blocked_count += 1
+                continue
+
             try:
                 context = json.loads(
                     row["opening_context_json"]
@@ -406,9 +471,16 @@ class RuntimeLearningOutcomeFeed:
                 persisted += 1
 
         return {
+            "state": (
+                "INTEGRITY_BLOCKED"
+                if integrity_blocked
+                else "READY"
+            ),
             "scanned": scanned,
             "eligible": eligible,
             "persisted": persisted,
+            "excluded": excluded,
+            "integrity_blocked": integrity_blocked,
         }
 
     def hydrate_wallet_outcomes(
@@ -426,16 +498,33 @@ class RuntimeLearningOutcomeFeed:
             return {
                 "state": "UNBOUND",
                 "backfill": {
+                    "state": "UNBOUND",
                     "scanned": 0,
                     "eligible": 0,
                     "persisted": 0,
+                    "excluded": 0,
+                    "integrity_blocked": 0,
                 },
                 "hydrated": 0,
+                "excluded": 0,
+                "integrity_blocked": 0,
             }
 
         backfill = (
             self._backfill_wallet_outcomes()
         )
+
+        if backfill.get("state") == "INTEGRITY_BLOCKED":
+            return {
+                "state": "INTEGRITY_BLOCKED",
+                "backfill": backfill,
+                "hydrated": 0,
+                "excluded": backfill.get("excluded", 0),
+                "integrity_blocked": backfill.get(
+                    "integrity_blocked",
+                    0,
+                ),
+            }
 
         path = self.wallet_outcome_db_path
 
@@ -444,6 +533,8 @@ class RuntimeLearningOutcomeFeed:
                 "state": "DISABLED",
                 "backfill": backfill,
                 "hydrated": 0,
+                "excluded": 0,
+                "integrity_blocked": 0,
             }
 
         try:
@@ -472,26 +563,39 @@ class RuntimeLearningOutcomeFeed:
                 "WHERE type='table' AND name='wallet_outcome_evidence'"
             ).fetchone()
 
-            if evidence_exists is None:
+            paper_exists = db.execute(
+                "SELECT 1 FROM sqlite_master "
+                "WHERE type='table' AND name='paper_trades'"
+            ).fetchone()
+
+            if evidence_exists is None or paper_exists is None:
                 return {
                     "state": "SCHEMA_NOT_READY",
                     "backfill": backfill,
                     "hydrated": 0,
+                    "excluded": 0,
+                    "integrity_blocked": 0,
                 }
 
             rows = db.execute(
                 '''
                 SELECT
-                    evidence_id,
-                    wallet_uid,
-                    outcome_value,
-                    provenance
-                FROM wallet_outcome_evidence
-                WHERE evidence_type=
+                    e.evidence_id,
+                    e.wallet_uid,
+                    e.outcome_value,
+                    e.provenance,
+                    p.id AS position_id,
+                    p.created_at AS created_at,
+                    p.closed_at AS closed_at
+                FROM wallet_outcome_evidence AS e
+                LEFT JOIN paper_trades AS p
+                  ON e.provenance =
+                     'PAPER_MANAGER_CLOSE:paper-position:' || p.id
+                WHERE e.evidence_type=
                     'REALIZED_RETURN_PCT'
-                  AND provenance LIKE
+                  AND e.provenance LIKE
                     'PAPER_MANAGER_CLOSE:paper-position:%'
-                ORDER BY evidence_id DESC
+                ORDER BY e.evidence_id DESC
                 LIMIT ?
                 ''',
                 (bounded_limit,),
@@ -500,8 +604,26 @@ class RuntimeLearningOutcomeFeed:
             db.close()
 
         hydrated = 0
+        excluded = 0
+        integrity_blocked = 0
 
         for row in reversed(rows):
+            integrity = self._classify_integrity(
+                position_id=row["position_id"],
+                created_at=row["created_at"],
+                closed_at=row["closed_at"],
+            )
+
+            if integrity["state"] == BUG_CONTAMINATED:
+                excluded += 1
+                self.excluded_count += 1
+                continue
+
+            if integrity["state"] == INTEGRITY_UNAVAILABLE:
+                integrity_blocked += 1
+                self.integrity_blocked_count += 1
+                continue
+
             provenance = str(
                 row["provenance"]
                 or ""
@@ -530,9 +652,15 @@ class RuntimeLearningOutcomeFeed:
                 hydrated += 1
 
         return {
-            "state": "READY",
+            "state": (
+                "INTEGRITY_BLOCKED"
+                if integrity_blocked
+                else "READY"
+            ),
             "backfill": backfill,
             "hydrated": hydrated,
+            "excluded": excluded,
+            "integrity_blocked": integrity_blocked,
             "decision_authority": False,
             "paper_authority": False,
             "live_authority": False,
@@ -568,6 +696,36 @@ class RuntimeLearningOutcomeFeed:
             return self._out(
                 "INVALID",
                 None,
+            )
+
+        integrity = self._classify_integrity(
+            position_id=position_id,
+            created_at=observed_at,
+            closed_at=evaluated_at,
+        )
+
+        if integrity["state"] == BUG_CONTAMINATED:
+            self.excluded_count += 1
+            return self._out(
+                "EXCLUDED",
+                {
+                    "position_id": position_id,
+                    "outcome_integrity": integrity,
+                    "proposal_only": True,
+                    "automatic_apply_allowed": False,
+                },
+            )
+
+        if integrity["state"] == INTEGRITY_UNAVAILABLE:
+            self.integrity_blocked_count += 1
+            return self._out(
+                "INTEGRITY_BLOCKED",
+                {
+                    "position_id": position_id,
+                    "outcome_integrity": integrity,
+                    "proposal_only": True,
+                    "automatic_apply_allowed": False,
+                },
             )
 
         outcome_id = (
@@ -861,6 +1019,7 @@ class RuntimeLearningOutcomeFeed:
                     "exit_price_drift_available"
                 ]
             ),
+            "outcome_integrity": integrity,
             "evidence": evidence,
             "classification": (
                 classification
@@ -1430,6 +1589,15 @@ class RuntimeLearningOutcomeFeed:
             ),
             "dropped_count": (
                 self.dropped_count
+            ),
+            "excluded_count": (
+                self.excluded_count
+            ),
+            "integrity_blocked_count": (
+                self.integrity_blocked_count
+            ),
+            "outcome_integrity": (
+                self.outcome_integrity.status()
             ),
             "phase9_retry_count": (
                 self.phase9_retry_count

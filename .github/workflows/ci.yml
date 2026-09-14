@@ -36,12 +36,15 @@ jobs:
           tests/test_origin_participation_admission_integration.py
           tests/test_vur_kac_entry_admission.py
           tests/test_catastrophic_gap_calibration.py
+          tests/test_paper_outcome_integrity_exclusion.py
           tests/test_candidate_reevaluation_ledger.py
           tests/test_opportunity_observability.py
           tests/test_fast_watch_revisit.py
           tests/test_followup_snapshot_cache.py
           tests/test_runtime_performance_observer.py
           tests/test_runtime_outcome_feed.py
+          tests/test_runtime_learning_outcome_integrity.py
+          tests/test_wallet_outcome_persistence.py
           tests/test_intelligence_composition.py
           tests/test_phase9_outcome_binding.py
           tests/test_phase9_successful_wallet_tracking.py

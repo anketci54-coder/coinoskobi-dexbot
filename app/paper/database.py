@@ -12,6 +12,9 @@ from pathlib import Path
 from app.paper.schema import (
     ensure_paper_schema,
 )
+from app.paper.trade_routing import (
+    canonicalize_trade_axes,
+)
 
 from app.risk.paper_position_sizing import (
     PAPER_CAPITAL_USDT,
@@ -138,9 +141,11 @@ class PaperDatabase:
         self,
         trade,
     ):
-        trade = dict(
-            trade
-            or {}
+        trade = canonicalize_trade_axes(
+            dict(
+                trade
+                or {}
+            )
         )
 
         if not trade.get(
@@ -253,7 +258,7 @@ class PaperDatabase:
                         SELECT COUNT(*)
                         FROM paper_trades
                         WHERE status='OPEN'
-                        """
+                        """,
                     )
                     .fetchone()[0]
                 )
@@ -331,7 +336,7 @@ class PaperDatabase:
                     FROM paper_trades
                     WHERE status='OPEN'
                     ORDER BY id
-                    """
+                    """,
                 )
                 .fetchall()
             )

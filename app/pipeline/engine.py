@@ -1977,6 +1977,17 @@ class PipelineEngine:
                         )
                     )
 
+                    selected_trade_type = (
+                        "VUR_KAC"
+                        if (
+                            vur_kac_entry_shadow.get(
+                                "trade_policy_candidate"
+                            )
+                            == "VUR_KAC"
+                        )
+                        else "NORMAL"
+                    )
+
                     exit_evidence = dict(
                         exit_evidence or {}
                     )
@@ -2088,6 +2099,10 @@ class PipelineEngine:
                                     intelligence_context
                                 ),
                             },
+
+                            trade_type=(
+                                selected_trade_type
+                            ),
                         )
                     )
 
@@ -2498,7 +2513,7 @@ class PipelineEngine:
                                 False
                             ),
 
-                            "trade_policy": "VUR_KAC",
+                            "trade_policy": selected_trade_type,
 
                             "vur_kac_entry_shadow": (
                                 vur_kac_entry_shadow
@@ -2602,7 +2617,13 @@ class PipelineEngine:
                                 "PAPER_10K_V2"
                             ),
 
-                            "trade_policy": "VUR_KAC",
+                            "trade_policy": selected_trade_type,
+
+                            "control_mode": "AUTO",
+
+                            "trade_type": (
+                                selected_trade_type
+                            ),
 
                             "entry_amount_usdt": (
                                 entry_amount_usdt

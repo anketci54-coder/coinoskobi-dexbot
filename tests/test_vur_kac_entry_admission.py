@@ -149,3 +149,54 @@ def test_non_runtime_trade_plan_call_remains_backwards_compatible():
         plan["vur_kac_entry"]["reason"]
         == "VUR_KAC_ENTRY_GATE_NOT_APPLICABLE"
     )
+
+
+def test_explicit_normal_trade_type_does_not_enforce_vur_kac_gate():
+    plan = build_trade_plan(
+        entry_price=1.05,
+        available_capital_usdt=10000.0,
+        price_series=[1.00, 1.02, 1.05],
+        quote_reserve_usd=100000.0,
+        lp_protected_fraction=1.0,
+        sellability_status="SELLABILITY_OK",
+        market_context={
+            "runtime_intelligence": {},
+        },
+        trade_type="NORMAL",
+    )
+
+    gate = plan["vur_kac_entry"]
+
+    assert gate["enforced"] is False
+    assert gate["ready"] is True
+    assert gate["reason"] == (
+        "VUR_KAC_ENTRY_GATE_NOT_APPLICABLE"
+    )
+
+    assert "VUR_KAC_ENTRY_NOT_READY" not in plan["blockers"]
+
+    assert not any(
+        str(value).startswith("VUR_KAC_")
+        for value in plan["blockers"]
+    )
+
+
+def test_explicit_vur_kac_trade_type_keeps_strict_gate():
+    plan = build_trade_plan(
+        entry_price=1.05,
+        available_capital_usdt=10000.0,
+        price_series=[1.00, 1.02, 1.05],
+        quote_reserve_usd=100000.0,
+        lp_protected_fraction=1.0,
+        sellability_status="SELLABILITY_OK",
+        market_context={
+            "runtime_intelligence": {},
+        },
+        trade_type="VUR_KAC",
+    )
+
+    gate = plan["vur_kac_entry"]
+
+    assert gate["enforced"] is True
+    assert gate["ready"] is False
+    assert "VUR_KAC_ENTRY_NOT_READY" in plan["blockers"]

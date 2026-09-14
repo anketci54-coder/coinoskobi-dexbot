@@ -37,6 +37,7 @@ jobs:
           tests/test_vur_kac_entry_admission.py
           tests/test_catastrophic_gap_calibration.py
           tests/test_paper_outcome_integrity_exclusion.py
+          tests/test_outcome_timestamp_grammar.py
           tests/test_tp1_deterministic_risk_neutralization.py
           tests/test_candidate_reevaluation_ledger.py
           tests/test_opportunity_observability.py

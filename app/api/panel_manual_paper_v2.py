@@ -11,6 +11,10 @@ from typing import Any
 from fastapi import HTTPException
 
 from app.paper.manager import PaperManager
+from app.paper.control_mode import (
+    get_control_mode,
+    set_control_mode,
+)
 from app.risk.paper_position_sizing import PAPER_CAPITAL_USDT, paper_available_capital_usdt
 from app.scanner.gecko_scanner import GeckoScanner
 from app.strategy.mathematical_trade_plan import (
@@ -1773,6 +1777,57 @@ def _sell(*, paper_db: Path, cache_db: Path, payload: dict[str, Any]) -> dict[st
 
 
 def register_manual_paper_routes_v2(app, *, paper_db: Path, cache_db: Path) -> None:
+    @app.get("/api/paper-control-mode")
+    def paper_control_mode() -> dict[str, Any]:
+        mode = get_control_mode(
+            paper_db
+        )
+
+        return {
+            "control_mode": mode,
+            "auto_entry_enabled": (
+                mode == "AUTO"
+            ),
+            "manual_normal_enabled": True,
+            "vur_kac_manual_enabled": False,
+            "existing_positions_immutable": True,
+            "paper_only": True,
+            "live_execution": False,
+        }
+
+    @app.post("/api/paper-control-mode")
+    def update_paper_control_mode(
+        payload: dict[str, Any],
+    ) -> dict[str, Any]:
+        try:
+            mode = set_control_mode(
+                paper_db,
+                payload.get(
+                    "control_mode"
+                ),
+            )
+
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "control_mode yalnız "
+                    "AUTO veya MANUAL olabilir"
+                ),
+            ) from exc
+
+        return {
+            "ok": True,
+            "control_mode": mode,
+            "auto_entry_enabled": (
+                mode == "AUTO"
+            ),
+            "existing_positions_changed": False,
+            "existing_positions_immutable": True,
+            "paper_only": True,
+            "live_execution": False,
+        }
+
     @app.post("/api/manual-paper/preview-v2")
     def manual_paper_preview_v2(payload: dict[str, Any]) -> dict[str, Any]:
         side = str(

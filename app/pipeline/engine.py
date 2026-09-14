@@ -27,6 +27,7 @@ from app.paper.database import (
 )
 from app.paper.cache_price import CachePrice
 from app.paper.manager import PaperManager
+from app.paper.control_mode import get_control_mode
 
 from app.cache.gecko_cache import GeckoCache
 from app.filter.cache_filter import CacheFilter
@@ -2860,6 +2861,16 @@ class PipelineEngine:
 
                         if not inserted:
                             if (
+                                get_control_mode(
+                                    PAPER_DB
+                                )
+                                == "MANUAL"
+                            ):
+                                reason = (
+                                    "CONTROL_MODE_MANUAL"
+                                )
+
+                            elif (
                                 self.paper_db
                                 .has_open_position(
                                     token_address

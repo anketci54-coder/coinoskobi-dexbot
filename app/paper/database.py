@@ -16,6 +16,10 @@ from app.paper.trade_routing import (
     canonicalize_trade_axes,
 )
 
+from app.paper.control_mode import (
+    get_control_mode_from_connection,
+)
+
 from app.risk.paper_position_sizing import (
     PAPER_CAPITAL_USDT,
     paper_available_capital_usdt,
@@ -229,6 +233,22 @@ class PaperDatabase:
                 self.conn.execute(
                     "BEGIN IMMEDIATE"
                 )
+
+                if (
+                    get_control_mode_from_connection(
+                        self.conn
+                    )
+                    == "MANUAL"
+                    and str(
+                        (trade or {}).get(
+                            "control_mode"
+                        )
+                        or "AUTO"
+                    ).upper()
+                    == "AUTO"
+                ):
+                    self.conn.rollback()
+                    return False
 
                 duplicate = (
                     self.conn.execute(

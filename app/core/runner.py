@@ -7,6 +7,7 @@ from app.core.logger import get_logger
 from app.core.scheduler import Scheduler
 from app.market_data.broker import MarketDataBroker
 from app.pipeline.fast_watch_revisit import FastWatchRevisitJob
+from app.pipeline.runtime_price_history import install_runtime_price_history_cache
 
 log = get_logger()
 
@@ -58,6 +59,9 @@ class Runner:
             if scan_job
             else None
         )
+
+        if pipeline is not None:
+            install_runtime_price_history_cache()
 
         self.pipeline = pipeline
         self._paper_lifecycle_lock = threading.RLock()

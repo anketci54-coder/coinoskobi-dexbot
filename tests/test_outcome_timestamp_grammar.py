@@ -39,6 +39,9 @@ def test_canonical_aware_timestamps_are_accepted(value):
         "2026-13-13T15:18:35+00:00",
         "2026-09-13T25:18:35+00:00",
         "2026-09-13T15:18:35+24:00",
+        "2026-09-13T15:18:35-24:00",
+        "2026-09-13T15:18:35+00:60",
+        "2026-09-13T15:18:35+01:99",
     ],
 )
 def test_noncanonical_or_invalid_timestamps_fail_closed(value):

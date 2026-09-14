@@ -379,6 +379,41 @@ def test_malformed_fingerprint_value_types_fail_closed(
     assert calibration["account_risk_samples"] == 0
 
 
+@pytest.mark.parametrize(
+    ("key", "value"),
+    [
+        ("created_at", "not-a-date"),
+        ("closed_at", "also-not-a-date"),
+        ("created_at", "2026-09-13T15:18:35.118255"),
+        ("closed_at", "2026-09-13T16:25:18.506054"),
+    ],
+)
+def test_invalid_or_naive_fingerprint_timestamps_fail_closed(
+    tmp_path,
+    monkeypatch,
+    key,
+    value,
+):
+    db_path = tmp_path / "paper.db"
+    exclusion_path = tmp_path / "exclusions.json"
+
+    sqlite3.connect(db_path).close()
+    exclusion = _valid_exclusion()
+    exclusion[key] = value
+    _write_registry(exclusion_path, [exclusion])
+
+    calibration = _calibration(
+        db_path,
+        exclusion_path,
+        monkeypatch,
+    )
+
+    assert calibration["ready"] is False
+    assert calibration["reason"] == "OUTCOME_EXCLUSION_REGISTRY_INVALID"
+    assert calibration["gap_samples"] == 0
+    assert calibration["account_risk_samples"] == 0
+
+
 def test_registry_integrity_failure_cannot_bootstrap_paper_entry(
     tmp_path,
     monkeypatch,

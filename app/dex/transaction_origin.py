@@ -85,11 +85,13 @@ class TransactionOriginResolver:
     """
     Bounded tx-hash -> tx.from resolver.
 
-    Production/default provider lookups are dispatched to a bounded
-    background task so native WSS delivery never waits on HTTP RPC.
-    Custom fetchers retain synchronous-await semantics for deterministic
-    callers/tests. A failed lookup gets at most one delayed follow-up.
-    Only a proven transaction.from is published into the evidence bridge.
+    Production/default provider lookups are dispatched to bounded background
+    tasks so native WSS delivery never waits on HTTP RPC. When all active
+    lookup slots are occupied, hashes are retained in a bounded deferred FIFO
+    instead of being silently lost. Custom fetchers retain synchronous-await
+    semantics for deterministic callers/tests. A failed lookup gets at most
+    one delayed follow-up. Only a proven transaction.from is published into
+    the evidence bridge.
     """
 
     def __init__(
@@ -100,6 +102,7 @@ class TransactionOriginResolver:
         negative_ttl_seconds=5.0,
         retry_delay_seconds=None,
         max_pending_retries=64,
+        max_deferred_background=None,
     ):
         self.max_entries = max(1, int(max_entries))
         self._default_provider_mode = fetcher is None
@@ -121,10 +124,20 @@ class TransactionOriginResolver:
             1,
             min(self.max_entries, int(max_pending_retries)),
         )
+        deferred_limit = (
+            max_deferred_background
+            if max_deferred_background is not None
+            else self.max_pending_retries * 8
+        )
+        self.max_deferred_background = max(
+            1,
+            min(self.max_entries, int(deferred_limit)),
+        )
         self._cache = OrderedDict()
         self._negative = OrderedDict()
         self._retry_tasks = OrderedDict()
         self._background_tasks = OrderedDict()
+        self._background_deferred = OrderedDict()
         self._lock = threading.RLock()
         self.provider_calls = 0
         self.cache_hits = 0
@@ -138,6 +151,8 @@ class TransactionOriginResolver:
         self.retry_dropped = 0
         self.retry_cancelled = 0
         self.background_scheduled = 0
+        self.background_queued = 0
+        self.background_drained = 0
         self.background_dropped = 0
         self.background_cancelled = 0
 
@@ -174,28 +189,13 @@ class TransactionOriginResolver:
         while len(self._negative) > self.max_entries:
             self._negative.popitem(last=False)
 
-    def _schedule_background_resolution(self, tx_hash):
-        try:
-            loop = asyncio.get_running_loop()
-        except RuntimeError:
-            return False
-
-        with self._lock:
-            existing = self._background_tasks.get(tx_hash)
-
-            if existing is not None and not existing.done():
-                return True
-
-            if len(self._background_tasks) >= self.max_pending_retries:
-                self.background_dropped += 1
-                return False
-
-            task = loop.create_task(
-                self._background_resolution(tx_hash)
-            )
-            self._background_tasks[tx_hash] = task
-            self._background_tasks.move_to_end(tx_hash)
-            self.background_scheduled += 1
+    def _start_background_task_locked(self, loop, tx_hash):
+        task = loop.create_task(
+            self._background_resolution(tx_hash)
+        )
+        self._background_tasks[tx_hash] = task
+        self._background_tasks.move_to_end(tx_hash)
+        self.background_scheduled += 1
 
         def cleanup(done_task):
             with self._lock:
@@ -203,8 +203,58 @@ class TransactionOriginResolver:
                 if current is done_task:
                     self._background_tasks.pop(tx_hash, None)
 
+            self._drain_deferred_background(loop)
+
         task.add_done_callback(cleanup)
-        return True
+        return task
+
+    def _drain_deferred_background(self, loop):
+        with self._lock:
+            while (
+                self._background_deferred
+                and len(self._background_tasks)
+                < self.max_pending_retries
+            ):
+                tx_hash, _ = self._background_deferred.popitem(last=False)
+
+                if tx_hash in self._cache:
+                    continue
+
+                existing = self._background_tasks.get(tx_hash)
+                if existing is not None and not existing.done():
+                    continue
+
+                self.background_drained += 1
+                self._start_background_task_locked(loop, tx_hash)
+
+    def _schedule_background_resolution(self, tx_hash):
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            return "CAPACITY"
+
+        with self._lock:
+            existing = self._background_tasks.get(tx_hash)
+
+            if existing is not None and not existing.done():
+                return "PENDING"
+
+            if tx_hash in self._background_deferred:
+                self._background_deferred.move_to_end(tx_hash)
+                return "QUEUED"
+
+            if len(self._background_tasks) < self.max_pending_retries:
+                self._start_background_task_locked(loop, tx_hash)
+                return "PENDING"
+
+            if len(self._background_deferred) >= self.max_deferred_background:
+                self.background_dropped += 1
+                return "CAPACITY"
+
+            self._background_deferred[tx_hash] = None
+            self._background_deferred.move_to_end(tx_hash)
+            self.background_queued += 1
+            return "QUEUED"
 
     async def _background_resolution(self, tx_hash):
         try:
@@ -348,16 +398,17 @@ class TransactionOriginResolver:
                 )
 
         if self._default_provider_mode and not _force_provider:
-            scheduled = self._schedule_background_resolution(tx_hash)
+            schedule_state = self._schedule_background_resolution(tx_hash)
+            source = {
+                "PENDING": "PROVIDER_LOOKUP_PENDING",
+                "QUEUED": "PROVIDER_LOOKUP_QUEUED",
+                "CAPACITY": "PROVIDER_LOOKUP_CAPACITY",
+            }[schedule_state]
             return self._out(
                 "UNKNOWN",
                 tx_hash,
                 None,
-                (
-                    "PROVIDER_LOOKUP_PENDING"
-                    if scheduled
-                    else "PROVIDER_LOOKUP_CAPACITY"
-                ),
+                source,
             )
 
         try:
@@ -434,6 +485,7 @@ class TransactionOriginResolver:
 
         with self._lock:
             self._negative.pop(tx_hash, None)
+            deferred = self._background_deferred.pop(tx_hash, None) is not None
             retry_task = self._retry_tasks.pop(tx_hash, None)
             background_task = self._background_tasks.pop(tx_hash, None)
             removed = self._cache.pop(tx_hash, None) is not None
@@ -444,6 +496,7 @@ class TransactionOriginResolver:
 
         return (
             removed
+            or deferred
             or retry_task is not None
             or background_task is not None
         )
@@ -459,8 +512,10 @@ class TransactionOriginResolver:
                 "negative_ttl_seconds": self.negative_ttl_seconds,
                 "retry_delay_seconds": self.retry_delay_seconds,
                 "max_pending_retries": self.max_pending_retries,
+                "max_deferred_background": self.max_deferred_background,
                 "pending_retries": len(self._retry_tasks),
                 "pending_background_lookups": len(self._background_tasks),
+                "deferred_background_lookups": len(self._background_deferred),
                 "provider_calls": self.provider_calls,
                 "cache_hits": self.cache_hits,
                 "negative_hits": self.negative_hits,
@@ -473,6 +528,8 @@ class TransactionOriginResolver:
                 "retry_dropped": self.retry_dropped,
                 "retry_cancelled": self.retry_cancelled,
                 "background_scheduled": self.background_scheduled,
+                "background_queued": self.background_queued,
+                "background_drained": self.background_drained,
                 "background_dropped": self.background_dropped,
                 "background_cancelled": self.background_cancelled,
                 "default_provider_background": self._default_provider_mode,

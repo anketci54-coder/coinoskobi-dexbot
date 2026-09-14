@@ -1,3 +1,5 @@
+import app.cache.gecko_cache as gecko_cache_module
+
 from app.dex.market_quality import analyze_market_quality
 from app.pipeline.intelligence_composition import RuntimeIntelligenceComposition
 from app.pipeline.market_context import build_market_context
@@ -98,6 +100,43 @@ def test_normalizer_preserves_canonical_sells_h24():
     assert candidate.buys_24h == 40
     assert candidate.sells_24h == 31
     assert candidate.to_dict()["sells_24h"] == 31
+
+
+def test_cache_migrates_and_persists_sells(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        gecko_cache_module,
+        "DB",
+        tmp_path / "cache.db",
+    )
+
+    cache = gecko_cache_module.GeckoCache()
+
+    try:
+        cache.replace({
+            "pool": POOL,
+            "base_token": f"bsc_{TOKEN}",
+            "quote_token": f"bsc_{QUOTE}",
+            "name": "AAA / WBNB",
+            "dex": "pancakeswap_v2",
+            "liquidity": 50000,
+            "volume_24h": 25000,
+            "buys_24h": 40,
+            "sells_24h": 31,
+            "fdv": 100000,
+            "price_usd": 1.25,
+            "created_at": "2026-01-01T00:00:00Z",
+            "market_cap": 90000,
+            "source": "geckoterminal",
+            "chain": "bsc",
+        })
+
+        cached = cache.all()[0]
+        history = cache.history_for_pool(POOL)
+
+        assert cached["sells_24h"] == 31
+        assert history[-1]["sells_24h"] == 31
+    finally:
+        cache.db.close()
 
 
 def test_market_context_binds_scanner_sells_without_wallet_guessing():

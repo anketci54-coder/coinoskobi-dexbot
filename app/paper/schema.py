@@ -1,4 +1,4 @@
-PAPER_SCHEMA_VERSION = 4
+PAPER_SCHEMA_VERSION = 5
 
 
 PAPER_TRADES_SCHEMA = """
@@ -45,6 +45,9 @@ CREATE TABLE IF NOT EXISTS paper_trades (
 
     paper_account_version TEXT,
     trade_policy TEXT,
+    control_mode TEXT,
+    trade_type TEXT,
+    level_source TEXT,
 
     entry_amount_usdt REAL,
     risk_amount_usdt REAL,
@@ -229,6 +232,9 @@ V3_COLUMNS = {
 
 POLICY_COLUMNS = {
     "trade_policy": "TEXT",
+    "control_mode": "TEXT",
+    "trade_type": "TEXT",
+    "level_source": "TEXT",
 }
 
 
@@ -391,6 +397,40 @@ def _migrate_to_v2(
     )
 
 
+def _backfill_trade_contract(conn):
+    # Legacy trade_policy mixed two independent dimensions.
+    # Preserve it for compatibility, but materialize only mappings
+    # whose historical meaning is unambiguous. Unknown/empty closed
+    # history remains untouched instead of inventing semantics.
+    conn.execute(
+        """
+        UPDATE paper_trades
+        SET control_mode = CASE upper(trim(trade_policy))
+            WHEN 'MANUAL_PANEL' THEN 'MANUAL'
+            WHEN 'NORMAL' THEN 'AUTO'
+            WHEN 'VUR_KAC' THEN 'AUTO'
+            ELSE control_mode
+        END
+        WHERE control_mode IS NULL
+           OR trim(control_mode)=''
+        """
+    )
+
+    conn.execute(
+        """
+        UPDATE paper_trades
+        SET trade_type = CASE upper(trim(trade_policy))
+            WHEN 'MANUAL_PANEL' THEN 'NORMAL'
+            WHEN 'NORMAL' THEN 'NORMAL'
+            WHEN 'VUR_KAC' THEN 'VUR_KAC'
+            ELSE trade_type
+        END
+        WHERE trade_type IS NULL
+           OR trim(trade_type)=''
+        """
+    )
+
+
 def _ensure_wallet_observation_schemas(conn):
     from app.paper.wallet_discovery_evidence_schema import (
         ensure_wallet_discovery_evidence_schema,
@@ -492,6 +532,10 @@ def ensure_paper_schema(
                   OR trim(trade_policy)=''
               )
             """
+        )
+
+        _backfill_trade_contract(
+            conn
         )
 
         _add_columns(

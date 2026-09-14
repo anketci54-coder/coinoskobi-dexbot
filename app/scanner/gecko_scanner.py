@@ -143,6 +143,11 @@ class GeckoScanner:
                 .get("h24", {})
                 .get("buys", 0)
             ),
+            "sells_24h": int(
+                attr.get("transactions", {})
+                .get("h24", {})
+                .get("sells", 0)
+            ),
             "created_at": attr.get(
                 "pool_created_at"
             ),
@@ -185,6 +190,7 @@ class GeckoScanner:
             "liquidity": float(liquidity.get("usd") or 0),
             "volume_24h": float(volume.get("h24") or 0),
             "buys_24h": int(h24.get("buys") or 0),
+            "sells_24h": int(h24.get("sells") or 0),
             "created_at": None,
             "provider": "dexscreener",
         }

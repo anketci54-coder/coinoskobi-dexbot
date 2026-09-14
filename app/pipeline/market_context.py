@@ -481,6 +481,33 @@ def build_market_context(
         or {}
     )
 
+    # Scanner providers expose real 24h sell counts. Preserve that measured
+    # transaction-side fact whenever native WSS has not already supplied a
+    # fresher directional sell count. This is transaction evidence only;
+    # it never creates participant/wallet identity evidence.
+    scanner_sells = row.get(
+        "sells_24h",
+        row.get("sells24"),
+    )
+
+    if (
+        market.get("sells") is None
+        and scanner_sells is not None
+    ):
+        try:
+            scanner_sells = int(scanner_sells)
+        except (TypeError, ValueError):
+            scanner_sells = None
+
+        if (
+            scanner_sells is not None
+            and scanner_sells >= 0
+        ):
+            market["sells"] = scanner_sells
+            market["sell_count_source"] = (
+                "SCANNER_PROVIDER_24H"
+            )
+
     market, flow, participation = (
         _bind_origin_participation(
             runtime_feed=runtime_feed,

@@ -196,6 +196,11 @@
             'NORMAL'
           ).toUpperCase();
 
+          const isVurKac=
+            tradeType.includes('VUR_KAC')
+            || tradeType.includes('VUR-KAÇ')
+            || tradeType.includes('VUR KAC');
+
           const tp1Done=
             Number(row.tp1_done||0)===1;
 
@@ -205,17 +210,29 @@
           const runner=
             Number(row.runner_active||0)===1;
 
-          const tp1State=tp1Done
-            ? 'ALINDI'
-            : num(row.tp_price);
+          const tp1State=isVurKac
+            ? '—'
+            : (
+              tp1Done
+                ? 'ALINDI'
+                : num(row.tp_price)
+            );
 
-          const tp2State=tp2Done
-            ? 'ANA PARA ALINDI'
-            : 'BEKLİYOR';
+          const tp2State=isVurKac
+            ? '—'
+            : (
+              tp2Done
+                ? 'ANA PARA ALINDI'
+                : 'BEKLİYOR'
+            );
 
-          const tp3State=runner
-            ? 'TREND AKTİF'
-            : 'BEKLİYOR';
+          const tp3State=isVurKac
+            ? '—'
+            : (
+              runner
+                ? 'TREND AKTİF'
+                : 'BEKLİYOR'
+            );
 
           return `<tr>
             <td>
@@ -1062,16 +1079,82 @@
       $('v61BuyFinalTp1')?.value
     );
 
+    const draftAmount=Number(
+      v61BuyDraft.amount_usdt
+    );
+
+    const sameNumber=(left,right)=>{
+      if(
+        !Number.isFinite(left)
+        || !Number.isFinite(right)
+      ){
+        return false;
+      }
+
+      return Math.abs(left-right)
+        <= Math.max(
+          1e-12,
+          Math.abs(right)*1e-9
+        );
+    };
+
+    if(
+      !Number.isFinite(amount)
+      || amount<=0
+      || !sameNumber(
+        amount,
+        draftAmount
+      )
+    ){
+      openModal(
+        'PLAN YENİDEN HESAPLANMALI',
+        `<div class="v61-box v61-warning">
+          Yatırım miktarı preview sonrasında değişti.
+          Yeni miktar için sistem planını yeniden hesapla.
+        </div>`
+      );
+      return;
+    }
+
+    const preview=
+      v61BuyDraft.preview || {};
+
+    const systemSl=Number(
+      preview.system_sl_price
+    );
+
+    const systemTp1=Number(
+      preview.system_tp1_price
+    );
+
     const payload={
       side:'BUY',
       token:v61BuyDraft.token,
       pool:v61BuyDraft.pool,
       symbol:v61BuyDraft.symbol,
       amount_usdt:amount,
-      sl_price:Number.isFinite(sl) ? sl : null,
-      tp1_price:Number.isFinite(tp1) ? tp1 : null,
       confirmed:true
     };
+
+    if(
+      Number.isFinite(sl)
+      && !sameNumber(
+        sl,
+        systemSl
+      )
+    ){
+      payload.sl_price=sl;
+    }
+
+    if(
+      Number.isFinite(tp1)
+      && !sameNumber(
+        tp1,
+        systemTp1
+      )
+    ){
+      payload.tp1_price=tp1;
+    }
 
     try{
       const data=await post(

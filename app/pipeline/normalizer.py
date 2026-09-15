@@ -34,6 +34,16 @@ class CandidateNormalizer:
             ):
                 normalized[target] = normalized[source]
 
+        pool = normalized.get("pool")
+
+        if pool:
+            pool = str(pool).strip()
+
+            if pool.lower().startswith("bsc_"):
+                pool = pool[4:]
+
+            normalized["pool"] = pool
+
         token = (
             normalized.get("token")
             or normalized.get("base_token")

@@ -978,6 +978,95 @@ class PipelineEngine:
             timeout=timeout,
         )
 
+    def _refresh_pool_identity(
+        self,
+        pool,
+        *,
+        scanner_rows=None,
+    ):
+        pool_key = str(
+            pool or ""
+        ).strip().lower()
+
+        if not pool_key:
+            return None
+
+        def identity_from_rows(rows):
+            for row in rows or ():
+                if not isinstance(row, dict):
+                    continue
+
+                row_pool = str(
+                    row.get("pool") or ""
+                ).strip().lower()
+
+                if row_pool != pool_key:
+                    continue
+
+                dex = str(
+                    row.get("dex") or ""
+                ).strip().lower()
+
+                if dex:
+                    return {
+                        "pool": pool_key,
+                        "dex": dex,
+                    }
+
+            return None
+
+        identity = identity_from_rows(
+            scanner_rows
+        )
+
+        if identity is not None:
+            return identity
+
+        cache = getattr(
+            self,
+            "cache",
+            None,
+        )
+
+        all_rows = getattr(
+            cache,
+            "all",
+            None,
+        )
+
+        if callable(all_rows):
+            try:
+                identity = identity_from_rows(
+                    all_rows()
+                )
+            except Exception:
+                identity = None
+
+            if identity is not None:
+                return identity
+
+        history_for_pool = getattr(
+            cache,
+            "history_for_pool",
+            None,
+        )
+
+        if callable(history_for_pool):
+            try:
+                identity = identity_from_rows(
+                    history_for_pool(
+                        pool_key,
+                        limit=1,
+                    )
+                )
+            except Exception:
+                identity = None
+
+            if identity is not None:
+                return identity
+
+        return None
+
     def refresh_open_position_prices(self, max_positions=30):
         positions = self.manager.db.open_positions()
         selected = positions[:max(1, int(max_positions))]
@@ -3693,10 +3782,34 @@ class PipelineEngine:
                     start:start + 30
                 ]
 
+                identities = [
+                    identity
+                    for identity in (
+                        self._refresh_pool_identity(
+                            pool,
+                            scanner_rows=scanner_rows,
+                        )
+                        for pool in batch
+                    )
+                    if identity is not None
+                ]
+
+                unresolved = (
+                    len(batch)
+                    - len(identities)
+                )
+
+                failed += unresolved
+
+                if not identities:
+                    continue
+
                 requests += 1
 
                 try:
-                    prices = pool_prices(batch) or {}
+                    prices = pool_prices(
+                        identities
+                    ) or {}
                 except Exception as exc:
                     failed += len(batch)
 
@@ -3888,9 +4001,25 @@ class PipelineEngine:
                 pool_prices is not None
                 and update_pool_price is not None
             ):
+                watch_identities = [
+                    identity
+                    for identity in (
+                        self._refresh_pool_identity(
+                            pool,
+                            scanner_rows=rows,
+                        )
+                        for pool in watch_pools
+                    )
+                    if identity is not None
+                ]
+
                 try:
-                    watched_prices = pool_prices(
-                        watch_pools
+                    watched_prices = (
+                        pool_prices(
+                            watch_identities
+                        )
+                        if watch_identities
+                        else {}
                     )
 
                     for (

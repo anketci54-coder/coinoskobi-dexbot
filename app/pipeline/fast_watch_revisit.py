@@ -454,7 +454,11 @@ class FastWatchRevisitJob:
             if already_seen is not None:
                 continue
 
-            selected.append(identity)
+            selected.append((
+                token,
+                pool,
+                DEX_PANCAKESWAP_V2,
+            ))
 
             if len(selected) >= FAST_DISCOVERY_MAX_CANDIDATES:
                 break
@@ -462,7 +466,9 @@ class FastWatchRevisitJob:
         retry_after = now + FAST_DISCOVERY_RETRY_SECONDS
 
         for identity in selected:
-            self._discovery_retry_after[identity] = retry_after
+            self._discovery_retry_after[
+                identity[:2]
+            ] = retry_after
 
         return selected
 
@@ -538,8 +544,28 @@ class FastWatchRevisitJob:
 
         for start in range(0, len(identities), FAST_WATCH_PROVIDER_BATCH_SIZE):
             batch = identities[start:start + FAST_WATCH_PROVIDER_BATCH_SIZE]
-            pools = [pool for _, pool in batch]
-            wanted = set(batch)
+
+            pools = []
+            wanted = set()
+
+            for identity in batch:
+                token = identity[0]
+                pool = identity[1]
+                dex = (
+                    identity[2]
+                    if len(identity) > 2
+                    else None
+                )
+
+                wanted.add((token, pool))
+
+                if dex:
+                    pools.append({
+                        "pool": pool,
+                        "dex": dex,
+                    })
+                else:
+                    pools.append(pool)
 
             fresh = self._fetch_snapshot_batch(
                 snapshots,
@@ -756,10 +782,15 @@ class FastWatchRevisitJob:
             list(discovery_identities)
             + list(watched_identities)
         ):
-            if identity in seen:
+            identity_key = (
+                identity[0],
+                identity[1],
+            )
+
+            if identity_key in seen:
                 continue
 
-            seen.add(identity)
+            seen.add(identity_key)
             identities.append(identity)
 
             if len(identities) >= self.max_candidates:

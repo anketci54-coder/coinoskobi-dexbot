@@ -141,8 +141,16 @@ def test_new_factory_pool_enters_fast_discovery_once(tmp_path, monkeypatch):
     job = FastWatchRevisitJob(pipeline)
 
     assert job._unseen_universe_identities() == [
-        (token_new, pool_new),
-        (token_old, pool_old),
+        (
+            token_new,
+            pool_new,
+            module.DEX_PANCAKESWAP_V2,
+        ),
+        (
+            token_old,
+            pool_old,
+            module.DEX_PANCAKESWAP_V2,
+        ),
     ]
 
 

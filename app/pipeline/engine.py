@@ -3364,6 +3364,10 @@ class PipelineEngine:
                 "opportunity_reason": summary.get(
                     "opportunity_reason"
                 ),
+                "opportunity": dict(
+                    summary.get("opportunity")
+                    or {}
+                ),
                 "hard_block": bool(
                     summary.get("hard_block")
                 ),
@@ -3473,6 +3477,10 @@ class PipelineEngine:
                         ),
                         "opportunity_reason": summary.get(
                             "opportunity_reason"
+                        ),
+                        "opportunity": dict(
+                            summary.get("opportunity")
+                            or {}
                         ),
                         "sellability": summary.get("sellability"),
                         "hard_block": summary.get("hard_block"),
@@ -4284,6 +4292,10 @@ class PipelineEngine:
                     ),
                     "opportunity_reason": score.get(
                         "opportunity_reason"
+                    ),
+                    "opportunity": dict(
+                        score.get("opportunity")
+                        or {}
                     ),
                     "plan_blockers": (
                         paper.get(

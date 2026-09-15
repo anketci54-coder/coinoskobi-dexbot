@@ -726,6 +726,7 @@ class FastWatchRevisitJob:
             "reason": paper.get("reason"),
             "opportunity_state": score.get("opportunity_state"),
             "opportunity_reason": score.get("opportunity_reason"),
+            "opportunity": dict(score.get("opportunity") or {}),
             "plan_blockers": list(paper.get("plan_blockers") or []),
             "sizing_blockers": list(paper.get("sizing_blockers") or []),
             "sizing_reason": paper.get("sizing_reason"),

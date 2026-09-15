@@ -62,6 +62,15 @@ def test_counterfactual_context_preserves_opportunity_diagnostics():
             "reason": None,
             "opportunity_state": "WATCH",
             "opportunity_reason": "POSITIVE_CONTINUATION_NOT_ESTABLISHED",
+            "opportunity": {
+                "state": "WATCH",
+                "reason": "POSITIVE_CONTINUATION_NOT_ESTABLISHED",
+                "price_series_source": "PAIR_RUNTIME_ONCHAIN",
+                "previous_log_return": 0.001,
+                "latest_log_return": 0.002,
+                "price_acceleration": 0.001,
+                "trailing_positive_return_count": 2,
+            },
             "hard_block": False,
             "score": 100.0,
             "confidence": 100.0,
@@ -70,6 +79,12 @@ def test_counterfactual_context_preserves_opportunity_diagnostics():
             "sizing_blockers": [],
             "market_context": {},
             "runtime_intelligence": {},
+            "vur_kac_entry_shadow": {
+                "latest_log_return": -0.123,
+                "previous_log_return": 0.456,
+                "price_acceleration": -0.579,
+                "shadow_only": True,
+            },
         },
         now=123.0,
     )
@@ -82,6 +97,23 @@ def test_counterfactual_context_preserves_opportunity_diagnostics():
     )
     assert store.context["paper"] == "WATCH"
     assert store.context["reason"] is None
+
+    opportunity = store.context["opportunity"]
+    assert opportunity["state"] == "WATCH"
+    assert (
+        opportunity["reason"]
+        == "POSITIVE_CONTINUATION_NOT_ESTABLISHED"
+    )
+    assert opportunity["price_series_source"] == "PAIR_RUNTIME_ONCHAIN"
+    assert opportunity["previous_log_return"] == 0.001
+    assert opportunity["latest_log_return"] == 0.002
+    assert opportunity["price_acceleration"] == 0.001
+    assert opportunity["trailing_positive_return_count"] == 2
+
+    assert (
+        store.context["vur_kac_entry_shadow"]["latest_log_return"]
+        == -0.123
+    )
 
 
 def test_opportunity_reason_change_creates_durable_transition(tmp_path):
@@ -150,6 +182,8 @@ def test_run_cycle_exposes_score_opportunity_fields_and_logs_them():
 
     assert '"opportunity_state": score.get(' in source
     assert '"opportunity_reason": score.get(' in source
+    assert '"opportunity": dict(' in source
+    assert 'score.get("opportunity")' in source
     assert '"opportunity=%s opportunity_reason=%s "' in source
     assert 'summary["opportunity_state"]' in source
     assert 'summary["opportunity_reason"]' in source

@@ -4,6 +4,7 @@ import sqlite3
 import threading
 import time
 
+import requests
 from web3 import Web3
 
 from app.analyzer import pair as pair_module
@@ -487,6 +488,16 @@ class FastWatchRevisitJob:
                 ),
                 persist_followups=False,
             ) or []
+        except requests.RequestException as exc:
+            # Provider/network availability is not decision evidence.
+            # Fail closed for this bounded batch and let a later ticker cycle
+            # retry instead of killing the fast-watch worker.
+            logger.warning(
+                "Fast watch snapshot provider unavailable error=%s pools=%s",
+                type(exc).__name__,
+                len(pools),
+            )
+            return []
         except ValueError as exc:
             if str(exc) != "unsupported DEX":
                 raise

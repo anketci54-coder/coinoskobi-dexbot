@@ -709,6 +709,63 @@ def build_application(
             warmup.get("pending"),
         )
 
+        actor_status = {}
+        resolver_status = {}
+        try:
+            actor_runtime = getattr(
+                pipeline,
+                "native_actor_intelligence",
+                None,
+            )
+            status_reader = getattr(
+                actor_runtime,
+                "status",
+                None,
+            )
+            if callable(status_reader):
+                actor_status = status_reader() or {}
+                resolver_status = (
+                    actor_status.get("resolver")
+                    or {}
+                )
+        except Exception:
+            actor_status = {}
+            resolver_status = {}
+
+        logging.getLogger(
+            __name__
+        ).info(
+            (
+                "TX_ORIGIN_STATUS "
+                "accepted=%s unresolved=%s "
+                "size=%s provider_calls=%s "
+                "resolve_failures=%s cache_hits=%s "
+                "background_scheduled=%s "
+                "background_queued=%s "
+                "background_drained=%s "
+                "background_dropped=%s "
+                "pending=%s deferred=%s "
+                "retry_attempts=%s "
+                "retry_successes=%s "
+                "retry_failures=%s"
+            ),
+            actor_status.get("accepted_events"),
+            actor_status.get("unresolved_origins"),
+            resolver_status.get("size"),
+            resolver_status.get("provider_calls"),
+            resolver_status.get("resolve_failures"),
+            resolver_status.get("cache_hits"),
+            resolver_status.get("background_scheduled"),
+            resolver_status.get("background_queued"),
+            resolver_status.get("background_drained"),
+            resolver_status.get("background_dropped"),
+            resolver_status.get("pending_background_lookups"),
+            resolver_status.get("deferred_background_lookups"),
+            resolver_status.get("retry_attempts"),
+            resolver_status.get("retry_successes"),
+            resolver_status.get("retry_failures"),
+        )
+
         return {
             "binding": binding,
             "warmup": warmup,

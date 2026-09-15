@@ -6,10 +6,10 @@ from app.pipeline.tx_origin_readiness_gate import (
 
 
 def _install_pipeline_origin_gate():
-    from app.pipeline.engine import Pipeline
+    from app.pipeline.engine import PipelineEngine
 
     install_pipeline_tx_origin_readiness_gate(
-        Pipeline
+        PipelineEngine
     )
 
 

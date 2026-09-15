@@ -180,7 +180,20 @@ class FastWatchRevisitJob:
         if bool(context.get("hard_block")):
             return None
 
-        return (token, pool)
+        market_context = context.get("market_context") or {}
+
+        if not isinstance(market_context, dict):
+            return None
+
+        dex = str(
+            market_context.get("candidate_dex")
+            or ""
+        ).strip().lower()
+
+        if not dex:
+            return None
+
+        return (token, pool, dex)
 
     def _durable_watched_identities(self, db, lock):
         """
@@ -690,6 +703,7 @@ class FastWatchRevisitJob:
         )
         market_context["candidate_pool"] = row.get("pool")
         market_context["candidate_quote_token"] = row.get("quote_token")
+        market_context["candidate_dex"] = row.get("dex")
 
         actor_runtime = getattr(
             self.pipeline,

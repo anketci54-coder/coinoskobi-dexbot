@@ -40,7 +40,16 @@ class _Scanner:
 
     def pool_snapshots(self, pools, max_pools=30, persist_followups=True):
         self.calls.append((list(pools), max_pools, persist_followups))
-        wanted = {str(value).lower() for value in pools}
+
+        wanted = {
+            str(
+                value.get("pool")
+                if isinstance(value, dict)
+                else value
+            ).lower()
+            for value in pools
+        }
+
         return [
             dict(row)
             for row in self.rows
@@ -151,6 +160,9 @@ def _history_row(
             "opportunity_state": "WATCH",
             "opportunity_reason": reason,
             "hard_block": hard_block,
+            "market_context": {
+                "candidate_dex": "pancakeswap_v2",
+            },
         }),
     }
 
@@ -206,12 +218,29 @@ def test_fast_watch_selects_only_active_momentum_reasons(monkeypatch):
     assert pipeline.native_market_flow.confirmed == [
         (POOL, TOKEN, QUOTE)
     ]
-    assert pipeline.scanner.calls == [([POOL], 1, False)]
+    assert pipeline.scanner.calls == [(
+        [{"pool": POOL, "dex": "pancakeswap_v2"}],
+        1,
+        False,
+    )]
     assert result["bounded"] is True
     assert result["decision_authority"] is False
     assert result["live_authority"] is False
     assert result["wallet_authority"] is False
     assert result["execution_authority"] is False
+
+
+def test_watch_without_explicit_dex_identity_fails_closed():
+    row = _history_row("ACTIVE_MOMENTUM_NOT_POSITIVE")
+    context = json.loads(row["context_json"])
+    context["market_context"] = {}
+    row["context_json"] = json.dumps(context)
+
+    pipeline = _Pipeline([row])
+    job = FastWatchRevisitJob(pipeline)
+
+    assert job._watched_identities() == []
+
 
 
 def test_fast_watch_overfetch_is_bounded_and_deduplicated():

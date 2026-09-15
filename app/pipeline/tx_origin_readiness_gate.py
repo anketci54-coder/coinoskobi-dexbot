@@ -1,7 +1,6 @@
 import time
 from collections import OrderedDict
 
-from app.dex.runtime_market_flow import RuntimeMarketFlowStore
 from app.dex.transaction_origin import resolved_transaction_origin
 
 
@@ -13,11 +12,11 @@ def _address(value):
     return value or None
 
 
-def _origin_ready_pairs(store, requested):
+def _origin_ready_pairs(runtime, requested):
     ready = []
 
     for pair in requested:
-        events = store._events.get(
+        events = runtime._events.get(
             pair,
             OrderedDict(),
         )
@@ -46,12 +45,28 @@ def _origin_ready_pairs(store, requested):
     return ready
 
 
-def wait_for_origin_market_evidence(
+def wait_for_native_market_evidence_with_origin(
     self,
     pairs,
     *,
     timeout=10.0,
 ):
+    runtime = getattr(
+        self,
+        "native_market_flow",
+        None,
+    )
+
+    if runtime is None:
+        return {
+            "state": "UNAVAILABLE",
+            "requested": 0,
+            "ready": 0,
+            "pending": 0,
+            "decision_authority": False,
+            "execution_authority": False,
+        }
+
     if isinstance(pairs, str):
         requested = [_address(pairs)]
     else:
@@ -81,16 +96,40 @@ def wait_for_origin_market_evidence(
             "execution_authority": False,
         }
 
+    condition = getattr(
+        runtime,
+        "_event_condition",
+        None,
+    )
+    stop_event = getattr(
+        runtime,
+        "_stop_event",
+        None,
+    )
+
+    if condition is None or stop_event is None:
+        return {
+            "state": "UNAVAILABLE",
+            "requested": len(requested),
+            "ready": 0,
+            "pending": len(requested),
+            "ready_pairs": [],
+            "timeout": timeout,
+            "identity_source": "TRANSACTION_FROM_ONLY",
+            "decision_authority": False,
+            "execution_authority": False,
+        }
+
     deadline = time.monotonic() + timeout
 
-    with self._event_condition:
+    with condition:
         while True:
             ready = _origin_ready_pairs(
-                self,
+                runtime,
                 requested,
             )
 
-            if self._stop_event.is_set():
+            if stop_event.is_set():
                 state = "STOPPED"
                 break
 
@@ -104,7 +143,7 @@ def wait_for_origin_market_evidence(
                 state = "PARTIAL" if ready else "TIMEOUT"
                 break
 
-            self._event_condition.wait(
+            condition.wait(
                 timeout=min(
                     remaining,
                     _POLL_SECONDS,
@@ -129,16 +168,19 @@ def wait_for_origin_market_evidence(
     }
 
 
-def install_tx_origin_readiness_gate():
+def install_pipeline_tx_origin_readiness_gate(pipeline_class):
     if getattr(
-        RuntimeMarketFlowStore,
+        pipeline_class,
         "_tx_origin_readiness_gate_installed",
         False,
     ):
         return False
 
-    RuntimeMarketFlowStore.wait_for_market_evidence = (
-        wait_for_origin_market_evidence
+    pipeline_class._tx_origin_readiness_original_waiter = (
+        pipeline_class.wait_for_native_market_evidence
     )
-    RuntimeMarketFlowStore._tx_origin_readiness_gate_installed = True
+    pipeline_class.wait_for_native_market_evidence = (
+        wait_for_native_market_evidence_with_origin
+    )
+    pipeline_class._tx_origin_readiness_gate_installed = True
     return True

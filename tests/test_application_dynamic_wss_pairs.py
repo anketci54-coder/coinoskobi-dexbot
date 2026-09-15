@@ -221,4 +221,7 @@ def test_candidate_wss_targets_are_bounded(monkeypatch):
         for pair in pipeline.configured
         if pair not in {PAIR1, PAIR2}
     ]
-    assert len(set(candidate_pairs)) == module.SCAN_NATIVE_WSS_LIMIT
+    assert len(set(candidate_pairs)) == min(
+        len(rows),
+        module.SCAN_NATIVE_WSS_LIMIT,
+    )

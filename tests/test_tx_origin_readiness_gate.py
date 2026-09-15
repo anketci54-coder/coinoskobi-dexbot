@@ -5,7 +5,7 @@ from types import SimpleNamespace
 
 from app.dex.runtime_market_flow import RuntimeMarketFlowStore
 from app.pipeline import tx_origin_readiness_gate as gate
-from app.pipeline.engine import Pipeline
+from app.pipeline.engine import PipelineEngine
 
 
 PAIR = "0x00000000000000000000000000000000000000aa"
@@ -35,9 +35,9 @@ def _runtime():
 
 
 def test_pipeline_class_installs_origin_readiness_gate():
-    assert Pipeline._tx_origin_readiness_gate_installed is True
+    assert PipelineEngine._tx_origin_readiness_gate_installed is True
     assert (
-        Pipeline.wait_for_native_market_evidence
+        PipelineEngine.wait_for_native_market_evidence
         is gate.wait_for_native_market_evidence_with_origin
     )
 

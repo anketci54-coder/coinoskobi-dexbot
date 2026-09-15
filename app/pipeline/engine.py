@@ -4223,6 +4223,9 @@ class PipelineEngine:
             market_context["candidate_quote_token"] = row.get(
                 "quote_token"
             )
+            market_context["candidate_dex"] = row.get(
+                "dex"
+            )
 
             actor_runtime = getattr(
                 self,

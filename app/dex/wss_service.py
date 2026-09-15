@@ -159,7 +159,12 @@ class NativeWSSService:
             )
         )
 
-        if current == addresses:
+        same_membership = (
+            len(current) == len(addresses)
+            and set(current) == set(addresses)
+        )
+
+        if same_membership:
             if (
                 not running
                 and should_be_running

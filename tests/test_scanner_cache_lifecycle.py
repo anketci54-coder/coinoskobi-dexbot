@@ -164,6 +164,7 @@ def test_movement_only_candidate_is_retained_for_real_price_refresh():
                 "pool": "0xcurrentpool",
                 "base_token": "bsc_0xcurrent",
                 "quote_token": "bsc_0xquote",
+                "dex": "pancakeswap_v2",
             }]
 
         def pool_prices(self, pools):
@@ -185,6 +186,12 @@ def test_movement_only_candidate_is_retained_for_real_price_refresh():
             self.replaced.append(
                 dict(row)
             )
+
+        def all(self):
+            return [{
+                "pool": "0xwatchpool",
+                "dex": "pancakeswap_v2",
+            }]
 
         def update_pool_price(
             self,
@@ -245,7 +252,10 @@ def test_movement_only_candidate_is_retained_for_real_price_refresh():
 
         assert (
             engine.scanner.price_calls
-            == [["0xwatchpool"]]
+            == [[{
+                "pool": "0xwatchpool",
+                "dex": "pancakeswap_v2",
+            }]]
         )
 
         assert engine.cache.updated == [
@@ -323,14 +333,20 @@ def test_durable_counterfactual_prices_use_scan_then_bounded_fetch():
             pools = list(pools)
 
             assert len(pools) <= 30
+            assert all(
+                isinstance(item, dict)
+                and item.get("pool")
+                and item.get("dex")
+                for item in pools
+            )
 
             self.price_calls.append(
                 pools
             )
 
             return {
-                pool: 2.0
-                for pool in pools
+                item["pool"]: 2.0
+                for item in pools
             }
 
     class DurableCache:
@@ -341,6 +357,15 @@ def test_durable_counterfactual_prices_use_scan_then_bounded_fetch():
             self.replaced.append(
                 dict(row)
             )
+
+        def all(self):
+            return [
+                {
+                    "pool": f"0xpool{index:02d}",
+                    "dex": "pancakeswap_v2",
+                }
+                for index in range(29)
+            ]
 
     class DurableStore:
         def __init__(self):
@@ -409,7 +434,10 @@ def test_durable_counterfactual_prices_use_scan_then_bounded_fetch():
 
     assert engine.scanner.price_calls == [
         [
-            f"0xpool{index:02d}"
+            {
+                "pool": f"0xpool{index:02d}",
+                "dex": "pancakeswap_v2",
+            }
             for index in range(29)
         ],
     ]

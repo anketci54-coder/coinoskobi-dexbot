@@ -1,0 +1,181 @@
+import sqlite3
+import threading
+
+import app.pipeline.fast_watch_revisit as module
+from app.pipeline.fast_watch_revisit import FastWatchRevisitJob
+
+
+def address(value):
+    return "0x" + f"{value:040x}"
+
+
+class DecisionStore:
+    def __init__(self):
+        self._db = sqlite3.connect(":memory:", check_same_thread=False)
+        self._db.row_factory = sqlite3.Row
+        self._lock = threading.Lock()
+        self._db.execute("""
+            CREATE TABLE candidate_decision_history(
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                token TEXT,
+                pool TEXT
+            )
+        """)
+
+
+class Pipeline:
+    def __init__(self):
+        self.counterfactual_store = DecisionStore()
+
+
+def make_universe(path):
+    db = sqlite3.connect(path)
+    db.execute("""
+        CREATE TABLE universe_pool_registry(
+            chain TEXT,
+            dex TEXT,
+            pool TEXT,
+            token0 TEXT,
+            token1 TEXT,
+            creation_block INTEGER,
+            discovery_branch TEXT
+        )
+    """)
+    return db
+
+
+def test_new_factory_pool_enters_fast_discovery_once(tmp_path, monkeypatch):
+    db_path = tmp_path / "cache.db"
+    universe = make_universe(db_path)
+
+    base = next(iter(module.BASE_TOKEN_SET))
+    token_old = address(1001)
+    token_seen = address(1002)
+    token_new = address(1003)
+
+    pool_old = address(2001)
+    pool_seen = address(2002)
+    pool_new = address(2003)
+
+    universe.executemany(
+        """
+        INSERT INTO universe_pool_registry(
+            chain, dex, pool, token0, token1,
+            creation_block, discovery_branch
+        )
+        VALUES('bsc', ?, ?, ?, ?, ?, 'NEW')
+        """,
+        [
+            (module.DEX_PANCAKESWAP_V2, pool_old, base, token_old, 10),
+            (module.DEX_PANCAKESWAP_V2, pool_seen, base, token_seen, 20),
+            (module.DEX_PANCAKESWAP_V2, pool_new, base, token_new, 30),
+        ],
+    )
+    universe.commit()
+    universe.close()
+
+    pipeline = Pipeline()
+    pipeline.counterfactual_store._db.execute(
+        """
+        INSERT INTO candidate_decision_history(token, pool)
+        VALUES(?, ?)
+        """,
+        (token_seen, pool_seen),
+    )
+    pipeline.counterfactual_store._db.commit()
+
+    monkeypatch.setattr(module, "DEFAULT_DB", db_path)
+
+    job = FastWatchRevisitJob(pipeline)
+
+    assert job._unseen_universe_identities() == [
+        (token_new, pool_new),
+        (token_old, pool_old),
+    ]
+
+
+def test_fast_cycle_processes_discovery_without_existing_watch(monkeypatch):
+    pipeline = Pipeline()
+    job = FastWatchRevisitJob(pipeline)
+
+    token = address(3001)
+    pool = address(3002)
+
+    monkeypatch.setattr(
+        job,
+        "_unseen_universe_identities",
+        lambda: [(token, pool)],
+    )
+    monkeypatch.setattr(
+        job,
+        "_watched_identities",
+        lambda: [],
+    )
+    monkeypatch.setattr(
+        job,
+        "_fresh_rows",
+        lambda identities: [{
+            "token": token,
+            "pool": pool,
+            "quote_token": address(3003),
+        }],
+    )
+    monkeypatch.setattr(
+        job,
+        "_refresh_local_sellability_evidence",
+        lambda row: True,
+    )
+    monkeypatch.setattr(
+        job,
+        "_process",
+        lambda row: {
+            "data": {
+                "paper": {
+                    "action": "WATCH",
+                }
+            }
+        },
+    )
+
+    result = job._run_cycle_sync()
+
+    assert result["state"] == "READY"
+    assert result["selected"] == 1
+    assert result["processed"] == 1
+    assert result["failed"] == 0
+    assert result["paper_buys"] == 0
+
+
+def test_fast_discovery_is_bounded(tmp_path, monkeypatch):
+    db_path = tmp_path / "cache.db"
+    universe = make_universe(db_path)
+
+    base = next(iter(module.BASE_TOKEN_SET))
+
+    for i in range(module.FAST_DISCOVERY_MAX_CANDIDATES + 20):
+        universe.execute(
+            """
+            INSERT INTO universe_pool_registry(
+                chain, dex, pool, token0, token1,
+                creation_block, discovery_branch
+            )
+            VALUES('bsc', ?, ?, ?, ?, ?, 'NEW')
+            """,
+            (
+                module.DEX_PANCAKESWAP_V2,
+                address(5000 + i),
+                base,
+                address(6000 + i),
+                1000 + i,
+            ),
+        )
+
+    universe.commit()
+    universe.close()
+
+    monkeypatch.setattr(module, "DEFAULT_DB", db_path)
+
+    job = FastWatchRevisitJob(Pipeline())
+    rows = job._unseen_universe_identities()
+
+    assert len(rows) == module.FAST_DISCOVERY_MAX_CANDIDATES

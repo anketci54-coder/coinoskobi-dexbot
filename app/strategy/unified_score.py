@@ -56,15 +56,27 @@ class UnifiedScoreEngine:
 
         local = risk_gate.get("local_evidence") or {}
         exit_data = local.get("exit_feasibility") or {}
-        prices = cls._positive_prices(
+
+        runtime_prices = cls._positive_prices(
+            exit_data.get("runtime_spot_price_series_usd")
+        )
+        block_prices = cls._positive_prices(
             exit_data.get("spot_price_series_usd")
         )
+
+        if runtime_prices:
+            prices = runtime_prices
+            price_series_source = "PAIR_RUNTIME_ONCHAIN"
+        else:
+            prices = block_prices
+            price_series_source = "PAIR_BLOCK_HISTORY"
 
         if len(prices) < 3:
             return {
                 "state": "WATCH",
                 "reason": "ACTIVE_PRICE_SERIES_NOT_READY",
                 "price_observations": len(prices),
+                "price_series_source": price_series_source,
             }
 
         previous_return = math.log(prices[-2] / prices[-3])
@@ -126,6 +138,7 @@ class UnifiedScoreEngine:
 
         diagnostics = {
             "price_observations": len(prices),
+            "price_series_source": price_series_source,
             "previous_log_return": previous_return,
             "latest_log_return": latest_return,
             "price_acceleration": acceleration,

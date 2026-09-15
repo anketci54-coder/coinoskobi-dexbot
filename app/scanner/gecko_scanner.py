@@ -389,13 +389,38 @@ class GeckoScanner:
         return snapshots
 
     def pool_prices(self, pools, max_pools=30):
-        addresses = self._normalized_addresses(
-            pools,
-            max_pools,
-        )
+        identities = list(pools or [])
+
+        if (
+            not identities
+            or len(identities) > int(max_pools)
+        ):
+            raise ValueError(
+                "invalid bounded pool list"
+            )
+
+        addresses = []
+
+        for item in identities:
+            if isinstance(item, dict):
+                pool = str(
+                    item.get("pool") or ""
+                ).strip().lower()
+            else:
+                pool = str(
+                    item or ""
+                ).strip().lower()
+
+            if pool and pool not in addresses:
+                addresses.append(pool)
+
+        if not addresses:
+            raise ValueError(
+                "invalid bounded pool list"
+            )
 
         snapshots = self.pool_snapshots(
-            addresses,
+            identities,
             max_pools=max_pools,
         )
 

@@ -83,6 +83,7 @@ ROUTER_ABI = [
 
 
 _RUNTIME_PAIR_PRICE_HISTORY = {}
+_RUNTIME_PAIR_PRICE_LAST_BLOCK = {}
 _RUNTIME_PAIR_PRICE_HISTORY_LOCK = threading.Lock()
 _RUNTIME_PAIR_PRICE_HISTORY_MAX_KEYS = 2048
 _RUNTIME_PAIR_PRICE_HISTORY_MAX_OBSERVATIONS = 64
@@ -100,7 +101,13 @@ def _positive_price(value):
     return number
 
 
-def _runtime_pair_price_series(token, pair, observed_series):
+def _runtime_pair_price_series(
+    token,
+    pair,
+    observed_series,
+    *,
+    observation_block=None,
+):
     observations = []
 
     for value in observed_series or ():
@@ -119,32 +126,49 @@ def _runtime_pair_price_series(token, pair, observed_series):
     if not key[0] or not key[1]:
         return list(observations)
 
+    try:
+        block_id = (
+            int(observation_block)
+            if observation_block is not None
+            else None
+        )
+    except (TypeError, ValueError):
+        block_id = None
+
     with _RUNTIME_PAIR_PRICE_HISTORY_LOCK:
-        history = _RUNTIME_PAIR_PRICE_HISTORY.setdefault(
+        # Refresh insertion order on use so bounded eviction behaves
+        # as a simple LRU without allowing the active pair to evict itself.
+        history = _RUNTIME_PAIR_PRICE_HISTORY.pop(
             key,
             [],
+        )
+        last_block = _RUNTIME_PAIR_PRICE_LAST_BLOCK.pop(
+            key,
+            None,
         )
 
         # Seed from the real pair-specific block series once. Later
         # observations contribute only the newest pair price from that
-        # runtime cycle. This preserves source-family integrity while
-        # allowing Fast Watch revisits to mature continuation evidence.
+        # runtime cycle. The same chain block is not counted twice, while
+        # equal prices on different blocks remain valid zero-return samples.
         if not history:
             history.extend(observations)
-        else:
+        elif block_id is None or block_id != last_block:
             history.append(observations[-1])
 
         if len(history) > _RUNTIME_PAIR_PRICE_HISTORY_MAX_OBSERVATIONS:
             del history[:-_RUNTIME_PAIR_PRICE_HISTORY_MAX_OBSERVATIONS]
+
+        _RUNTIME_PAIR_PRICE_HISTORY[key] = history
+        _RUNTIME_PAIR_PRICE_LAST_BLOCK[key] = block_id
 
         while (
             len(_RUNTIME_PAIR_PRICE_HISTORY)
             > _RUNTIME_PAIR_PRICE_HISTORY_MAX_KEYS
         ):
             oldest_key = next(iter(_RUNTIME_PAIR_PRICE_HISTORY))
-            if oldest_key == key:
-                break
             _RUNTIME_PAIR_PRICE_HISTORY.pop(oldest_key, None)
+            _RUNTIME_PAIR_PRICE_LAST_BLOCK.pop(oldest_key, None)
 
         return list(history)
 
@@ -446,6 +470,7 @@ def analyze(token, pair):
             token_address,
             pair_address,
             price_series,
+            observation_block=latest_block,
         )
 
         reserve_change = None
@@ -498,6 +523,7 @@ def analyze(token, pair):
                 "spot_price_series_usd": price_series,
                 "runtime_spot_price_series_usd": runtime_price_series,
                 "runtime_price_observation_count": len(runtime_price_series),
+                "runtime_price_latest_block": latest_block,
                 "route_quote_one_token_wbnb": (
                     route_quote_out_wbnb
                 ),
@@ -535,6 +561,7 @@ def analyze(token, pair):
                 "spot_price_series_usd": [],
                 "runtime_spot_price_series_usd": [],
                 "runtime_price_observation_count": 0,
+                "runtime_price_latest_block": None,
                 "quote_reserve_usd": None,
                 "observed_min_quote_reserve_usd": None,
                 "reserve_floor_fraction_of_current": None,

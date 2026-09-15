@@ -1,3 +1,4 @@
+import asyncio
 from collections import Counter, OrderedDict
 
 from app.dex.adversary_evidence import (
@@ -11,6 +12,7 @@ from app.dex.entity_linking import (
 )
 from app.dex.transaction_origin import (
     TransactionOriginResolver,
+    resolved_transaction_origin,
 )
 from app.dex.wallet_behavior import (
     classify_wallet_behavior,
@@ -60,6 +62,9 @@ class RuntimeActorIntelligence:
         chain="bsc",
         max_pairs=256,
         max_events_per_pair=2048,
+        max_pending_origin_replays=2048,
+        origin_replay_timeout_seconds=2.0,
+        origin_replay_poll_seconds=0.05,
         resolver=None,
         wallet_writer=None,
         adversary_writer=None,
@@ -85,6 +90,19 @@ class RuntimeActorIntelligence:
             int(max_events_per_pair),
         )
 
+        self.max_pending_origin_replays = max(
+            1,
+            int(max_pending_origin_replays),
+        )
+        self.origin_replay_timeout_seconds = max(
+            0.05,
+            float(origin_replay_timeout_seconds),
+        )
+        self.origin_replay_poll_seconds = max(
+            0.01,
+            float(origin_replay_poll_seconds),
+        )
+
         self.resolver = (
             resolver
             or TransactionOriginResolver()
@@ -101,11 +119,17 @@ class RuntimeActorIntelligence:
         self._pairs = OrderedDict()
         self._events = {}
         self._latest_actor = {}
+        self._origin_replay_tasks = OrderedDict()
 
         self.accepted_events = 0
         self.retracted_events = 0
         self.unresolved_origins = 0
         self.dropped_events = 0
+        self.origin_replay_scheduled = 0
+        self.origin_replay_accepted = 0
+        self.origin_replay_timeouts = 0
+        self.origin_replay_dropped = 0
+        self.origin_replay_cancelled = 0
 
     @property
     def pair_count(self):
@@ -165,6 +189,15 @@ class RuntimeActorIntelligence:
         ) != "READY":
             self.unresolved_origins += 1
 
+            if resolved.get("source") in {
+                "PROVIDER_LOOKUP_PENDING",
+                "PROVIDER_LOOKUP_QUEUED",
+            }:
+                self._schedule_origin_replay(
+                    event,
+                    direction,
+                )
+
             return {
                 "state": "UNKNOWN",
                 "reason": (
@@ -177,6 +210,24 @@ class RuntimeActorIntelligence:
                 "decision_authority": False,
                 "execution_authority": False,
             }
+
+        replay_key = str(identity)
+
+        pending_replay = (
+            self._origin_replay_tasks.pop(
+                replay_key,
+                None,
+            )
+        )
+
+        current_task = asyncio.current_task()
+
+        if (
+            pending_replay is not None
+            and pending_replay is not current_task
+            and not pending_replay.done()
+        ):
+            pending_replay.cancel()
 
         address = resolved[
             "address"
@@ -282,6 +333,124 @@ class RuntimeActorIntelligence:
             "execution_authority": False,
         }
 
+    def _schedule_origin_replay(
+        self,
+        event,
+        direction,
+    ):
+        identity = str(
+            event.get("event_identity")
+            or ""
+        ).strip()
+
+        transaction_hash = str(
+            event.get("transaction_hash")
+            or ""
+        ).strip().lower()
+
+        if not identity or not transaction_hash:
+            return False
+
+        existing = (
+            self._origin_replay_tasks.get(
+                identity
+            )
+        )
+
+        if (
+            existing is not None
+            and not existing.done()
+        ):
+            return False
+
+        if (
+            len(self._origin_replay_tasks)
+            >= self.max_pending_origin_replays
+        ):
+            self.origin_replay_dropped += 1
+            return False
+
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            self.origin_replay_dropped += 1
+            return False
+
+        task = loop.create_task(
+            self._origin_replay_when_ready(
+                dict(event),
+                direction,
+                transaction_hash,
+            )
+        )
+
+        self._origin_replay_tasks[
+            identity
+        ] = task
+
+        self._origin_replay_tasks.move_to_end(
+            identity
+        )
+
+        self.origin_replay_scheduled += 1
+
+        def cleanup(done_task):
+            current = (
+                self._origin_replay_tasks.get(
+                    identity
+                )
+            )
+
+            if current is done_task:
+                self._origin_replay_tasks.pop(
+                    identity,
+                    None,
+                )
+
+        task.add_done_callback(cleanup)
+        return True
+
+    async def _origin_replay_when_ready(
+        self,
+        event,
+        direction,
+        transaction_hash,
+    ):
+        loop = asyncio.get_running_loop()
+
+        deadline = (
+            loop.time()
+            + self.origin_replay_timeout_seconds
+        )
+
+        try:
+            while loop.time() < deadline:
+                if resolved_transaction_origin(
+                    transaction_hash
+                ):
+                    result = await self.observe_event(
+                        event,
+                        direction=direction,
+                    )
+
+                    if (
+                        result.get("state")
+                        == "OBSERVED"
+                    ):
+                        self.origin_replay_accepted += 1
+
+                    return
+
+                await asyncio.sleep(
+                    self.origin_replay_poll_seconds
+                )
+
+            self.origin_replay_timeouts += 1
+
+        except asyncio.CancelledError:
+            self.origin_replay_cancelled += 1
+            raise
+
     async def observe_retraction(
         self,
         event,
@@ -302,6 +471,27 @@ class RuntimeActorIntelligence:
                 "event_identity"
             )
         )
+
+        replay_key = (
+            str(identity)
+            if identity is not None
+            else None
+        )
+
+        pending_replay = (
+            self._origin_replay_tasks.pop(
+                replay_key,
+                None,
+            )
+            if replay_key
+            else None
+        )
+
+        if (
+            pending_replay is not None
+            and not pending_replay.done()
+        ):
+            pending_replay.cancel()
 
         if (
             not pair
@@ -854,6 +1044,27 @@ class RuntimeActorIntelligence:
             ),
             "dropped_events": (
                 self.dropped_events
+            ),
+            "pending_origin_replays": (
+                len(self._origin_replay_tasks)
+            ),
+            "max_pending_origin_replays": (
+                self.max_pending_origin_replays
+            ),
+            "origin_replay_scheduled": (
+                self.origin_replay_scheduled
+            ),
+            "origin_replay_accepted": (
+                self.origin_replay_accepted
+            ),
+            "origin_replay_timeouts": (
+                self.origin_replay_timeouts
+            ),
+            "origin_replay_dropped": (
+                self.origin_replay_dropped
+            ),
+            "origin_replay_cancelled": (
+                self.origin_replay_cancelled
             ),
             "resolver": (
                 self.resolver.status()

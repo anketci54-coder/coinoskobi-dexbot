@@ -31,7 +31,7 @@ from app.pipeline.engine import (
 )
 
 
-SCAN_NATIVE_WSS_LIMIT = 16
+SCAN_NATIVE_WSS_LIMIT = 256
 
 # Keep recently verified scanner candidates subscribed long enough for
 # native flow state to mature across repeated observations:
@@ -40,7 +40,7 @@ SCAN_NATIVE_WSS_LIMIT = 16
 # This cache grants no trading authority and does not fabricate evidence.
 # It only prevents scanner ordering churn from tearing down WSS observation
 # before the existing mathematical flow contract can mature.
-SCAN_NATIVE_WSS_RETENTION_LIMIT = 64
+SCAN_NATIVE_WSS_RETENTION_LIMIT = 256
 
 
 def build_application(

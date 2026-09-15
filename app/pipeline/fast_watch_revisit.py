@@ -37,6 +37,8 @@ FAST_WATCH_PROVIDER_BATCH_SIZE = 30
 # decision/live/wallet/execution authority and does not relax any gate.
 FAST_DISCOVERY_MAX_CANDIDATES = 8
 FAST_DISCOVERY_ROW_BUDGET = 64
+FAST_DISCOVERY_BLOCK_WINDOW = 2000
+FAST_DISCOVERY_RETRY_SECONDS = 60.0
 
 
 class FastWatchRevisitJob:
@@ -59,6 +61,7 @@ class FastWatchRevisitJob:
         self._thread = None
         self._ticker_thread = None
         self._stop_event = threading.Event()
+        self._discovery_retry_after = {}
         self.last_status = self._status(state="IDLE")
 
     @staticmethod
@@ -307,8 +310,13 @@ class FastWatchRevisitJob:
 
     def _unseen_universe_identities(self):
         """
-        Return a bounded set of newly factory-discovered V2/base-token pools
+        Return a bounded set of recent factory-discovered V2/base-token pools
         that have never entered candidate_decision_history.
+
+        Selection is anchored to the durable NEW-tail checkpoint rather than
+        the registry row's discovery_branch. EXISTING discovery may insert the
+        same freshly-created pool first, and registry upsert deliberately keeps
+        the original branch label.
 
         Universe discovery is observational only. Exact-pool market data,
         ingress, analyzers, Risk Engine and paper admission still run through
@@ -321,11 +329,49 @@ class FastWatchRevisitJob:
         if decision_db is None or decision_lock is None:
             return []
 
+        now = time.monotonic()
+
+        # Process-local retry suppression keeps inactive/newborn pools from
+        # occupying the same bounded discovery slots every 20 seconds.
+        self._discovery_retry_after = {
+            identity: retry_after
+            for identity, retry_after
+            in self._discovery_retry_after.items()
+            if retry_after > now
+        }
+
         connection = None
 
         try:
             connection = sqlite3.connect(DEFAULT_DB)
             connection.row_factory = sqlite3.Row
+
+            checkpoint = connection.execute(
+                """
+                SELECT MAX(last_scanned_block) AS last_scanned_block
+                FROM universe_discovery_checkpoint
+                WHERE chain='bsc'
+                  AND dex=?
+                  AND event_kind='PAIR_CREATED'
+                  AND discovery_branch='NEW'
+                """,
+                (DEX_PANCAKESWAP_V2,),
+            ).fetchone()
+
+            tail_block = (
+                int(checkpoint["last_scanned_block"])
+                if checkpoint is not None
+                and checkpoint["last_scanned_block"] is not None
+                else None
+            )
+
+            if tail_block is None:
+                return []
+
+            first_block = max(
+                0,
+                tail_block - FAST_DISCOVERY_BLOCK_WINDOW + 1,
+            )
 
             rows = connection.execute(
                 """
@@ -333,12 +379,14 @@ class FastWatchRevisitJob:
                 FROM universe_pool_registry
                 WHERE chain='bsc'
                   AND dex=?
-                  AND discovery_branch='NEW'
+                  AND creation_block BETWEEN ? AND ?
                 ORDER BY creation_block DESC
                 LIMIT ?
                 """,
                 (
                     DEX_PANCAKESWAP_V2,
+                    first_block,
+                    tail_block,
                     FAST_DISCOVERY_ROW_BUDGET,
                 ),
             ).fetchall()
@@ -363,7 +411,6 @@ class FastWatchRevisitJob:
             token0_is_base = token0 in BASE_TOKEN_SET
             token1_is_base = token1 in BASE_TOKEN_SET
 
-            # Exactly one side must be one of the canonical base assets.
             if (
                 not pool
                 or not token0
@@ -377,6 +424,10 @@ class FastWatchRevisitJob:
                 if token0_is_base
                 else token0
             )
+            identity = (token, pool)
+
+            if self._discovery_retry_after.get(identity, 0.0) > now:
+                continue
 
             if self._has_canonical_trade_history_block(token):
                 continue
@@ -391,11 +442,9 @@ class FastWatchRevisitJob:
                           AND lower(pool)=?
                         LIMIT 1
                         """,
-                        (token, pool),
+                        identity,
                     ).fetchone()
             except Exception:
-                # Fail closed: discovery acceleration must never create a
-                # duplicate-analysis storm when durable history is unreadable.
                 logger.exception(
                     "Fast discovery decision-history query failed"
                 )
@@ -404,10 +453,15 @@ class FastWatchRevisitJob:
             if already_seen is not None:
                 continue
 
-            selected.append((token, pool))
+            selected.append(identity)
 
             if len(selected) >= FAST_DISCOVERY_MAX_CANDIDATES:
                 break
+
+        retry_after = now + FAST_DISCOVERY_RETRY_SECONDS
+
+        for identity in selected:
+            self._discovery_retry_after[identity] = retry_after
 
         return selected
 

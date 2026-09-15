@@ -1,5 +1,6 @@
 import json
 import logging
+import sqlite3
 import threading
 import time
 
@@ -11,6 +12,9 @@ from app.config.strategy import SELLABILITY_CACHE_TTL_SECONDS
 from app.pipeline.market_context import build_market_context
 from app.risk import sellability as sellability_module
 from app.scanner.adapters.source_router import normalize_source_rows
+from app.universe.hot_path import BASE_TOKEN_SET
+from app.universe.registry import DEFAULT_DB
+from app.universe.schema import DEX_PANCAKESWAP_V2
 
 
 logger = logging.getLogger(__name__)
@@ -26,6 +30,15 @@ FAST_WATCH_HISTORY_PAGE_SIZE = 128
 FAST_WATCH_HISTORY_ROW_BUDGET = 2048
 FAST_WATCH_IDENTITY_OVERSAMPLE = 8
 FAST_WATCH_PROVIDER_BATCH_SIZE = 30
+
+# Factory discovery already sees new Pancake V2 pools close to chain time.
+# Give only a small number of previously-unanalysed NEW pools access to the
+# same canonical ingress/risk/paper path used by fast-watch. This grants no
+# decision/live/wallet/execution authority and does not relax any gate.
+FAST_DISCOVERY_MAX_CANDIDATES = 8
+FAST_DISCOVERY_ROW_BUDGET = 64
+FAST_DISCOVERY_BLOCK_WINDOW = 2000
+FAST_DISCOVERY_RETRY_SECONDS = 60.0
 
 
 class FastWatchRevisitJob:
@@ -48,6 +61,7 @@ class FastWatchRevisitJob:
         self._thread = None
         self._ticker_thread = None
         self._stop_event = threading.Event()
+        self._discovery_retry_after = {}
         self.last_status = self._status(state="IDLE")
 
     @staticmethod
@@ -291,6 +305,163 @@ class FastWatchRevisitJob:
 
             if eligible is not None:
                 selected.append(eligible)
+
+        return selected
+
+    def _unseen_universe_identities(self):
+        """
+        Return a bounded set of recent factory-discovered V2/base-token pools
+        that have never entered candidate_decision_history.
+
+        Selection is anchored to the durable NEW-tail checkpoint rather than
+        the registry row's discovery_branch. EXISTING discovery may insert the
+        same freshly-created pool first, and registry upsert deliberately keeps
+        the original branch label.
+
+        Universe discovery is observational only. Exact-pool market data,
+        ingress, analyzers, Risk Engine and paper admission still run through
+        the existing canonical path before any decision can be produced.
+        """
+        store = getattr(self.pipeline, "counterfactual_store", None)
+        decision_db = getattr(store, "_db", None)
+        decision_lock = getattr(store, "_lock", None)
+
+        if decision_db is None or decision_lock is None:
+            return []
+
+        now = time.monotonic()
+
+        # Process-local retry suppression keeps inactive/newborn pools from
+        # occupying the same bounded discovery slots every 20 seconds.
+        self._discovery_retry_after = {
+            identity: retry_after
+            for identity, retry_after
+            in self._discovery_retry_after.items()
+            if retry_after > now
+        }
+
+        connection = None
+
+        try:
+            connection = sqlite3.connect(DEFAULT_DB)
+            connection.row_factory = sqlite3.Row
+
+            checkpoint = connection.execute(
+                """
+                SELECT MAX(last_scanned_block) AS last_scanned_block
+                FROM universe_discovery_checkpoint
+                WHERE chain='bsc'
+                  AND dex=?
+                  AND event_kind='PAIR_CREATED'
+                  AND discovery_branch='NEW'
+                """,
+                (DEX_PANCAKESWAP_V2,),
+            ).fetchone()
+
+            tail_block = (
+                int(checkpoint["last_scanned_block"])
+                if checkpoint is not None
+                and checkpoint["last_scanned_block"] is not None
+                else None
+            )
+
+            if tail_block is None:
+                return []
+
+            first_block = max(
+                0,
+                tail_block - FAST_DISCOVERY_BLOCK_WINDOW + 1,
+            )
+
+            rows = connection.execute(
+                """
+                SELECT pool, token0, token1, creation_block
+                FROM universe_pool_registry
+                WHERE chain='bsc'
+                  AND dex=?
+                  AND creation_block BETWEEN ? AND ?
+                ORDER BY creation_block DESC
+                LIMIT ?
+                """,
+                (
+                    DEX_PANCAKESWAP_V2,
+                    first_block,
+                    tail_block,
+                    FAST_DISCOVERY_ROW_BUDGET,
+                ),
+            ).fetchall()
+        except Exception:
+            logger.exception(
+                "Fast discovery universe query failed"
+            )
+            return []
+        finally:
+            if connection is not None:
+                connection.close()
+
+        selected = []
+
+        for raw in rows:
+            item = dict(raw)
+
+            pool = self._canonical(item.get("pool"))
+            token0 = self._canonical(item.get("token0"))
+            token1 = self._canonical(item.get("token1"))
+
+            token0_is_base = token0 in BASE_TOKEN_SET
+            token1_is_base = token1 in BASE_TOKEN_SET
+
+            if (
+                not pool
+                or not token0
+                or not token1
+                or token0_is_base == token1_is_base
+            ):
+                continue
+
+            token = (
+                token1
+                if token0_is_base
+                else token0
+            )
+            identity = (token, pool)
+
+            if self._discovery_retry_after.get(identity, 0.0) > now:
+                continue
+
+            if self._has_canonical_trade_history_block(token):
+                continue
+
+            try:
+                with decision_lock:
+                    already_seen = decision_db.execute(
+                        """
+                        SELECT 1
+                        FROM candidate_decision_history
+                        WHERE lower(token)=?
+                          AND lower(pool)=?
+                        LIMIT 1
+                        """,
+                        identity,
+                    ).fetchone()
+            except Exception:
+                logger.exception(
+                    "Fast discovery decision-history query failed"
+                )
+                return []
+
+            if already_seen is not None:
+                continue
+
+            selected.append(identity)
+
+            if len(selected) >= FAST_DISCOVERY_MAX_CANDIDATES:
+                break
+
+        retry_after = now + FAST_DISCOVERY_RETRY_SECONDS
+
+        for identity in selected:
+            self._discovery_retry_after[identity] = retry_after
 
         return selected
 
@@ -562,7 +733,26 @@ class FastWatchRevisitJob:
         return result
 
     def _run_cycle_sync(self):
-        identities = self._watched_identities()
+        discovery_identities = self._unseen_universe_identities()
+        watched_identities = self._watched_identities()
+
+        identities = []
+        seen = set()
+
+        # Factory-discovered identities go first so a full WATCH backlog cannot
+        # starve first analysis. The overall provider/analyzer cap is unchanged.
+        for identity in (
+            list(discovery_identities)
+            + list(watched_identities)
+        ):
+            if identity in seen:
+                continue
+
+            seen.add(identity)
+            identities.append(identity)
+
+            if len(identities) >= self.max_candidates:
+                break
 
         if not identities:
             self.last_status = self._status(state="NO_WATCH_CANDIDATES")

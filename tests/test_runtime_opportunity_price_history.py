@@ -6,6 +6,11 @@ TOKEN = "0x1111111111111111111111111111111111111111"
 PAIR = "0x2222222222222222222222222222222222222222"
 
 
+def _reset_runtime_history():
+    exit_module._RUNTIME_PAIR_PRICE_HISTORY.clear()
+    exit_module._RUNTIME_PAIR_PRICE_LAST_BLOCK.clear()
+
+
 def _risk_gate(*, runtime_prices, latest_flow=0.01):
     return {
         "hard_block": False,
@@ -42,7 +47,7 @@ def _evaluate(*, runtime_prices, latest_flow=0.01):
 
 
 def test_pair_runtime_history_seeds_once_then_appends_latest_cycle_price():
-    exit_module._RUNTIME_PAIR_PRICE_HISTORY.clear()
+    _reset_runtime_history()
 
     first = exit_module._runtime_pair_price_series(
         TOKEN,
@@ -63,6 +68,33 @@ def test_pair_runtime_history_seeds_once_then_appends_latest_cycle_price():
     assert first == [1.0, 0.9, 1.0]
     assert second == [1.0, 0.9, 1.0, 1.1]
     assert third == [1.0, 0.9, 1.0, 1.1, 1.2]
+
+
+def test_same_block_is_not_double_counted_but_next_block_is_observed():
+    _reset_runtime_history()
+
+    first = exit_module._runtime_pair_price_series(
+        TOKEN,
+        PAIR,
+        [1.0, 0.9, 1.0],
+        observation_block=100,
+    )
+    duplicate = exit_module._runtime_pair_price_series(
+        TOKEN,
+        PAIR,
+        [1.0, 0.9, 1.1],
+        observation_block=100,
+    )
+    next_block = exit_module._runtime_pair_price_series(
+        TOKEN,
+        PAIR,
+        [1.0, 0.9, 1.1],
+        observation_block=101,
+    )
+
+    assert first == [1.0, 0.9, 1.0]
+    assert duplicate == first
+    assert next_block == [1.0, 0.9, 1.0, 1.1]
 
 
 def test_runtime_pair_history_overrides_stale_block_momentum_for_opportunity():

@@ -315,6 +315,21 @@ def _blockers(context):
     return values
 
 
+def _decision_identity(row):
+    token = str(row.get("token") or "").strip().lower()
+    pool = str(row.get("pool") or "").strip().lower()
+    observed_at = row.get("observed_at")
+
+    if token or pool or observed_at is not None:
+        return (token, pool, observed_at)
+
+    decision_id = row.get("decision_history_id")
+    if decision_id is not None:
+        return ("decision_history_id", decision_id)
+
+    return ("object", id(row))
+
+
 def _missed_opportunity_forensics(
     counterfactual_rows,
     durable_rows,
@@ -327,9 +342,12 @@ def _missed_opportunity_forensics(
     seen = set()
     missed_count = 0
 
+    # Durable Phase 13C rows carry the longest observed horizon and
+    # therefore win when the same decision is also present in the
+    # short-horizon in-memory outcome channel.
     rows = []
-    rows.extend(counterfactual_rows)
     rows.extend(durable_rows)
+    rows.extend(counterfactual_rows)
 
     for row in rows:
         classification = (
@@ -365,12 +383,7 @@ def _missed_opportunity_forensics(
             if classification != "MISSED_OPPORTUNITY":
                 continue
 
-        key = (
-            row.get("decision_history_id"),
-            row.get("token"),
-            row.get("observed_at"),
-            bucket,
-        )
+        key = _decision_identity(row)
         if key in seen:
             continue
         seen.add(key)

@@ -361,19 +361,23 @@ def _missed_opportunity_forensics(
             row.get("signal_state") or ""
         ).upper()
 
-        is_durable_non_entry = (
+        # Durable rows do not carry the short-horizon classification
+        # object. Only a POSITIVE non-entry is a missed-opportunity
+        # fallback. NEGATIVE blocked/rejected upward outcomes retain
+        # the canonical FALSE_NEGATIVE meaning and are not counted here.
+        is_durable_missed_candidate = (
             candidate_action in {
                 "WATCH",
                 "DOWNGRADE",
                 "BLOCK",
                 "REJECT",
             }
-            and signal_state in {"POSITIVE", "NEGATIVE"}
+            and signal_state == "POSITIVE"
         )
 
         if (
             classification != "MISSED_OPPORTUNITY"
-            and not is_durable_non_entry
+            and not is_durable_missed_candidate
         ):
             continue
 
@@ -476,9 +480,12 @@ def build_outcome_forensics(
         "strategy_rewrite_allowed": False,
         "hard_safety_weakening_allowed": False,
         "ai_authority": False,
+        "trade_permission": False,
+        "trade_authority": False,
         "decision_authority": False,
         "paper_authority": False,
         "live_authority": False,
         "wallet_authority": False,
+        "signing_authority": False,
         "execution_authority": False,
     }

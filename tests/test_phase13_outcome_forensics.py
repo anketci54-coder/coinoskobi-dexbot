@@ -205,6 +205,30 @@ def test_explicit_1000x_marker_has_precedence():
     ]["1000X_PLUS"] == 1
 
 
+def test_negative_blocked_durable_winner_is_not_missed_opportunity_fallback():
+    row = {
+        "token": "0xnegative",
+        "pool": "0xpool",
+        "entry_price": 1.0,
+        "max_price": 125.0,
+        "signal_state": "NEGATIVE",
+        "candidate_action": "BLOCK",
+        "observed_at": 2.0,
+        "decision_history_id": 13,
+        "context_json": "{}",
+    }
+
+    result = build_outcome_forensics(
+        paper_events=[],
+        counterfactual_events=[],
+        durable_counterfactual_events=[row],
+    )
+
+    assert result["missed_opportunities"][
+        "sample_count"
+    ] == 0
+
+
 def test_durable_row_wins_without_double_counting_same_decision():
     short = {
         "token": "0xmoon",
@@ -287,8 +311,11 @@ def test_unified_phase13d_exposes_forensics_without_authority():
     assert forensic["provider_call"] is False
     assert forensic["automatic_apply_allowed"] is False
     assert forensic["hard_safety_weakening_allowed"] is False
+    assert forensic["trade_permission"] is False
+    assert forensic["trade_authority"] is False
     assert forensic["decision_authority"] is False
     assert forensic["paper_authority"] is False
     assert forensic["live_authority"] is False
     assert forensic["wallet_authority"] is False
+    assert forensic["signing_authority"] is False
     assert forensic["execution_authority"] is False

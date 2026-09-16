@@ -1,8 +1,12 @@
 import json
 import math
 import threading
+from datetime import datetime, timezone
 
 from app.dex.native_ingestion import SYNC_TOPIC
+
+
+OPEN_POSITION_PRICE_MAX_AGE_SECONDS = 30.0
 
 
 def _address(value):
@@ -24,6 +28,60 @@ def _positive_number(value):
         return None
 
     return value
+
+
+def _cache_price_is_fresh(
+    row,
+    *,
+    max_age_seconds=OPEN_POSITION_PRICE_MAX_AGE_SECONDS,
+):
+    if not isinstance(row, dict):
+        return False
+
+    # Legacy/test adapters that never exposed cache timestamps keep their
+    # historical contract. The production GeckoCache always exposes
+    # updated_at, so a missing/invalid production timestamp fails closed.
+    if "updated_at" not in row:
+        return True
+
+    raw = row.get("updated_at")
+
+    if not raw:
+        return False
+
+    text = str(raw).strip()
+
+    if text.endswith("Z"):
+        text = f"{text[:-1]}+00:00"
+
+    try:
+        observed = datetime.fromisoformat(text)
+    except (TypeError, ValueError):
+        return False
+
+    if observed.tzinfo is None:
+        observed = observed.replace(
+            tzinfo=timezone.utc,
+        )
+
+    age = (
+        datetime.now(timezone.utc)
+        - observed.astimezone(timezone.utc)
+    ).total_seconds()
+
+    return (
+        age >= 0
+        and age <= float(max_age_seconds)
+    )
+
+
+def _fresh_cache_price(row):
+    if not _cache_price_is_fresh(row):
+        return None
+
+    return _positive_number(
+        (row or {}).get("price_usd")
+    )
 
 
 def _decode_words(data, count):
@@ -784,11 +842,9 @@ class HotPositionWSSBridge:
                 ratio = self._latest_ratio.get(
                     pair
                 )
-                price = _positive_number(
-                    (
-                        cache_by_pool.get(pair)
-                        or {}
-                    ).get("price_usd")
+                price = _fresh_cache_price(
+                    cache_by_pool.get(pair)
+                    or {}
                 )
 
                 if ratio is None or price is None:
@@ -910,11 +966,9 @@ class HotPositionWSSBridge:
                 or (None, None)
             )
 
-            current = _positive_number(
-                (
-                    cache_by_pool.get(pair)
-                    or {}
-                ).get("price_usd")
+            current = _fresh_cache_price(
+                cache_by_pool.get(pair)
+                or {}
             )
 
             if ratio is None or current is None:
@@ -1045,14 +1099,27 @@ class _ExactOpenPoolPrice:
         self,
         token_prices,
         fallback,
+        blocked_tokens=None,
     ):
         self.token_prices = dict(
             token_prices
         )
         self.fallback = fallback
+        self.blocked_tokens = {
+            _address(token)
+            for token in (
+                blocked_tokens
+                or []
+            )
+            if _address(token)
+        }
 
     def get_price(self, token):
         key = _address(token)
+
+        if key in self.blocked_tokens:
+            return None
+
         price = self.token_prices.get(
             key
         )
@@ -1094,6 +1161,7 @@ def process_hot_positions(
     }
 
     token_prices = {}
+    blocked_tokens = set()
 
     for position in _open_positions(
         pipeline
@@ -1108,11 +1176,20 @@ def process_hot_positions(
         row = cache_by_pool.get(
             pool
         ) or {}
-        price = _positive_number(
-            row.get("price_usd")
-        )
+        price = _fresh_cache_price(row)
 
-        if token and price is not None:
+        if not token:
+            continue
+
+        if price is None:
+            blocked_tokens.add(token)
+            token_prices.pop(
+                token,
+                None,
+            )
+            continue
+
+        if token not in blocked_tokens:
             token_prices[token] = price
 
     previous_evidence = getattr(
@@ -1140,11 +1217,15 @@ def process_hot_positions(
 
     if (
         previous_price is not None
-        and token_prices
+        and (
+            token_prices
+            or blocked_tokens
+        )
     ):
         manager.price = _ExactOpenPoolPrice(
             token_prices,
             previous_price,
+            blocked_tokens=blocked_tokens,
         )
 
     try:

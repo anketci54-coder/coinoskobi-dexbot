@@ -290,7 +290,7 @@ def test_real_sample_count_reaches_calibration():
     for i in range(20):
         close(
             feed,
-            i,
+            i + 1,
             (
                 0.10
                 if i < 15

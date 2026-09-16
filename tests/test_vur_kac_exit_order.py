@@ -1,7 +1,7 @@
 from pathlib import Path
 
 
-def test_vur_kac_partial_realization_precedes_trend_floor_close():
+def test_vur_kac_full_exit_preserves_hard_safety_precedence():
     source = Path("app/paper/manager.py").read_text()
     method = source.split(
         "    def _process_vur_kac_position(",
@@ -12,7 +12,7 @@ def test_vur_kac_partial_realization_precedes_trend_floor_close():
     )[0]
 
     hard_exit = method.index('"HARD_SAFETY_EXIT"')
-    partial_realization = method.index("if stage is not None:")
     trend_floor = method.index('"MATHEMATICAL_TREND_FLOOR"')
 
-    assert hard_exit < partial_realization < trend_floor
+    assert "if stage is not None:" not in method
+    assert hard_exit < trend_floor

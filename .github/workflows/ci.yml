@@ -56,6 +56,8 @@ jobs:
           tests/test_phase13_counterfactual_pipeline.py
           tests/test_phase13_outcome_forensics.py
           tests/test_phase13_forensics_performance.py
+          tests/test_phase13_forensics_runtime_binding.py
+          tests/test_paper_learning_integration.py
           tests/test_phase9_panel_bridge.py
           tests/test_phase9_panel_detail.py
           tests/test_gecko_multi_pool.py

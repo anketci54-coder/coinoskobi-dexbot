@@ -128,21 +128,17 @@ def test_real_paper_close_feeds_phase11():
         == close_data["lowest_price"]
     )
 
+    assert lifecycle["gross_pnl_usdt"] is None
+    assert lifecycle["net_pnl_usdt"] is None
     assert (
-        lifecycle["gross_pnl_usdt"]
-        == close_data.get(
-            "gross_pnl_usdt",
-            close_data["gross_pnl"],
-        )
+        lifecycle["gross_pnl"]
+        == close_data["gross_pnl"]
     )
-
     assert (
-        lifecycle["net_pnl_usdt"]
-        == close_data.get(
-            "net_pnl_usdt",
-            close_data["net_pnl"],
-        )
+        lifecycle["net_pnl"]
+        == close_data["net_pnl"]
     )
+    assert lifecycle["pnl_currency"] == "BNB"
 
     assert (
         feed.calibration_snapshot()
@@ -248,8 +244,20 @@ def test_replay_legacy_close_falls_back_to_persisted_generic_pnl():
 
     assert lifecycle[
         "gross_pnl_usdt"
-    ] == 1.0
+    ] is None
 
     assert lifecycle[
         "net_pnl_usdt"
+    ] is None
+
+    assert lifecycle[
+        "gross_pnl"
+    ] == 1.0
+
+    assert lifecycle[
+        "net_pnl"
     ] == -2.0
+
+    assert lifecycle[
+        "pnl_currency"
+    ] == "BNB"

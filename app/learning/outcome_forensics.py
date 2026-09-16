@@ -20,9 +20,15 @@ def _number(value):
 
 def _opening_context(row):
     evidence = row.get("evidence") or {}
+
+    if not isinstance(evidence, dict):
+        evidence = {}
+
+    expected = evidence.get("expected_context")
     opening = (
-        evidence.get("expected_context", {})
-        .get("opening_context")
+        expected.get("opening_context")
+        if isinstance(expected, dict)
+        else None
     )
 
     if isinstance(opening, dict):
@@ -100,16 +106,51 @@ def _paper_forensics(rows, *, max_examples):
         peak_net_return = _number(
             lifecycle.get("peak_net_return")
         )
-        gross_pnl = _number(
+        gross_pnl_usdt = _number(
             lifecycle.get("gross_pnl_usdt")
             if lifecycle.get("gross_pnl_usdt") is not None
             else row.get("gross_pnl_usdt")
         )
-        net_pnl = _number(
+        net_pnl_usdt = _number(
             lifecycle.get("net_pnl_usdt")
             if lifecycle.get("net_pnl_usdt") is not None
             else row.get("net_pnl_usdt")
         )
+        generic_gross_pnl = _number(
+            lifecycle.get("gross_pnl")
+            if lifecycle.get("gross_pnl") is not None
+            else row.get("gross_pnl")
+        )
+        generic_net_pnl = _number(
+            lifecycle.get("net_pnl")
+            if lifecycle.get("net_pnl") is not None
+            else row.get("net_pnl")
+        )
+        pnl_currency = str(
+            lifecycle.get("pnl_currency")
+            or row.get("pnl_currency")
+            or ""
+        ).upper()
+
+        if (
+            gross_pnl_usdt is not None
+            and net_pnl_usdt is not None
+        ):
+            gross_pnl = gross_pnl_usdt
+            net_pnl = net_pnl_usdt
+            analyzed_pnl_currency = "USDT"
+        elif (
+            generic_gross_pnl is not None
+            and generic_net_pnl is not None
+            and pnl_currency
+        ):
+            gross_pnl = generic_gross_pnl
+            net_pnl = generic_net_pnl
+            analyzed_pnl_currency = pnl_currency
+        else:
+            gross_pnl = None
+            net_pnl = None
+            analyzed_pnl_currency = None
 
         lifecycle_has_evidence = any(
             value is not None
@@ -127,8 +168,10 @@ def _paper_forensics(rows, *, max_examples):
                     )
                 ),
                 peak_net_return,
-                gross_pnl,
-                net_pnl,
+                gross_pnl_usdt,
+                net_pnl_usdt,
+                generic_gross_pnl,
+                generic_net_pnl,
             )
         )
 
@@ -234,8 +277,11 @@ def _paper_forensics(rows, *, max_examples):
                     "highest_price": highest_price,
                     "peak_price_return": peak_price_return,
                     "peak_net_return": peak_net_return,
-                    "gross_pnl_usdt": gross_pnl,
-                    "net_pnl_usdt": net_pnl,
+                    "gross_pnl_usdt": gross_pnl_usdt,
+                    "net_pnl_usdt": net_pnl_usdt,
+                    "gross_pnl": generic_gross_pnl,
+                    "net_pnl": generic_net_pnl,
+                    "pnl_currency": analyzed_pnl_currency,
                     "close_reason": close_reason,
                 },
                 max_examples,
@@ -434,7 +480,8 @@ def _missed_opportunity_forensics(
         # fallback. NEGATIVE blocked/rejected upward outcomes retain
         # the canonical FALSE_NEGATIVE meaning and are not counted here.
         is_durable_missed_candidate = (
-            candidate_action in {
+            classification is None
+            and candidate_action in {
                 "WATCH",
                 "DOWNGRADE",
                 "BLOCK",

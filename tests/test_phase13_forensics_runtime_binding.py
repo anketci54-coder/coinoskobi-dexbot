@@ -111,5 +111,44 @@ def test_runtime_paper_outcome_persists_measured_lifecycle_evidence():
         "lowest_price": 0.90,
         "gross_pnl_usdt": 2.0,
         "net_pnl_usdt": -1.0,
+        "gross_pnl": None,
+        "net_pnl": None,
+        "pnl_currency": "USDT",
     }
     assert "peak_net_return" not in lifecycle
+
+
+
+def test_unified_outcome_snapshot_tolerates_durable_reader_failure(
+    monkeypatch,
+):
+    captured = {}
+
+    class FailingStore:
+        def outcome_snapshot(self):
+            return [{"source": "short"}]
+
+        def durable_snapshot(self, *, limit=100):
+            assert limit == 512
+            raise RuntimeError("db unavailable")
+
+    def fake_builder(**kwargs):
+        captured.update(kwargs)
+        return {"state": "READY"}
+
+    monkeypatch.setattr(
+        engine_module,
+        "build_unified_outcome_readmodel",
+        fake_builder,
+    )
+
+    engine = object.__new__(PipelineEngine)
+    engine.learning_outcome_feed = _PaperFeed()
+    engine.counterfactual_store = FailingStore()
+
+    result = engine.unified_outcome_snapshot()
+
+    assert result == {"state": "READY"}
+    assert captured[
+        "durable_counterfactual_events"
+    ] == []

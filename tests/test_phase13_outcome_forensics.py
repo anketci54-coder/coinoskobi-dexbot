@@ -384,3 +384,79 @@ def test_unidentifiable_missed_rows_use_stable_content_dedupe():
     assert forensic["multiple_counts"][
         "10X_PLUS"
     ] == 1
+
+
+
+def test_malformed_opening_context_does_not_abort_forensics():
+    row = _paper_event(
+        realized_return=-0.05,
+    )
+    row["evidence"] = {
+        "expected_context": "malformed",
+    }
+
+    result = build_outcome_forensics(
+        paper_events=[row],
+        counterfactual_events=[],
+    )
+
+    assert result["paper"]["sample_count"] == 1
+
+
+def test_expected_loss_positive_block_is_not_missed_opportunity_fallback():
+    row = {
+        "token": "0xexpectedloss",
+        "pool": "0xpool",
+        "entry_price": 1.0,
+        "max_price": 5.0,
+        "signal_state": "POSITIVE",
+        "candidate_action": "BLOCK",
+        "observed_at": 77.0,
+        "classification": {
+            "outcome_class": "EXPECTED_LOSS",
+        },
+        "context": {
+            "reason": "PLAN_BLOCKED",
+        },
+    }
+
+    result = build_outcome_forensics(
+        paper_events=[],
+        counterfactual_events=[row],
+    )
+
+    assert result[
+        "missed_opportunities"
+    ]["sample_count"] == 0
+
+
+def test_native_currency_cost_drag_is_detected_without_usdt_relabel():
+    row = _paper_event(
+        realized_return=-0.02,
+    )
+    row["lifecycle_snapshot"] = {
+        "highest_price": None,
+        "lowest_price": None,
+        "gross_pnl_usdt": None,
+        "net_pnl_usdt": None,
+        "gross_pnl": 0.02,
+        "net_pnl": -0.01,
+        "pnl_currency": "BNB",
+    }
+
+    result = build_outcome_forensics(
+        paper_events=[row],
+        counterfactual_events=[],
+    )
+
+    paper = result["paper"]
+
+    assert paper["cost_drag_loss_count"] == 1
+
+    example = paper["loss_examples"][0]
+
+    assert example["gross_pnl_usdt"] is None
+    assert example["net_pnl_usdt"] is None
+    assert example["gross_pnl"] == 0.02
+    assert example["net_pnl"] == -0.01
+    assert example["pnl_currency"] == "BNB"

@@ -1,4 +1,5 @@
 import json
+import re
 from datetime import datetime
 from pathlib import Path
 
@@ -18,13 +19,20 @@ _ALLOWED_TABLES = {
     "paper_trades_archive",
 }
 
+_TIMESTAMP_RE = re.compile(
+    r"^\d{4}-\d{2}-\d{2}T"
+    r"\d{2}:\d{2}:\d{2}"
+    r"(?:\.\d{1,6})?"
+    r"(?:Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)$"
+)
+
 
 def _valid_timestamp(value):
     if not isinstance(value, str):
         return False
 
     value = value.strip()
-    if not value:
+    if not value or _TIMESTAMP_RE.fullmatch(value) is None:
         return False
 
     try:

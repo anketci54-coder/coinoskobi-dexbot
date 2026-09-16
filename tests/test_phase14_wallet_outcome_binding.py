@@ -28,6 +28,10 @@ def test_paper_close_uses_persisted_entry_wallet_only():
         "entry_price": 1.0,
         "tp_price": 2.0,
         "sl_price": 0.5,
+        "highest_price": 1.8,
+        "lowest_price": 0.9,
+        "gross_pnl_usdt": 4.0,
+        "net_pnl_usdt": 3.5,
         "opening_context_json": (
             '{"actor_identity":{'
             f'"wallet_id":"{wallet_id}",'
@@ -48,6 +52,10 @@ def test_paper_close_uses_persisted_entry_wallet_only():
 
     assert feed.kwargs["wallet_id"] == wallet_id
     assert feed.kwargs["actor_id"] == wallet_id
+    assert feed.kwargs["highest_price"] == 1.8
+    assert feed.kwargs["lowest_price"] == 0.9
+    assert feed.kwargs["gross_pnl_usdt"] == 4.0
+    assert feed.kwargs["net_pnl_usdt"] == 3.5
 
     context = feed.kwargs["opening_context"]
 
@@ -89,3 +97,7 @@ def test_missing_entry_wallet_remains_unknown():
 
     assert feed.kwargs["wallet_id"] is None
     assert feed.kwargs["actor_id"] is None
+    assert feed.kwargs["highest_price"] is None
+    assert feed.kwargs["lowest_price"] is None
+    assert feed.kwargs["gross_pnl_usdt"] is None
+    assert feed.kwargs["net_pnl_usdt"] is None

@@ -1,12 +1,12 @@
 # COINOSKOBI CANONICAL PROJECT STATE
 
-Updated: 2026-09-04
+Updated: 2026-09-16
 
 ## CANONICAL SOURCE
 
 - Repository: `anketci54-coder/coinoskobi-dexbot`
 - Production branch: `main`
-- Verified main SHA: `aa7bbbeb8a6c8b55490ace5838191d57d5b0e4e2`
+- Verified main SHA: `81797953f2f06dd3604d8a6da63434fa1e79a9cc`
 - VPS project: `/root/projects/coinoskobi-dexbot`
 - Main application: `main.py`
 - Canonical panel application: `app.api.panel:app`
@@ -51,6 +51,53 @@ External roles:
 - GoPlus/Honeypot.is: sellability/security evidence
 
 Provider failure or missing evidence is never converted into safe evidence.
+
+## 2026-09-16 FINAL MAINTENANCE SEAL
+
+Status: **VALIDATED WITH NATURAL NORMAL PAPER RUNTIME E2E STILL PENDING**.
+
+Final verified production checkpoint:
+- main SHA: `81797953f2f06dd3604d8a6da63434fa1e79a9cc`
+- VPS worktree: clean at verification
+- local `main` vs `origin/main`: synchronized at verification
+- paper runtime service: active
+- `paper_trades.db` integrity: `ok`
+- critical runtime error scan after final restart: empty
+- open paper positions at final smoke: `0`
+- last paper trade id at final smoke: `39`
+
+Repository-wide regression evidence before the final timestamp-integrity maintenance merge:
+- main SHA: `768a3e30c9f6a8cc5054211209cbf18f9922f2e0`
+- full suite: **1583 passed / 0 failed**
+- recurring dependency warning: `websockets.legacy` deprecation only
+
+Final timestamp-integrity maintenance:
+- PR #182 merged to current main
+- strict canonical aware timestamp grammar enforced in both runtime-learning outcome integrity and paper risk calibration
+- malformed/naive/invalid outcome fingerprints fail closed
+- invalid stored outcome fingerprints cannot bootstrap paper sizing
+- final targeted integrity/runtime-outcome suite on current main: **51 passed / 0 failed**
+- post-merge runtime smoke: PASS
+- DB integrity after restart: PASS
+
+Stale PR cleanup:
+- PR #145 closed as superseded by current fail-closed provider behavior
+- PR #151 closed as superseded by the clean current-main port in PR #182
+
+Real PAPER runtime lifecycle evidence:
+- trade id `39`
+- mode: `AUTO`
+- trade type: `VUR_KAC`
+- status: `CLOSED`
+- close reason: `MATHEMATICAL_NO_UPSIDE_EXIT`
+- partial realization count: `0`
+- remaining token amount: `0`
+- remaining cost basis: `0`
+- PnL identity: PASS
+- net PnL match: PASS
+- full-exit invariant: PASS
+
+The VUR_KAC real runtime lifecycle and accounting path are therefore runtime-proven. A natural `NORMAL` PAPER trade has still not occurred in the durable runtime database; TP1 → TP2 → TP3/runner → close remains pending as a natural runtime E2E observation. This evidence must not be manufactured by weakening admission, sizing, LP protection, sellability, risk, or hard-block gates.
 
 ## PROVIDER ARCHITECTURE CHECKPOINT
 
@@ -136,6 +183,7 @@ VPS final acceptance on 2026-09-04:
 ## NEXT MAINTENANCE TARGETS
 
 All remain inside existing Phase 0–15:
+- natural NORMAL PAPER lifecycle runtime E2E observation → Phase 4/12
 - bounded Vezir conversation context → Phase 14
 - successful-wallet tracking → Phase 9
 - whale tracking → Phase 9

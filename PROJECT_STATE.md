@@ -6,7 +6,7 @@ Updated: 2026-09-16
 
 - Repository: `anketci54-coder/coinoskobi-dexbot`
 - Production branch: `main`
-- Verified runtime/code baseline SHA: `81797953f2f06dd3604d8a6da63434fa1e79a9cc`
+- Verified runtime/code baseline SHA: `a75dd8d7bb4494da4934334a5829e4f3385e9e90`
 - VPS project: `/root/projects/coinoskobi-dexbot`
 - Main application: `main.py`
 - Canonical panel application: `app.api.panel:app`
@@ -57,34 +57,52 @@ Provider failure or missing evidence is never converted into safe evidence.
 Status: **VALIDATED WITH NATURAL NORMAL PAPER RUNTIME E2E STILL PENDING**.
 
 Final verified production checkpoint:
-- runtime/code baseline SHA: `81797953f2f06dd3604d8a6da63434fa1e79a9cc`
+- runtime/code baseline SHA: `a75dd8d7bb4494da4934334a5829e4f3385e9e90`
 - VPS worktree: clean at verification
 - local `main` vs `origin/main`: synchronized at verification
 - paper runtime service: active
 - `paper_trades.db` integrity: `ok`
-- critical runtime error scan after final restart: empty
-- open paper positions at final smoke: `0`
-- last paper trade id at final smoke: `39`
+- open paper positions at earlier final smoke: `0`
+- last paper trade id at earlier final smoke: `39`
 
-Repository-wide regression evidence before the final timestamp-integrity maintenance merge:
-- main SHA: `768a3e30c9f6a8cc5054211209cbf18f9922f2e0`
-- full suite: **1583 passed / 0 failed**
+Repository-wide regression evidence before the Phase 13D forensic-learning closure:
+- final branch HEAD: `fc0dead79ae7385337d95644a6336cf26be3dcfc`
+- targeted final suite: **33 passed / 0 failed**
+- full repository suite: **1630 passed / 0 failed**
+- full runtime: **414.31 s**
 - recurring dependency warning: `websockets.legacy` deprecation only
 
-Final timestamp-integrity maintenance:
+Phase 13D forensic-learning closure:
+- PR #186 merged into `main`
+- merge commit: `a75dd8d7bb4494da4934334a5829e4f3385e9e90`
+- bounded paper-loss forensics and missed-opportunity blocker attribution are active
+- legacy PnL is preserved with currency-aware lifecycle evidence; BNB values are not relabeled as USDT
+- durable counterfactual history is fail-open for optional forensic reads
+- malformed forensic payloads are normalized without aborting the unified readmodel
+- RAM/durable duplicate decisions are deduplicated by shared observation identity
+- post-promotion price moves are excluded from missed-opportunity bucketing and example maxima
+- authority remains proposal/read-only; trade/wallet/signing/live/execution authority remains false
+- no automatic threshold/config/source-code application was introduced
+
+Post-merge runtime smoke on merge SHA:
+- VPS deployed SHA: `a75dd8d7bb4494da4934334a5829e4f3385e9e90`
+- `coinoskobi-paper-runtime.service`: **active (running)**
+- wallet outcome hydration: `READY`
+- `paper_trades.db` integrity: **ok**
+- restart/shutdown lifecycle: **clean**
+- observed non-blocking warning: `DexScreener snapshot fallback unavailable: 'NoneType' object is not iterable`
+- runtime remained active after that warning
+- `POST_MERGE_RUNTIME_SMOKE=PASS`
+
+Final external review evidence for the Phase 13D closure included Codex, Strix, CodeRabbit and Copilot review cycles. Reported P1/P2 forensic correctness, lifecycle, currency, malformed-payload, runtime-availability and promotion-attribution findings were addressed before merge; resolved review threads were closed before final merge.
+
+Final timestamp-integrity maintenance retained from the preceding seal:
 - PR #182 merged onto the runtime/code baseline
 - strict canonical aware timestamp grammar enforced in both runtime-learning outcome integrity and paper risk calibration
 - malformed/naive/invalid outcome fingerprints fail closed
 - invalid stored outcome fingerprints cannot bootstrap paper sizing
-- final targeted integrity/runtime-outcome suite on runtime/code baseline: **51 passed / 0 failed**
-- post-merge runtime smoke: PASS
-- DB integrity after restart: PASS
 
-Stale PR cleanup:
-- PR #145 closed as superseded by current fail-closed provider behavior
-- PR #151 closed as superseded by the clean current-main port in PR #182
-
-Real PAPER runtime lifecycle evidence:
+Real PAPER runtime lifecycle evidence retained:
 - trade id `39`
 - mode: `AUTO`
 - trade type: `VUR_KAC`

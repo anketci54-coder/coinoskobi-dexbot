@@ -460,3 +460,77 @@ def test_native_currency_cost_drag_is_detected_without_usdt_relabel():
     assert example["gross_pnl"] == 0.02
     assert example["net_pnl"] == -0.01
     assert example["pnl_currency"] == "BNB"
+
+
+
+def test_post_promotion_multiple_is_not_missed_opportunity():
+    observed_at = 1000.0
+    promoted_at = 2000.0
+
+    row = {
+        "token": "0xpromoted",
+        "pool": "0xpool",
+        "entry_price": 1.0,
+        "max_price": 10.5,
+        "signal_state": "POSITIVE",
+        "candidate_action": "DOWNGRADE",
+        "observed_at": observed_at,
+        "promoted_at": promoted_at,
+        "first_2x_at": promoted_at + 10.0,
+        "first_5x_at": promoted_at + 20.0,
+        "first_10x_at": promoted_at + 30.0,
+        "decision_history_id": 501,
+        "context_json": (
+            '{"reason":"PLAN_BLOCKED"}'
+        ),
+    }
+
+    result = build_outcome_forensics(
+        paper_events=[],
+        counterfactual_events=[],
+        durable_counterfactual_events=[row],
+    )
+
+    missed = result[
+        "missed_opportunities"
+    ]
+
+    assert missed["sample_count"] == 0
+
+
+def test_only_pre_promotion_multiple_is_attributed_as_missed():
+    observed_at = 1000.0
+    promoted_at = 5000.0
+
+    row = {
+        "token": "0xpromoted",
+        "pool": "0xpool",
+        "entry_price": 1.0,
+        "max_price": 10.5,
+        "signal_state": "POSITIVE",
+        "candidate_action": "DOWNGRADE",
+        "observed_at": observed_at,
+        "promoted_at": promoted_at,
+        "first_2x_at": observed_at + 100.0,
+        "first_5x_at": promoted_at + 20.0,
+        "first_10x_at": promoted_at + 30.0,
+        "decision_history_id": 502,
+        "context_json": (
+            '{"reason":"PLAN_BLOCKED"}'
+        ),
+    }
+
+    result = build_outcome_forensics(
+        paper_events=[],
+        counterfactual_events=[],
+        durable_counterfactual_events=[row],
+    )
+
+    missed = result[
+        "missed_opportunities"
+    ]
+
+    assert missed["sample_count"] == 1
+    assert missed["multiple_counts"] == {
+        "2X_PLUS": 1,
+    }

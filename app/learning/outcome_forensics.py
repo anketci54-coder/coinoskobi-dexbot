@@ -329,7 +329,11 @@ def _multiple_for_row(row):
     return None
 
 
-def _multiple_bucket(row):
+def _multiple_bucket(
+    row,
+    *,
+    pre_promotion_only=False,
+):
     explicit = (
         ("first_1000x_at", "1000X_PLUS"),
         ("first_100x_at", "100X_PLUS"),
@@ -338,9 +342,32 @@ def _multiple_bucket(row):
         ("first_2x_at", "2X_PLUS"),
     )
 
+    promoted_at = _number(
+        row.get("promoted_at")
+    )
+
     for field, bucket in explicit:
-        if row.get(field) is not None:
-            return bucket
+        event_at = _number(
+            row.get(field)
+        )
+
+        if event_at is None:
+            continue
+
+        if (
+            pre_promotion_only
+            and promoted_at is not None
+            and event_at >= promoted_at
+        ):
+            continue
+
+        return bucket
+
+    if (
+        pre_promotion_only
+        and promoted_at is not None
+    ):
+        return "BELOW_2X"
 
     multiple = _multiple_for_row(row)
 
@@ -496,7 +523,12 @@ def _missed_opportunity_forensics(
         ):
             continue
 
-        bucket = _multiple_bucket(row)
+        bucket = _multiple_bucket(
+            row,
+            pre_promotion_only=(
+                is_durable_missed_candidate
+            ),
+        )
 
         if bucket in {"UNKNOWN", "BELOW_2X"}:
             if classification != "MISSED_OPPORTUNITY":

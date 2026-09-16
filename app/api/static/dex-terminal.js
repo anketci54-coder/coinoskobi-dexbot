@@ -26,6 +26,18 @@
   let radarFilter='ALL';
   let selectedWallet=null;
 
+  const VEZIR_CONTEXT_LIMIT=4;
+  const VEZIR_INTENT_CODES={
+    WHY_NO_TRADE:'1',
+    RISK:'2',
+    OPPORTUNITY:'3',
+    WATCH:'4',
+    POSITIONS:'5',
+    SYSTEM:'6',
+    GENERAL:'7',
+  };
+  const vezirIntentContext=[];
+
   function showPage(page){
     $$('.terminal-page').forEach(node=>node.classList.toggle('active',node.dataset.page===page));
     $$('.nav-item').forEach(node=>node.classList.toggle('active',node.dataset.pageTarget===page));
@@ -328,7 +340,42 @@
   async function previewPosition(id){ const row=(dashboard?.positions||[]).find(r=>String(r.id)===String(id)); if(!row)return; const box=$('positionPreview'); box.classList.add('open'); box.innerHTML='<div class="drawer-empty">Taze pool fiyatı okunuyor...</div>'; try{ const data=await post('/api/manual-paper/preview-v2',{position_id:row.id,pool:row.pool,token:row.token}); box.innerHTML=`<div class="preview-grid"><div><small>TOKEN</small><b>${esc(row.symbol||short(row.token))}</b></div><div><small>GİRİŞ</small><b>${num(row.entry_price)}</b></div><div><small>TAZE REFERANS</small><b>${num(data.reference_price)}</b></div><div><small>TAHMİNİ NET PNL</small><b class="${cls(data.net_pnl_usdt)}">${money(data.net_pnl_usdt)}</b></div><div><small>ROI</small><b class="${cls(data.roi_pct)}">${pct(data.roi_pct)}</b></div></div><div class="preview-note">${esc(data.guidance||data.sell_guidance||'Satış kararı için taze pool fiyatı ve mevcut plan birlikte değerlendirilmeli.')}</div>`; }catch(e){ box.innerHTML=`<div class="drawer-empty">Satış önizlemesi alınamadı: ${esc(e.message)}</div>`; } }
 
   function addChat(text,kind='vezir'){ const box=$('vezirMessages'); const div=document.createElement('div'); div.className=`chat-msg ${kind}`; div.textContent=text; box.appendChild(div); box.scrollTop=box.scrollHeight; }
-  async function askVezir(question){ const q=String(question||$('vezirInput')?.value||'').trim(); if(!q)return; if($('vezirInput'))$('vezirInput').value=''; addChat(q,'user'); try{ const data=await post('/api/vezir/ask',{question:q}); addChat(data.answer||'Yanıt alınamadı.'); $('homeVezirAnswer').textContent=data.answer||'Yanıt alınamadı.'; }catch(e){ addChat(`Yanıt alınamadı: ${e.message}`); } }
+
+  function vezirQuestionWithContext(question){
+    const q=String(question||'').trim();
+    if(!q||!vezirIntentContext.length) return q;
+    return `${q} <<VEZIR_CTX:${vezirIntentContext.join(',')}>>`;
+  }
+
+  function rememberVezirIntent(intent){
+    const code=VEZIR_INTENT_CODES[String(intent||'').toUpperCase()];
+    if(!code) return;
+    vezirIntentContext.push(code);
+    while(vezirIntentContext.length>VEZIR_CONTEXT_LIMIT){
+      vezirIntentContext.shift();
+    }
+  }
+
+  async function askVezir(question){
+    const q=String(question||$('vezirInput')?.value||'').trim();
+    if(!q)return;
+    if($('vezirInput'))$('vezirInput').value='';
+    addChat(q,'user');
+
+    try{
+      const data=await post(
+        '/api/vezir/ask',
+        {question:vezirQuestionWithContext(q)}
+      );
+
+      rememberVezirIntent(data.ai_routed_intent);
+
+      addChat(data.answer||'Yanıt alınamadı.');
+      $('homeVezirAnswer').textContent=data.answer||'Yanıt alınamadı.';
+    }catch(e){
+      addChat(`Yanıt alınamadı: ${e.message}`);
+    }
+  }
 
   async function loadAll(){
     const jobs=[['dashboard','/api/dashboard'],['universe','/api/universe-panel'],['walletBrief','/api/wallet-brief-v3'],['walletDetail','/api/wallet-intelligence-v2'],['market','/api/market-brief-v3'],['calendar','/api/calendar-brief-v3']];

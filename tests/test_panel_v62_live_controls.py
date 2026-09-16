@@ -20,7 +20,7 @@ def test_single_canonical_frontend_assets():
 
     html = HTML.read_text(encoding="utf-8")
 
-    assert "/static/dex-terminal.js?v=2" in html
+    assert "/static/dex-terminal.js?v=4" in html
     assert "/static/dex-terminal.css?v=2" in html
     assert "dex-terminal-v6.js" not in html
     assert "dex-terminal-v61.js" not in html

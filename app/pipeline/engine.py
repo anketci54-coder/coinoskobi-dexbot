@@ -1807,10 +1807,16 @@ class PipelineEngine:
         # Mathematical planning uses canonical local
         # onchain evidence even when an external sellability
         # provider returns UNKNOWN.
+        # Prefer the freshest local evidence returned by the
+        # sellability pipeline. It contains the same bounded
+        # onchain LP/exit evidence and may additionally contain
+        # verified GoPlus primary-pool LP-lock enrichment.
+        #
+        # Never infer LP protection from reserve persistence.
         local_math_evidence = (
-            risk_gate.get("local_evidence")
+            sellability_data.get("local_evidence")
+            or risk_gate.get("local_evidence")
             or risk.get("local_evidence")
-            or sellability_data.get("local_evidence")
             or {}
         )
 

@@ -195,9 +195,9 @@ The four stale regression expectations corrected before this run covered:
 
 ## Timestamp Integrity Maintenance
 
-PR #182 cleanly ported the remaining outcome timestamp-integrity work onto current main.
+PR #182 cleanly ported the remaining outcome timestamp-integrity work onto the current runtime/code baseline.
 
-Current final main SHA after merge:
+Runtime/code baseline after PR #182 merge, before documentation-only seal:
 `81797953f2f06dd3604d8a6da63434fa1e79a9cc`
 
 Validated contracts:
@@ -212,16 +212,16 @@ Validated contracts:
 - invalid outcome fingerprints cannot bootstrap paper position sizing
 - runtime learning uses the same timestamp integrity boundary
 
-Final current-main targeted suite:
+Final targeted suite on that runtime/code baseline:
 - **51 passed / 0 failed**
 - warning count: **1**
 - direct validator check: **PASS**
 - `py_compile`: PASS
 - `git diff --check`: PASS before merge
 
-## Runtime Smoke on Final Main
+## Runtime Smoke on Runtime/Code Baseline
 
-Observed after deploying final main SHA `81797953f2f06dd3604d8a6da63434fa1e79a9cc`:
+Observed after deploying runtime/code baseline SHA `81797953f2f06dd3604d8a6da63434fa1e79a9cc`:
 - `coinoskobi-paper-runtime.service`: **active**
 - critical runtime error scan: **empty**
 - `paper_trades.db` integrity: **ok**
@@ -269,5 +269,7 @@ A natural `NORMAL` PAPER position has still not opened in the durable runtime da
 - PR #151: closed as superseded by PR #182 current-main port
 - PR #181: merged — stale regression expectation cleanup
 - PR #182: merged — outcome timestamp integrity
+
+Documentation-only seal commits may move repository `main` beyond the verified runtime/code baseline without changing runtime behavior.
 
 Final maintenance evidence seal: **PASS, with natural NORMAL PAPER runtime E2E explicitly pending**

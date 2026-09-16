@@ -594,12 +594,28 @@ class PaperManager:
                 "lowest_price"
             ),
 
-            gross_pnl_usdt=pos.get(
-                "gross_pnl_usdt"
+            gross_pnl_usdt=(
+                pos.get(
+                    "gross_pnl_usdt"
+                )
+                if pos.get(
+                    "gross_pnl_usdt"
+                ) is not None
+                else pos.get(
+                    "gross_pnl"
+                )
             ),
 
-            net_pnl_usdt=pos.get(
-                "net_pnl_usdt"
+            net_pnl_usdt=(
+                pos.get(
+                    "net_pnl_usdt"
+                )
+                if pos.get(
+                    "net_pnl_usdt"
+                ) is not None
+                else pos.get(
+                    "net_pnl"
+                )
             ),
 
             opening_context=(

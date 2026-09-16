@@ -194,3 +194,62 @@ def test_hold_does_not_create_outcome():
     ] is None
 
     assert feed.event_count == 0
+
+
+
+def test_replay_legacy_close_falls_back_to_persisted_generic_pnl():
+    feed = RuntimeLearningOutcomeFeed()
+
+    manager = PaperManager(
+        learning_feed=feed
+    )
+
+    class ReplayDB:
+        def closed_positions(
+            self,
+            *,
+            after_id=0,
+        ):
+            return [{
+                "id": 321,
+                "token": "0xlegacy",
+                "created_at": (
+                    "2026-01-01T00:00:00+00:00"
+                ),
+                "closed_at": (
+                    "2026-01-01T01:00:00+00:00"
+                ),
+                "entry_price": 1.0,
+                "exit_price": 0.98,
+                "highest_price": 1.05,
+                "lowest_price": 0.97,
+                "roi": -0.02,
+                "gross_pnl": 1.0,
+                "net_pnl": -2.0,
+                "gross_pnl_usdt": None,
+                "net_pnl_usdt": None,
+                "close_reason": (
+                    "PERSISTED_STOP_LOSS"
+                ),
+            }]
+
+    manager.db = ReplayDB()
+
+    results = manager.replay_closed_outcomes()
+
+    assert len(results) == 1
+    assert feed.event_count == 1
+
+    row = results[0]["payload"]
+
+    lifecycle = row[
+        "lifecycle_snapshot"
+    ]
+
+    assert lifecycle[
+        "gross_pnl_usdt"
+    ] == 1.0
+
+    assert lifecycle[
+        "net_pnl_usdt"
+    ] == -2.0

@@ -6,7 +6,7 @@ Updated: 2026-09-16
 
 - Repository: `anketci54-coder/coinoskobi-dexbot`
 - Production branch: `main`
-- Verified main SHA: `81797953f2f06dd3604d8a6da63434fa1e79a9cc`
+- Verified runtime/code baseline SHA: `81797953f2f06dd3604d8a6da63434fa1e79a9cc`
 - VPS project: `/root/projects/coinoskobi-dexbot`
 - Main application: `main.py`
 - Canonical panel application: `app.api.panel:app`
@@ -57,7 +57,7 @@ Provider failure or missing evidence is never converted into safe evidence.
 Status: **VALIDATED WITH NATURAL NORMAL PAPER RUNTIME E2E STILL PENDING**.
 
 Final verified production checkpoint:
-- main SHA: `81797953f2f06dd3604d8a6da63434fa1e79a9cc`
+- runtime/code baseline SHA: `81797953f2f06dd3604d8a6da63434fa1e79a9cc`
 - VPS worktree: clean at verification
 - local `main` vs `origin/main`: synchronized at verification
 - paper runtime service: active
@@ -72,11 +72,11 @@ Repository-wide regression evidence before the final timestamp-integrity mainten
 - recurring dependency warning: `websockets.legacy` deprecation only
 
 Final timestamp-integrity maintenance:
-- PR #182 merged to current main
+- PR #182 merged onto the runtime/code baseline
 - strict canonical aware timestamp grammar enforced in both runtime-learning outcome integrity and paper risk calibration
 - malformed/naive/invalid outcome fingerprints fail closed
 - invalid stored outcome fingerprints cannot bootstrap paper sizing
-- final targeted integrity/runtime-outcome suite on current main: **51 passed / 0 failed**
+- final targeted integrity/runtime-outcome suite on runtime/code baseline: **51 passed / 0 failed**
 - post-merge runtime smoke: PASS
 - DB integrity after restart: PASS
 
@@ -98,6 +98,8 @@ Real PAPER runtime lifecycle evidence:
 - full-exit invariant: PASS
 
 The VUR_KAC real runtime lifecycle and accounting path are therefore runtime-proven. A natural `NORMAL` PAPER trade has still not occurred in the durable runtime database; TP1 → TP2 → TP3/runner → close remains pending as a natural runtime E2E observation. This evidence must not be manufactured by weakening admission, sizing, LP protection, sellability, risk, or hard-block gates.
+
+Documentation-only seal commits may move repository `main` beyond the runtime/code baseline SHA without changing runtime behavior; verify the current repository HEAD directly before future work.
 
 ## PROVIDER ARCHITECTURE CHECKPOINT
 

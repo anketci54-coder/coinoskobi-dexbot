@@ -110,6 +110,40 @@ def test_real_paper_close_feeds_phase11():
         == "VALID_SIGNAL"
     )
 
+    close_data = (
+        manager.db.closed[0][1]
+    )
+
+    lifecycle = learning_row[
+        "lifecycle_snapshot"
+    ]
+
+    assert (
+        lifecycle["highest_price"]
+        == close_data["highest_price"]
+    )
+
+    assert (
+        lifecycle["lowest_price"]
+        == close_data["lowest_price"]
+    )
+
+    assert (
+        lifecycle["gross_pnl_usdt"]
+        == close_data.get(
+            "gross_pnl_usdt",
+            close_data["gross_pnl"],
+        )
+    )
+
+    assert (
+        lifecycle["net_pnl_usdt"]
+        == close_data.get(
+            "net_pnl_usdt",
+            close_data["net_pnl"],
+        )
+    )
+
     assert (
         feed.calibration_snapshot()
         ["state"]

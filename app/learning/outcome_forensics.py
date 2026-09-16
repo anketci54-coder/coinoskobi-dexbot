@@ -111,7 +111,28 @@ def _paper_forensics(rows, *, max_examples):
             else row.get("net_pnl_usdt")
         )
 
-        if lifecycle:
+        lifecycle_has_evidence = any(
+            value is not None
+            for value in (
+                highest_price,
+                _number(
+                    lifecycle.get(
+                        "lowest_price"
+                    )
+                    if lifecycle.get(
+                        "lowest_price"
+                    ) is not None
+                    else row.get(
+                        "lowest_price"
+                    )
+                ),
+                peak_net_return,
+                gross_pnl,
+                net_pnl,
+            )
+        )
+
+        if lifecycle_has_evidence:
             lifecycle_evidence_count += 1
 
         classification = (
@@ -327,7 +348,54 @@ def _decision_identity(row):
     if decision_id is not None:
         return ("decision_history_id", decision_id)
 
-    return ("object", id(row))
+    classification = (
+        row.get("classification") or {}
+    )
+
+    context = _counterfactual_context(row)
+
+    return (
+        "content",
+        str(
+            classification.get(
+                "outcome_class"
+            )
+            or ""
+        ).upper(),
+        str(
+            row.get(
+                "signal_state"
+            )
+            or ""
+        ).upper(),
+        str(
+            row.get(
+                "candidate_action"
+            )
+            or ""
+        ).upper(),
+        _number(
+            row.get(
+                "entry_price"
+            )
+        ),
+        _number(
+            row.get(
+                "max_price"
+            )
+        ),
+        _number(
+            row.get(
+                "realized_return"
+            )
+        ),
+        json.dumps(
+            context,
+            sort_keys=True,
+            separators=(",", ":"),
+            default=str,
+        ),
+    )
 
 
 def _missed_opportunity_forensics(
@@ -388,8 +456,10 @@ def _missed_opportunity_forensics(
                 continue
 
         key = _decision_identity(row)
+
         if key in seen:
             continue
+
         seen.add(key)
 
         missed_count += 1

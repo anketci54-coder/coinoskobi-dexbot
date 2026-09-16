@@ -2361,6 +2361,24 @@ class PaperManager:
                         "highest_price"
                     ] = highest
 
+                    outcome_position[
+                        "lowest_price"
+                    ] = lowest
+
+                    outcome_position[
+                        "gross_pnl_usdt"
+                    ] = close_data.get(
+                        "gross_pnl_usdt",
+                        gross,
+                    )
+
+                    outcome_position[
+                        "net_pnl_usdt"
+                    ] = close_data.get(
+                        "net_pnl_usdt",
+                        net,
+                    )
+
                     learning_result = (
                         self._observe_learning_outcome(
                             outcome_position,

@@ -319,3 +319,68 @@ def test_unified_phase13d_exposes_forensics_without_authority():
     assert forensic["wallet_authority"] is False
     assert forensic["signing_authority"] is False
     assert forensic["execution_authority"] is False
+
+
+
+def test_none_only_lifecycle_snapshot_is_not_evidence():
+    row = _paper_event(
+        realized_return=-0.05,
+    )
+
+    row["lifecycle_snapshot"] = {
+        "highest_price": None,
+        "lowest_price": None,
+        "gross_pnl_usdt": None,
+        "net_pnl_usdt": None,
+    }
+
+    result = build_outcome_forensics(
+        paper_events=[row],
+        counterfactual_events=[],
+    )
+
+    paper = result["paper"]
+
+    assert (
+        paper["lifecycle_evidence_count"]
+        == 0
+    )
+
+    assert (
+        paper["lifecycle_evidence_missing_count"]
+        == 1
+    )
+
+
+def test_unidentifiable_missed_rows_use_stable_content_dedupe():
+    malformed = {
+        "entry_price": 1.0,
+        "realized_return": 9.0,
+        "signal_state": "POSITIVE",
+        "candidate_action": "WATCH",
+        "classification": {
+            "outcome_class": (
+                "MISSED_OPPORTUNITY"
+            ),
+        },
+        "context": {
+            "reason": "PLAN_BLOCKED",
+        },
+    }
+
+    result = build_outcome_forensics(
+        paper_events=[],
+        counterfactual_events=[
+            dict(malformed),
+            dict(malformed),
+        ],
+    )
+
+    forensic = (
+        result["missed_opportunities"]
+    )
+
+    assert forensic["sample_count"] == 1
+    assert forensic["multiple_counts"][
+        "10X_PLUS"
+    ] == 1

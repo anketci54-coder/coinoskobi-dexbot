@@ -1,7 +1,9 @@
 import json
 import math
+import re
 import sqlite3
 import statistics
+from datetime import datetime
 from pathlib import Path
 
 from app.strategy.mathematical_trade_plan import (
@@ -15,6 +17,13 @@ PAPER_OUTCOME_EXCLUSIONS_PATH = (
     Path(__file__).resolve().parents[2]
     / "config"
     / "paper_outcome_exclusions.json"
+)
+
+_TIMESTAMP_RE = re.compile(
+    r"^\d{4}-\d{2}-\d{2}T"
+    r"\d{2}:\d{2}:\d{2}"
+    r"(?:\.\d{1,6})?"
+    r"(?:Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)$"
 )
 
 
@@ -70,6 +79,26 @@ def _json_dict(raw):
         return {}
 
     return value if isinstance(value, dict) else {}
+
+
+def _valid_timestamp(value):
+    if not isinstance(value, str):
+        return False
+
+    value = value.strip()
+
+    if not value or _TIMESTAMP_RE.fullmatch(value) is None:
+        return False
+
+    try:
+        parsed = datetime.fromisoformat(value)
+    except ValueError:
+        return False
+
+    return (
+        parsed.tzinfo is not None
+        and parsed.utcoffset() is not None
+    )
 
 
 def _load_outcome_exclusions(path=None):
@@ -156,8 +185,8 @@ def _load_outcome_exclusions(path=None):
                 "paper_trades_archive",
             }
             or position_id <= 0
-            or not created_at
-            or not closed_at
+            or not _valid_timestamp(created_at)
+            or not _valid_timestamp(closed_at)
         ):
             raise OutcomeExclusionRegistryError(
                 "OUTCOME_EXCLUSION_FINGERPRINT_INVALID"
@@ -183,22 +212,26 @@ def _outcome_is_excluded(
     exclusions,
 ):
     position_id = row["position_id"]
-    if position_id is None:
-        return False
+    created_at = row["created_at"]
+    closed_at = row["closed_at"]
 
-    try:
-        position_id = int(position_id)
-    except (TypeError, ValueError):
-        return False
+    if (
+        table_name not in {
+            "paper_trades",
+            "paper_trades_archive",
+        }
+        or isinstance(position_id, bool)
+        or not isinstance(position_id, int)
+        or position_id <= 0
+        or not _valid_timestamp(created_at)
+        or not _valid_timestamp(closed_at)
+    ):
+        raise OutcomeExclusionRegistryError(
+            "OUTCOME_FINGERPRINT_INVALID"
+        )
 
-    created_at = str(
-        row["created_at"]
-        or ""
-    )
-    closed_at = str(
-        row["closed_at"]
-        or ""
-    )
+    created_at = created_at.strip()
+    closed_at = closed_at.strip()
 
     for exclusion in exclusions:
         if (
@@ -582,6 +615,12 @@ def _empirical_outcome_calibration(
 
         db.close()
 
+    except OutcomeExclusionRegistryError as exc:
+        db.close()
+        return _calibration_empty(
+            str(exc)
+        )
+
     except sqlite3.Error:
         return _calibration_empty("OUTCOME_DB_READ_FAILED")
 
@@ -941,12 +980,17 @@ def calculate_paper_position_size(
 
     blockers = []
 
-    if (
+    calibration_reason = str(
         calibration.get("reason")
-        == "OUTCOME_EXCLUSION_REGISTRY_INVALID"
-    ):
+        or ""
+    )
+
+    if calibration_reason in {
+        "OUTCOME_EXCLUSION_REGISTRY_INVALID",
+        "OUTCOME_FINGERPRINT_INVALID",
+    }:
         blockers.append(
-            "OUTCOME_EXCLUSION_REGISTRY_INVALID"
+            calibration_reason
         )
 
     if liquidity_capacity_source == "EMPIRICAL_RESERVE_FLOOR":

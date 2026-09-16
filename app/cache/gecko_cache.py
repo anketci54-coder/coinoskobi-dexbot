@@ -461,7 +461,8 @@ class GeckoCache:
                 VALUES(?,?,?,datetime('now'))
                 ON CONFLICT(pool) DO UPDATE SET
                     token=excluded.token,
-                    price_usd=excluded.price_usd
+                    price_usd=excluded.price_usd,
+                    updated_at=excluded.updated_at
                 """,
                 (pool, token, price),
             )
@@ -482,7 +483,7 @@ class GeckoCache:
             cursor = self.db.execute(
                 """
                 UPDATE gecko_pool_cache
-                SET price_usd=?
+                SET price_usd=?, updated_at=datetime('now')
                 WHERE lower(pool)=lower(?)
                 """,
                 (price, pool),

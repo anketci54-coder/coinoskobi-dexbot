@@ -8,11 +8,22 @@ from app.learning.outcome_forensics import (
 
 def _eligible_paper_event(row):
     evidence = row.get("evidence") or {}
+
+    if not isinstance(evidence, dict):
+        evidence = {}
+
+    expected = evidence.get("expected_context")
+
+    if not isinstance(expected, dict):
+        expected = {}
+
     opening = (
-        evidence.get("expected_context", {})
-        .get("opening_context")
+        expected.get("opening_context")
         or {}
     )
+
+    if not isinstance(opening, dict):
+        opening = {}
 
     outcome_class = (
         row.get("classification", {})

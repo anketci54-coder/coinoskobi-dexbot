@@ -556,7 +556,16 @@ def _missed_opportunity_forensics(
                 "token": row.get("token"),
                 "pool": row.get("pool"),
                 "multiple_bucket": bucket,
-                "max_multiple": _multiple_for_row(row),
+                "max_multiple": (
+                    None
+                    if (
+                        is_durable_missed_candidate
+                        and _number(
+                            row.get("promoted_at")
+                        ) is not None
+                    )
+                    else _multiple_for_row(row)
+                ),
                 "candidate_action": candidate_action,
                 "signal_state": signal_state,
                 "blockers": row_blockers,

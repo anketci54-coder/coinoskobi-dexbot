@@ -534,3 +534,7 @@ def test_only_pre_promotion_multiple_is_attributed_as_missed():
     assert missed["multiple_counts"] == {
         "2X_PLUS": 1,
     }
+
+    assert missed["examples"][0][
+        "max_multiple"
+    ] is None

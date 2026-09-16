@@ -250,3 +250,29 @@ def test_unproven_mathematical_plan_context_stays_excluded():
         == 0
     )
     assert result["paper_sample_count"] == 0
+
+
+
+def test_malformed_paper_evidence_does_not_abort_unified_readmodel():
+    result = build_unified_outcome_readmodel(
+        paper_events=[
+            {
+                "position_id": 9001,
+                "token": "0xmalformed",
+                "entry_price": 1.0,
+                "exit_price": 0.9,
+                "realized_return": -0.1,
+                "classification": {
+                    "outcome_class": "FALSE_POSITIVE",
+                },
+                "evidence": {
+                    "expected_context": "malformed",
+                },
+            }
+        ],
+        counterfactual_events=[],
+        min_paper_samples=1,
+        min_counterfactual_samples=1,
+    )
+
+    assert "forensics" in result

@@ -273,3 +273,117 @@ A natural `NORMAL` PAPER position has still not opened in the durable runtime da
 Documentation-only seal commits may move repository `main` beyond the verified runtime/code baseline without changing runtime behavior.
 
 Final maintenance evidence seal: **PASS, with natural NORMAL PAPER runtime E2E explicitly pending**
+
+---
+
+# Phase 13D Forensic Learning Final Maintenance Closure — 2026-09-16
+
+Status: **VALIDATED / MERGED / DEPLOYED / RUNTIME-SMOKE PASS**
+
+Ownership:
+- Phase 13D — Unified Outcome Calibration Readmodel maintenance
+- no new Phase/ERA/version tree opened
+
+## Pull Request / Merge
+
+- PR #186: `Phase 13D: add bounded forensic outcome learning`
+- final branch HEAD before merge: `fc0dead79ae7385337d95644a6336cf26be3dcfc`
+- merge commit on `main`: `a75dd8d7bb4494da4934334a5829e4f3385e9e90`
+
+## Final Validation
+
+Exact final-branch verification before merge:
+- targeted final suite: **33 passed / 0 failed**
+- full repository regression: **1630 passed / 0 failed**
+- full regression runtime: **414.31 s**
+- warning count: **1**
+- recurring warning: dependency-owned `websockets.legacy` deprecation
+
+Earlier closure rounds also passed:
+- review regressions: **51 passed / 0 failed**
+- performance/risk: **15 passed / 0 failed**
+- smoke/E2E: **288 passed / 0 failed**
+- preceding full suite: **1627 passed / 0 failed**
+- promotion-attribution targeted: **28 passed / 0 failed**
+- promotion-attribution smoke/E2E: **53 passed / 0 failed**
+- preceding full suite after promotion fix: **1629 passed / 0 failed**
+
+## Validated Forensic Contracts
+
+- bounded paper loss forensics
+- confirmed profit-giveback only when peak evidence exists
+- price-upside-given-back classification without inventing peak-net evidence
+- gross-positive/net-negative cost-drag detection
+- currency-aware lifecycle PnL; legacy BNB is not relabeled as USDT
+- durable counterfactual 2x/5x/10x/100x/1000x missed-opportunity buckets
+- blocker attribution from canonical decision context
+- durable/RAM duplicate decision suppression by shared observation identity
+- malformed forensic payload tolerance
+- optional durable forensic history read is fail-open for runtime availability
+- post-promotion threshold events excluded from missed-opportunity attribution
+- post-promotion all-time `max_price` excluded from missed-opportunity example maxima
+- bounded examples and no raw DB scan/provider call in the forensic readmodel
+
+## Authority / Safety Seal
+
+The closure preserves:
+- proposal-only learning
+- automatic threshold apply = false
+- automatic config write = false
+- strategy rewrite = false
+- hard-safety weakening = false
+- AI authority = false
+- trade permission/authority = false
+- paper authority from forensic readmodel = false
+- live authority = false
+- wallet authority = false
+- signing authority = false
+- execution authority = false
+
+## External Review Closure
+
+Review cycles used Codex, Strix, CodeRabbit and Copilot.
+
+Material findings raised during review were fixed before merge, including:
+- production durable-observation binding
+- lifecycle evidence binding
+- NEGATIVE/FALSE_NEGATIVE semantic preservation
+- RAM/durable deduplication
+- explicit authority-denial fields
+- legacy-close fresh lifecycle values
+- lifecycle evidence all-None coverage
+- restart/replay legacy PnL preservation
+- legacy BNB/USDT currency correctness
+- optional durable read fail-open behavior
+- malformed evidence handling
+- pre-classified EXPECTED_LOSS exclusion from missed-opportunity fallback
+- post-promotion missed-opportunity bucketing
+- post-promotion example-max attribution
+
+Review threads were resolved before final merge.
+
+## Post-Merge VPS Runtime Smoke
+
+Deployed merge SHA:
+`a75dd8d7bb4494da4934334a5829e4f3385e9e90`
+
+Observed after restart:
+- `coinoskobi-paper-runtime.service`: **active (running)**
+- wallet outcome hydration: `READY`
+- SQLite `PRAGMA integrity_check`: **ok**
+- clean application-owned shutdown/restart sequence observed
+- runtime remained active and processing after restart
+- `POST_MERGE_RUNTIME_SMOKE=PASS`
+
+One non-blocking provider warning was observed:
+- `DexScreener snapshot fallback unavailable: 'NoneType' object is not iterable`
+
+This warning did not stop the service and is not part of the Phase 13D forensic-learning correctness boundary.
+
+## Final Result
+
+Phase 13D forensic-learning maintenance closure: **PASS**.
+
+PR merged, production runtime deployed, final regression green, DB integrity green, runtime smoke green, review findings closed, and canonical evidence recorded.
+
+Natural `NORMAL` PAPER TP1 → TP2 → TP3/runner lifecycle evidence remains a separate Phase 4/12 natural-runtime observation target and must not be forced by weakening safety or admission gates.

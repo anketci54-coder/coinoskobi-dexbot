@@ -1,15 +1,29 @@
 from app.learning.outcome_segmentation import (
     build_outcome_segments,
 )
+from app.learning.outcome_forensics import (
+    build_outcome_forensics,
+)
 
 
 def _eligible_paper_event(row):
     evidence = row.get("evidence") or {}
+
+    if not isinstance(evidence, dict):
+        evidence = {}
+
+    expected = evidence.get("expected_context")
+
+    if not isinstance(expected, dict):
+        expected = {}
+
     opening = (
-        evidence.get("expected_context", {})
-        .get("opening_context")
+        expected.get("opening_context")
         or {}
     )
+
+    if not isinstance(opening, dict):
+        opening = {}
 
     outcome_class = (
         row.get("classification", {})
@@ -79,12 +93,16 @@ def build_unified_outcome_readmodel(
     *,
     paper_events,
     counterfactual_events,
+    durable_counterfactual_events=None,
     min_paper_samples=20,
     min_counterfactual_samples=20,
 ):
     paper_events = list(paper_events)
     counterfactual_events = list(
         counterfactual_events
+    )
+    durable_counterfactual_events = list(
+        durable_counterfactual_events or []
     )
 
     eligible_paper_events = [
@@ -102,6 +120,16 @@ def build_unified_outcome_readmodel(
         counterfactual_events,
         min_samples=(
             min_counterfactual_samples
+        ),
+    )
+
+    forensics = build_outcome_forensics(
+        paper_events=eligible_paper_events,
+        counterfactual_events=(
+            counterfactual_events
+        ),
+        durable_counterfactual_events=(
+            durable_counterfactual_events
         ),
     )
 
@@ -160,6 +188,7 @@ def build_unified_outcome_readmodel(
             ),
             "segmentation": counterfactual,
         },
+        "forensics": forensics,
         "paper_sample_count": paper[
             "sample_count"
         ],
@@ -180,6 +209,9 @@ def build_unified_outcome_readmodel(
         "legacy_visible_not_calibrated": True,
         "counterfactual_sample_count": (
             counterfactual["sample_count"]
+        ),
+        "durable_counterfactual_visible_count": (
+            len(durable_counterfactual_events)
         ),
         "total_visible_sample_count": (
             paper["sample_count"]

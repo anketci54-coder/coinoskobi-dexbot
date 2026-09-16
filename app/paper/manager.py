@@ -586,6 +586,43 @@ class PaperManager:
                 )
             ),
 
+            highest_price=pos.get(
+                "highest_price"
+            ),
+
+            lowest_price=pos.get(
+                "lowest_price"
+            ),
+
+            gross_pnl_usdt=pos.get(
+                "gross_pnl_usdt"
+            ),
+
+            net_pnl_usdt=pos.get(
+                "net_pnl_usdt"
+            ),
+
+            gross_pnl=pos.get(
+                "gross_pnl"
+            ),
+
+            net_pnl=pos.get(
+                "net_pnl"
+            ),
+
+            pnl_currency=(
+                "USDT"
+                if self._is_10k_account(pos)
+                else (
+                    "BNB"
+                    if (
+                        pos.get("gross_pnl") is not None
+                        or pos.get("net_pnl") is not None
+                    )
+                    else None
+                )
+            ),
+
             opening_context=(
                 opening_context
             ),
@@ -1044,6 +1081,15 @@ class PaperManager:
             outcome_position[
                 "highest_price"
             ] = highest
+            outcome_position[
+                "lowest_price"
+            ] = lowest
+            outcome_position[
+                "gross_pnl_usdt"
+            ] = gross
+            outcome_position[
+                "net_pnl_usdt"
+            ] = net
 
             try:
                 learning = (
@@ -2335,6 +2381,30 @@ class PaperManager:
                     outcome_position[
                         "highest_price"
                     ] = highest
+
+                    outcome_position[
+                        "lowest_price"
+                    ] = lowest
+
+                    outcome_position[
+                        "gross_pnl"
+                    ] = gross
+
+                    outcome_position[
+                        "net_pnl"
+                    ] = net
+
+                    outcome_position[
+                        "gross_pnl_usdt"
+                    ] = close_data.get(
+                        "gross_pnl_usdt"
+                    )
+
+                    outcome_position[
+                        "net_pnl_usdt"
+                    ] = close_data.get(
+                        "net_pnl_usdt"
+                    )
 
                     learning_result = (
                         self._observe_learning_outcome(

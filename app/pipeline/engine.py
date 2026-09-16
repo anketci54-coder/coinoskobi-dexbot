@@ -3622,10 +3622,35 @@ class PipelineEngine:
             else []
         )
 
+        durable_counterfactual_events = []
+        durable_snapshot = getattr(
+            counterfactual_store,
+            "durable_snapshot",
+            None,
+        )
+
+        if callable(durable_snapshot):
+            try:
+                durable_counterfactual_events = (
+                    durable_snapshot(
+                        limit=512,
+                    )
+                    or []
+                )
+            except Exception as exc:
+                logger.warning(
+                    "Durable counterfactual snapshot unavailable: %s",
+                    type(exc).__name__,
+                )
+                durable_counterfactual_events = []
+
         return build_unified_outcome_readmodel(
             paper_events=paper_events,
             counterfactual_events=(
                 counterfactual_events
+            ),
+            durable_counterfactual_events=(
+                durable_counterfactual_events
             ),
             min_paper_samples=20,
             min_counterfactual_samples=20,

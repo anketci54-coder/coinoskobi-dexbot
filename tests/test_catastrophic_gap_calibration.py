@@ -34,6 +34,9 @@ def test_catastrophic_exit_overrides_stale_current_price(tmp_path):
     db.execute(
         """
         CREATE TABLE paper_trades (
+            id INTEGER,
+            created_at TEXT,
+            closed_at TEXT,
             status TEXT,
             entry_price REAL,
             current_price REAL,
@@ -51,10 +54,13 @@ def test_catastrophic_exit_overrides_stale_current_price(tmp_path):
     db.execute(
         """
         INSERT INTO paper_trades VALUES (
-            ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+            ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
         )
         """,
         (
+            1,
+            "2026-09-15T10:00:00+00:00",
+            "2026-09-15T10:05:00+00:00",
             "CLOSED",
             100.0,
             99.0,

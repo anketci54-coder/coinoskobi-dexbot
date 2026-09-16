@@ -205,6 +205,53 @@ def test_explicit_1000x_marker_has_precedence():
     ]["1000X_PLUS"] == 1
 
 
+def test_durable_row_wins_without_double_counting_same_decision():
+    short = {
+        "token": "0xmoon",
+        "pool": "0xpool",
+        "entry_price": 1.0,
+        "realized_return": 1.1,
+        "signal_state": "POSITIVE",
+        "candidate_action": "DOWNGRADE",
+        "observed_at": 1.0,
+        "classification": {
+            "outcome_class": "MISSED_OPPORTUNITY",
+        },
+        "context": {
+            "reason": "PLAN_BLOCKED",
+        },
+    }
+    durable = {
+        "token": "0xmoon",
+        "pool": "0xpool",
+        "entry_price": 1.0,
+        "max_price": 125.0,
+        "signal_state": "POSITIVE",
+        "candidate_action": "DOWNGRADE",
+        "observed_at": 1.0,
+        "decision_history_id": 77,
+        "context_json": (
+            '{"reason":"PLAN_BLOCKED"}'
+        ),
+    }
+
+    result = build_outcome_forensics(
+        paper_events=[],
+        counterfactual_events=[short],
+        durable_counterfactual_events=[durable],
+    )
+
+    missed = result["missed_opportunities"]
+
+    assert missed["sample_count"] == 1
+    assert missed["multiple_counts"] == {
+        "100X_PLUS": 1,
+    }
+    assert missed["blocker_counts"][
+        "PLAN_BLOCKED"
+    ] == 1
+
+
 def test_unified_phase13d_exposes_forensics_without_authority():
     paper = _paper_event(
         realized_return=-0.05,

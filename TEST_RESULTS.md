@@ -170,3 +170,106 @@ Observed final diagnostic:
 - deployment authority from Vezir = 0
 
 Final maintenance acceptance: **PASS**
+
+---
+
+# Paper Runtime / Integrity Maintenance Seal — 2026-09-16
+
+Status: **VALIDATED WITH NATURAL NORMAL PAPER RUNTIME E2E PENDING**
+
+## Repository-wide Regression
+
+Validated on main SHA:
+`768a3e30c9f6a8cc5054211209cbf18f9922f2e0`
+
+Result:
+- full repository suite: **1583 passed / 0 failed**
+- warning count: **1**
+- warning: dependency-owned `websockets.legacy` deprecation
+- `PYTEST_RC=0`
+
+The four stale regression expectations corrected before this run covered:
+- canonical frontend asset version
+- valid positive paper outcome position IDs
+- current VUR_KAC full-exit invariant
+
+## Timestamp Integrity Maintenance
+
+PR #182 cleanly ported the remaining outcome timestamp-integrity work onto the current runtime/code baseline.
+
+Runtime/code baseline after PR #182 merge, before documentation-only seal:
+`81797953f2f06dd3604d8a6da63434fa1e79a9cc`
+
+Validated contracts:
+- canonical aware timestamp grammar accepted
+- malformed timestamps rejected
+- naive timestamps rejected
+- malformed suffix/NUL rejected
+- excessive fractional precision rejected
+- invalid dates/times/offsets rejected
+- outcome exclusion registry fails closed on invalid fingerprints
+- stored invalid outcome fingerprints fail calibration closed
+- invalid outcome fingerprints cannot bootstrap paper position sizing
+- runtime learning uses the same timestamp integrity boundary
+
+Final targeted suite on that runtime/code baseline:
+- **51 passed / 0 failed**
+- warning count: **1**
+- direct validator check: **PASS**
+- `py_compile`: PASS
+- `git diff --check`: PASS before merge
+
+## Runtime Smoke on Runtime/Code Baseline
+
+Observed after deploying runtime/code baseline SHA `81797953f2f06dd3604d8a6da63434fa1e79a9cc`:
+- `coinoskobi-paper-runtime.service`: **active**
+- critical runtime error scan: **empty**
+- `paper_trades.db` integrity: **ok**
+- open positions: **0**
+- last trade id: **39**
+
+No recurrence observed in the final smoke for:
+- `pool identity mapping required`
+- counterfactual price refresh failure
+- candidate observation price refresh failure
+- traceback / critical / background cycle failure
+- `OUTCOME_FINGERPRINT_INVALID`
+
+## Real PAPER Runtime E2E Evidence
+
+Trade id `39` is the first post-baseline real PAPER runtime trade in this maintenance sequence.
+
+Observed durable state:
+- control mode: `AUTO`
+- trade type: `VUR_KAC`
+- status: `CLOSED`
+- close reason: `MATHEMATICAL_NO_UPSIDE_EXIT`
+- entry amount: `43.0450136836645 USDT`
+- realized PnL: `-4.14549262253072 USDT`
+- net PnL: `-4.14549262253072 USDT`
+- partial realization rows: `0`
+- remaining cost basis: `0`
+- remaining token amount: `0`
+- TP1: `0`
+- TP2: `0`
+- runner: `0`
+
+Accounting assertions:
+- PnL identity: **PASS**
+- net PnL match: **PASS**
+- full exit: **PASS**
+
+Therefore the real VUR_KAC PAPER runtime full-exit/accounting lifecycle is **runtime-proven**.
+
+A natural `NORMAL` PAPER position has still not opened in the durable runtime database. NORMAL TP1 → TP2 → TP3/runner → close/accounting remains a pending natural runtime E2E observation and must not be forced by weakening risk, sizing, LP-withdrawal protection, sellability, admission, or hard-block rules.
+
+## Pull Request Cleanup
+
+- PR #145: closed as superseded by current fail-closed provider behavior
+- PR #151: closed as superseded by PR #182 current-main port
+- PR #181: merged — stale regression expectation cleanup
+- PR #182: merged — outcome timestamp integrity
+
+Documentation-only seal commits may move repository `main` beyond the verified runtime/code baseline without changing runtime behavior.
+
+Final maintenance evidence seal: **PASS, with natural NORMAL PAPER runtime E2E explicitly pending**

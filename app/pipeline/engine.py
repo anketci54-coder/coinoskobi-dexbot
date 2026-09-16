@@ -3622,10 +3622,28 @@ class PipelineEngine:
             else []
         )
 
+        durable_counterfactual_events = []
+        durable_snapshot = getattr(
+            counterfactual_store,
+            "durable_snapshot",
+            None,
+        )
+
+        if callable(durable_snapshot):
+            durable_counterfactual_events = (
+                durable_snapshot(
+                    limit=512,
+                )
+                or []
+            )
+
         return build_unified_outcome_readmodel(
             paper_events=paper_events,
             counterfactual_events=(
                 counterfactual_events
+            ),
+            durable_counterfactual_events=(
+                durable_counterfactual_events
             ),
             min_paper_samples=20,
             min_counterfactual_samples=20,

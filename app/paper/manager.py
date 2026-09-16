@@ -586,6 +586,22 @@ class PaperManager:
                 )
             ),
 
+            highest_price=pos.get(
+                "highest_price"
+            ),
+
+            lowest_price=pos.get(
+                "lowest_price"
+            ),
+
+            gross_pnl_usdt=pos.get(
+                "gross_pnl_usdt"
+            ),
+
+            net_pnl_usdt=pos.get(
+                "net_pnl_usdt"
+            ),
+
             opening_context=(
                 opening_context
             ),
@@ -1044,6 +1060,15 @@ class PaperManager:
             outcome_position[
                 "highest_price"
             ] = highest
+            outcome_position[
+                "lowest_price"
+            ] = lowest
+            outcome_position[
+                "gross_pnl_usdt"
+            ] = gross
+            outcome_position[
+                "net_pnl_usdt"
+            ] = net
 
             try:
                 learning = (

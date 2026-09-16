@@ -5,6 +5,67 @@ from app.risk.paper_position_sizing import (
 )
 
 
+def _stamp_outcome_fingerprints(db):
+    for table in (
+        "paper_trades",
+        "paper_trades_archive",
+    ):
+        exists = db.execute(
+            """
+            SELECT 1
+            FROM sqlite_master
+            WHERE type='table' AND name=?
+            """,
+            (table,),
+        ).fetchone()
+
+        if exists is None:
+            continue
+
+        columns = {
+            row[1]
+            for row in db.execute(
+                f"PRAGMA table_info({table})"
+            ).fetchall()
+        }
+
+        for name, kind in (
+            ("id", "INTEGER"),
+            ("created_at", "TEXT"),
+            ("closed_at", "TEXT"),
+        ):
+            if name not in columns:
+                db.execute(
+                    f"ALTER TABLE {table} "
+                    f"ADD COLUMN {name} {kind}"
+                )
+
+        rows = db.execute(
+            f"SELECT rowid FROM {table} ORDER BY rowid"
+        ).fetchall()
+
+        for index, row in enumerate(rows, 1):
+            rowid = int(row[0])
+
+            db.execute(
+                f"""
+                UPDATE {table}
+                SET
+                    id = COALESCE(id, ?),
+                    created_at = COALESCE(
+                        created_at,
+                        '2026-09-15T10:00:00+00:00'
+                    ),
+                    closed_at = COALESCE(
+                        closed_at,
+                        '2026-09-15T10:05:00+00:00'
+                    )
+                WHERE rowid=?
+                """,
+                (index, rowid),
+            )
+
+
 def _plan(
     *,
     raw_amount,
@@ -248,6 +309,7 @@ def test_archived_outcomes_feed_empirical_calibration(
         ),
     )
 
+    _stamp_outcome_fingerprints(db)
     db.commit()
     db.close()
 
@@ -353,6 +415,7 @@ def test_closed_gross_net_accounting_drives_cost_uncertainty(
         ),
     )
 
+    _stamp_outcome_fingerprints(db)
     db.commit()
     db.close()
 
@@ -452,6 +515,7 @@ def test_gap_calibration_uses_worst_observed_tail(
             ),
         )
 
+    _stamp_outcome_fingerprints(db)
     db.commit()
     db.close()
 
@@ -545,6 +609,7 @@ def test_zero_cost_rows_do_not_dilute_observed_cost_median(
             ),
         )
 
+    _stamp_outcome_fingerprints(db)
     db.commit()
     db.close()
 
@@ -634,6 +699,7 @@ def test_tail_gap_cannot_expand_original_stop_risk_budget(
         ),
     )
 
+    _stamp_outcome_fingerprints(db)
     db.commit()
     db.close()
 
@@ -899,6 +965,7 @@ def test_legacy_float_dust_does_not_poison_calibration(
             ),
         )
 
+    _stamp_outcome_fingerprints(db)
     db.commit()
     db.close()
 

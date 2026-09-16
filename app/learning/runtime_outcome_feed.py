@@ -681,6 +681,10 @@ class RuntimeLearningOutcomeFeed:
         realized_return,
         close_reason,
         expected_exit_price=None,
+        highest_price=None,
+        lowest_price=None,
+        gross_pnl_usdt=None,
+        net_pnl_usdt=None,
         opening_context=None,
         wallet_id=None,
         actor_id=None,
@@ -1019,6 +1023,12 @@ class RuntimeLearningOutcomeFeed:
                     "exit_price_drift_available"
                 ]
             ),
+            "lifecycle_snapshot": {
+                "highest_price": highest_price,
+                "lowest_price": lowest_price,
+                "gross_pnl_usdt": gross_pnl_usdt,
+                "net_pnl_usdt": net_pnl_usdt,
+            },
             "outcome_integrity": integrity,
             "evidence": evidence,
             "classification": (

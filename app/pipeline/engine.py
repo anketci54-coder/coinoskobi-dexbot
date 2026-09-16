@@ -672,6 +672,11 @@ def _vur_kac_entry_signal(
             "VUR_KAC_PRICE_MOMENTUM_NOT_POSITIVE"
         )
 
+    elif previous_return <= 0:
+        reason = (
+            "VUR_KAC_POSITIVE_CONTINUATION_NOT_ESTABLISHED"
+        )
+
     elif price_acceleration < 0:
         reason = (
             "VUR_KAC_PRICE_ACCELERATION_WEAKENING"
@@ -2071,6 +2076,48 @@ class PipelineEngine:
                             ),
                         )
                     )
+
+                    liquidity_state = str(
+                        (
+                            intelligence_context.get(
+                                "market_quality"
+                            )
+                            or {}
+                        ).get(
+                            "liquidity_state"
+                        )
+                        or "UNKNOWN"
+                    ).upper()
+
+                    if (
+                        vur_kac_entry_shadow.get(
+                            "trade_policy_candidate"
+                        )
+                        == "VUR_KAC"
+                        and liquidity_state
+                        in {
+                            "DETERIORATING",
+                            "DETERIORATING_FAST",
+                            "NO_LIQUIDITY",
+                        }
+                    ):
+                        vur_kac_entry_shadow = dict(
+                            vur_kac_entry_shadow
+                        )
+                        vur_kac_entry_shadow[
+                            "ready"
+                        ] = False
+                        vur_kac_entry_shadow[
+                            "trade_policy_candidate"
+                        ] = None
+                        vur_kac_entry_shadow[
+                            "reason"
+                        ] = (
+                            "VUR_KAC_LIQUIDITY_NOT_SUPPORTING_ENTRY"
+                        )
+                        vur_kac_entry_shadow[
+                            "liquidity_state"
+                        ] = liquidity_state
 
                     selected_trade_type = (
                         "VUR_KAC"

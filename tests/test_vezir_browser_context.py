@@ -22,7 +22,7 @@ def test_browser_context_only_uses_allowlisted_server_intents():
     ):
         assert f"{intent}:'{code}'" in SOURCE
 
-    assert "rememberVezirIntent(data.ai_routed_intent);" in SOURCE
+    assert "data.ai_routed_intent || data.intent" in SOURCE
 
 
 def test_raw_answer_text_is_never_used_as_context():
@@ -43,3 +43,12 @@ def test_visible_user_question_does_not_include_context_marker():
     ]
     assert "addChat(q,'user')" in ask
     assert "{question:vezirQuestionWithContext(q)}" in ask
+
+
+def test_deterministic_server_intent_is_valid_context_fallback():
+    ask = SOURCE[
+        SOURCE.index("async function askVezir"):
+        SOURCE.index("async function loadAll")
+    ]
+    assert "data.ai_routed_intent || data.intent" in ask
+    assert "rememberVezirIntent(" in ask

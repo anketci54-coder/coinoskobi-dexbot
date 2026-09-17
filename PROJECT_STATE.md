@@ -284,3 +284,40 @@ No new phase/era/version tree is permitted.
 - `TEST_RESULTS.md` — historical validation evidence
 
 Historical reports remain evidence, not active architecture.
+
+## 2026-09-17 NEUTRAL QUOTE FLOW SEMANTICS SEAL
+
+Status: CLOSED_VERIFIED_GITHUB_MERGED_DEPLOYED
+
+Merge / deployed commit:
+- 3b5bdd62b04b6b854dc04410457d86c7575905c7
+
+PR:
+- #188 Fix neutral quote flow semantics
+
+Behavior:
+- measured quote flow > 0 => SUPPORTING
+- measured quote flow < 0 => OPPOSING
+- measured quote flow == 0 => NEUTRAL
+- missing quote flow => UNKNOWN
+- QUOTE_FLOW_NOT_SUPPORTING_MOVE applies only to measured negative flow
+- recovery breakout still requires strictly positive quote flow
+- no risk, sizing, sellability, hard-block, or paper admission gate was weakened
+
+Validation:
+- targeted regression: 48 passed, 1 warning
+- full regression: 1637 passed, 1 warning
+- git diff --check: clean
+- service restart: PASS
+- runtime critical-error smoke: PASS
+- post-deploy runtime evidence: 20 zero-flow samples
+- zero-flow classified NEUTRAL: 20/20
+- zero-flow classified OPPOSING: 0/20
+
+GitHub Actions:
+- workflow infrastructure/startup failure persisted
+- smoke job had no executable steps / no runner execution evidence
+- full job was skipped
+- CI is therefore not recorded as green
+
+Natural NORMAL PAPER TP lifecycle remains an observation item and was not forced.

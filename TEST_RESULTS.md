@@ -478,3 +478,37 @@ Paper price evidence / VUR_KAC admission maintenance closure: **PASS**.
 Targeted regression green, full repository regression green, PR merged, production runtime deployed, dedicated price freshness schema confirmed, runtime critical-error scan clean, and service active.
 
 Natural `NORMAL` PAPER TP1 → TP2 → TP3/runner → close remains explicitly pending as a separate Phase 4/12 natural-runtime E2E observation and must not be forced by weakening admission, sizing, LP protection, sellability, risk, or hard-block gates.
+
+## 2026-09-17 — Neutral quote flow semantics
+
+Result: PASS
+
+Code:
+- app/strategy/unified_score.py
+
+Regression coverage:
+- tests/test_runtime_opportunity_price_history.py
+- tests/test_unified_score.py
+
+Targeted:
+- 48 passed
+- 1 warning
+
+Full repository regression:
+- 1637 passed
+- 0 failed
+- 1 warning
+- 433.79 seconds
+
+Post-deploy runtime:
+- deployed SHA: 3b5bdd62b04b6b854dc04410457d86c7575905c7
+- service active after restart
+- new process produced 20 zero-flow observations
+- NEUTRAL: 20
+- OPPOSING: 0
+- positive single-bar momentum remained WATCH when continuation was not established
+
+Conclusion:
+Zero measured quote-reserve change is no longer mislabeled as opposing flow.
+Negative measured flow remains a veto.
+Recovery breakout still requires positive flow.

@@ -190,10 +190,7 @@ class FullUniverseObservationRuntime:
                     existing_failed = True
                     self._existing_retry_after[
                         stream["dex"]
-                    ] = (
-                        now
-                        + self.existing_retry_seconds
-                    )
+                    ] = now + self.existing_retry_seconds
                     log.warning(
                         "Universe discovery failed dex=%s branch=EXISTING error=%s",
                         stream["dex"],
@@ -201,27 +198,17 @@ class FullUniverseObservationRuntime:
                     )
 
                 existing_batches.append(existing)
-
-                if (
-                    existing_failed
-                    or existing["state"] == "CAUGHT_UP"
-                ):
+                if existing_failed or existing["state"] == "CAUGHT_UP":
                     break
 
             if not existing_failed:
-                self._existing_retry_after.pop(
-                    stream["dex"],
-                    None,
-                )
+                self._existing_retry_after.pop(stream["dex"], None)
 
         try:
             tail_start = max(
                 0,
-                finalized
-                - self.tail_discovery.max_block_span
-                + 1,
+                finalized - self.tail_discovery.max_block_span + 1,
             )
-
             tail = self.tail_discovery.scan(
                 stream,
                 start_block=tail_start,
@@ -229,10 +216,7 @@ class FullUniverseObservationRuntime:
                 branch="NEW",
             )
         except Exception as exc:
-            tail = self._discovery_failure(
-                branch="NEW",
-                exc=exc,
-            )
+            tail = self._discovery_failure(branch="NEW", exc=exc)
             discovery_errors.append(tail)
             log.warning(
                 "Universe discovery failed dex=%s branch=NEW error=%s",
@@ -265,14 +249,17 @@ class FullUniverseObservationRuntime:
                 )
 
         observation_results, observed_pools = [], []
-
         priority_result = None
         priority_pools = activity_result.get("priority_pools") or []
         normal_batch_budget = self.observation_batches_per_cycle
+
         if priority_pools:
             priority_result = self.observer.run_priority(priority_pools)
             observation_results.append(priority_result)
-            observed_pools.extend(priority_result.get("pools") or [])
+            priority_observed = priority_result.get("pools") or []
+            observed_pools.extend(priority_observed)
+            if self.activity is not None and priority_observed:
+                self.activity.acknowledge(priority_observed)
             normal_batch_budget = max(0, normal_batch_budget - 1)
 
         for _ in range(normal_batch_budget):

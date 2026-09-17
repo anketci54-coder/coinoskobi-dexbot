@@ -387,3 +387,94 @@ Phase 13D forensic-learning maintenance closure: **PASS**.
 PR merged, production runtime deployed, final regression green, DB integrity green, runtime smoke green, review findings closed, and canonical evidence recorded.
 
 Natural `NORMAL` PAPER TP1 → TP2 → TP3/runner lifecycle evidence remains a separate Phase 4/12 natural-runtime observation target and must not be forced by weakening safety or admission gates.
+
+---
+
+# Paper Price Evidence / VUR_KAC Admission Maintenance Closure — 2026-09-17
+
+Status: **VALIDATED / MERGED / DEPLOYED / RUNTIME-SMOKE PASS**
+
+Ownership:
+- Phase 4 — position lifecycle / hot open-position handling
+- Phase 12 — operational paper runtime / provider operability
+- no new phase/ERA/version tree opened
+
+## Pull Request / Merge
+
+- PR #187: `Fix paper price evidence freshness and VUR_KAC admission`
+- final branch HEAD before merge: `7d76d69e1b84d3b9f8c84eb803f26000e49e9ed0`
+- merge commit on `main`: `3eaabe8c73c6b22bd0e0dd793afad02b07da5425`
+
+## Functional Corrections
+
+Validated contracts:
+- paper sizing prefers the freshest sellability-local evidence over stale risk/risk-gate local evidence
+- VUR_KAC one-bar rebound after a negative prior return is not admission-ready
+- positive prior + latest continuation remains admission-ready when other evidence is valid
+- deteriorating/unavailable liquidity prevents VUR_KAC promotion
+- `updated_at` remains the market-quality/scanner timestamp
+- dedicated `price_updated_at` tracks live/provider/WSS price freshness
+- price-only refresh no longer makes stale liquidity/volume/buys/FDV appear fresh
+- stale exact open-position prices fail closed
+- stale open-position prices cannot fall through to token-cache fallback pricing
+- stale cache prices cannot anchor WSS relative pricing
+- no historical stop fill or exit is fabricated while price evidence is stale
+
+## Validation Sequence
+
+Initial targeted maintenance verification:
+- **24 passed / 0 failed**
+- warning count: **1**
+
+First repository-wide regression exposed a timestamp contract conflict:
+- **1633 passed / 1 failed**
+- failing test: `tests/test_tracked_pool_price.py::test_price_only_refresh_preserves_market_quality_timestamp`
+- observed issue: price-only refresh advanced shared `updated_at`
+- correction: separate market-quality freshness from price freshness using `price_updated_at`
+
+Final targeted verification after correction:
+- **27 passed / 0 failed**
+- warning count: **1**
+- `git diff --check`: PASS
+
+Final repository-wide regression:
+- **1635 passed / 0 failed**
+- warning count: **1**
+- runtime: **441.18 s**
+- recurring warning: dependency-owned `websockets.legacy` deprecation
+
+## Review / CI Evidence
+
+- CodeRabbit/Codex review identified the shared-timestamp P1 concern; the final implementation separated price freshness from market-quality freshness
+- the stale review thread was resolved after the correction
+- GitHub pull-request smoke jobs failed before any workflow step was created; therefore they were not treated as successful code-validation evidence
+- this closure relies on the successful VPS targeted/full regression and post-deploy runtime smoke for acceptance
+
+## Post-Merge VPS Runtime Smoke
+
+Deployed merge SHA:
+`3eaabe8c73c6b22bd0e0dd793afad02b07da5425`
+
+Observed after restart:
+- `coinoskobi-paper-runtime.service`: **active**
+- post-restart PID: `3067324`
+- independent runtime jobs: `paper_manager`, `paper_hot_manager`
+- `gecko_pool_cache` schema includes both `updated_at` and `price_updated_at`
+- recent cache rows contain current price freshness timestamps
+- critical runtime scan found no traceback, SQLite thread error, database locked, fatal or critical condition
+- scanner/fast-watch/pipeline processing continued after restart
+
+Observed non-blocking provider warnings:
+- `DexScreener snapshot fallback unavailable: 'NoneType' object is not iterable`
+- Universe discovery `HTTPError`
+- Universe discovery `ConnectionError`
+
+These warnings did not stop the runtime and are outside this maintenance acceptance boundary.
+
+## Final Result
+
+Paper price evidence / VUR_KAC admission maintenance closure: **PASS**.
+
+Targeted regression green, full repository regression green, PR merged, production runtime deployed, dedicated price freshness schema confirmed, runtime critical-error scan clean, and service active.
+
+Natural `NORMAL` PAPER TP1 → TP2 → TP3/runner → close remains explicitly pending as a separate Phase 4/12 natural-runtime E2E observation and must not be forced by weakening admission, sizing, LP protection, sellability, risk, or hard-block gates.

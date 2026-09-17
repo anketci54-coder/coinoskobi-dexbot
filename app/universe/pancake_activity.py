@@ -166,7 +166,11 @@ class PancakeActivityRadar:
     def _enqueue_memory(self, target, values, *, unknown=False):
         """Queue values while keeping known FIFO and freshest unknown races."""
         for value in values:
-            target.setdefault(value, None)
+            if unknown and value in target:
+                target.pop(value, None)
+                target[value] = None
+            else:
+                target.setdefault(value, None)
         while len(target) > self.max_pending:
             target.popitem(last=not unknown)
             if unknown:
@@ -217,7 +221,11 @@ class PancakeActivityRadar:
                 """, (pool,))
             for pool in unknown:
                 db.execute("""
-                    INSERT OR IGNORE INTO universe_activity_pending_v1(
+                    DELETE FROM universe_activity_pending_v1
+                    WHERE kind='UNKNOWN' AND pool=?
+                """, (pool,))
+                db.execute("""
+                    INSERT INTO universe_activity_pending_v1(
                         kind, pool, queued_at
                     ) VALUES('UNKNOWN', ?, ?)
                 """, (pool, stamp))
@@ -242,27 +250,56 @@ class PancakeActivityRadar:
         self._reload_pending()
 
     def _promote_discovered_unknowns(self):
-        """Move newly discovered Pancake emitters into the durable priority queue."""
+        """Promote discovered Pancake emitters without losing overflowed work."""
         if not self._unknown_pending:
             return 0
         addresses = list(self._unknown_pending)
         known = self._known_pancake_pools(addresses)
-        if not known:
+        promotable = [address for address in addresses if address in known]
+        if not promotable:
             return 0
 
         db = self._db()
         if db is None:
-            for address in known:
+            slots = max(0, self.max_pending - len(self._pending))
+            promoted = []
+            for address in promotable:
+                if address in self._pending:
+                    promoted.append(address)
+                    continue
+                if slots <= 0:
+                    continue
+                self._pending[address] = None
+                slots -= 1
+                promoted.append(address)
+            for address in promoted:
                 self._unknown_pending.pop(address, None)
-            self._enqueue_memory(self._pending, known)
-            return len(known)
+            return len(promoted)
 
         stamp = self._utc_now().isoformat()
         try:
             db.execute("BEGIN")
-            for address in known:
+            known_pending = {
+                str(row[0]).lower()
+                for row in db.execute("""
+                    SELECT pool FROM universe_activity_pending_v1
+                    WHERE kind='KNOWN'
+                """).fetchall()
+            }
+            slots = max(0, self.max_pending - len(known_pending))
+            promoted = []
+            for address in promotable:
+                if address in known_pending:
+                    db.execute("""
+                        DELETE FROM universe_activity_pending_v1
+                        WHERE kind='UNKNOWN' AND pool=?
+                    """, (address,))
+                    promoted.append(address)
+                    continue
+                if slots <= 0:
+                    continue
                 db.execute("""
-                    INSERT OR IGNORE INTO universe_activity_pending_v1(
+                    INSERT INTO universe_activity_pending_v1(
                         kind, pool, queued_at
                     ) VALUES('KNOWN', ?, ?)
                 """, (address, stamp))
@@ -270,14 +307,15 @@ class PancakeActivityRadar:
                     DELETE FROM universe_activity_pending_v1
                     WHERE kind='UNKNOWN' AND pool=?
                 """, (address,))
-            dropped = self._trim_durable_kind(db, "KNOWN")
+                known_pending.add(address)
+                slots -= 1
+                promoted.append(address)
             db.commit()
         except Exception:
             db.rollback()
             raise
-        self.dropped_pending += dropped
         self._reload_pending()
-        return len(known)
+        return len(promoted)
 
     def _peek(self):
         """Return the oldest priority batch without removing durable work."""

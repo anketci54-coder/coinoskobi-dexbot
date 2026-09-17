@@ -66,6 +66,7 @@ jobs:
           tests/test_true_composition_root_e2e.py
           tests/test_open_position_hot_path.py
           tests/test_open_position_price_freshness.py
+          tests/test_tracked_pool_price.py
           tests/test_application_market_flow_binding.py
           tests/test_application_dynamic_wss_pairs.py
           tests/test_application_paper_lifecycle.py

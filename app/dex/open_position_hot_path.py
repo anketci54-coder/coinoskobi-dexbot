@@ -38,13 +38,20 @@ def _cache_price_is_fresh(
     if not isinstance(row, dict):
         return False
 
-    # Legacy/test adapters that never exposed cache timestamps keep their
-    # historical contract. The production GeckoCache always exposes
-    # updated_at, so a missing/invalid production timestamp fails closed.
-    if "updated_at" not in row:
+    # Production GeckoCache exposes a dedicated price timestamp so
+    # price-only refreshes do not corrupt the market-quality timestamp.
+    # Legacy/test adapters without it retain the historical updated_at
+    # contract for compatibility.
+    timestamp_key = (
+        "price_updated_at"
+        if "price_updated_at" in row
+        else "updated_at"
+    )
+
+    if timestamp_key not in row:
         return True
 
-    raw = row.get("updated_at")
+    raw = row.get(timestamp_key)
 
     if not raw:
         return False

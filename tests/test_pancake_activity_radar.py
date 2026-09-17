@@ -65,10 +65,11 @@ def test_activity_radar_scans_topics_chain_wide_and_only_queues_pancake():
     assert result["matched_events"] == 2
     assert result["events"] == 4
     assert result["provider_call"] is True
+    assert result["pending"] == 2
     assert result["unknown_pending"] == 2
 
 
-def test_activity_radar_throttles_provider_but_can_drain_pending():
+def test_activity_radar_preserves_fifo_until_successful_acknowledgment():
     now = [100.0]
 
     def reader(**kwargs):
@@ -77,22 +78,26 @@ def test_activity_radar_throttles_provider_but_can_drain_pending():
     radar = PancakeActivityRadar(
         Registry(),
         reader,
-        poll_seconds=5,
+        poll_seconds=1,
         priority_batch=1,
         now_func=lambda: now[0],
     )
 
     first = radar.run_once(finalized_block=200)
-    assert first["provider_call"] is True
-    assert first["priority_count"] == 1
-    assert first["pending"] == 1
+    assert first["priority_pools"] == [V2_POOL]
+    assert first["pending"] == 2
 
-    now[0] = 101.0
-    second = radar.run_once(finalized_block=201)
-    assert second["state"] == "THROTTLED"
-    assert second["provider_call"] is False
-    assert second["priority_count"] == 1
-    assert second["pending"] == 0
+    now[0] = 102.0
+    repeated = radar.run_once(finalized_block=201)
+    assert repeated["priority_pools"] == [V2_POOL]
+    assert repeated["pending"] == 2
+
+    assert radar.acknowledge([V2_POOL]) == 1
+
+    now[0] = 104.0
+    next_result = radar.run_once(finalized_block=202)
+    assert next_result["priority_pools"] == [V3_POOL]
+    assert next_result["pending"] == 2
 
 
 def test_activity_radar_persists_cursor_and_retries_failed_range():
@@ -144,7 +149,41 @@ def test_activity_radar_persists_cursor_and_retries_failed_range():
     assert retried["last_scanned_block"] == 1004
 
 
-def test_unknown_swap_is_promoted_after_factory_discovery():
+def test_pending_priority_work_survives_restart_until_acknowledged():
+    registry = Registry()
+    now = [100.0]
+
+    first = PancakeActivityRadar(
+        registry,
+        lambda **_: [{"address": V2_POOL}],
+        poll_seconds=1,
+        priority_batch=1,
+        now_func=lambda: now[0],
+    )
+    scanned = first.run_once(finalized_block=700)
+    assert scanned["priority_pools"] == [V2_POOL]
+    assert scanned["pending"] == 1
+
+    restarted = PancakeActivityRadar(
+        registry,
+        lambda **_: [],
+        poll_seconds=1,
+        priority_batch=1,
+        now_func=lambda: now[0],
+    )
+    now[0] = 102.0
+    after_restart = restarted.run_once(finalized_block=700)
+    assert after_restart["priority_pools"] == [V2_POOL]
+    assert after_restart["pending"] == 1
+
+    assert restarted.acknowledge([V2_POOL]) == 1
+    now[0] = 104.0
+    after_ack = restarted.run_once(finalized_block=700)
+    assert after_ack["priority_pools"] == []
+    assert after_ack["pending"] == 0
+
+
+def test_unknown_swap_is_promoted_after_factory_discovery_and_survives_restart():
     registry = Registry()
     now = [100.0]
 
@@ -160,6 +199,13 @@ def test_unknown_swap_is_promoted_after_factory_discovery():
     assert first["priority_pools"] == []
     assert first["unknown_pending"] == 1
 
+    restarted = PancakeActivityRadar(
+        registry,
+        lambda **_: [],
+        poll_seconds=5,
+        priority_batch=30,
+        now_func=lambda: now[0],
+    )
     registry.db.execute(
         "INSERT INTO universe_pool_registry(dex,pool) VALUES(?,?)",
         ("pancakeswap_v2", UNKNOWN_POOL),
@@ -167,8 +213,8 @@ def test_unknown_swap_is_promoted_after_factory_discovery():
     registry.db.commit()
 
     now[0] = 101.0
-    second = radar.run_once(finalized_block=501)
-    assert second["provider_call"] is False
+    second = restarted.run_once(finalized_block=500)
+    assert second["provider_call"] is True
     assert second["promoted_after_discovery"] == 1
     assert second["priority_pools"] == [UNKNOWN_POOL]
     assert second["unknown_pending"] == 0

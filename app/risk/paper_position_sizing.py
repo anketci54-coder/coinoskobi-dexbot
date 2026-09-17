@@ -267,12 +267,78 @@ def _find_number(node, names):
     return None
 
 
+def _active_paper_run(conn):
+    """Return the single active paper run, if run accounting exists."""
+    exists = conn.execute(
+        """
+        SELECT 1
+        FROM sqlite_master
+        WHERE type='table'
+          AND name='paper_runs'
+        """
+    ).fetchone()
+
+    if exists is None:
+        return None
+
+    rows = conn.execute(
+        """
+        SELECT
+            id,
+            run_key,
+            starting_capital_usdt,
+            start_trade_id,
+            start_realization_id,
+            start_candidate_id,
+            started_at
+        FROM paper_runs
+        WHERE status='ACTIVE'
+        ORDER BY id DESC
+        LIMIT 2
+        """
+    ).fetchall()
+
+    if not rows:
+        return None
+
+    if len(rows) != 1:
+        raise RuntimeError(
+            "PAPER_ACTIVE_RUN_CARDINALITY_INVALID"
+        )
+
+    row = rows[0]
+
+    return {
+        "id": int(row[0]),
+        "run_key": str(row[1]),
+        "starting_capital_usdt": float(row[2]),
+        "start_trade_id": int(row[3]),
+        "start_realization_id": int(row[4]),
+        "start_candidate_id": int(row[5]),
+        "started_at": float(row[6]),
+    }
+
+
 def paper_available_capital_usdt(
     conn,
     starting_capital_usdt=PAPER_CAPITAL_USDT,
 ):
-    """Durable free-cash truth for PAPER_10K_V2."""
-    starting = _number(starting_capital_usdt)
+    """Durable free-cash truth for the active PAPER 10K run."""
+    active_run = _active_paper_run(conn)
+
+    if active_run is not None:
+        starting = _number(
+            active_run["starting_capital_usdt"]
+        )
+        start_trade_id = int(
+            active_run["start_trade_id"]
+        )
+    else:
+        starting = _number(
+            starting_capital_usdt
+        )
+        start_trade_id = 0
+
     if starting is None or starting < 0:
         starting = 0.0
 
@@ -306,7 +372,9 @@ def paper_available_capital_usdt(
             ), 0)
         FROM paper_trades
         WHERE paper_account_version='PAPER_10K_V2'
-        """
+          AND id > ?
+        """,
+        (start_trade_id,),
     ).fetchone()
 
     if row is None:

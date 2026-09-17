@@ -321,3 +321,34 @@ GitHub Actions:
 - CI is therefore not recorded as green
 
 Natural NORMAL PAPER TP lifecycle remains an observation item and was not forced.
+## RESERVE_COLLAPSE_MAINTENANCE_SEAL_20260917
+
+Status: CLOSED_VERIFIED_DEPLOYED
+
+Scope:
+- Real-world candidate 60615 / exact Pancake V2 WBNB-JOE pool forensic.
+- Confirmed historical quote-reserve collapse from approximately 17.10235997081519 WBNB to 0.01576356812299259 WBNB, followed by near-zero residual liquidity.
+- Added evidence-only reserve-collapse classification.
+- Exit feasibility now exposes reserve-collapse state, withdrawal fraction and catastrophic-collapse evidence.
+- Unified opportunity classification vetoes HOT and returns WATCH / CATASTROPHIC_RESERVE_COLLAPSE when catastrophic depletion is confirmed.
+- No trade, wallet, signing, live, paper or execution authority was introduced.
+- Existing Risk Gate / sellability / sizing safety boundaries were not weakened.
+
+GitHub:
+- Feature commit: 371c82fc58d5a46b2d526e83f9363f3f1df2d773
+- PR: #189
+- Merge commit: 49aa2916bb08b91f5bda21b09d2c64228f834110
+- Security review: Strix reported no security issues.
+- GitHub Actions PR-head run 35196980907 was not green: smoke failed before useful job steps and full was skipped; this was not treated as pytest-pass evidence.
+
+Deployment:
+- main synced to merge commit.
+- coinoskobi-paper-runtime.service restarted successfully.
+- exact-pool post-deploy smoke PASS.
+- historical catastrophic-collapse classifier PASS.
+- UnifiedScore catastrophic-collapse WATCH veto PASS.
+- post-deploy runtime traceback / SQLite thread / database-locked audit PASS.
+
+Separate existing observation remains:
+- Natural NORMAL PAPER TP1 -> TP2 -> TP3/runner -> close E2E remains pending a natural qualifying trade.
+- No trade is to be forced and no gate is to be weakened for that observation.

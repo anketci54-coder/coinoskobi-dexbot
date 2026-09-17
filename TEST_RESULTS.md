@@ -512,3 +512,26 @@ Conclusion:
 Zero measured quote-reserve change is no longer mislabeled as opposing flow.
 Negative measured flow remains a veto.
 Recovery breakout still requires positive flow.
+## RESERVE_COLLAPSE_MAINTENANCE_SEAL_20260917
+
+Validation:
+- Initial reserve-collapse/rug targeted: 8 passed.
+- Runtime evidence targeted: 11 passed.
+- Existing exit / LP regression: 23 passed.
+- Reserve-collapse + UnifiedScore targeted: 35 passed, 1 warning.
+- Paper / LP regression: 43 passed, 1 warning.
+- Full pytest: 1647 passed, 1 warning in 477.46s; RC=0.
+- git diff --check: PASS.
+- Exact candidate-60615 pool runtime smoke before merge: PASS.
+- Exact-pool post-deploy smoke after merge: PASS.
+- Historical reserve withdrawal fraction: > 0.999.
+- Catastrophic reserve collapse classification: PASS.
+- UnifiedScore result on catastrophic evidence: WATCH / CATASTROPHIC_RESERVE_COLLAPSE.
+- Authority assertions: decision/paper/execution authority remain false in classifier evidence.
+- Runtime service active after deployment.
+- Post-deploy critical-error journal audit: PASS.
+
+CI note:
+- PR-head GitHub Actions run 35196980907: smoke=failure, full=skipped, no useful smoke steps exposed.
+- CI is therefore NOT recorded as green.
+- The full local pytest result above is the executable regression evidence.

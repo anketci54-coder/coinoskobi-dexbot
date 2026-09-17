@@ -282,6 +282,11 @@ class FullUniverseObservationRuntime:
                     _safe_error(exc),
                 )
             observation_results.append(priority_result)
+            if priority_result.get("state") == "DEGRADED":
+                priority_failed = True
+                activity_result["state"] = "DEGRADED"
+                if priority_result.get("error_class"):
+                    activity_result["error_class"] = priority_result["error_class"]
             priority_observed = priority_result.get("pools") or []
             priority_missing = priority_result.get("missing_pools") or []
             observed_pools.extend(priority_observed)

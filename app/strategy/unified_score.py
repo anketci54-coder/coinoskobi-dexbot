@@ -99,6 +99,20 @@ class UnifiedScoreEngine:
         quote_reserve = cls._number(
             exit_data.get("quote_reserve_usd")
         )
+        catastrophic_reserve_collapse = bool(
+            exit_data.get(
+                "catastrophic_reserve_collapse"
+            )
+        )
+        reserve_withdrawal_fraction = cls._number(
+            exit_data.get(
+                "reserve_withdrawal_fraction"
+            )
+        )
+        reserve_collapse_state = (
+            exit_data.get("reserve_collapse_state")
+            or "UNKNOWN"
+        )
         mev_status = str(
             mev_risk.get("status") or "UNKNOWN"
         ).upper()
@@ -155,8 +169,26 @@ class UnifiedScoreEngine:
             "latest_reserve_change_fraction": latest_reserve_change,
             "quote_flow_state": quote_flow_state,
             "quote_reserve_usd": quote_reserve,
+            "reserve_collapse_state": (
+                reserve_collapse_state
+            ),
+            "reserve_withdrawal_fraction": (
+                reserve_withdrawal_fraction
+            ),
+            "catastrophic_reserve_collapse": (
+                catastrophic_reserve_collapse
+            ),
             "mev_status": mev_status,
         }
+
+        if catastrophic_reserve_collapse:
+            return {
+                "state": "WATCH",
+                "reason": (
+                    "CATASTROPHIC_RESERVE_COLLAPSE"
+                ),
+                **diagnostics,
+            }
 
         if latest_return <= 0:
             return {

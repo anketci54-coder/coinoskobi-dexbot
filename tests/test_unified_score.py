@@ -162,3 +162,93 @@ def test_coverage_score_is_diagnostic_only():
     assert result["score"] == 100
     assert result["score_meaning"] == "EVIDENCE_COVERAGE_DIAGNOSTIC_ONLY"
     assert result["trade_authority"] is False
+
+
+def test_catastrophic_reserve_collapse_vetoes_hot_opportunity():
+    engine = UnifiedScoreEngine()
+
+    result = engine.evaluate(
+        strategy={
+            "decision": "PAPER_BUY",
+            "structural_ready": True,
+        },
+        risk_gate={
+            "hard_block": False,
+            "sellability": "SELLABLE",
+            "honeypot": "NO",
+            "local_evidence_complete": True,
+            "local_evidence": {
+                "exit_feasibility": {
+                    "runtime_spot_price_series_usd": [
+                        1.00,
+                        1.05,
+                        1.10,
+                    ],
+                    "reserve_change_fraction": -0.999999,
+                    "latest_reserve_change_fraction": -0.999999,
+                    "quote_reserve_usd": 0.05,
+                    "reserve_collapse_state": (
+                        "CATASTROPHIC_RESERVE_COLLAPSE"
+                    ),
+                    "reserve_withdrawal_fraction": 0.999999,
+                    "catastrophic_reserve_collapse": True,
+                },
+            },
+        },
+        trap_risk={"evidence": {}},
+        mev_risk={"status": "LOW_EXPOSURE"},
+    )
+
+    assert result["opportunity_state"] == "WATCH"
+    assert (
+        result["opportunity_reason"]
+        == "CATASTROPHIC_RESERVE_COLLAPSE"
+    )
+    assert (
+        result["opportunity"][
+            "catastrophic_reserve_collapse"
+        ]
+        is True
+    )
+
+
+def test_non_catastrophic_reserve_evidence_does_not_create_veto():
+    engine = UnifiedScoreEngine()
+
+    result = engine.evaluate(
+        strategy={
+            "decision": "PAPER_BUY",
+            "structural_ready": True,
+        },
+        risk_gate={
+            "hard_block": False,
+            "sellability": "SELLABLE",
+            "honeypot": "NO",
+            "local_evidence_complete": True,
+            "local_evidence": {
+                "exit_feasibility": {
+                    "runtime_spot_price_series_usd": [
+                        1.00,
+                        1.05,
+                        1.10,
+                    ],
+                    "reserve_change_fraction": 0.02,
+                    "latest_reserve_change_fraction": 0.01,
+                    "quote_reserve_usd": 10000.0,
+                    "reserve_collapse_state": (
+                        "NO_RESERVE_COLLAPSE"
+                    ),
+                    "reserve_withdrawal_fraction": 0.0,
+                    "catastrophic_reserve_collapse": False,
+                },
+            },
+        },
+        trap_risk={"evidence": {}},
+        mev_risk={"status": "LOW_EXPOSURE"},
+    )
+
+    assert result["opportunity_state"] == "HOT"
+    assert (
+        result["opportunity_reason"]
+        == "ACTIVE_CONTINUATION_READY"
+    )

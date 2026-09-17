@@ -34,10 +34,71 @@ INDEX_FILE = STATIC_DIR / "index.html"
 
 PAPER_STARTING_CAPITAL_USDT = 10_000.0
 
-# Active dashboard epoch. Historical paper trades are archived outside
-# the active paper_trades table; the clean runtime generation starts at ID 1.
-PANEL_ACTIVE_PERIOD_MIN_TRADE_ID = 1
-PANEL_ACTIVE_PERIOD_LABEL = "PAPER_ACTIVE_ID_1_PLUS"
+
+def panel_active_paper_run() -> dict[str, Any]:
+    """
+    Read-only active PAPER run boundary.
+
+    Historical rows remain durable in the same DB.
+    """
+    if not table_exists("paper_runs"):
+        return {}
+
+    rows = query(
+        """
+        SELECT
+            id,
+            run_key,
+            started_at,
+            starting_capital_usdt,
+            start_trade_id,
+            start_realization_id,
+            start_candidate_id
+        FROM paper_runs
+        WHERE status='ACTIVE'
+        ORDER BY id DESC
+        LIMIT 2
+        """
+    )
+
+    if len(rows) != 1:
+        return {}
+
+    return rows[0]
+
+
+def panel_active_period_min_trade_id() -> int:
+    run = panel_active_paper_run()
+
+    if not run:
+        return 1
+
+    return int(
+        run.get("start_trade_id") or 0
+    ) + 1
+
+
+def panel_active_period_label() -> str:
+    run = panel_active_paper_run()
+
+    return str(
+        run.get("run_key")
+        or "PAPER_ACTIVE_ID_1_PLUS"
+    )
+
+
+def panel_starting_capital_usdt() -> float:
+    run = panel_active_paper_run()
+
+    if not run:
+        return PAPER_STARTING_CAPITAL_USDT
+
+    value = number(
+        run.get("starting_capital_usdt"),
+        PAPER_STARTING_CAPITAL_USDT,
+    )
+
+    return max(0.0, value)
 
 
 app = FastAPI(
@@ -399,7 +460,7 @@ def paper_rows(
             " AND id >= ?"
         )
         params.append(
-            PANEL_ACTIVE_PERIOD_MIN_TRADE_ID
+            panel_active_period_min_trade_id()
         )
 
     if before_id is not None:
@@ -500,7 +561,7 @@ def performance_payload(
             " AND id >= ?"
         )
         params = (
-            PANEL_ACTIVE_PERIOD_MIN_TRADE_ID,
+            panel_active_period_min_trade_id(),
         )
 
     row = query_one(
@@ -683,7 +744,7 @@ def policy_performance_payload(
     if active_only:
         active_filter = " AND id >= ?"
         params = (
-            PANEL_ACTIVE_PERIOD_MIN_TRADE_ID,
+            panel_active_period_min_trade_id(),
         )
 
     rows = query(
@@ -821,7 +882,7 @@ def performance_series(
             " AND id >= ?"
         )
         params = (
-            PANEL_ACTIVE_PERIOD_MIN_TRADE_ID,
+            panel_active_period_min_trade_id(),
         )
 
     rows = query(
@@ -2001,7 +2062,7 @@ def api_dashboard() -> dict[str, Any]:
     )
 
     total_pnl = realized_net + open_pnl
-    equity = PAPER_STARTING_CAPITAL_USDT + total_pnl
+    equity = panel_starting_capital_usdt() + total_pnl
 
     now_local = datetime.now(
         PANEL_TIMEZONE
@@ -2064,7 +2125,7 @@ def api_dashboard() -> dict[str, Any]:
               ) < ?
         """,
         (
-            PANEL_ACTIVE_PERIOD_MIN_TRADE_ID,
+            panel_active_period_min_trade_id(),
             day_start_utc,
             day_end_utc,
         ),
@@ -2118,7 +2179,7 @@ def api_dashboard() -> dict[str, Any]:
             timezone.utc
         ).isoformat(),
         "summary": {
-            "starting_capital": PAPER_STARTING_CAPITAL_USDT,
+            "starting_capital": panel_starting_capital_usdt(),
             "panel_timezone": PANEL_TIMEZONE_NAME,
             "local_date": local_date,
             "equity": equity,

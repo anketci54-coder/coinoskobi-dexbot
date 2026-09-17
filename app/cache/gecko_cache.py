@@ -56,7 +56,9 @@ class GeckoCache:
 
                 created_at TEXT,
 
-                updated_at TEXT
+                updated_at TEXT,
+
+                price_updated_at TEXT
 
             )
 
@@ -79,6 +81,12 @@ class GeckoCache:
                 self.db.execute(
                     "ALTER TABLE gecko_pool_cache "
                     "ADD COLUMN sells24 INTEGER"
+                )
+
+            if "price_updated_at" not in columns:
+                self.db.execute(
+                    "ALTER TABLE gecko_pool_cache "
+                    "ADD COLUMN price_updated_at TEXT"
                 )
 
             self.db.execute("""
@@ -176,11 +184,16 @@ class GeckoCache:
                 fdv,
                 price_usd,
                 created_at,
-                updated_at
+                updated_at,
+                price_updated_at
 
             )
 
-            VALUES(?,?,?,?,?,?,?,?,?,?,?,?,datetime('now'))
+            VALUES(
+                ?,?,?,?,?,?,?,?,?,?,?,?,
+                datetime('now'),
+                datetime('now')
+            )
 
             """,(
 
@@ -456,13 +469,13 @@ class GeckoCache:
                     pool,
                     token,
                     price_usd,
-                    updated_at
+                    price_updated_at
                 )
                 VALUES(?,?,?,datetime('now'))
                 ON CONFLICT(pool) DO UPDATE SET
                     token=excluded.token,
                     price_usd=excluded.price_usd,
-                    updated_at=excluded.updated_at
+                    price_updated_at=excluded.price_updated_at
                 """,
                 (pool, token, price),
             )
@@ -483,7 +496,9 @@ class GeckoCache:
             cursor = self.db.execute(
                 """
                 UPDATE gecko_pool_cache
-                SET price_usd=?, updated_at=datetime('now')
+                SET
+                    price_usd=?,
+                    price_updated_at=datetime('now')
                 WHERE lower(pool)=lower(?)
                 """,
                 (price, pool),
@@ -510,7 +525,8 @@ class GeckoCache:
             fdv,
             price_usd,
             created_at,
-            updated_at
+            updated_at,
+            price_updated_at
 
             FROM gecko_pool_cache
 

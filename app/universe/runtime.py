@@ -108,7 +108,6 @@ class FullUniverseObservationRuntime:
         """Build a worker-owned runtime with its own SQLite/provider objects."""
         existing_web3 = _new_bsc_web3()
         tail_web3 = _new_bsc_web3()
-        activity_web3 = _new_bsc_web3()
         return type(self)(
             start_blocks=dict(self.start_blocks),
             registry=UniverseRegistry(),
@@ -121,7 +120,7 @@ class FullUniverseObservationRuntime:
             discovery_batches_per_cycle=self.discovery_batches_per_cycle,
             observation_batches_per_cycle=self.observation_batches_per_cycle,
             existing_retry_seconds=self.existing_retry_seconds,
-            activity_log_reader=Web3TopicLogReader(activity_web3),
+            activity_log_reader=Web3TopicLogReader(tail_web3),
             activity_poll_seconds=self.activity_poll_seconds,
             now_func=self._now,
         )
@@ -269,12 +268,14 @@ class FullUniverseObservationRuntime:
 
         priority_result = None
         priority_pools = activity_result.get("priority_pools") or []
+        normal_batch_budget = self.observation_batches_per_cycle
         if priority_pools:
             priority_result = self.observer.run_priority(priority_pools)
             observation_results.append(priority_result)
             observed_pools.extend(priority_result.get("pools") or [])
+            normal_batch_budget = max(0, normal_batch_budget - 1)
 
-        for _ in range(self.observation_batches_per_cycle):
+        for _ in range(normal_batch_budget):
             result = self.observer.run_once()
             observation_results.append(result)
             observed_pools.extend(result.get("pools") or [])
@@ -308,7 +309,11 @@ class FullUniverseObservationRuntime:
         return {
             "state": (
                 "SHADOW_DEGRADED"
-                if discovery_errors or existing_backoff
+                if (
+                    discovery_errors
+                    or existing_backoff
+                    or activity_result.get("state") == "DEGRADED"
+                )
                 else "SHADOW_READY"
             ),
             "cycle": self.cycles,

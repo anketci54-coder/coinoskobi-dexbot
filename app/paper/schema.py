@@ -81,6 +81,21 @@ CREATE TABLE IF NOT EXISTS paper_trades (
 """
 
 
+PAPER_RUNS_SCHEMA = """
+CREATE TABLE IF NOT EXISTS paper_runs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_key TEXT NOT NULL UNIQUE,
+    started_at REAL NOT NULL,
+    starting_capital_usdt REAL NOT NULL,
+    start_trade_id INTEGER NOT NULL,
+    start_realization_id INTEGER NOT NULL,
+    start_candidate_id INTEGER NOT NULL,
+    status TEXT NOT NULL,
+    metadata_json TEXT NOT NULL
+)
+"""
+
+
 REALIZATIONS_SCHEMA = """
 CREATE TABLE IF NOT EXISTS paper_realizations (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -483,6 +498,10 @@ def ensure_paper_schema(
     try:
         conn.execute(
             PAPER_TRADES_SCHEMA
+        )
+
+        conn.execute(
+            PAPER_RUNS_SCHEMA
         )
 
         if (

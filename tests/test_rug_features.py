@@ -1,3 +1,5 @@
+import pytest
+
 from app.risk.rug_features import (
     build_rug_features,
 )
@@ -45,3 +47,20 @@ def test_invalid_ratios_become_unknown():
     assert result["features"]["wallet_hhi"] is None
     assert result["features"]["buy_probability"] is None
     assert result["features"]["pool_age_seconds"] is None
+
+
+def test_reserve_collapse_evidence_is_preserved_without_authority():
+    result = build_rug_features(
+        reserve_withdrawal_fraction=0.999999,
+        catastrophic_reserve_collapse=True,
+    )
+
+    features = result["features"]
+
+    assert features["reserve_withdrawal_fraction"] == pytest.approx(
+        0.999999
+    )
+    assert features["catastrophic_reserve_collapse"] is True
+    assert result["rug_probability"] is None
+    assert result["decision_authority"] is False
+    assert result["trade_authority"] is False

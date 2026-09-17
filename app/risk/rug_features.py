@@ -39,6 +39,8 @@ def build_rug_features(
     holder_hhi=None,
     liquidity_log_change=None,
     liquidity_acceleration=None,
+    reserve_withdrawal_fraction=None,
+    catastrophic_reserve_collapse=None,
     buy_probability=None,
     wallet_hhi=None,
     wallet_entropy=None,
@@ -96,6 +98,17 @@ def build_rug_features(
         ),
         "liquidity_acceleration": _finite(
             liquidity_acceleration
+        ),
+        "reserve_withdrawal_fraction": _ratio(
+            reserve_withdrawal_fraction
+        ),
+        "catastrophic_reserve_collapse": (
+            catastrophic_reserve_collapse
+            if isinstance(
+                catastrophic_reserve_collapse,
+                bool,
+            )
+            else None
         ),
         "buy_probability": _ratio(
             buy_probability

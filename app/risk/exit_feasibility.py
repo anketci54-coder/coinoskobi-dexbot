@@ -16,6 +16,9 @@ from app.config.early_entry import (
 from app.dex.price_impact import (
     infer_constant_product_fee,
 )
+from app.risk.reserve_collapse import (
+    classify_reserve_collapse,
+)
 
 
 PAIR_ABI = [
@@ -475,6 +478,10 @@ def analyze(token, pair):
 
         reserve_change = None
         latest_reserve_change = None
+        reserve_collapse = classify_reserve_collapse(
+            previous_quote_reserve=None,
+            current_quote_reserve=None,
+        )
 
         if (
             len(samples) >= 2
@@ -494,6 +501,15 @@ def analyze(token, pair):
                 samples[-1]["wbnb_reserve"]
                 / samples[-2]["wbnb_reserve"]
                 - 1.0
+            )
+
+            reserve_collapse = classify_reserve_collapse(
+                previous_quote_reserve=(
+                    samples[-2]["wbnb_reserve"]
+                ),
+                current_quote_reserve=(
+                    samples[-1]["wbnb_reserve"]
+                ),
             )
 
         return {
@@ -518,6 +534,20 @@ def analyze(token, pair):
                 "reserve_change_fraction": reserve_change,
                 "latest_reserve_change_fraction": (
                     latest_reserve_change
+                ),
+                "reserve_collapse": reserve_collapse,
+                "reserve_collapse_state": (
+                    reserve_collapse.get("state")
+                ),
+                "reserve_withdrawal_fraction": (
+                    reserve_collapse.get(
+                        "withdrawal_fraction"
+                    )
+                ),
+                "catastrophic_reserve_collapse": (
+                    reserve_collapse.get(
+                        "catastrophic_reserve_collapse"
+                    )
                 ),
                 "reserve_samples": samples,
                 "spot_price_series_usd": price_series,
@@ -568,6 +598,24 @@ def analyze(token, pair):
                 "reserve_observation_count": 0,
                 "reserve_change_fraction": None,
                 "latest_reserve_change_fraction": None,
+                "reserve_collapse": {
+                    "state": "UNKNOWN",
+                    "previous_quote_reserve": None,
+                    "current_quote_reserve": None,
+                    "remaining_fraction": None,
+                    "withdrawal_fraction": None,
+                    "reserve_collapse": False,
+                    "catastrophic_reserve_collapse": False,
+                    "reason": None,
+                    "decision_authority": False,
+                    "paper_authority": False,
+                    "live_authority": False,
+                    "wallet_authority": False,
+                    "execution_authority": False,
+                },
+                "reserve_collapse_state": "UNKNOWN",
+                "reserve_withdrawal_fraction": None,
+                "catastrophic_reserve_collapse": False,
                 "implied_v2_fee_fraction": None,
                 "implied_v2_fee_state": "UNKNOWN",
                 "trade_authority": False,

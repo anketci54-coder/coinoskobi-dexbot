@@ -257,9 +257,21 @@ class FullUniverseObservationRuntime:
             priority_result = self.observer.run_priority(priority_pools)
             observation_results.append(priority_result)
             priority_observed = priority_result.get("pools") or []
+            priority_missing = priority_result.get("missing_pools") or []
             observed_pools.extend(priority_observed)
-            if self.activity is not None and priority_observed:
-                self.activity.acknowledge(priority_observed)
+            completed_priority = list(dict.fromkeys(
+                [*priority_observed, *priority_missing]
+            ))
+            if self.activity is not None and completed_priority:
+                try:
+                    self.activity.acknowledge(completed_priority)
+                except Exception as exc:
+                    activity_result["state"] = "DEGRADED"
+                    activity_result["ack_error_class"] = type(exc).__name__
+                    log.warning(
+                        "Pancake activity acknowledgment failed: %s",
+                        _safe_error(exc),
+                    )
             normal_batch_budget = max(0, normal_batch_budget - 1)
 
         for _ in range(normal_batch_budget):

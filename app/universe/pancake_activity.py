@@ -33,16 +33,7 @@ class Web3TopicLogReader:
 
 
 class PancakeActivityRadar:
-    """
-    Low-cost full-network activity trigger for known Pancake V2/V3 pools.
-
-    It observes public Swap topic logs, matches emitting addresses against the
-    durable local UniverseRegistry, and queues matched pools for immediate
-    indexed-market refresh. Unknown emitting addresses are retained briefly so
-    a pool discovered one cycle later is not lost. The scan cursor is durable
-    when the registry exposes SQLite, so restart does not intentionally skip an
-    already-confirmed block range. No market facts or trade authority are made.
-    """
+    """Durable, bounded BSC-wide Pancake V2/V3 activity trigger."""
 
     def __init__(
         self,
@@ -76,13 +67,16 @@ class PancakeActivityRadar:
         self.unknown_events = 0
         self.dropped_pending = 0
         self.dropped_unknown = 0
-        self._ensure_cursor_schema()
+        self._ensure_state_schema()
         self._last_scanned_block = self._load_cursor()
+        self._reload_pending()
 
     def _db(self):
+        """Return the registry SQLite connection when available."""
         return getattr(self.registry, "db", None)
 
-    def _ensure_cursor_schema(self):
+    def _ensure_state_schema(self):
+        """Create durable cursor and activity queues in the registry database."""
         db = self._db()
         if db is None:
             return
@@ -93,9 +87,19 @@ class PancakeActivityRadar:
                 updated_at TEXT NOT NULL
             )
         """)
+        db.execute("""
+            CREATE TABLE IF NOT EXISTS universe_activity_pending_v1(
+                seq INTEGER PRIMARY KEY AUTOINCREMENT,
+                kind TEXT NOT NULL CHECK(kind IN ('KNOWN','UNKNOWN')),
+                pool TEXT NOT NULL,
+                queued_at TEXT NOT NULL,
+                UNIQUE(kind, pool)
+            )
+        """)
         db.commit()
 
     def _load_cursor(self):
+        """Restore the last fully durably accepted block."""
         db = self._db()
         if db is None:
             return None
@@ -109,36 +113,35 @@ class PancakeActivityRadar:
         value = int(row[0])
         return value if value >= 0 else None
 
-    def _save_cursor(self, block_number):
-        block_number = max(0, int(block_number))
+    def _reload_pending(self):
+        """Reload durable queues without changing their FIFO age."""
         db = self._db()
         if db is None:
             return
-        db.execute("""
-            INSERT INTO universe_activity_cursor_v1(
-                id, last_scanned_block, updated_at
-            ) VALUES(1, ?, ?)
-            ON CONFLICT(id) DO UPDATE SET
-                last_scanned_block=excluded.last_scanned_block,
-                updated_at=excluded.updated_at
-        """, (
-            block_number,
-            self._utc_now().isoformat(),
-        ))
-        db.commit()
+        rows = db.execute("""
+            SELECT kind, pool
+            FROM universe_activity_pending_v1
+            ORDER BY seq ASC
+        """).fetchall()
+        self._pending.clear()
+        self._unknown_pending.clear()
+        for kind, pool in rows:
+            target = self._pending if kind == "KNOWN" else self._unknown_pending
+            target[str(pool).lower()] = None
 
     @staticmethod
     def _address(log):
+        """Normalize a log emitter address or reject malformed values."""
         value = str((log or {}).get("address") or "").strip().lower()
         if len(value) != 42 or not value.startswith("0x"):
             return None
         return value
 
     def _known_pancake_pools(self, addresses):
+        """Return addresses currently registered as Pancake V2/V3 pools."""
         addresses = list(dict.fromkeys(addresses))
         if not addresses:
             return set()
-
         db = self._db()
         if db is None:
             return set()
@@ -160,44 +163,155 @@ class PancakeActivityRadar:
             known.update(str(row[0]).strip().lower() for row in rows)
         return known
 
-    def _enqueue(self, pools):
-        for pool in pools:
-            self._pending.pop(pool, None)
-            self._pending[pool] = None
+    def _enqueue_memory(self, target, values, *, unknown=False):
+        """Queue new values without reordering values already waiting."""
+        for value in values:
+            target.setdefault(value, None)
+        while len(target) > self.max_pending:
+            target.popitem(last=True)
+            if unknown:
+                self.dropped_unknown += 1
+            else:
+                self.dropped_pending += 1
 
-        while len(self._pending) > self.max_pending:
-            self._pending.popitem(last=False)
-            self.dropped_pending += 1
+    def _trim_durable_kind(self, db, kind):
+        """Bound one durable queue while preserving its oldest FIFO entries."""
+        count = int(db.execute(
+            "SELECT COUNT(*) FROM universe_activity_pending_v1 WHERE kind=?",
+            (kind,),
+        ).fetchone()[0])
+        overflow = max(0, count - self.max_pending)
+        if not overflow:
+            return 0
+        db.execute("""
+            DELETE FROM universe_activity_pending_v1
+            WHERE seq IN (
+                SELECT seq FROM universe_activity_pending_v1
+                WHERE kind=? ORDER BY seq DESC LIMIT ?
+            )
+        """, (kind, overflow))
+        return overflow
 
-    def _remember_unknown(self, addresses):
-        for address in addresses:
-            self._unknown_pending.pop(address, None)
-            self._unknown_pending[address] = None
+    def _persist_scan(self, *, to_block, known, unknown):
+        """Persist queued activity and cursor atomically before accepting a scan."""
+        db = self._db()
+        if db is None:
+            self._enqueue_memory(self._pending, known)
+            self._enqueue_memory(self._unknown_pending, unknown, unknown=True)
+            self._last_scanned_block = int(to_block)
+            return
 
-        while len(self._unknown_pending) > self.max_pending:
-            self._unknown_pending.popitem(last=False)
-            self.dropped_unknown += 1
+        stamp = self._utc_now().isoformat()
+        try:
+            db.execute("BEGIN")
+            for pool in known:
+                db.execute("""
+                    INSERT OR IGNORE INTO universe_activity_pending_v1(
+                        kind, pool, queued_at
+                    ) VALUES('KNOWN', ?, ?)
+                """, (pool, stamp))
+                db.execute("""
+                    DELETE FROM universe_activity_pending_v1
+                    WHERE kind='UNKNOWN' AND pool=?
+                """, (pool,))
+            for pool in unknown:
+                db.execute("""
+                    INSERT OR IGNORE INTO universe_activity_pending_v1(
+                        kind, pool, queued_at
+                    ) VALUES('UNKNOWN', ?, ?)
+                """, (pool, stamp))
+            dropped_known = self._trim_durable_kind(db, "KNOWN")
+            dropped_unknown = self._trim_durable_kind(db, "UNKNOWN")
+            db.execute("""
+                INSERT INTO universe_activity_cursor_v1(
+                    id, last_scanned_block, updated_at
+                ) VALUES(1, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET
+                    last_scanned_block=excluded.last_scanned_block,
+                    updated_at=excluded.updated_at
+            """, (int(to_block), stamp))
+            db.commit()
+        except Exception:
+            db.rollback()
+            raise
+
+        self.dropped_pending += dropped_known
+        self.dropped_unknown += dropped_unknown
+        self._last_scanned_block = int(to_block)
+        self._reload_pending()
 
     def _promote_discovered_unknowns(self):
+        """Move newly discovered Pancake emitters into the durable priority queue."""
         if not self._unknown_pending:
             return 0
         addresses = list(self._unknown_pending)
         known = self._known_pancake_pools(addresses)
         if not known:
             return 0
-        for address in known:
-            self._unknown_pending.pop(address, None)
-        self._enqueue(known)
+
+        db = self._db()
+        if db is None:
+            for address in known:
+                self._unknown_pending.pop(address, None)
+            self._enqueue_memory(self._pending, known)
+            return len(known)
+
+        stamp = self._utc_now().isoformat()
+        try:
+            db.execute("BEGIN")
+            for address in known:
+                db.execute("""
+                    INSERT OR IGNORE INTO universe_activity_pending_v1(
+                        kind, pool, queued_at
+                    ) VALUES('KNOWN', ?, ?)
+                """, (address, stamp))
+                db.execute("""
+                    DELETE FROM universe_activity_pending_v1
+                    WHERE kind='UNKNOWN' AND pool=?
+                """, (address,))
+            dropped = self._trim_durable_kind(db, "KNOWN")
+            db.commit()
+        except Exception:
+            db.rollback()
+            raise
+        self.dropped_pending += dropped
+        self._reload_pending()
         return len(known)
 
-    def _drain(self):
-        pools = []
-        while self._pending and len(pools) < self.priority_batch:
-            pool, _ = self._pending.popitem(last=False)
-            pools.append(pool)
-        return pools
+    def _peek(self):
+        """Return the oldest priority batch without removing durable work."""
+        return list(self._pending.keys())[:self.priority_batch]
+
+    def acknowledge(self, pools):
+        """Remove only pools whose priority snapshot was successfully observed."""
+        normalized = list(dict.fromkeys(
+            str(pool or "").strip().lower() for pool in pools or []
+            if str(pool or "").strip()
+        ))
+        if not normalized:
+            return 0
+        db = self._db()
+        if db is None:
+            removed = 0
+            for pool in normalized:
+                if pool in self._pending:
+                    self._pending.pop(pool, None)
+                    removed += 1
+            return removed
+
+        placeholders = ",".join("?" for _ in normalized)
+        before = int(db.total_changes)
+        db.execute(f"""
+            DELETE FROM universe_activity_pending_v1
+            WHERE kind='KNOWN' AND pool IN ({placeholders})
+        """, tuple(normalized))
+        db.commit()
+        removed = int(db.total_changes) - before
+        self._reload_pending()
+        return removed
 
     def run_once(self, *, finalized_block):
+        """Scan confirmed blocks and expose the oldest durable priority batch."""
         finalized_block = max(0, int(finalized_block))
         now = self._now()
         provider_call = False
@@ -217,7 +331,6 @@ class PancakeActivityRadar:
                 if self._last_scanned_block is None
                 else self._last_scanned_block + 1
             )
-
             if from_block <= finalized_block:
                 to_block = min(
                     finalized_block,
@@ -227,17 +340,12 @@ class PancakeActivityRadar:
                 scanned_to = to_block
                 provider_call = True
                 self.provider_calls += 1
-
                 try:
                     logs = list(self.log_reader(
                         topics=PANCAKE_ACTIVITY_TOPICS,
                         from_block=from_block,
                         to_block=to_block,
                     ))
-                except Exception as exc:
-                    state = "DEGRADED"
-                    error_class = type(exc).__name__
-                else:
                     addresses = [
                         address
                         for log in logs
@@ -253,17 +361,22 @@ class PancakeActivityRadar:
                     matched_count = sum(
                         1 for address in addresses if address in known
                     )
+                    self._persist_scan(
+                        to_block=to_block,
+                        known=known,
+                        unknown=unknown,
+                    )
+                except Exception as exc:
+                    state = "DEGRADED"
+                    error_class = type(exc).__name__
+                else:
                     self.matched_events += matched_count
                     self.unknown_events += max(0, event_count - matched_count)
-                    self._enqueue(known)
-                    self._remember_unknown(unknown)
-                    self._last_scanned_block = to_block
-                    self._save_cursor(to_block)
                     state = "OBSERVED"
             else:
                 state = "CAUGHT_UP"
 
-        priority_pools = self._drain()
+        priority_pools = self._peek()
         return {
             "state": state,
             "from_block": scanned_from,

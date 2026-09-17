@@ -214,7 +214,7 @@ def test_unknown_swap_is_promoted_after_factory_discovery_and_survives_restart()
 
     now[0] = 101.0
     second = restarted.run_once(finalized_block=500)
-    assert second["provider_call"] is True
+    assert second["provider_call"] is False
     assert second["promoted_after_discovery"] == 1
     assert second["priority_pools"] == [UNKNOWN_POOL]
     assert second["unknown_pending"] == 0

@@ -36,9 +36,12 @@ class PancakeActivityRadar:
     """
     Low-cost full-network activity trigger for known Pancake V2/V3 pools.
 
-    It observes only public Swap topic logs, matches emitting addresses against
-    the durable local UniverseRegistry, and queues matched pools for immediate
-    indexed-market refresh. It does not create market facts or trade authority.
+    It observes public Swap topic logs, matches emitting addresses against the
+    durable local UniverseRegistry, and queues matched pools for immediate
+    indexed-market refresh. Unknown emitting addresses are retained briefly so
+    a pool discovered one cycle later is not lost. The scan cursor is durable
+    when the registry exposes SQLite, so restart does not intentionally skip an
+    already-confirmed block range. No market facts or trade authority are made.
     """
 
     def __init__(
@@ -66,12 +69,63 @@ class PancakeActivityRadar:
             lambda: datetime.now(timezone.utc)
         )
         self._next_poll_at = 0.0
-        self._last_scanned_block = None
         self._pending = OrderedDict()
+        self._unknown_pending = OrderedDict()
         self.provider_calls = 0
         self.matched_events = 0
         self.unknown_events = 0
         self.dropped_pending = 0
+        self.dropped_unknown = 0
+        self._ensure_cursor_schema()
+        self._last_scanned_block = self._load_cursor()
+
+    def _db(self):
+        return getattr(self.registry, "db", None)
+
+    def _ensure_cursor_schema(self):
+        db = self._db()
+        if db is None:
+            return
+        db.execute("""
+            CREATE TABLE IF NOT EXISTS universe_activity_cursor_v1(
+                id INTEGER PRIMARY KEY CHECK(id=1),
+                last_scanned_block INTEGER NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+        """)
+        db.commit()
+
+    def _load_cursor(self):
+        db = self._db()
+        if db is None:
+            return None
+        row = db.execute("""
+            SELECT last_scanned_block
+            FROM universe_activity_cursor_v1
+            WHERE id=1
+        """).fetchone()
+        if row is None:
+            return None
+        value = int(row[0])
+        return value if value >= 0 else None
+
+    def _save_cursor(self, block_number):
+        block_number = max(0, int(block_number))
+        db = self._db()
+        if db is None:
+            return
+        db.execute("""
+            INSERT INTO universe_activity_cursor_v1(
+                id, last_scanned_block, updated_at
+            ) VALUES(1, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+                last_scanned_block=excluded.last_scanned_block,
+                updated_at=excluded.updated_at
+        """, (
+            block_number,
+            self._utc_now().isoformat(),
+        ))
+        db.commit()
 
     @staticmethod
     def _address(log):
@@ -85,7 +139,7 @@ class PancakeActivityRadar:
         if not addresses:
             return set()
 
-        db = getattr(self.registry, "db", None)
+        db = self._db()
         if db is None:
             return set()
 
@@ -115,6 +169,27 @@ class PancakeActivityRadar:
             self._pending.popitem(last=False)
             self.dropped_pending += 1
 
+    def _remember_unknown(self, addresses):
+        for address in addresses:
+            self._unknown_pending.pop(address, None)
+            self._unknown_pending[address] = None
+
+        while len(self._unknown_pending) > self.max_pending:
+            self._unknown_pending.popitem(last=False)
+            self.dropped_unknown += 1
+
+    def _promote_discovered_unknowns(self):
+        if not self._unknown_pending:
+            return 0
+        addresses = list(self._unknown_pending)
+        known = self._known_pancake_pools(addresses)
+        if not known:
+            return 0
+        for address in known:
+            self._unknown_pending.pop(address, None)
+        self._enqueue(known)
+        return len(known)
+
     def _drain(self):
         pools = []
         while self._pending and len(pools) < self.priority_batch:
@@ -132,6 +207,8 @@ class PancakeActivityRadar:
         matched_count = 0
         state = "THROTTLED"
         error_class = None
+
+        promoted_after_discovery = self._promote_discovered_unknowns()
 
         if now >= self._next_poll_at:
             self._next_poll_at = now + self.poll_seconds
@@ -161,20 +238,27 @@ class PancakeActivityRadar:
                     state = "DEGRADED"
                     error_class = type(exc).__name__
                 else:
-                    self._last_scanned_block = to_block
                     addresses = [
                         address
                         for log in logs
                         if (address := self._address(log)) is not None
                     ]
                     event_count = len(addresses)
-                    known = self._known_pancake_pools(addresses)
+                    unique_addresses = list(dict.fromkeys(addresses))
+                    known = self._known_pancake_pools(unique_addresses)
+                    unknown = [
+                        address for address in unique_addresses
+                        if address not in known
+                    ]
                     matched_count = sum(
                         1 for address in addresses if address in known
                     )
                     self.matched_events += matched_count
                     self.unknown_events += max(0, event_count - matched_count)
                     self._enqueue(known)
+                    self._remember_unknown(unknown)
+                    self._last_scanned_block = to_block
+                    self._save_cursor(to_block)
                     state = "OBSERVED"
             else:
                 state = "CAUGHT_UP"
@@ -189,11 +273,15 @@ class PancakeActivityRadar:
             "priority_pools": priority_pools,
             "priority_count": len(priority_pools),
             "pending": len(self._pending),
+            "unknown_pending": len(self._unknown_pending),
+            "promoted_after_discovery": promoted_after_discovery,
             "provider_call": provider_call,
             "provider_calls_total": self.provider_calls,
             "matched_events_total": self.matched_events,
             "unknown_events_total": self.unknown_events,
             "dropped_pending": self.dropped_pending,
+            "dropped_unknown": self.dropped_unknown,
+            "last_scanned_block": self._last_scanned_block,
             "observed_at": self._utc_now().isoformat(),
             "error_class": error_class,
             "decision_authority": False,

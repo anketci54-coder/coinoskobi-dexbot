@@ -672,6 +672,11 @@ def _vur_kac_entry_signal(
             "VUR_KAC_PRICE_MOMENTUM_NOT_POSITIVE"
         )
 
+    elif previous_return <= 0:
+        reason = (
+            "VUR_KAC_POSITIVE_CONTINUATION_NOT_ESTABLISHED"
+        )
+
     elif price_acceleration < 0:
         reason = (
             "VUR_KAC_PRICE_ACCELERATION_WEAKENING"
@@ -1807,10 +1812,16 @@ class PipelineEngine:
         # Mathematical planning uses canonical local
         # onchain evidence even when an external sellability
         # provider returns UNKNOWN.
+        # Prefer the freshest local evidence returned by the
+        # sellability pipeline. It contains the same bounded
+        # onchain LP/exit evidence and may additionally contain
+        # verified GoPlus primary-pool LP-lock enrichment.
+        #
+        # Never infer LP protection from reserve persistence.
         local_math_evidence = (
-            risk_gate.get("local_evidence")
+            sellability_data.get("local_evidence")
+            or risk_gate.get("local_evidence")
             or risk.get("local_evidence")
-            or sellability_data.get("local_evidence")
             or {}
         )
 
@@ -2065,6 +2076,48 @@ class PipelineEngine:
                             ),
                         )
                     )
+
+                    liquidity_state = str(
+                        (
+                            intelligence_context.get(
+                                "market_quality"
+                            )
+                            or {}
+                        ).get(
+                            "liquidity_state"
+                        )
+                        or "UNKNOWN"
+                    ).upper()
+
+                    if (
+                        vur_kac_entry_shadow.get(
+                            "trade_policy_candidate"
+                        )
+                        == "VUR_KAC"
+                        and liquidity_state
+                        in {
+                            "DETERIORATING",
+                            "DETERIORATING_FAST",
+                            "NO_LIQUIDITY",
+                        }
+                    ):
+                        vur_kac_entry_shadow = dict(
+                            vur_kac_entry_shadow
+                        )
+                        vur_kac_entry_shadow[
+                            "ready"
+                        ] = False
+                        vur_kac_entry_shadow[
+                            "trade_policy_candidate"
+                        ] = None
+                        vur_kac_entry_shadow[
+                            "reason"
+                        ] = (
+                            "VUR_KAC_LIQUIDITY_NOT_SUPPORTING_ENTRY"
+                        )
+                        vur_kac_entry_shadow[
+                            "liquidity_state"
+                        ] = liquidity_state
 
                     selected_trade_type = (
                         "VUR_KAC"

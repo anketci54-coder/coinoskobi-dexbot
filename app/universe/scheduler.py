@@ -136,8 +136,8 @@ class UniverseObservationScheduler:
         if not due:
             return {
                 "state": "IDLE", "requested": 0, "observed": 0,
-                "missing": 0, "provider_call": False,
-                "priority": bool(priority),
+                "missing": 0, "missing_pools": [],
+                "provider_call": False, "priority": bool(priority),
             }
 
         now_iso = self._iso(now)
@@ -155,6 +155,7 @@ class UniverseObservationScheduler:
                 "requested": len(due),
                 "observed": 0,
                 "missing": len(due),
+                "missing_pools": [row["pool"] for row in due],
                 "provider_call": True,
                 "priority": bool(priority),
                 "error_class": type(exc).__name__,
@@ -190,6 +191,7 @@ class UniverseObservationScheduler:
             "requested": len(due),
             "observed": len(snapshots),
             "missing": len(missing),
+            "missing_pools": [row["pool"] for row in missing],
             "pools": [row["pool"] for row in snapshots],
             "provider_call": True,
             "priority": bool(priority),

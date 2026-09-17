@@ -101,6 +101,7 @@ class FullUniverseObservationRuntime:
             if activity_log_reader is not None
             else None
         )
+        self._prefer_priority_observation = True
         self._stream_cursor = 0
         self.cycles = 0
 
@@ -253,23 +254,52 @@ class FullUniverseObservationRuntime:
         priority_pools = activity_result.get("priority_pools") or []
         normal_batch_budget = self.observation_batches_per_cycle
 
-        if priority_pools:
-            priority_result = self.observer.run_priority(priority_pools)
+        run_priority_now = bool(priority_pools)
+        if priority_pools and normal_batch_budget == 1:
+            run_priority_now = self._prefer_priority_observation
+            self._prefer_priority_observation = not self._prefer_priority_observation
+
+        if run_priority_now:
+            priority_failed = False
+            try:
+                priority_result = self.observer.run_priority(priority_pools)
+            except Exception as exc:
+                priority_failed = True
+                activity_result["state"] = "DEGRADED"
+                activity_result["error_class"] = type(exc).__name__
+                priority_result = {
+                    "state": "DEGRADED",
+                    "requested": len(priority_pools),
+                    "observed": 0,
+                    "missing": len(priority_pools),
+                    "missing_pools": list(priority_pools),
+                    "provider_call": False,
+                    "priority": True,
+                    "error_class": type(exc).__name__,
+                }
+                log.warning(
+                    "Pancake priority observation failed: %s",
+                    _safe_error(exc),
+                )
             observation_results.append(priority_result)
             priority_observed = priority_result.get("pools") or []
             priority_missing = priority_result.get("missing_pools") or []
             observed_pools.extend(priority_observed)
             completed_priority = list(dict.fromkeys(
-                [*priority_observed, *priority_missing]
+                list(priority_observed) + list(priority_missing)
             ))
-            if self.activity is not None and completed_priority:
+            if (
+                self.activity is not None
+                and completed_priority
+                and not priority_failed
+            ):
                 try:
                     self.activity.acknowledge(completed_priority)
                 except Exception as exc:
                     activity_result["state"] = "DEGRADED"
-                    activity_result["ack_error_class"] = type(exc).__name__
+                    activity_result["error_class"] = type(exc).__name__
                     log.warning(
-                        "Pancake activity acknowledgment failed: %s",
+                        "Pancake activity acknowledge failed: %s",
                         _safe_error(exc),
                     )
             normal_batch_budget = max(0, normal_batch_budget - 1)

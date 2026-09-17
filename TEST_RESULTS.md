@@ -535,3 +535,18 @@ CI note:
 - PR-head GitHub Actions run 35196980907: smoke=failure, full=skipped, no useful smoke steps exposed.
 - CI is therefore NOT recorded as green.
 - The full local pytest result above is the executable regression evidence.
+## PAPER_10K_RESET_SEAL_20260917
+
+Validation:
+- accounting targeted: 41 passed, 1 warning
+- accounting full suite: 1652 passed, 1 warning
+- panel targeted: 13 passed, 1 warning
+- final panel full suite: 1653 passed, 1 warning
+- real DB accounting before panel merge: PASS
+- panel active boundary: PASS
+- final active run minimum trade id: 40
+- starting capital: 10000.0 USDT
+- available capital at reset: 10000.0 USDT
+- current-run trades at reset: 0
+- historical trades preserved: 39
+- final post-deploy 10K audit: PASS

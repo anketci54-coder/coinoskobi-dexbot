@@ -352,3 +352,32 @@ Deployment:
 Separate existing observation remains:
 - Natural NORMAL PAPER TP1 -> TP2 -> TP3/runner -> close E2E remains pending a natural qualifying trade.
 - No trade is to be forced and no gate is to be weakened for that observation.
+## PAPER_10K_RESET_SEAL_20260917
+
+Status: CLOSED_VERIFIED_DEPLOYED
+
+Active run:
+- run_key: PAPER_10K_20260917T081936Z
+- starting capital: 10000.0 USDT
+- historical trade boundary: id <= 39
+- new run first trade id: 40
+- historical trades preserved in same DB
+- historical realizations preserved in same DB
+- candidate history preserved in same DB
+- no historical rows deleted
+
+Accounting:
+- runtime available capital is scoped to the single ACTIVE paper run
+- panel active-period performance uses the same run boundary
+- panel starting capital uses the active run value
+- historical paper rows remain available for all-time analysis
+
+GitHub:
+- accounting PR #190 merged as b3d30d5119efd4f69746c0ec3d3685fa878829a3
+- panel PR #191 merged as 7fdd2899b0dbf8f8d09f8cad9e01c8329aba6532
+- GitHub CI was not recorded as green because smoke failed before useful steps and full was skipped
+
+Runtime:
+- paper runtime active after deploy
+- panel service active after deploy
+- final 10K reset audit PASS

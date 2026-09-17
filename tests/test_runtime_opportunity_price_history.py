@@ -117,6 +117,33 @@ def test_runtime_positive_momentum_cannot_bypass_opposing_quote_flow():
     assert result["opportunity_state"] == "WATCH"
     assert result["opportunity_reason"] == "QUOTE_FLOW_NOT_SUPPORTING_MOVE"
     assert result["opportunity"]["price_series_source"] == "PAIR_RUNTIME_ONCHAIN"
+    assert result["opportunity"]["quote_flow_state"] == "OPPOSING"
+
+
+def test_zero_quote_flow_is_neutral_not_opposing():
+    result = _evaluate(
+        runtime_prices=[1.0, 1.01, 1.02],
+        latest_flow=0.0,
+    )
+
+    assert result["opportunity_state"] == "HOT"
+    assert result["opportunity_reason"] == "ACTIVE_CONTINUATION_READY"
+    assert result["opportunity"]["quote_flow_state"] == "NEUTRAL"
+
+
+def test_zero_quote_flow_cannot_enable_recovery_breakout():
+    result = _evaluate(
+        runtime_prices=[1.0, 0.9, 1.1],
+        latest_flow=0.0,
+    )
+
+    assert result["opportunity_state"] == "WATCH"
+    assert (
+        result["opportunity_reason"]
+        == "POSITIVE_CONTINUATION_NOT_ESTABLISHED"
+    )
+    assert result["opportunity"]["recovery_breakout"] is False
+    assert result["opportunity"]["quote_flow_state"] == "NEUTRAL"
 
 
 def test_block_history_remains_fallback_when_runtime_series_is_absent():

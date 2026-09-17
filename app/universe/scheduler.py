@@ -74,9 +74,6 @@ class UniverseObservationScheduler:
         if branch not in {"NEW", "EXISTING"}:
             raise ValueError("known discovery branch required")
 
-        # idx_universe_dex_block is already canonical registry schema. Query
-        # each Pancake protocol lane through that index so NEW priority never
-        # degenerates into a multi-million-row full-table sort.
         direction = "DESC" if branch == "NEW" else "ASC"
         candidates = []
         for dex in _UNIVERSE_DEXES:
@@ -106,10 +103,6 @@ class UniverseObservationScheduler:
         return candidates[:limit]
 
     def _due_breadth(self, *, now, limit):
-        # NEW pools must not sit behind the historical unseen backlog, while a
-        # continuous NEW stream must not starve EXISTING first-pass coverage.
-        # Alternate which lane receives first pick; fill unused capacity from
-        # the other lane. Every provider call remains bounded by the same limit.
         prefer_new = self._prefer_new_breadth
         self._prefer_new_breadth = not self._prefer_new_breadth
 
@@ -129,9 +122,6 @@ class UniverseObservationScheduler:
         return first + second
 
     def _select_due(self, *, now, limit):
-        # Alternate depth and breadth so a million-row unseen backlog cannot
-        # permanently starve the repeated samples required by the seismic
-        # classifier, while full-universe first-pass coverage still advances.
         prefer_depth = self._prefer_depth
         self._prefer_depth = not self._prefer_depth
 
@@ -142,31 +132,15 @@ class UniverseObservationScheduler:
 
         return self._due_breadth(now=now, limit=limit)
 
-    def reschedule_for_state(self, row, *, state):
-        state = str(state or "").upper()
-        if state not in self.intervals:
-            raise ValueError("known market state required")
-        next_at = self._iso(
-            self.now_func()
-            + timedelta(seconds=int(self.intervals[state]))
-        )
-        self.registry.schedule_observations([(row, next_at)])
-        return next_at
-
-    def run_once(self, *, limit=DEXSCREENER_MAX_BATCH):
-        limit = int(limit)
-        if limit < 1 or limit > DEXSCREENER_MAX_BATCH:
-            raise ValueError("scheduler limit must be between 1 and 30")
-
-        now = self.now_func()
-        now_iso = self._iso(now)
-        due = self._select_due(now=now_iso, limit=limit)
+    def _observe_rows(self, due, *, now, priority=False):
         if not due:
             return {
                 "state": "IDLE", "requested": 0, "observed": 0,
                 "missing": 0, "provider_call": False,
+                "priority": bool(priority),
             }
 
+        now_iso = self._iso(now)
         try:
             snapshots = self.snapshot_client.fetch(due)
         except Exception as exc:
@@ -182,6 +156,7 @@ class UniverseObservationScheduler:
                 "observed": 0,
                 "missing": len(due),
                 "provider_call": True,
+                "priority": bool(priority),
                 "error_class": type(exc).__name__,
             }
 
@@ -211,11 +186,72 @@ class UniverseObservationScheduler:
             )
 
         return {
-            "state": "OBSERVED", "requested": len(due),
-            "observed": len(snapshots), "missing": len(missing),
+            "state": "OBSERVED",
+            "requested": len(due),
+            "observed": len(snapshots),
+            "missing": len(missing),
             "pools": [row["pool"] for row in snapshots],
             "provider_call": True,
+            "priority": bool(priority),
+            "observed_at": now_iso,
         }
+
+    def run_priority(self, pools, *, limit=DEXSCREENER_MAX_BATCH):
+        """Immediately refresh chain-active known Pancake pools, bounded to one batch."""
+        limit = int(limit)
+        if limit < 1 or limit > DEXSCREENER_MAX_BATCH:
+            raise ValueError("priority limit must be between 1 and 30")
+
+        normalized = []
+        for value in pools or []:
+            pool = str(value or "").strip().lower()
+            if pool and pool not in normalized:
+                normalized.append(pool)
+            if len(normalized) >= limit:
+                break
+
+        if not normalized:
+            return self._observe_rows([], now=self.now_func(), priority=True)
+
+        db = getattr(self.registry, "db", None)
+        if db is None:
+            return self._observe_rows([], now=self.now_func(), priority=True)
+
+        placeholders = ",".join("?" for _ in normalized)
+        rows = db.execute(f"""
+            SELECT *
+            FROM universe_pool_registry
+            WHERE dex IN (?, ?)
+              AND pool IN ({placeholders})
+        """, (
+            DEX_PANCAKESWAP_V2,
+            DEX_PANCAKESWAP_V3,
+            *normalized,
+        )).fetchall()
+        by_pool = {str(row["pool"]).lower(): dict(row) for row in rows}
+        due = [by_pool[pool] for pool in normalized if pool in by_pool]
+        return self._observe_rows(due, now=self.now_func(), priority=True)
+
+    def reschedule_for_state(self, row, *, state):
+        state = str(state or "").upper()
+        if state not in self.intervals:
+            raise ValueError("known market state required")
+        next_at = self._iso(
+            self.now_func()
+            + timedelta(seconds=int(self.intervals[state]))
+        )
+        self.registry.schedule_observations([(row, next_at)])
+        return next_at
+
+    def run_once(self, *, limit=DEXSCREENER_MAX_BATCH):
+        limit = int(limit)
+        if limit < 1 or limit > DEXSCREENER_MAX_BATCH:
+            raise ValueError("scheduler limit must be between 1 and 30")
+
+        now = self.now_func()
+        now_iso = self._iso(now)
+        due = self._select_due(now=now_iso, limit=limit)
+        return self._observe_rows(due, now=now, priority=False)
 
 
 __all__ = ["DEFAULT_STATE_INTERVAL_SECONDS", "UniverseObservationScheduler"]

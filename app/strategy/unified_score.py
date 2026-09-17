@@ -105,17 +105,19 @@ class UnifiedScoreEngine:
 
         quote_flow_state = "UNKNOWN"
         if latest_reserve_change is not None:
-            quote_flow_state = (
-                "SUPPORTING"
-                if latest_reserve_change > 0
-                else "OPPOSING"
-            )
+            if latest_reserve_change > 0:
+                quote_flow_state = "SUPPORTING"
+            elif latest_reserve_change < 0:
+                quote_flow_state = "OPPOSING"
+            else:
+                quote_flow_state = "NEUTRAL"
         elif reserve_change is not None:
-            quote_flow_state = (
-                "SUPPORTING"
-                if reserve_change > 0
-                else "OPPOSING"
-            )
+            if reserve_change > 0:
+                quote_flow_state = "SUPPORTING"
+            elif reserve_change < 0:
+                quote_flow_state = "OPPOSING"
+            else:
+                quote_flow_state = "NEUTRAL"
 
         flow_delta = (
             latest_reserve_change
@@ -166,7 +168,7 @@ class UnifiedScoreEngine:
         # A measured opposing quote flow vetoes the move before continuation
         # classification. This is especially important for recovery breakouts:
         # a range reclaim without supporting latest flow is not an entry.
-        if flow_delta is not None and flow_delta <= 0:
+        if flow_delta is not None and flow_delta < 0:
             return {
                 "state": "WATCH",
                 "reason": "QUOTE_FLOW_NOT_SUPPORTING_MOVE",

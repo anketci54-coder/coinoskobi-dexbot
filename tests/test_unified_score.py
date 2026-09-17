@@ -100,10 +100,11 @@ def test_missing_price_history_stays_watch():
 def test_quote_flow_must_not_oppose_price_move():
     result = evaluate(
         prices=[1.0, 1.05, 1.12],
-        reserve_change=0.0,
+        reserve_change=-0.01,
     )
     assert result["opportunity_state"] == "WATCH"
     assert result["opportunity_reason"] == "QUOTE_FLOW_NOT_SUPPORTING_MOVE"
+    assert result["opportunity"]["quote_flow_state"] == "OPPOSING"
 
 
 def test_latest_quote_outflow_overrides_positive_wide_interval():

@@ -222,6 +222,38 @@ def test_unknown_swap_is_promoted_after_factory_discovery_and_survives_restart()
     assert second["unknown_pending"] == 0
 
 
+def test_unknown_queue_evicts_oldest_so_new_factory_races_can_enter():
+    registry = Registry()
+    now = [100.0]
+    addresses = ["0x" + value * 40 for value in ("5", "6", "7")]
+    current = [addresses[0]]
+
+    radar = PancakeActivityRadar(
+        registry,
+        lambda **_: [{"address": current[0]}],
+        poll_seconds=1,
+        priority_batch=1,
+        max_pending=2,
+        now_func=lambda: now[0],
+    )
+
+    radar.run_once(finalized_block=800)
+    current[0] = addresses[1]
+    now[0] = 102.0
+    radar.run_once(finalized_block=801)
+    current[0] = addresses[2]
+    now[0] = 104.0
+    result = radar.run_once(finalized_block=802)
+
+    rows = registry.db.execute("""
+        SELECT pool FROM universe_activity_pending_v1
+        WHERE kind='UNKNOWN' ORDER BY seq
+    """).fetchall()
+    assert [row[0] for row in rows] == addresses[1:]
+    assert result["unknown_pending"] == 2
+    assert result["dropped_unknown"] == 1
+
+
 def test_web3_topic_reader_uses_no_address_filter():
     captured = []
 

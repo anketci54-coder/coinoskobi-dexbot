@@ -5,6 +5,10 @@ import time
 from app.config.settings import RPC_PROVIDER_COOLDOWN_SECONDS
 from app.market_data.broker import MarketDataBroker
 from app.universe.discovery import PANCAKE_FACTORY_STREAMS, PancakeUniverseDiscovery
+from app.universe.pancake_activity import (
+    PancakeActivityRadar,
+    Web3TopicLogReader,
+)
 from app.universe.registry import UniverseRegistry
 from app.universe.scheduler import UniverseObservationScheduler
 from app.universe.seismic import SeismicClassifier
@@ -46,6 +50,8 @@ class FullUniverseObservationRuntime:
                  discovery_batches_per_cycle=8,
                  observation_batches_per_cycle=4,
                  existing_retry_seconds=RPC_PROVIDER_COOLDOWN_SECONDS,
+                 activity_log_reader=None,
+                 activity_poll_seconds=5.0,
                  now_func=None):
         required = {stream["dex"] for stream in PANCAKE_FACTORY_STREAMS}
         self.start_blocks = {dex: int(value) for dex, value in dict(start_blocks).items()}
@@ -84,6 +90,17 @@ class FullUniverseObservationRuntime:
         )
         self.classifier = SeismicClassifier()
         self.confirmation_depth = max(0, int(confirmation_depth))
+        self.activity_poll_seconds = max(1.0, float(activity_poll_seconds))
+        self.activity = (
+            PancakeActivityRadar(
+                self.registry,
+                activity_log_reader,
+                poll_seconds=self.activity_poll_seconds,
+                now_func=self._now,
+            )
+            if activity_log_reader is not None
+            else None
+        )
         self._stream_cursor = 0
         self.cycles = 0
 
@@ -91,6 +108,7 @@ class FullUniverseObservationRuntime:
         """Build a worker-owned runtime with its own SQLite/provider objects."""
         existing_web3 = _new_bsc_web3()
         tail_web3 = _new_bsc_web3()
+        activity_web3 = _new_bsc_web3()
         return type(self)(
             start_blocks=dict(self.start_blocks),
             registry=UniverseRegistry(),
@@ -103,6 +121,8 @@ class FullUniverseObservationRuntime:
             discovery_batches_per_cycle=self.discovery_batches_per_cycle,
             observation_batches_per_cycle=self.observation_batches_per_cycle,
             existing_retry_seconds=self.existing_retry_seconds,
+            activity_log_reader=Web3TopicLogReader(activity_web3),
+            activity_poll_seconds=self.activity_poll_seconds,
             now_func=self._now,
         )
 
@@ -221,13 +241,46 @@ class FullUniverseObservationRuntime:
                 _safe_error(exc),
             )
 
+        activity_result = {
+            "state": "DISABLED",
+            "priority_pools": [],
+            "priority_count": 0,
+            "provider_call": False,
+        }
+        if self.activity is not None:
+            try:
+                activity_result = self.activity.run_once(
+                    finalized_block=finalized
+                )
+            except Exception as exc:
+                activity_result = {
+                    "state": "DEGRADED",
+                    "priority_pools": [],
+                    "priority_count": 0,
+                    "provider_call": False,
+                    "error_class": type(exc).__name__,
+                }
+                log.warning(
+                    "Pancake activity radar failed: %s",
+                    _safe_error(exc),
+                )
+
         observation_results, observed_pools = [], []
+
+        priority_result = None
+        priority_pools = activity_result.get("priority_pools") or []
+        if priority_pools:
+            priority_result = self.observer.run_priority(priority_pools)
+            observation_results.append(priority_result)
+            observed_pools.extend(priority_result.get("pools") or [])
+
         for _ in range(self.observation_batches_per_cycle):
             result = self.observer.run_once()
             observation_results.append(result)
             observed_pools.extend(result.get("pools") or [])
             if result["state"] == "IDLE":
                 break
+
         evaluations = []
         for pool in dict.fromkeys(observed_pools):
             registry_row = self.registry.db.execute("""
@@ -265,6 +318,8 @@ class FullUniverseObservationRuntime:
                 "new": tail,
                 "errors": discovery_errors,
             },
+            "activity_radar": activity_result,
+            "priority_observation": priority_result,
             "observation_batches": observation_results,
             "observed": len(observed_pools), "evaluated": len(evaluations),
             "universe_size": self.registry.count(),

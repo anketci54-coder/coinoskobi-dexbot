@@ -29,6 +29,7 @@ def test_tracked_price_recreates_missing_cache_row(tmp_path, monkeypatch):
 
     assert row["price_usd"] == 1.25
     assert row["token"] == "bsc_0xtoken"
+    assert row["price_updated_at"]
 
 
 def test_price_only_refresh_preserves_market_quality_timestamp(
@@ -58,14 +59,15 @@ def test_price_only_refresh_preserves_market_quality_timestamp(
     })
 
     original = "2026-01-01 00:00:00"
+    stale_price = "2026-01-01 00:00:01"
 
     cache.db.execute(
         """
         UPDATE gecko_pool_cache
-        SET updated_at=?
+        SET updated_at=?, price_updated_at=?
         WHERE lower(pool)=lower(?)
         """,
-        (original, "0xpool"),
+        (original, stale_price, "0xpool"),
     )
     cache.db.commit()
 
@@ -78,6 +80,11 @@ def test_price_only_refresh_preserves_market_quality_timestamp(
 
     assert row["price_usd"] == 0.00013
     assert row["updated_at"] == original
+    assert row["price_updated_at"] != stale_price
+
+    first_price_refresh = row[
+        "price_updated_at"
+    ]
 
     assert cache.upsert_tracked_price(
         "0xpool",
@@ -89,3 +96,6 @@ def test_price_only_refresh_preserves_market_quality_timestamp(
 
     assert row["price_usd"] == 0.00014
     assert row["updated_at"] == original
+    assert row["price_updated_at"] >= (
+        first_price_refresh
+    )

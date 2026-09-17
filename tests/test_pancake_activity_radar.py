@@ -65,6 +65,7 @@ def test_activity_radar_scans_topics_chain_wide_and_only_queues_pancake():
     assert result["matched_events"] == 2
     assert result["events"] == 4
     assert result["provider_call"] is True
+    assert result["unknown_pending"] == 2
 
 
 def test_activity_radar_throttles_provider_but_can_drain_pending():
@@ -92,6 +93,85 @@ def test_activity_radar_throttles_provider_but_can_drain_pending():
     assert second["provider_call"] is False
     assert second["priority_count"] == 1
     assert second["pending"] == 0
+
+
+def test_activity_radar_persists_cursor_and_retries_failed_range():
+    registry = Registry()
+    now = [100.0]
+    calls = []
+    fail = [False]
+
+    def reader(**kwargs):
+        calls.append(kwargs)
+        if fail[0]:
+            raise ConnectionError("provider unavailable")
+        return []
+
+    first = PancakeActivityRadar(
+        registry,
+        reader,
+        poll_seconds=1,
+        replay_blocks=4,
+        now_func=lambda: now[0],
+    )
+    result = first.run_once(finalized_block=1000)
+    assert result["last_scanned_block"] == 1000
+
+    restarted = PancakeActivityRadar(
+        registry,
+        reader,
+        poll_seconds=1,
+        replay_blocks=4,
+        now_func=lambda: now[0],
+    )
+    now[0] = 102.0
+    result = restarted.run_once(finalized_block=1002)
+    assert calls[-1]["from_block"] == 1001
+    assert calls[-1]["to_block"] == 1002
+    assert result["last_scanned_block"] == 1002
+
+    fail[0] = True
+    now[0] = 104.0
+    failed = restarted.run_once(finalized_block=1004)
+    assert failed["state"] == "DEGRADED"
+    assert failed["last_scanned_block"] == 1002
+
+    fail[0] = False
+    now[0] = 106.0
+    retried = restarted.run_once(finalized_block=1004)
+    assert calls[-1]["from_block"] == 1003
+    assert calls[-1]["to_block"] == 1004
+    assert retried["last_scanned_block"] == 1004
+
+
+def test_unknown_swap_is_promoted_after_factory_discovery():
+    registry = Registry()
+    now = [100.0]
+
+    radar = PancakeActivityRadar(
+        registry,
+        lambda **_: [{"address": UNKNOWN_POOL}],
+        poll_seconds=5,
+        priority_batch=30,
+        now_func=lambda: now[0],
+    )
+
+    first = radar.run_once(finalized_block=500)
+    assert first["priority_pools"] == []
+    assert first["unknown_pending"] == 1
+
+    registry.db.execute(
+        "INSERT INTO universe_pool_registry(dex,pool) VALUES(?,?)",
+        ("pancakeswap_v2", UNKNOWN_POOL),
+    )
+    registry.db.commit()
+
+    now[0] = 101.0
+    second = radar.run_once(finalized_block=501)
+    assert second["provider_call"] is False
+    assert second["promoted_after_discovery"] == 1
+    assert second["priority_pools"] == [UNKNOWN_POOL]
+    assert second["unknown_pending"] == 0
 
 
 def test_web3_topic_reader_uses_no_address_filter():

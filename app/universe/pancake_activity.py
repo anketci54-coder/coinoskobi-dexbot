@@ -201,7 +201,17 @@ class PancakeActivityRadar:
         """Persist queued activity and cursor atomically before accepting a scan."""
         db = self._db()
         if db is None:
-            self._enqueue_memory(self._pending, known)
+            for pool in known:
+                if pool in self._pending:
+                    self._unknown_pending.pop(pool, None)
+                    continue
+                if len(self._pending) < self.max_pending:
+                    self._pending[pool] = None
+                    self._unknown_pending.pop(pool, None)
+                else:
+                    self._enqueue_memory(
+                        self._unknown_pending, [pool], unknown=True
+                    )
             self._enqueue_memory(self._unknown_pending, unknown, unknown=True)
             self._last_scanned_block = int(to_block)
             return
@@ -209,16 +219,43 @@ class PancakeActivityRadar:
         stamp = self._utc_now().isoformat()
         try:
             db.execute("BEGIN")
+            known_pending = {
+                str(row[0]).lower()
+                for row in db.execute("""
+                    SELECT pool FROM universe_activity_pending_v1
+                    WHERE kind='KNOWN'
+                """).fetchall()
+            }
+            slots = max(0, self.max_pending - len(known_pending))
             for pool in known:
-                db.execute("""
-                    INSERT OR IGNORE INTO universe_activity_pending_v1(
-                        kind, pool, queued_at
-                    ) VALUES('KNOWN', ?, ?)
-                """, (pool, stamp))
-                db.execute("""
-                    DELETE FROM universe_activity_pending_v1
-                    WHERE kind='UNKNOWN' AND pool=?
-                """, (pool,))
+                if pool in known_pending:
+                    db.execute("""
+                        DELETE FROM universe_activity_pending_v1
+                        WHERE kind='UNKNOWN' AND pool=?
+                    """, (pool,))
+                    continue
+                if slots > 0:
+                    db.execute("""
+                        INSERT INTO universe_activity_pending_v1(
+                            kind, pool, queued_at
+                        ) VALUES('KNOWN', ?, ?)
+                    """, (pool, stamp))
+                    db.execute("""
+                        DELETE FROM universe_activity_pending_v1
+                        WHERE kind='UNKNOWN' AND pool=?
+                    """, (pool,))
+                    known_pending.add(pool)
+                    slots -= 1
+                else:
+                    db.execute("""
+                        DELETE FROM universe_activity_pending_v1
+                        WHERE kind='UNKNOWN' AND pool=?
+                    """, (pool,))
+                    db.execute("""
+                        INSERT INTO universe_activity_pending_v1(
+                            kind, pool, queued_at
+                        ) VALUES('UNKNOWN', ?, ?)
+                    """, (pool, stamp))
             for pool in unknown:
                 db.execute("""
                     DELETE FROM universe_activity_pending_v1
@@ -254,50 +291,66 @@ class PancakeActivityRadar:
         if not self._unknown_pending:
             return 0
         addresses = list(self._unknown_pending)
-        known = self._known_pancake_pools(addresses)
-        promotable = [address for address in addresses if address in known]
-        if not promotable:
+        already_pending = [
+            address for address in addresses if address in self._pending
+        ]
+        slots = max(0, self.max_pending - len(self._pending))
+        db = self._db()
+
+        if slots <= 0:
+            if not already_pending:
+                return 0
+            if db is None:
+                for address in already_pending:
+                    self._unknown_pending.pop(address, None)
+                return len(already_pending)
+            try:
+                db.execute("BEGIN")
+                for address in already_pending:
+                    db.execute("""
+                        DELETE FROM universe_activity_pending_v1
+                        WHERE kind='UNKNOWN' AND pool=?
+                    """, (address,))
+                db.commit()
+            except Exception:
+                db.rollback()
+                raise
+            self._reload_pending()
+            return len(already_pending)
+
+        candidates = [
+            address for address in addresses if address not in self._pending
+        ]
+        known = self._known_pancake_pools(candidates)
+        promotable = [address for address in candidates if address in known]
+        if not promotable and not already_pending:
             return 0
 
-        db = self._db()
         if db is None:
-            slots = max(0, self.max_pending - len(self._pending))
-            promoted = []
+            promoted = list(already_pending)
+            for address in already_pending:
+                self._unknown_pending.pop(address, None)
             for address in promotable:
-                if address in self._pending:
-                    promoted.append(address)
-                    continue
                 if slots <= 0:
-                    continue
+                    break
                 self._pending[address] = None
+                self._unknown_pending.pop(address, None)
                 slots -= 1
                 promoted.append(address)
-            for address in promoted:
-                self._unknown_pending.pop(address, None)
             return len(promoted)
 
         stamp = self._utc_now().isoformat()
         try:
             db.execute("BEGIN")
-            known_pending = {
-                str(row[0]).lower()
-                for row in db.execute("""
-                    SELECT pool FROM universe_activity_pending_v1
-                    WHERE kind='KNOWN'
-                """).fetchall()
-            }
-            slots = max(0, self.max_pending - len(known_pending))
-            promoted = []
+            for address in already_pending:
+                db.execute("""
+                    DELETE FROM universe_activity_pending_v1
+                    WHERE kind='UNKNOWN' AND pool=?
+                """, (address,))
+            promoted = list(already_pending)
             for address in promotable:
-                if address in known_pending:
-                    db.execute("""
-                        DELETE FROM universe_activity_pending_v1
-                        WHERE kind='UNKNOWN' AND pool=?
-                    """, (address,))
-                    promoted.append(address)
-                    continue
                 if slots <= 0:
-                    continue
+                    break
                 db.execute("""
                     INSERT INTO universe_activity_pending_v1(
                         kind, pool, queued_at
@@ -307,7 +360,6 @@ class PancakeActivityRadar:
                     DELETE FROM universe_activity_pending_v1
                     WHERE kind='UNKNOWN' AND pool=?
                 """, (address,))
-                known_pending.add(address)
                 slots -= 1
                 promoted.append(address)
             db.commit()

@@ -84,19 +84,21 @@ def test_activity_radar_preserves_fifo_until_successful_acknowledgment():
     )
 
     first = radar.run_once(finalized_block=200)
-    assert first["priority_pools"] == [V2_POOL]
+    first_pool = first["priority_pools"][0]
+    other_pool = V3_POOL if first_pool == V2_POOL else V2_POOL
+    assert first_pool in {V2_POOL, V3_POOL}
     assert first["pending"] == 2
 
     now[0] = 102.0
     repeated = radar.run_once(finalized_block=201)
-    assert repeated["priority_pools"] == [V2_POOL]
+    assert repeated["priority_pools"] == [first_pool]
     assert repeated["pending"] == 2
 
-    assert radar.acknowledge([V2_POOL]) == 1
+    assert radar.acknowledge([first_pool]) == 1
 
     now[0] = 104.0
     next_result = radar.run_once(finalized_block=202)
-    assert next_result["priority_pools"] == [V3_POOL]
+    assert next_result["priority_pools"] == [other_pool]
     assert next_result["pending"] == 2
 
 

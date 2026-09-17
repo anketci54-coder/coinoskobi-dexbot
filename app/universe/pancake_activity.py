@@ -164,18 +164,18 @@ class PancakeActivityRadar:
         return known
 
     def _enqueue_memory(self, target, values, *, unknown=False):
-        """Queue new values without reordering values already waiting."""
+        """Queue values while keeping known FIFO and freshest unknown races."""
         for value in values:
             target.setdefault(value, None)
         while len(target) > self.max_pending:
-            target.popitem(last=True)
+            target.popitem(last=not unknown)
             if unknown:
                 self.dropped_unknown += 1
             else:
                 self.dropped_pending += 1
 
     def _trim_durable_kind(self, db, kind):
-        """Bound one durable queue while preserving its oldest FIFO entries."""
+        """Bound durable queues without letting stale unknowns block new races."""
         count = int(db.execute(
             "SELECT COUNT(*) FROM universe_activity_pending_v1 WHERE kind=?",
             (kind,),
@@ -183,11 +183,12 @@ class PancakeActivityRadar:
         overflow = max(0, count - self.max_pending)
         if not overflow:
             return 0
-        db.execute("""
+        direction = "ASC" if kind == "UNKNOWN" else "DESC"
+        db.execute(f"""
             DELETE FROM universe_activity_pending_v1
             WHERE seq IN (
                 SELECT seq FROM universe_activity_pending_v1
-                WHERE kind=? ORDER BY seq DESC LIMIT ?
+                WHERE kind=? ORDER BY seq {direction} LIMIT ?
             )
         """, (kind, overflow))
         return overflow
@@ -283,7 +284,7 @@ class PancakeActivityRadar:
         return list(self._pending.keys())[:self.priority_batch]
 
     def acknowledge(self, pools):
-        """Remove only pools whose priority snapshot was successfully observed."""
+        """Remove priority work only after observation or durable retry scheduling."""
         normalized = list(dict.fromkeys(
             str(pool or "").strip().lower() for pool in pools or []
             if str(pool or "").strip()
@@ -301,11 +302,15 @@ class PancakeActivityRadar:
 
         placeholders = ",".join("?" for _ in normalized)
         before = int(db.total_changes)
-        db.execute(f"""
-            DELETE FROM universe_activity_pending_v1
-            WHERE kind='KNOWN' AND pool IN ({placeholders})
-        """, tuple(normalized))
-        db.commit()
+        try:
+            db.execute(f"""
+                DELETE FROM universe_activity_pending_v1
+                WHERE kind='KNOWN' AND pool IN ({placeholders})
+            """, tuple(normalized))
+            db.commit()
+        except Exception:
+            db.rollback()
+            raise
         removed = int(db.total_changes) - before
         self._reload_pending()
         return removed

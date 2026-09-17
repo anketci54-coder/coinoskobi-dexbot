@@ -32,7 +32,12 @@ def _position():
     }
 
 
-def _row(*, updated_at, price=7.5):
+def _row(
+    *,
+    price_updated_at,
+    price=7.5,
+    updated_at="2000-01-01 00:00:00",
+):
     return {
         "pool": PAIR,
         "token": f"bsc_{TOKEN}",
@@ -40,6 +45,7 @@ def _row(*, updated_at, price=7.5):
         "dex": "pancakeswap_v2",
         "price_usd": price,
         "updated_at": updated_at,
+        "price_updated_at": price_updated_at,
     }
 
 
@@ -78,7 +84,9 @@ class _Cache:
     def update_pool_price(self, pool, price):
         self.update_calls.append((pool, price))
         self.row["price_usd"] = float(price)
-        self.row["updated_at"] = _fresh_timestamp()
+        self.row[
+            "price_updated_at"
+        ] = _fresh_timestamp()
         return 1
 
 
@@ -114,7 +122,11 @@ class _Pipeline:
 
 def test_stale_exact_open_pool_price_cannot_fall_back_to_token_cache():
     pipeline = _Pipeline(
-        _row(updated_at="2000-01-01 00:00:00")
+        _row(
+            price_updated_at=(
+                "2000-01-01 00:00:00"
+            )
+        )
     )
 
     result = process_hot_positions(pipeline)
@@ -124,7 +136,11 @@ def test_stale_exact_open_pool_price_cannot_fall_back_to_token_cache():
 
 def test_fresh_exact_open_pool_price_is_used():
     pipeline = _Pipeline(
-        _row(updated_at=_fresh_timestamp())
+        _row(
+            price_updated_at=(
+                _fresh_timestamp()
+            )
+        )
     )
 
     result = process_hot_positions(pipeline)
@@ -134,7 +150,11 @@ def test_fresh_exact_open_pool_price_is_used():
 
 def test_stale_cache_price_cannot_anchor_wss_ratio():
     pipeline = _Pipeline(
-        _row(updated_at="2000-01-01 00:00:00")
+        _row(
+            price_updated_at=(
+                "2000-01-01 00:00:00"
+            )
+        )
     )
     bridge = HotPositionWSSBridge()
     bridge.replace_targets(
@@ -161,7 +181,7 @@ def test_stale_cache_price_cannot_anchor_wss_ratio():
     assert result["failed"] == 1
 
 
-def test_live_cache_price_updates_refresh_updated_at(
+def test_live_cache_price_updates_refresh_only_price_timestamp(
     tmp_path,
     monkeypatch,
 ):
@@ -173,17 +193,31 @@ def test_live_cache_price_updates_refresh_updated_at(
     )
 
     cache = GeckoCache()
-    cache.upsert_tracked_price(
-        PAIR,
-        TOKEN,
-        7.5,
-    )
+    cache.replace({
+        "pool": PAIR,
+        "base_token": f"bsc_{TOKEN}",
+        "quote_token": f"bsc_{QUOTE}",
+        "name": "TOKEN / WBNB",
+        "dex": "pancakeswap_v2",
+        "liquidity": 35000.0,
+        "volume_24h": 12000.0,
+        "buys_24h": 40,
+        "fdv": 120000.0,
+        "price_usd": 7.0,
+        "created_at": None,
+    })
 
-    stale = "2000-01-01 00:00:00"
+    market_timestamp = "2000-01-01 00:00:00"
+    stale_price_timestamp = "2000-01-02 00:00:00"
     cache.db.execute(
         "UPDATE gecko_pool_cache "
-        "SET updated_at=? WHERE pool=?",
-        (stale, PAIR),
+        "SET updated_at=?, price_updated_at=? "
+        "WHERE pool=?",
+        (
+            market_timestamp,
+            stale_price_timestamp,
+            PAIR,
+        ),
     )
     cache.db.commit()
 
@@ -192,14 +226,15 @@ def test_live_cache_price_updates_refresh_updated_at(
         8.0,
     )
     row = cache.all()[0]
-    assert row["updated_at"] != stale
-
-    cache.db.execute(
-        "UPDATE gecko_pool_cache "
-        "SET updated_at=? WHERE pool=?",
-        (stale, PAIR),
+    assert row["updated_at"] == market_timestamp
+    assert (
+        row["price_updated_at"]
+        != stale_price_timestamp
     )
-    cache.db.commit()
+
+    refreshed_price_timestamp = (
+        row["price_updated_at"]
+    )
 
     cache.upsert_tracked_price(
         PAIR,
@@ -207,4 +242,38 @@ def test_live_cache_price_updates_refresh_updated_at(
         8.5,
     )
     row = cache.all()[0]
-    assert row["updated_at"] != stale
+    assert row["updated_at"] == market_timestamp
+    assert row["price_updated_at"] >= (
+        refreshed_price_timestamp
+    )
+
+
+def test_full_market_replace_refreshes_both_timestamps(
+    tmp_path,
+    monkeypatch,
+):
+    db_path = tmp_path / "cache.db"
+    monkeypatch.setattr(
+        gecko_cache_module,
+        "DB",
+        db_path,
+    )
+
+    cache = GeckoCache()
+    cache.replace({
+        "pool": PAIR,
+        "base_token": f"bsc_{TOKEN}",
+        "quote_token": f"bsc_{QUOTE}",
+        "name": "TOKEN / WBNB",
+        "dex": "pancakeswap_v2",
+        "liquidity": 35000.0,
+        "volume_24h": 12000.0,
+        "buys_24h": 40,
+        "fdv": 120000.0,
+        "price_usd": 7.0,
+        "created_at": None,
+    })
+
+    row = cache.all()[0]
+    assert row["updated_at"]
+    assert row["price_updated_at"]

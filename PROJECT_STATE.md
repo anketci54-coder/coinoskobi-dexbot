@@ -1,12 +1,12 @@
 # COINOSKOBI CANONICAL PROJECT STATE
 
-Updated: 2026-09-16
+Updated: 2026-09-17
 
 ## CANONICAL SOURCE
 
 - Repository: `anketci54-coder/coinoskobi-dexbot`
 - Production branch: `main`
-- Verified runtime/code baseline SHA: `a75dd8d7bb4494da4934334a5829e4f3385e9e90`
+- Verified runtime/code baseline SHA: `3eaabe8c73c6b22bd0e0dd793afad02b07da5425`
 - VPS project: `/root/projects/coinoskobi-dexbot`
 - Main application: `main.py`
 - Canonical panel application: `app.api.panel:app`
@@ -51,6 +51,62 @@ External roles:
 - GoPlus/Honeypot.is: sellability/security evidence
 
 Provider failure or missing evidence is never converted into safe evidence.
+
+## 2026-09-17 PAPER PRICE EVIDENCE MAINTENANCE SEAL
+
+Status: **VALIDATED / MERGED / DEPLOYED / RUNTIME-SMOKE PASS**.
+
+Ownership:
+- position lifecycle / hot open-position handling → Phase 4
+- operational paper runtime / provider operability → Phase 12
+- no new phase/ERA/version tree opened
+
+Final verified production checkpoint:
+- PR #187 merged into `main`
+- merge commit / deployed runtime SHA: `3eaabe8c73c6b22bd0e0dd793afad02b07da5425`
+- VPS `main` synchronized to `origin/main`
+- VPS worktree clean at post-deploy verification
+- `coinoskobi-paper-runtime.service`: active
+- post-restart PID observed: `3067324`
+- runtime started both `paper_manager` and `paper_hot_manager`
+
+Validated maintenance contracts:
+- fresh sellability local evidence is preferred over stale risk/risk-gate local evidence for paper sizing
+- VUR_KAC requires established positive continuation; one-bar rebound after a negative prior return is not READY
+- deteriorating/unavailable liquidity cannot promote a VUR_KAC entry
+- `gecko_pool_cache.updated_at` remains the market-quality/scanner timestamp
+- independent `price_updated_at` records provider/WSS price freshness
+- stale exact open-position prices fail closed instead of falling through to token-cache fallback pricing
+- stale cache values cannot anchor the WSS open-position price bridge
+- WSS/provider price refreshes update price freshness without refreshing market-quality freshness
+- no stop/fill is fabricated when current price evidence is stale
+
+Final validation evidence:
+- targeted maintenance suite: **27 passed / 0 failed**
+- full repository regression: **1635 passed / 0 failed**
+- full regression runtime: **441.18 s**
+- warning count: **1**
+- recurring warning: dependency-owned `websockets.legacy` deprecation
+- `git diff --check`: PASS
+- post-deploy runtime critical-error scan: empty for traceback, SQLite thread error, database locked, exception, fatal and critical patterns
+- production cache schema confirmed both `updated_at` and `price_updated_at`
+- post-deploy service remained active while scanner, fast-watch and pipeline cycles continued
+
+One earlier full regression exposed the canonical timestamp invariant before the final correction:
+- **1633 passed / 1 failed**
+- failing test: `test_price_only_refresh_preserves_market_quality_timestamp`
+- correction: market-quality freshness and price freshness were separated instead of advancing the shared timestamp on price-only refresh
+
+GitHub Actions note:
+- PR smoke jobs failed before producing any workflow steps; this was treated as a separate CI/runner infrastructure condition, not as a passing code-validation signal
+- repository acceptance therefore relies on the recorded VPS targeted/full regression and post-deploy smoke for this maintenance seal
+
+Observed non-blocking provider warnings after deploy:
+- `DexScreener snapshot fallback unavailable: 'NoneType' object is not iterable`
+- Universe discovery `HTTPError` / `ConnectionError`
+- runtime remained active; these warnings did not alter the price-evidence maintenance acceptance
+
+Natural `NORMAL` PAPER TP1 → TP2 → TP3/runner → close remains a separate Phase 4/12 natural-runtime E2E observation target and must not be manufactured by weakening admission, sizing, LP protection, sellability, risk or hard-block gates.
 
 ## 2026-09-16 FINAL MAINTENANCE SEAL
 

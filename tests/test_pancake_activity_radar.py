@@ -254,6 +254,40 @@ def test_unknown_queue_evicts_oldest_so_new_factory_races_can_enter():
     assert result["dropped_unknown"] == 1
 
 
+def test_full_known_queue_retains_new_activity_until_capacity_opens():
+    registry = Registry()
+    now = [100.0]
+    current = [V2_POOL]
+
+    radar = PancakeActivityRadar(
+        registry,
+        lambda **_: [{"address": current[0]}],
+        poll_seconds=1,
+        priority_batch=1,
+        max_pending=1,
+        now_func=lambda: now[0],
+    )
+
+    first = radar.run_once(finalized_block=900)
+    assert first["priority_pools"] == [V2_POOL]
+    assert first["pending"] == 1
+
+    current[0] = V3_POOL
+    now[0] = 102.0
+    second = radar.run_once(finalized_block=901)
+    assert second["priority_pools"] == [V2_POOL]
+    assert second["pending"] == 1
+    assert second["unknown_pending"] == 1
+
+    assert radar.acknowledge([V2_POOL]) == 1
+    now[0] = 104.0
+    third = radar.run_once(finalized_block=901)
+    assert third["provider_call"] is False
+    assert third["promoted_after_discovery"] == 1
+    assert third["priority_pools"] == [V3_POOL]
+    assert third["unknown_pending"] == 0
+
+
 def test_web3_topic_reader_uses_no_address_filter():
     captured = []
 

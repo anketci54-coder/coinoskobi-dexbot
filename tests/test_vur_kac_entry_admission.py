@@ -399,3 +399,38 @@ def test_soft_unknowns_cannot_bypass_strict_vur_kac_flow_gate():
 
     assert "VUR_KAC_ENTRY_NOT_READY" in plan["blockers"]
     assert plan["paper_eligible"] is False
+
+
+
+def test_absent_market_quality_keeps_unknowns_and_empirical_gate():
+    plan = build_trade_plan(
+        entry_price=1.05,
+        available_capital_usdt=10000.0,
+        price_series=[1.00, 1.05],
+        quote_reserve_usd=100000.0,
+        lp_protected_fraction=1.0,
+        sellability_status="SELLABILITY_OK",
+        hard_block=False,
+        sellability_data=_sellability(),
+        exit_evidence=_exit_evidence(),
+        market_context={
+            "opportunity": {
+                "state": "HOT",
+                "latest_log_return": 0.04879016416943205,
+                "trailing_positive_log_move": 0.04879016416943205,
+            },
+        },
+        trade_type="NORMAL",
+    )
+
+    blockers = set(plan["blockers"])
+    unknowns = set(plan["unknowns"])
+
+    assert "EMPIRICAL_MOVEMENT_INSUFFICIENT" in blockers
+    assert "MARKET_QUALITY_EVIDENCE_NOT_READY" in unknowns
+    assert "PARTICIPATION_EVIDENCE_UNKNOWN" in unknowns
+    assert "MARKET_QUALITY_LIQUIDITY_UNKNOWN" in unknowns
+    assert plan["paper_eligible"] is False
+    assert plan["live_eligible"] is False
+    assert plan["wallet_authority"] is False
+    assert plan["execution_authority"] is False

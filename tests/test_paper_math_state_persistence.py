@@ -381,6 +381,55 @@ def test_runtime_math_history_isolates_cache_from_pair_onchain_source():
 
 
 
+def test_runtime_math_history_separates_block_and_runtime_pair_sources():
+    from app.pipeline import engine as engine_module
+
+    engine_module._RUNTIME_PRICE_HISTORY.clear()
+
+    common = {
+        "token_address": "0xtoken",
+        "pool": "0xpool",
+        "exit_evidence": {},
+        "lp_evidence": {},
+        "market_context": {},
+        "sellability_data": {},
+    }
+
+    try:
+        block = engine_module._runtime_math_evidence(
+            **common,
+            price=1.1,
+            upstream_price_series=[1.0, 1.1],
+            price_series_source="PAIR_BLOCK_HISTORY",
+        )
+
+        runtime = engine_module._runtime_math_evidence(
+            **common,
+            price=2.1,
+            upstream_price_series=[2.0, 2.1],
+            price_series_source="PAIR_RUNTIME_ONCHAIN",
+        )
+
+        assert block["price_series"] == [1.0, 1.1]
+        assert runtime["price_series"] == [2.0, 2.1]
+
+        keys = set(engine_module._RUNTIME_PRICE_HISTORY)
+
+        assert (
+            "0xtoken",
+            "0xpool",
+            "PAIR_BLOCK_HISTORY",
+        ) in keys
+
+        assert (
+            "0xtoken",
+            "0xpool",
+            "PAIR_RUNTIME_ONCHAIN",
+        ) in keys
+    finally:
+        engine_module._RUNTIME_PRICE_HISTORY.clear()
+
+
 def test_new_auto_paper_positions_use_selected_trade_type():
     source = Path(
         "app/pipeline/engine.py"

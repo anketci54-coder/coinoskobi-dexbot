@@ -313,3 +313,76 @@ def test_web3_topic_reader_uses_no_address_filter():
     }]
     assert "address" not in captured[0]
     assert PANCAKE_V3_SWAP_TOPIC in captured[0]["topics"][0]
+
+
+def test_same_scan_known_admission_preserves_chain_log_order():
+    registry = Registry()
+    now = [100.0]
+
+    radar = PancakeActivityRadar(
+        registry,
+        lambda **_: [
+            {"address": V2_POOL},
+            {"address": V3_POOL},
+        ],
+        poll_seconds=1,
+        priority_batch=1,
+        max_pending=1,
+        now_func=lambda: now[0],
+    )
+
+    result = radar.run_once(finalized_block=950)
+
+    assert result["priority_pools"] == [V2_POOL]
+    assert result["pending"] == 1
+    assert result["unknown_pending"] == 1
+
+
+def test_registered_overflow_survives_unknown_eviction_pressure():
+    registry = Registry()
+    now = [100.0]
+    current = [[{"address": V2_POOL}]]
+
+    radar = PancakeActivityRadar(
+        registry,
+        lambda **_: current[0],
+        poll_seconds=1,
+        priority_batch=1,
+        max_pending=1,
+        now_func=lambda: now[0],
+    )
+
+    first = radar.run_once(finalized_block=960)
+    assert first["priority_pools"] == [V2_POOL]
+
+    current[0] = [{"address": V3_POOL}]
+    now[0] = 102.0
+    second = radar.run_once(finalized_block=961)
+
+    assert second["priority_pools"] == [V2_POOL]
+    assert second["unknown_pending"] == 1
+
+    fork_a = "0x" + "55" * 20
+    fork_b = "0x" + "66" * 20
+    current[0] = [
+        {"address": fork_a},
+        {"address": fork_b},
+    ]
+    now[0] = 104.0
+    radar.run_once(finalized_block=962)
+
+    rows = registry.db.execute("""
+        SELECT pool
+        FROM universe_activity_pending_v1
+        WHERE kind='UNKNOWN'
+    """).fetchall()
+
+    assert (V3_POOL,) in rows
+
+    assert radar.acknowledge([V2_POOL]) == 1
+
+    current[0] = []
+    now[0] = 106.0
+    promoted = radar.run_once(finalized_block=962)
+
+    assert promoted["priority_pools"] == [V3_POOL]

@@ -187,14 +187,35 @@ class PancakeActivityRadar:
         overflow = max(0, count - self.max_pending)
         if not overflow:
             return 0
-        direction = "ASC" if kind == "UNKNOWN" else "DESC"
-        db.execute(f"""
-            DELETE FROM universe_activity_pending_v1
-            WHERE seq IN (
-                SELECT seq FROM universe_activity_pending_v1
-                WHERE kind=? ORDER BY seq {direction} LIMIT ?
-            )
-        """, (kind, overflow))
+        if kind == "UNKNOWN":
+            db.execute("""
+                DELETE FROM universe_activity_pending_v1
+                WHERE seq IN (
+                    SELECT p.seq
+                    FROM universe_activity_pending_v1 AS p
+                    LEFT JOIN universe_pool_registry AS r
+                      ON r.pool = p.pool
+                     AND r.dex IN (?, ?)
+                    WHERE p.kind='UNKNOWN'
+                      AND r.pool IS NULL
+                    ORDER BY p.seq ASC
+                    LIMIT ?
+                )
+            """, (
+                DEX_PANCAKESWAP_V2,
+                DEX_PANCAKESWAP_V3,
+                overflow,
+            ))
+        else:
+            db.execute("""
+                DELETE FROM universe_activity_pending_v1
+                WHERE seq IN (
+                    SELECT seq FROM universe_activity_pending_v1
+                    WHERE kind='KNOWN'
+                    ORDER BY seq DESC
+                    LIMIT ?
+                )
+            """, (overflow,))
         return overflow
 
     def _persist_scan(self, *, to_block, known, unknown):
@@ -448,13 +469,17 @@ class PancakeActivityRadar:
                     ]
                     event_count = len(addresses)
                     unique_addresses = list(dict.fromkeys(addresses))
-                    known = self._known_pancake_pools(unique_addresses)
+                    known_set = self._known_pancake_pools(unique_addresses)
+                    known = [
+                        address for address in unique_addresses
+                        if address in known_set
+                    ]
                     unknown = [
                         address for address in unique_addresses
-                        if address not in known
+                        if address not in known_set
                     ]
                     matched_count = sum(
-                        1 for address in addresses if address in known
+                        1 for address in addresses if address in known_set
                     )
                     self._persist_scan(
                         to_block=to_block,

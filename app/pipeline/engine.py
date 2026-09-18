@@ -1972,12 +1972,32 @@ class PipelineEngine:
                         or {}
                     )
 
-                    price_series = list(
+                    runtime_price_series = list(
+                        exit_evidence.get(
+                            "runtime_spot_price_series_usd"
+                        )
+                        or []
+                    )
+
+                    block_price_series = list(
                         exit_evidence.get(
                             "spot_price_series_usd"
                         )
                         or []
                     )
+
+                    if runtime_price_series:
+                        price_series = runtime_price_series
+                        plan_price_series_source = (
+                            "PAIR_RUNTIME_ONCHAIN"
+                        )
+                    else:
+                        price_series = block_price_series
+                        plan_price_series_source = (
+                            "PAIR_BLOCK_HISTORY"
+                            if block_price_series
+                            else "TOKEN_CACHE"
+                        )
 
                     # Never mix token-only cache pricing into a
                     # pair-specific onchain price series.
@@ -2258,6 +2278,10 @@ class PipelineEngine:
                                     unified_score.get(
                                         "opportunity"
                                     )
+                                ),
+
+                                "plan_price_series_source": (
+                                    plan_price_series_source
                                 ),
                             },
 

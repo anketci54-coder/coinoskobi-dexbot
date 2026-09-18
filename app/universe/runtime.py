@@ -121,7 +121,7 @@ class FullUniverseObservationRuntime:
     def spawn_isolated(self):
         """Build a worker-owned runtime with its own SQLite/provider objects."""
         existing_web3 = _new_existing_bsc_web3()
-        tail_web3 = _new_bsc_web3()
+        tail_web3 = _new_existing_bsc_web3()
         return type(self)(
             start_blocks=dict(self.start_blocks),
             registry=UniverseRegistry(),

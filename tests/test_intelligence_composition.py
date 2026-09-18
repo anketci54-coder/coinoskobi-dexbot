@@ -94,6 +94,47 @@ def test_phase5_phase7_trending_bull():
     ] is False
 
 
+
+def test_native_bull_price_direction_alias_is_not_unknown():
+    c = RuntimeIntelligenceComposition()
+
+    r = c.build(
+        "0xtoken",
+        market_input={
+            "volume_usd": 20000,
+            "buy_volume_usd": 12000,
+            "sell_volume_usd": 8000,
+            "buyers": 20,
+            "sellers": 20,
+            "buys": 50,
+            "sells": 50,
+            "liquidity_usd": 50000,
+        },
+        flow_input={
+            "buy_flow": 120,
+            "sell_flow": 80,
+            "prev_spread": 20,
+            "prev_velocity": 5,
+            "direction": "BULL",
+            "price_direction": "BULL",
+            "unique_wallets": 10,
+            "tx_count": 20,
+            "largest_actor_share": 0.20,
+            "freshness": "FRESH",
+            "coverage": 1.0,
+        },
+    )
+
+    assert (
+        r["flow_divergence"]["divergence_state"]
+        == "STRENGTHENING"
+    )
+    assert (
+        r["market_regime"]["market_regime"]
+        == "TRENDING_BULL"
+    )
+
+
 def test_phase9_phase10_readmodels_connected():
     c = RuntimeIntelligenceComposition()
 

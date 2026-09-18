@@ -239,9 +239,11 @@ def test_normal_uses_confirmed_hot_active_edge_without_bypassing_admission():
             "opportunity": {
                 "state": "HOT",
                 "reason": "ACTIVE_RECOVERY_BREAKOUT_READY",
+                "price_series_source": "PAIR_RUNTIME_ONCHAIN",
                 "latest_log_return": 0.13353139262452257,
                 "trailing_positive_log_move": 0.13353139262452257,
             },
+            "plan_price_series_source": "PAIR_RUNTIME_ONCHAIN",
         },
     )
 
@@ -465,4 +467,49 @@ def test_partial_market_quality_reports_all_soft_unknowns():
     assert "PARTICIPATION_EVIDENCE_UNKNOWN" in unknowns
     assert "MARKET_QUALITY_LIQUIDITY_UNKNOWN" in unknowns
     assert plan["wallet_authority"] is False
+    blockers = set(plan["blockers"])
+
+    assert "MARKET_QUALITY_EVIDENCE_NOT_READY" not in blockers
+    assert "PARTICIPATION_EVIDENCE_UNKNOWN" not in blockers
+    assert "MARKET_QUALITY_LIQUIDITY_UNKNOWN" not in blockers
+    assert plan["paper_eligible"] is True
     assert plan["execution_authority"] is False
+
+
+
+def test_normal_hot_edge_cannot_cross_price_series_provenance():
+    plan = build_trade_plan(
+        entry_price=0.80,
+        available_capital_usdt=10000.0,
+        price_series=[1.00, 0.70, 0.80],
+        quote_reserve_usd=50000.0,
+        lp_protected_fraction=1.0,
+        sellability_status="SELLABILITY_OK",
+        hard_block=False,
+        sellability_data=_sellability(),
+        exit_evidence=_exit_evidence(),
+        market_context={
+            "runtime_intelligence": {},
+            "opportunity": {
+                "state": "HOT",
+                "price_series_source": "PAIR_RUNTIME_ONCHAIN",
+                "latest_log_return": 0.13353139262452257,
+                "trailing_positive_log_move": 0.13353139262452257,
+            },
+            "plan_price_series_source": "PAIR_BLOCK_HISTORY",
+        },
+        trade_type="NORMAL",
+    )
+
+    assert (
+        plan["statistics"]["edge_horizon"]["source"]
+        == "FULL_OBSERVED_SERIES"
+    )
+    assert (
+        plan["statistics"]["edge_horizon"][
+            "opportunity_provenance_matches"
+        ]
+        is False
+    )
+    assert "KNOWN_COMPONENT_EDGE_NOT_POSITIVE" in plan["blockers"]
+    assert plan["paper_eligible"] is False

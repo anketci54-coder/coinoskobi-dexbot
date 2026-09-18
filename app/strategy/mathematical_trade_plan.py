@@ -1643,7 +1643,76 @@ def build_trade_plan(
 
     trailing_positive_returns = []
 
+    normalized_trade_type = (
+        str(
+            trade_type
+            or ""
+        )
+        .strip()
+        .upper()
+    )
+
+    opportunity = (
+        market_context.get(
+            "opportunity"
+        )
+        if isinstance(
+            market_context,
+            dict,
+        )
+        else None
+    )
+
+    if not isinstance(
+        opportunity,
+        dict,
+    ):
+        opportunity = {}
+
+    opportunity_state = str(
+        opportunity.get(
+            "state"
+        )
+        or "UNKNOWN"
+    ).upper()
+
+    active_opportunity_edge = _number(
+        opportunity.get(
+            "trailing_positive_log_move"
+        )
+    )
+
     if (
+        active_opportunity_edge is None
+        or active_opportunity_edge <= 0
+    ):
+        active_opportunity_edge = _number(
+            opportunity.get(
+                "latest_log_return"
+            )
+        )
+
+    if (
+        normalized_trade_type
+        == "NORMAL"
+        and opportunity_state
+        == "HOT"
+        and active_opportunity_edge
+        is not None
+        and active_opportunity_edge > 0
+    ):
+        # UnifiedScore has already confirmed the active opportunity.
+        # Use that measured current edge for NORMAL economics while the
+        # full price history below still owns empirical downside/risk.
+        gross_log_edge = (
+            active_opportunity_edge
+        )
+
+        edge_horizon_source = (
+            "CONFIRMED_ACTIVE_OPPORTUNITY"
+        )
+
+    elif (
         vur_kac_entry.get("enforced")
         and vur_kac_entry.get("ready")
         and vur_kac_entry.get("reason")

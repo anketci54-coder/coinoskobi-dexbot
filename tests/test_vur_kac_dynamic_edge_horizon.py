@@ -116,3 +116,42 @@ def test_hard_market_blockers_are_not_bypassed():
     assert "PARTICIPATION_CONCENTRATED" in plan["blockers"]
     assert "SUSPICIOUS_VOLUME" in plan["blockers"]
     assert plan["paper_eligible"] is False
+
+
+def test_explicit_normal_uses_active_positive_continuation_without_vur_kac_flow_gate():
+    prices = [100.0, 50.0, 25.0, 26.0, 28.0]
+
+    plan = build_trade_plan(
+        entry_price=28.0,
+        available_capital_usdt=1000.0,
+        price_series=prices,
+        quote_reserve_usd=100_000.0,
+        lp_protected_fraction=1.0,
+        sellability_status="OK",
+        sellability_data=_sellability(),
+        exit_evidence=_exit(),
+        market_context={
+            "runtime_intelligence": {},
+            "flow_intelligence": {
+                "freshness": "UNKNOWN",
+                "coverage": None,
+            },
+        },
+        trade_type="NORMAL",
+    )
+
+    edge = plan["statistics"]["edge_horizon"]
+
+    assert edge["source"] == "NORMAL_ACTIVE_POSITIVE_CONTINUATION"
+    assert edge["full_horizon_log_move"] < 0
+    assert edge["trailing_positive_return_count"] == 2
+    assert edge["effective_gross_log_edge"] > 0
+    assert edge["known_net_log_edge"] > 0
+    assert plan["vur_kac_entry"]["enforced"] is False
+    assert "VUR_KAC_ENTRY_NOT_READY" not in plan["blockers"]
+    assert "KNOWN_COMPONENT_EDGE_NOT_POSITIVE" not in plan["blockers"]
+    assert "MATHEMATICAL_POSITION_SIZE_ZERO" not in plan["blockers"]
+    assert plan["capital"]["entry_amount_usdt"] > 0
+    assert plan["live_eligible"] is False
+    assert plan["wallet_authority"] is False
+    assert plan["execution_authority"] is False

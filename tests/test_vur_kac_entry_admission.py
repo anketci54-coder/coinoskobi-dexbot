@@ -200,3 +200,39 @@ def test_explicit_vur_kac_trade_type_keeps_strict_gate():
     assert gate["enforced"] is True
     assert gate["ready"] is False
     assert "VUR_KAC_ENTRY_NOT_READY" in plan["blockers"]
+
+
+def test_explicit_normal_uses_current_positive_leg_without_flow_readiness():
+    plan = build_trade_plan(
+        entry_price=28.0,
+        available_capital_usdt=1000.0,
+        price_series=[100.0, 50.0, 25.0, 26.0, 28.0],
+        quote_reserve_usd=100000.0,
+        lp_protected_fraction=1.0,
+        sellability_status="SELLABILITY_OK",
+        hard_block=False,
+        sellability_data=_sellability(),
+        exit_evidence=_exit_evidence(),
+        market_context={
+            "runtime_intelligence": {},
+            "flow_intelligence": {
+                "freshness": "UNKNOWN",
+                "coverage": None,
+            },
+        },
+        trade_type="NORMAL",
+    )
+
+    edge = plan["statistics"]["edge_horizon"]
+
+    assert edge["source"] == "NORMAL_ACTIVE_POSITIVE_CONTINUATION"
+    assert edge["full_horizon_log_move"] < 0
+    assert edge["effective_gross_log_edge"] > 0
+    assert edge["known_net_log_edge"] > 0
+    assert plan["vur_kac_entry"]["enforced"] is False
+    assert "VUR_KAC_ENTRY_NOT_READY" not in plan["blockers"]
+    assert "KNOWN_COMPONENT_EDGE_NOT_POSITIVE" not in plan["blockers"]
+    assert plan["capital"]["entry_amount_usdt"] > 0
+    assert plan["live_eligible"] is False
+    assert plan["wallet_authority"] is False
+    assert plan["execution_authority"] is False

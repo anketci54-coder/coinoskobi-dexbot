@@ -1687,7 +1687,9 @@ def build_trade_plan(
             )
 
             edge_horizon_source = (
-                "ACTIVE_POSITIVE_CONTINUATION"
+                "NORMAL_ACTIVE_POSITIVE_CONTINUATION"
+                if normalized_trade_type == "NORMAL"
+                else "TRAILING_POSITIVE_CONTINUATION"
             )
 
     buy_retention = (

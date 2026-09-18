@@ -1304,7 +1304,7 @@ def vur_kac_entry_admission_state(
 
 
 
-def _runtime_admission_evidence_state(
+def _runtime_admission_evidence_blockers(
     *,
     stats,
     market_context,
@@ -1348,13 +1348,9 @@ def _runtime_admission_evidence_state(
         quality,
         dict,
     ):
-        return {
-            "blockers": [],
-            "unknowns": [],
-        }
+        return []
 
     blockers = []
-    unknowns = []
 
     informative_count = (
         stats.get(
@@ -1374,11 +1370,8 @@ def _runtime_admission_evidence_state(
             if value != 0.0
         )
 
-    # One measured non-zero return is enough for an explicit NORMAL
-    # PAPER plan to derive current edge and risk. A second return improves
-    # confidence, but its absence is uncertainty rather than adverse evidence.
     if informative_count < 2:
-        unknowns.append(
+        blockers.append(
             "EMPIRICAL_MOVEMENT_INSUFFICIENT"
         )
 
@@ -1388,11 +1381,10 @@ def _runtime_admission_evidence_state(
         )
         is False
     ):
-        unknowns.append(
+        blockers.append(
             "MARKET_QUALITY_EVIDENCE_NOT_READY"
         )
 
-    # Confirmed adverse facts remain blockers.
     if (
         quality.get(
             "suspicious_volume"
@@ -1411,7 +1403,7 @@ def _runtime_admission_evidence_state(
     ).upper()
 
     if participation == "UNKNOWN":
-        unknowns.append(
+        blockers.append(
             "PARTICIPATION_EVIDENCE_UNKNOWN"
         )
 
@@ -1440,18 +1432,12 @@ def _runtime_admission_evidence_state(
             "MARKET_QUALITY_LIQUIDITY_DETERIORATING_FAST"
         )
 
-    return {
-        "blockers": list(
-            dict.fromkeys(
-                blockers
-            )
-        ),
-        "unknowns": list(
-            dict.fromkeys(
-                unknowns
-            )
-        ),
-    }
+    return list(
+        dict.fromkeys(
+            blockers
+        )
+    )
+
 
 def build_trade_plan(
     *,
@@ -1549,18 +1535,11 @@ def build_trade_plan(
 
     blockers = []
 
-    runtime_admission = (
-        _runtime_admission_evidence_state(
+    blockers.extend(
+        _runtime_admission_evidence_blockers(
             stats=stats,
             market_context=market_context,
         )
-    )
-
-    blockers.extend(
-        runtime_admission.get(
-            "blockers"
-        )
-        or []
     )
 
     vur_kac_entry = (
@@ -1592,13 +1571,6 @@ def build_trade_plan(
         costs[
             "unknown_components"
         ]
-    )
-
-    unknowns.extend(
-        runtime_admission.get(
-            "unknowns"
-        )
-        or []
     )
 
     if hard_block:
@@ -1671,71 +1643,36 @@ def build_trade_plan(
 
     trailing_positive_returns = []
 
-    for value in reversed(
-        stats.get("log_returns")
-        or ()
-    ):
-        number = _number(value)
-
-        if (
-            number is None
-            or number <= 0
-        ):
-            break
-
-        trailing_positive_returns.append(
-            number
-        )
-
-    normalized_trade_type = (
-        str(
-            trade_type
-            or ""
-        )
-        .strip()
-        .upper()
-    )
-
     if (
-        normalized_trade_type
-        == "NORMAL"
+        vur_kac_entry.get("enforced")
+        and vur_kac_entry.get("ready")
+        and vur_kac_entry.get("reason")
+        == "VUR_KAC_ENTRY_SIGNAL_READY"
     ):
-        # NORMAL PAPER reacts to the currently measured move. Historical
-        # drawdown remains fully represented in risk_log_distance below, but
-        # it must not erase a fresh positive edge and hold the entry forever.
+        for value in reversed(
+            stats.get("log_returns")
+            or ()
+        ):
+            number = _number(value)
+
+            if (
+                number is None
+                or number <= 0
+            ):
+                break
+
+            trailing_positive_returns.append(
+                number
+            )
+
         if trailing_positive_returns:
             gross_log_edge = sum(
                 trailing_positive_returns
             )
 
             edge_horizon_source = (
-                "TRAILING_POSITIVE_NORMAL"
+                "TRAILING_POSITIVE_CONTINUATION"
             )
-        else:
-            gross_log_edge = 0.0
-
-            edge_horizon_source = (
-                "NORMAL_ACTIVE_EDGE_NOT_POSITIVE"
-            )
-
-            blockers.append(
-                "ACTIVE_EDGE_NOT_POSITIVE"
-            )
-
-    elif (
-        vur_kac_entry.get("enforced")
-        and vur_kac_entry.get("ready")
-        and vur_kac_entry.get("reason")
-        == "VUR_KAC_ENTRY_SIGNAL_READY"
-        and trailing_positive_returns
-    ):
-        gross_log_edge = sum(
-            trailing_positive_returns
-        )
-
-        edge_horizon_source = (
-            "TRAILING_POSITIVE_CONTINUATION"
-        )
 
     buy_retention = (
         costs[

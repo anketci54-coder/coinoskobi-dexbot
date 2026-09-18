@@ -1198,6 +1198,7 @@ class PipelineEngine:
     def _hybrid_exit_runtime_evidence(
         self,
         position,
+        runtime_snapshot=None,
     ):
         position = dict(position or {})
 
@@ -1292,34 +1293,41 @@ class PipelineEngine:
             pool,
         )
 
-        runtime = getattr(
-            self,
-            "native_market_flow",
-            None,
+        snapshot = (
+            dict(runtime_snapshot)
+            if isinstance(runtime_snapshot, dict)
+            else None
         )
 
-        snapshot_fn = getattr(
-            runtime,
-            "snapshot",
-            None,
-        )
-
-        if not callable(snapshot_fn):
-            return None
-
-        try:
-            snapshot = snapshot_fn(
-                pool,
-                candidate=candidate,
+        if snapshot is None:
+            runtime = getattr(
+                self,
+                "native_market_flow",
+                None,
             )
-        except Exception:
-            return None
 
-        if not isinstance(
-            snapshot,
-            dict,
-        ):
-            return None
+            snapshot_fn = getattr(
+                runtime,
+                "snapshot",
+                None,
+            )
+
+            if not callable(snapshot_fn):
+                return None
+
+            try:
+                snapshot = snapshot_fn(
+                    pool,
+                    candidate=candidate,
+                )
+            except Exception:
+                return None
+
+            if not isinstance(
+                snapshot,
+                dict,
+            ):
+                return None
 
         market = (
             snapshot.get(
@@ -2058,7 +2066,12 @@ class PipelineEngine:
                                         sort_keys=True,
                                     )
                                 ),
-                            }
+                            },
+                            runtime_snapshot=(
+                                market_context.get(
+                                    "runtime_market_flow"
+                                )
+                            ),
                         )
                         or {}
                     )

@@ -2253,6 +2253,12 @@ class PipelineEngine:
                                 "runtime_intelligence": (
                                     intelligence_context
                                 ),
+
+                                "opportunity": (
+                                    unified_score.get(
+                                        "opportunity"
+                                    )
+                                ),
                             },
 
                             trade_type=(

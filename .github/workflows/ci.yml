@@ -49,6 +49,9 @@ jobs:
           tests/test_trade_contract_schema.py
           tests/test_trade_type_routing.py
           tests/test_paper_manager_trade_type_routing.py
+          tests/test_auto_trade_type_routing.py
+          tests/test_normal_tp2_tp3_runner.py
+          tests/test_paper_entry_timing_guards.py
           tests/test_tp1_deterministic_risk_neutralization.py
           tests/test_candidate_reevaluation_ledger.py
           tests/test_opportunity_observability.py

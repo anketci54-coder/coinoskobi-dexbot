@@ -28,6 +28,19 @@ def _new_bsc_web3():
     return build_bsc_web3()
 
 
+def _new_existing_bsc_web3():
+    """Create the historical EXISTING provider, preferring configured Ankr HTTP."""
+    import os
+
+    from web3 import Web3
+    from web3.providers import HTTPProvider
+
+    url = os.getenv("ANKR_RPC_URL", "").strip()
+    if not url:
+        return _new_bsc_web3()
+    return Web3(HTTPProvider(url, request_kwargs={"timeout": 30}))
+
+
 class Web3LogReader:
     def __init__(self, web3):
         self.web3 = web3
@@ -107,7 +120,7 @@ class FullUniverseObservationRuntime:
 
     def spawn_isolated(self):
         """Build a worker-owned runtime with its own SQLite/provider objects."""
-        existing_web3 = _new_bsc_web3()
+        existing_web3 = _new_existing_bsc_web3()
         tail_web3 = _new_bsc_web3()
         return type(self)(
             start_blocks=dict(self.start_blocks),
@@ -117,7 +130,7 @@ class FullUniverseObservationRuntime:
             finalized_block_reader=lambda: tail_web3.eth.block_number,
             snapshot_client=None,
             confirmation_depth=self.confirmation_depth,
-            discovery_block_span=self.discovery.max_block_span,
+            discovery_block_span=min(500, self.discovery.max_block_span),
             discovery_batches_per_cycle=self.discovery_batches_per_cycle,
             observation_batches_per_cycle=self.observation_batches_per_cycle,
             existing_retry_seconds=self.existing_retry_seconds,

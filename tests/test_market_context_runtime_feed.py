@@ -94,7 +94,7 @@ def test_build_market_context_uses_operational_feed():
     )
 
 
-def test_candidate_native_snapshot_is_reused_once_for_same_evaluation():
+def test_candidate_native_snapshot_is_read_once_without_runtime_method_replacement():
     class MutableFeed:
         def __init__(self):
             self._events = {}
@@ -122,6 +122,7 @@ def test_candidate_native_snapshot_is_reused_once_for_same_evaluation():
             }
 
     feed = MutableFeed()
+    original_snapshot_method = feed.snapshot.__func__
     row = {
         "pool": PAIR,
         "token": TOKEN,
@@ -135,31 +136,29 @@ def test_candidate_native_snapshot_is_reused_once_for_same_evaluation():
     )
 
     assert feed.calls == 1
+    assert feed.snapshot.__func__ is original_snapshot_method
     assert (
-        first["flow_intelligence"][
+        first["runtime_market_flow"][
+            "flow_intelligence"
+        ][
             "flow_acceleration"
         ]
         == 0.25
     )
 
-    # Native evidence changes while the same candidate evaluation is
-    # still running. The immediate audit/shadow read must remain atomic.
+    # The admitted canonical snapshot is carried in market context.
+    # Later live feed changes must not mutate that admitted evidence.
     feed.acceleration = -0.50
 
-    frozen = feed.snapshot(
-        PAIR,
-        candidate=row,
-    )
-
-    assert feed.calls == 1
     assert (
-        frozen["flow_intelligence"][
+        first["runtime_market_flow"][
+            "flow_intelligence"
+        ][
             "flow_acceleration"
         ]
         == 0.25
     )
 
-    # The bridge is one-shot. Later lifecycle/scan reads remain live.
     live = feed.snapshot(
         PAIR,
         candidate=row,

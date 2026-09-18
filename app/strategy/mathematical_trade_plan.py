@@ -1727,6 +1727,34 @@ def build_trade_plan(
         or "UNKNOWN"
     ).upper()
 
+    opportunity_price_series_source = str(
+        opportunity.get(
+            "price_series_source"
+        )
+        or ""
+    ).strip().upper()
+
+    plan_price_series_source = str(
+        (
+            market_context.get(
+                "plan_price_series_source"
+            )
+            if isinstance(
+                market_context,
+                dict,
+            )
+            else None
+        )
+        or ""
+    ).strip().upper()
+
+    opportunity_provenance_matches = bool(
+        opportunity_price_series_source
+        and plan_price_series_source
+        and opportunity_price_series_source
+        == plan_price_series_source
+    )
+
     active_opportunity_edge = _number(
         opportunity.get(
             "trailing_positive_log_move"
@@ -1748,6 +1776,7 @@ def build_trade_plan(
         == "NORMAL"
         and opportunity_state
         == "HOT"
+        and opportunity_provenance_matches
         and active_opportunity_edge
         is not None
         and active_opportunity_edge > 0
@@ -1850,6 +1879,17 @@ def build_trade_plan(
             if edge_horizon_source
             == "CONFIRMED_ACTIVE_OPPORTUNITY"
             else None
+        ),
+        "opportunity_price_series_source": (
+            opportunity_price_series_source
+            or None
+        ),
+        "plan_price_series_source": (
+            plan_price_series_source
+            or None
+        ),
+        "opportunity_provenance_matches": (
+            opportunity_provenance_matches
         ),
         "runtime_vur_kac": bool(
             vur_kac_entry.get("enforced")

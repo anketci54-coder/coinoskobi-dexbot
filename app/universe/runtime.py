@@ -5,6 +5,10 @@ import time
 from app.config.settings import RPC_PROVIDER_COOLDOWN_SECONDS
 from app.market_data.broker import MarketDataBroker
 from app.universe.discovery import PANCAKE_FACTORY_STREAMS, PancakeUniverseDiscovery
+from app.universe.pancake_activity import (
+    PancakeActivityRadar,
+    Web3TopicLogReader,
+)
 from app.universe.registry import UniverseRegistry
 from app.universe.scheduler import UniverseObservationScheduler
 from app.universe.seismic import SeismicClassifier
@@ -46,6 +50,8 @@ class FullUniverseObservationRuntime:
                  discovery_batches_per_cycle=8,
                  observation_batches_per_cycle=4,
                  existing_retry_seconds=RPC_PROVIDER_COOLDOWN_SECONDS,
+                 activity_log_reader=None,
+                 activity_poll_seconds=5.0,
                  now_func=None):
         required = {stream["dex"] for stream in PANCAKE_FACTORY_STREAMS}
         self.start_blocks = {dex: int(value) for dex, value in dict(start_blocks).items()}
@@ -84,6 +90,18 @@ class FullUniverseObservationRuntime:
         )
         self.classifier = SeismicClassifier()
         self.confirmation_depth = max(0, int(confirmation_depth))
+        self.activity_poll_seconds = max(1.0, float(activity_poll_seconds))
+        self.activity = (
+            PancakeActivityRadar(
+                self.registry,
+                activity_log_reader,
+                poll_seconds=self.activity_poll_seconds,
+                now_func=self._now,
+            )
+            if activity_log_reader is not None
+            else None
+        )
+        self._prefer_priority_observation = True
         self._stream_cursor = 0
         self.cycles = 0
 
@@ -103,6 +121,8 @@ class FullUniverseObservationRuntime:
             discovery_batches_per_cycle=self.discovery_batches_per_cycle,
             observation_batches_per_cycle=self.observation_batches_per_cycle,
             existing_retry_seconds=self.existing_retry_seconds,
+            activity_log_reader=Web3TopicLogReader(tail_web3),
+            activity_poll_seconds=self.activity_poll_seconds,
             now_func=self._now,
         )
 
@@ -171,10 +191,7 @@ class FullUniverseObservationRuntime:
                     existing_failed = True
                     self._existing_retry_after[
                         stream["dex"]
-                    ] = (
-                        now
-                        + self.existing_retry_seconds
-                    )
+                    ] = now + self.existing_retry_seconds
                     log.warning(
                         "Universe discovery failed dex=%s branch=EXISTING error=%s",
                         stream["dex"],
@@ -182,27 +199,17 @@ class FullUniverseObservationRuntime:
                     )
 
                 existing_batches.append(existing)
-
-                if (
-                    existing_failed
-                    or existing["state"] == "CAUGHT_UP"
-                ):
+                if existing_failed or existing["state"] == "CAUGHT_UP":
                     break
 
             if not existing_failed:
-                self._existing_retry_after.pop(
-                    stream["dex"],
-                    None,
-                )
+                self._existing_retry_after.pop(stream["dex"], None)
 
         try:
             tail_start = max(
                 0,
-                finalized
-                - self.tail_discovery.max_block_span
-                + 1,
+                finalized - self.tail_discovery.max_block_span + 1,
             )
-
             tail = self.tail_discovery.scan(
                 stream,
                 start_block=tail_start,
@@ -210,10 +217,7 @@ class FullUniverseObservationRuntime:
                 branch="NEW",
             )
         except Exception as exc:
-            tail = self._discovery_failure(
-                branch="NEW",
-                exc=exc,
-            )
+            tail = self._discovery_failure(branch="NEW", exc=exc)
             discovery_errors.append(tail)
             log.warning(
                 "Universe discovery failed dex=%s branch=NEW error=%s",
@@ -221,13 +225,97 @@ class FullUniverseObservationRuntime:
                 _safe_error(exc),
             )
 
+        activity_result = {
+            "state": "DISABLED",
+            "priority_pools": [],
+            "priority_count": 0,
+            "provider_call": False,
+        }
+        if self.activity is not None:
+            try:
+                activity_result = self.activity.run_once(
+                    finalized_block=finalized
+                )
+            except Exception as exc:
+                activity_result = {
+                    "state": "DEGRADED",
+                    "priority_pools": [],
+                    "priority_count": 0,
+                    "provider_call": False,
+                    "error_class": type(exc).__name__,
+                }
+                log.warning(
+                    "Pancake activity radar failed: %s",
+                    _safe_error(exc),
+                )
+
         observation_results, observed_pools = [], []
-        for _ in range(self.observation_batches_per_cycle):
+        priority_result = None
+        priority_pools = activity_result.get("priority_pools") or []
+        normal_batch_budget = self.observation_batches_per_cycle
+
+        run_priority_now = bool(priority_pools)
+        if priority_pools and normal_batch_budget == 1:
+            run_priority_now = self._prefer_priority_observation
+            self._prefer_priority_observation = not self._prefer_priority_observation
+
+        if run_priority_now:
+            priority_failed = False
+            try:
+                priority_result = self.observer.run_priority(priority_pools)
+            except Exception as exc:
+                priority_failed = True
+                activity_result["state"] = "DEGRADED"
+                activity_result["error_class"] = type(exc).__name__
+                priority_result = {
+                    "state": "DEGRADED",
+                    "requested": len(priority_pools),
+                    "observed": 0,
+                    "missing": len(priority_pools),
+                    "missing_pools": list(priority_pools),
+                    "provider_call": False,
+                    "priority": True,
+                    "error_class": type(exc).__name__,
+                }
+                log.warning(
+                    "Pancake priority observation failed: %s",
+                    _safe_error(exc),
+                )
+            observation_results.append(priority_result)
+            if priority_result.get("state") == "DEGRADED":
+                priority_failed = True
+                activity_result["state"] = "DEGRADED"
+                if priority_result.get("error_class"):
+                    activity_result["error_class"] = priority_result["error_class"]
+            priority_observed = priority_result.get("pools") or []
+            priority_missing = priority_result.get("missing_pools") or []
+            observed_pools.extend(priority_observed)
+            completed_priority = list(dict.fromkeys(
+                list(priority_observed) + list(priority_missing)
+            ))
+            if (
+                self.activity is not None
+                and completed_priority
+                and not priority_failed
+            ):
+                try:
+                    self.activity.acknowledge(completed_priority)
+                except Exception as exc:
+                    activity_result["state"] = "DEGRADED"
+                    activity_result["error_class"] = type(exc).__name__
+                    log.warning(
+                        "Pancake activity acknowledge failed: %s",
+                        _safe_error(exc),
+                    )
+            normal_batch_budget = max(0, normal_batch_budget - 1)
+
+        for _ in range(normal_batch_budget):
             result = self.observer.run_once()
             observation_results.append(result)
             observed_pools.extend(result.get("pools") or [])
             if result["state"] == "IDLE":
                 break
+
         evaluations = []
         for pool in dict.fromkeys(observed_pools):
             registry_row = self.registry.db.execute("""
@@ -255,7 +343,11 @@ class FullUniverseObservationRuntime:
         return {
             "state": (
                 "SHADOW_DEGRADED"
-                if discovery_errors or existing_backoff
+                if (
+                    discovery_errors
+                    or existing_backoff
+                    or activity_result.get("state") == "DEGRADED"
+                )
                 else "SHADOW_READY"
             ),
             "cycle": self.cycles,
@@ -265,6 +357,8 @@ class FullUniverseObservationRuntime:
                 "new": tail,
                 "errors": discovery_errors,
             },
+            "activity_radar": activity_result,
+            "priority_observation": priority_result,
             "observation_batches": observation_results,
             "observed": len(observed_pools), "evaluated": len(evaluations),
             "universe_size": self.registry.count(),

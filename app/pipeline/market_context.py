@@ -1,4 +1,5 @@
 from collections import Counter
+import math
 
 from app.dex.transaction_origin import (
     resolved_transaction_origin,
@@ -24,7 +25,7 @@ def _positive_number(value):
     ):
         return None
 
-    if value < 0:
+    if not math.isfinite(value) or value < 0:
         return None
 
     return value
@@ -322,25 +323,39 @@ def build_market_context(
             DEFAULT_NEWS_EVIDENCE_STORE,
         )
 
-    snapshot = runtime_feed.snapshot(
-        row.get("pool"),
-        candidate=row,
-    )
+    try:
+        snapshot = runtime_feed.snapshot(
+            row.get("pool"),
+            candidate=row,
+        )
+    except Exception:
+        snapshot = None
+
+    if not isinstance(snapshot, dict):
+        snapshot = None
 
     context[
         "runtime_market_flow"
     ] = snapshot
 
     market = dict(
-        snapshot.get(
-            "market_intelligence"
+        (
+            snapshot.get(
+                "market_intelligence"
+            )
+            if snapshot is not None
+            else {}
         )
         or {}
     )
 
     flow = dict(
-        snapshot.get(
-            "flow_intelligence"
+        (
+            snapshot.get(
+                "flow_intelligence"
+            )
+            if snapshot is not None
+            else {}
         )
         or {}
     )

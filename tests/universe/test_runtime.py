@@ -210,29 +210,31 @@ def test_discovery_failure_does_not_starve_observations_or_new_tail(caplog):
 def test_spawn_isolated_uses_worker_owned_rpc_and_broker():
     class Eth:
         block_number = 123
+
     class WorkerWeb3:
         eth = Eth()
 
-    worker_web3 = WorkerWeb3()
+    existing_web3 = WorkerWeb3()
+    tail_web3 = WorkerWeb3()
     created = []
-    monkeypatch = None
+
+    def patched_existing_web3():
+        created.append(("EXISTING", existing_web3))
+        return existing_web3
 
     def patched_new_bsc_web3():
-        created.append(worker_web3)
-        return worker_web3
+        created.append(("TAIL", tail_web3))
+        return tail_web3
 
-    original_new_bsc_web3 = __import__(
-        "app.universe.runtime",
-        fromlist=["_new_bsc_web3"],
-    )._new_bsc_web3
-    original_registry = __import__(
-        "app.universe.runtime",
-        fromlist=["UniverseRegistry"],
-    ).UniverseRegistry
+    import app.universe.runtime as runtime_module
+
+    original_new_bsc_web3 = runtime_module._new_bsc_web3
+    original_new_existing_bsc_web3 = runtime_module._new_existing_bsc_web3
+    original_registry = runtime_module.UniverseRegistry
 
     try:
-        import app.universe.runtime as runtime_module
         runtime_module._new_bsc_web3 = patched_new_bsc_web3
+        runtime_module._new_existing_bsc_web3 = patched_existing_web3
         runtime_module.UniverseRegistry = lambda: UniverseRegistry(
             connection=sqlite3.connect(":memory:")
         )
@@ -244,18 +246,25 @@ def test_spawn_isolated_uses_worker_owned_rpc_and_broker():
         isolated = template.spawn_isolated()
     finally:
         runtime_module._new_bsc_web3 = original_new_bsc_web3
+        runtime_module._new_existing_bsc_web3 = original_new_existing_bsc_web3
         runtime_module.UniverseRegistry = original_registry
 
-    assert created == [worker_web3, worker_web3]
+    assert created == [
+        ("EXISTING", existing_web3),
+        ("TAIL", tail_web3),
+    ]
     assert isinstance(isolated.discovery.log_reader, Web3LogReader)
     assert isinstance(isolated.tail_discovery.log_reader, Web3LogReader)
-    assert isolated.discovery.log_reader.web3 is worker_web3
-    assert isolated.tail_discovery.log_reader.web3 is worker_web3
+    assert isolated.discovery.log_reader.web3 is existing_web3
+    assert isolated.tail_discovery.log_reader.web3 is tail_web3
     assert isolated.finalized_block_reader() == 123
     assert isolated.registry is not template.registry
     assert isolated.market_data is isolated.observer.snapshot_client
     assert isolated.market_data is not template.market_data
     assert isolated.discovery_batches_per_cycle == template.discovery_batches_per_cycle
+    assert isolated.discovery.max_block_span == min(
+        500, template.discovery.max_block_span
+    )
 
 
 def test_shadow_binding_uses_background_service_and_not_scheduler():

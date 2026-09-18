@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta, timezone
 
+from app.config.contracts import BASE_TOKENS
 from app.universe.display_metadata import persist_snapshot_display_metadata
 from app.universe.schema import DEX_PANCAKESWAP_V2, DEX_PANCAKESWAP_V3
 from app.universe.snapshot import DEXSCREENER_MAX_BATCH
@@ -12,6 +13,23 @@ DEFAULT_STATE_INTERVAL_SECONDS = {
 }
 DEFAULT_MISSING_RETRY_SECONDS = 60
 _UNIVERSE_DEXES = (DEX_PANCAKESWAP_V2, DEX_PANCAKESWAP_V3)
+_OBSERVATION_QUOTE_TOKENS = tuple(
+    sorted(str(value).strip().lower() for value in BASE_TOKENS)
+)
+
+
+def _quote_filter_sql():
+    marks = ",".join("?" for _ in _OBSERVATION_QUOTE_TOKENS)
+    return f"""(
+        (LOWER(token0) IN ({marks}) AND LOWER(token1) NOT IN ({marks}))
+        OR
+        (LOWER(token1) IN ({marks}) AND LOWER(token0) NOT IN ({marks}))
+    )"""
+
+
+def _quote_filter_params():
+    quotes = _OBSERVATION_QUOTE_TOKENS
+    return (*quotes, *quotes, *quotes, *quotes)
 
 
 class UniverseObservationScheduler:
@@ -45,12 +63,13 @@ class UniverseObservationScheduler:
         db = getattr(self.registry, "db", None)
         if db is None:
             return []
-        rows = db.execute("""
+        rows = db.execute(f"""
             SELECT *
             FROM universe_pool_registry
             WHERE latest_snapshot_at IS NOT NULL
               AND next_observation_at IS NOT NULL
               AND next_observation_at <= ?
+              AND {_quote_filter_sql()}
             ORDER BY
                 CASE market_state
                     WHEN 'HOT' THEN 0
@@ -61,7 +80,11 @@ class UniverseObservationScheduler:
                 latest_snapshot_at,
                 creation_block
             LIMIT ?
-        """, (now, int(limit))).fetchall()
+        """, (
+            now,
+            *_quote_filter_params(),
+            int(limit),
+        )).fetchall()
         return [dict(row) for row in rows]
 
     def _due_unseen_branch(self, *, now, limit, branch):
@@ -87,9 +110,16 @@ class UniverseObservationScheduler:
                       next_observation_at IS NULL
                       OR next_observation_at <= ?
                   )
+                  AND {_quote_filter_sql()}
                 ORDER BY creation_block {direction}
                 LIMIT ?
-            """, (dex, branch, now, limit)).fetchall()
+            """, (
+                dex,
+                branch,
+                now,
+                *_quote_filter_params(),
+                limit,
+            )).fetchall()
             candidates.extend(dict(row) for row in rows)
 
         if branch == "NEW":

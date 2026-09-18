@@ -200,3 +200,97 @@ def test_explicit_vur_kac_trade_type_keeps_strict_gate():
     assert gate["enforced"] is True
     assert gate["ready"] is False
     assert "VUR_KAC_ENTRY_NOT_READY" in plan["blockers"]
+
+
+def test_normal_uses_confirmed_hot_active_edge_without_bypassing_admission():
+    common = {
+        "entry_price": 0.80,
+        "available_capital_usdt": 10000.0,
+        "price_series": [1.00, 0.70, 0.80],
+        "quote_reserve_usd": 50000.0,
+        "lp_protected_fraction": 1.0,
+        "sellability_status": "SELLABILITY_OK",
+        "hard_block": False,
+        "sellability_data": _sellability(),
+        "exit_evidence": _exit_evidence(),
+        "trade_type": "NORMAL",
+    }
+
+    stale = build_trade_plan(
+        **common,
+        market_context={
+            "runtime_intelligence": {},
+        },
+    )
+
+    assert (
+        stale["statistics"]["edge_horizon"]["source"]
+        == "FULL_OBSERVED_SERIES"
+    )
+    assert (
+        "KNOWN_COMPONENT_EDGE_NOT_POSITIVE"
+        in stale["blockers"]
+    )
+
+    hot = build_trade_plan(
+        **common,
+        market_context={
+            "runtime_intelligence": {},
+            "opportunity": {
+                "state": "HOT",
+                "reason": "ACTIVE_RECOVERY_BREAKOUT_READY",
+                "latest_log_return": 0.13353139262452257,
+                "trailing_positive_log_move": 0.13353139262452257,
+            },
+        },
+    )
+
+    assert (
+        hot["statistics"]["edge_horizon"]["source"]
+        == "CONFIRMED_ACTIVE_OPPORTUNITY"
+    )
+    assert (
+        hot["statistics"]["edge_horizon"]["known_net_log_edge"]
+        > 0
+    )
+    assert (
+        "KNOWN_COMPONENT_EDGE_NOT_POSITIVE"
+        not in hot["blockers"]
+    )
+    assert hot["paper_eligible"] is True
+    assert hot["capital"]["entry_amount_usdt"] > 0
+    assert hot["live_eligible"] is False
+    assert hot["wallet_authority"] is False
+    assert hot["execution_authority"] is False
+
+
+def test_normal_watch_opportunity_cannot_override_full_horizon_edge():
+    plan = build_trade_plan(
+        entry_price=0.80,
+        available_capital_usdt=10000.0,
+        price_series=[1.00, 0.70, 0.80],
+        quote_reserve_usd=50000.0,
+        lp_protected_fraction=1.0,
+        sellability_status="SELLABILITY_OK",
+        hard_block=False,
+        sellability_data=_sellability(),
+        exit_evidence=_exit_evidence(),
+        market_context={
+            "runtime_intelligence": {},
+            "opportunity": {
+                "state": "WATCH",
+                "latest_log_return": 0.13353139262452257,
+                "trailing_positive_log_move": 0.13353139262452257,
+            },
+        },
+        trade_type="NORMAL",
+    )
+
+    assert (
+        plan["statistics"]["edge_horizon"]["source"]
+        == "FULL_OBSERVED_SERIES"
+    )
+    assert (
+        "KNOWN_COMPONENT_EDGE_NOT_POSITIVE"
+        in plan["blockers"]
+    )

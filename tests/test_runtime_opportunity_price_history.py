@@ -65,9 +65,9 @@ def test_pair_runtime_history_seeds_once_then_appends_latest_cycle_price():
         [1.0, 0.9, 1.2],
     )
 
-    assert first == [1.0, 0.9, 1.0]
-    assert second == [1.0, 0.9, 1.0, 1.1]
-    assert third == [1.0, 0.9, 1.0, 1.1, 1.2]
+    assert first == [1.0]
+    assert second == [1.0, 1.1]
+    assert third == [1.0, 1.1, 1.2]
 
 
 def test_same_block_is_not_double_counted_but_next_block_is_observed():
@@ -92,9 +92,9 @@ def test_same_block_is_not_double_counted_but_next_block_is_observed():
         observation_block=101,
     )
 
-    assert first == [1.0, 0.9, 1.0]
+    assert first == [1.0]
     assert duplicate == first
-    assert next_block == [1.0, 0.9, 1.0, 1.1]
+    assert next_block == [1.0, 1.1]
 
 
 def test_runtime_pair_history_overrides_stale_block_momentum_for_opportunity():

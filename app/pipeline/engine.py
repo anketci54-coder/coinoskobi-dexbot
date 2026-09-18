@@ -329,6 +329,7 @@ def _runtime_math_evidence(
     pool,
     price,
     upstream_price_series,
+    price_series_source,
     exit_evidence,
     lp_evidence,
     market_context,
@@ -355,9 +356,18 @@ def _runtime_math_evidence(
     # Never join token-cache observations and pair-specific
     # onchain observations into the same return history.
     # A source transition must start/resume its own series.
+    declared_source = str(
+        price_series_source or ""
+    ).strip().upper()
+
     source_key = (
-        "PAIR_ONCHAIN"
+        declared_source
         if upstream_observations
+        and declared_source
+        in {
+            "PAIR_RUNTIME_ONCHAIN",
+            "PAIR_BLOCK_HISTORY",
+        }
         else "TOKEN_CACHE"
     )
 
@@ -1972,12 +1982,32 @@ class PipelineEngine:
                         or {}
                     )
 
-                    price_series = list(
+                    runtime_price_series = list(
+                        exit_evidence.get(
+                            "runtime_spot_price_series_usd"
+                        )
+                        or []
+                    )
+
+                    block_price_series = list(
                         exit_evidence.get(
                             "spot_price_series_usd"
                         )
                         or []
                     )
+
+                    if runtime_price_series:
+                        price_series = runtime_price_series
+                        plan_price_series_source = (
+                            "PAIR_RUNTIME_ONCHAIN"
+                        )
+                    else:
+                        price_series = block_price_series
+                        plan_price_series_source = (
+                            "PAIR_BLOCK_HISTORY"
+                            if block_price_series
+                            else "TOKEN_CACHE"
+                        )
 
                     # Never mix token-only cache pricing into a
                     # pair-specific onchain price series.
@@ -2000,6 +2030,9 @@ class PipelineEngine:
                             price=price,
                             upstream_price_series=(
                                 price_series
+                            ),
+                            price_series_source=(
+                                plan_price_series_source
                             ),
                             exit_evidence=(
                                 exit_evidence
@@ -2252,6 +2285,16 @@ class PipelineEngine:
 
                                 "runtime_intelligence": (
                                     intelligence_context
+                                ),
+
+                                "opportunity": (
+                                    unified_score.get(
+                                        "opportunity"
+                                    )
+                                ),
+
+                                "plan_price_series_source": (
+                                    plan_price_series_source
                                 ),
                             },
 

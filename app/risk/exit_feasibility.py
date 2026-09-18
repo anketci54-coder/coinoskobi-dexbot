@@ -150,12 +150,13 @@ def _runtime_pair_price_series(
             None,
         )
 
-        # Seed from the real pair-specific block series once. Later
-        # observations contribute only the newest pair price from that
-        # runtime cycle. The same chain block is not counted twice, while
-        # equal prices on different blocks remain valid zero-return samples.
+        # Runtime history contains runtime-cycle observations only.
+        # The complete block-offset series remains separately available as
+        # spot_price_series_usd and must never be relabeled as runtime data.
+        # Seed the runtime cache with only the latest measured pair price,
+        # then append one latest pair price per later distinct runtime cycle.
         if not history:
-            history.extend(observations)
+            history.append(observations[-1])
         elif block_id is None or block_id != last_block:
             history.append(observations[-1])
 

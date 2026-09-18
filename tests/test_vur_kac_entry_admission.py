@@ -200,3 +200,316 @@ def test_explicit_vur_kac_trade_type_keeps_strict_gate():
     assert gate["enforced"] is True
     assert gate["ready"] is False
     assert "VUR_KAC_ENTRY_NOT_READY" in plan["blockers"]
+
+
+def test_normal_uses_confirmed_hot_active_edge_without_bypassing_admission():
+    common = {
+        "entry_price": 0.80,
+        "available_capital_usdt": 10000.0,
+        "price_series": [1.00, 0.70, 0.80],
+        "quote_reserve_usd": 50000.0,
+        "lp_protected_fraction": 1.0,
+        "sellability_status": "SELLABILITY_OK",
+        "hard_block": False,
+        "sellability_data": _sellability(),
+        "exit_evidence": _exit_evidence(),
+        "trade_type": "NORMAL",
+    }
+
+    stale = build_trade_plan(
+        **common,
+        market_context={
+            "runtime_intelligence": {},
+        },
+    )
+
+    assert (
+        stale["statistics"]["edge_horizon"]["source"]
+        == "FULL_OBSERVED_SERIES"
+    )
+    assert (
+        "KNOWN_COMPONENT_EDGE_NOT_POSITIVE"
+        in stale["blockers"]
+    )
+
+    hot = build_trade_plan(
+        **common,
+        market_context={
+            "runtime_intelligence": {},
+            "opportunity": {
+                "state": "HOT",
+                "reason": "ACTIVE_RECOVERY_BREAKOUT_READY",
+                "price_series_source": "PAIR_RUNTIME_ONCHAIN",
+                "latest_log_return": 0.13353139262452257,
+                "trailing_positive_log_move": 0.13353139262452257,
+            },
+            "plan_price_series_source": "PAIR_RUNTIME_ONCHAIN",
+        },
+    )
+
+    assert (
+        hot["statistics"]["edge_horizon"]["source"]
+        == "CONFIRMED_ACTIVE_OPPORTUNITY"
+    )
+    assert (
+        hot["statistics"]["edge_horizon"]["known_net_log_edge"]
+        > 0
+    )
+    assert (
+        "KNOWN_COMPONENT_EDGE_NOT_POSITIVE"
+        not in hot["blockers"]
+    )
+    assert hot["paper_eligible"] is True
+    assert hot["capital"]["entry_amount_usdt"] > 0
+    assert hot["live_eligible"] is False
+    assert hot["wallet_authority"] is False
+    assert hot["execution_authority"] is False
+
+
+def test_normal_watch_opportunity_cannot_override_full_horizon_edge():
+    plan = build_trade_plan(
+        entry_price=0.80,
+        available_capital_usdt=10000.0,
+        price_series=[1.00, 0.70, 0.80],
+        quote_reserve_usd=50000.0,
+        lp_protected_fraction=1.0,
+        sellability_status="SELLABILITY_OK",
+        hard_block=False,
+        sellability_data=_sellability(),
+        exit_evidence=_exit_evidence(),
+        market_context={
+            "runtime_intelligence": {},
+            "opportunity": {
+                "state": "WATCH",
+                "latest_log_return": 0.13353139262452257,
+                "trailing_positive_log_move": 0.13353139262452257,
+            },
+        },
+        trade_type="NORMAL",
+    )
+
+    assert (
+        plan["statistics"]["edge_horizon"]["source"]
+        == "FULL_OBSERVED_SERIES"
+    )
+    assert (
+        "KNOWN_COMPONENT_EDGE_NOT_POSITIVE"
+        in plan["blockers"]
+    )
+
+
+
+def test_soft_market_unknowns_stay_observable_without_vetoing_normal():
+    plan = build_trade_plan(
+        entry_price=1.05,
+        available_capital_usdt=10000.0,
+        price_series=[1.00, 1.02, 1.05],
+        quote_reserve_usd=100000.0,
+        lp_protected_fraction=1.0,
+        sellability_status="SELLABILITY_OK",
+        hard_block=False,
+        sellability_data=_sellability(),
+        exit_evidence=_exit_evidence(),
+        market_context={
+            "runtime_intelligence": {
+                "market_quality": {
+                    "market_evidence_ready": False,
+                    "participation_state": "UNKNOWN",
+                    "liquidity_state": "UNKNOWN",
+                    "suspicious_volume": None,
+                },
+            },
+        },
+        trade_type="NORMAL",
+    )
+
+    blockers = set(plan["blockers"])
+    unknowns = set(plan["unknowns"])
+
+    assert "MARKET_QUALITY_EVIDENCE_NOT_READY" not in blockers
+    assert "PARTICIPATION_EVIDENCE_UNKNOWN" not in blockers
+    assert "MARKET_QUALITY_LIQUIDITY_UNKNOWN" not in blockers
+
+    assert "MARKET_QUALITY_EVIDENCE_NOT_READY" in unknowns
+    assert "PARTICIPATION_EVIDENCE_UNKNOWN" in unknowns
+    assert "MARKET_QUALITY_LIQUIDITY_UNKNOWN" in unknowns
+
+    assert plan["paper_eligible"] is True
+    assert plan["live_eligible"] is False
+    assert plan["wallet_authority"] is False
+    assert plan["execution_authority"] is False
+
+
+def test_confirmed_adverse_market_quality_still_vetoes_normal():
+    plan = build_trade_plan(
+        entry_price=1.05,
+        available_capital_usdt=10000.0,
+        price_series=[1.00, 1.02, 1.05],
+        quote_reserve_usd=100000.0,
+        lp_protected_fraction=1.0,
+        sellability_status="SELLABILITY_OK",
+        hard_block=False,
+        sellability_data=_sellability(),
+        exit_evidence=_exit_evidence(),
+        market_context={
+            "runtime_intelligence": {
+                "market_quality": {
+                    "market_evidence_ready": True,
+                    "participation_state": "CONCENTRATED",
+                    "liquidity_state": "DETERIORATING_FAST",
+                    "suspicious_volume": True,
+                },
+            },
+        },
+        trade_type="NORMAL",
+    )
+
+    blockers = set(plan["blockers"])
+
+    assert "SUSPICIOUS_VOLUME" in blockers
+    assert "PARTICIPATION_CONCENTRATED" in blockers
+    assert (
+        "MARKET_QUALITY_LIQUIDITY_DETERIORATING_FAST"
+        in blockers
+    )
+    assert plan["paper_eligible"] is False
+
+
+def test_soft_unknowns_cannot_bypass_strict_vur_kac_flow_gate():
+    plan = build_trade_plan(
+        entry_price=1.05,
+        available_capital_usdt=10000.0,
+        price_series=[1.00, 1.02, 1.05],
+        quote_reserve_usd=100000.0,
+        lp_protected_fraction=1.0,
+        sellability_status="SELLABILITY_OK",
+        hard_block=False,
+        sellability_data=_sellability(),
+        exit_evidence=_exit_evidence(),
+        market_context={
+            "runtime_intelligence": {
+                "market_quality": {
+                    "market_evidence_ready": False,
+                    "participation_state": "UNKNOWN",
+                    "liquidity_state": "UNKNOWN",
+                    "suspicious_volume": None,
+                },
+            },
+        },
+        trade_type="VUR_KAC",
+    )
+
+    assert "VUR_KAC_ENTRY_NOT_READY" in plan["blockers"]
+    assert plan["paper_eligible"] is False
+
+
+
+def test_absent_market_quality_keeps_unknowns_and_empirical_gate():
+    plan = build_trade_plan(
+        entry_price=1.05,
+        available_capital_usdt=10000.0,
+        price_series=[1.00, 1.05],
+        quote_reserve_usd=100000.0,
+        lp_protected_fraction=1.0,
+        sellability_status="SELLABILITY_OK",
+        hard_block=False,
+        sellability_data=_sellability(),
+        exit_evidence=_exit_evidence(),
+        market_context={
+            "opportunity": {
+                "state": "HOT",
+                "latest_log_return": 0.04879016416943205,
+                "trailing_positive_log_move": 0.04879016416943205,
+            },
+        },
+        trade_type="NORMAL",
+    )
+
+    blockers = set(plan["blockers"])
+    unknowns = set(plan["unknowns"])
+
+    assert "EMPIRICAL_MOVEMENT_INSUFFICIENT" in blockers
+    assert "MARKET_QUALITY_EVIDENCE_NOT_READY" in unknowns
+    assert "PARTICIPATION_EVIDENCE_UNKNOWN" in unknowns
+    assert "MARKET_QUALITY_LIQUIDITY_UNKNOWN" in unknowns
+    assert plan["paper_eligible"] is False
+    assert plan["live_eligible"] is False
+    assert plan["wallet_authority"] is False
+    assert plan["execution_authority"] is False
+
+
+
+def test_partial_market_quality_reports_all_soft_unknowns():
+    plan = build_trade_plan(
+        entry_price=1.10,
+        available_capital_usdt=10000.0,
+        price_series=[1.00, 1.05, 1.10],
+        quote_reserve_usd=100000.0,
+        lp_protected_fraction=1.0,
+        sellability_status="SELLABILITY_OK",
+        hard_block=False,
+        sellability_data=_sellability(),
+        exit_evidence=_exit_evidence(),
+        market_context={
+            "opportunity": {
+                "state": "HOT",
+                "latest_log_return": 0.04652001563489291,
+                "trailing_positive_log_move": 0.09531017980432493,
+            },
+            "market_quality": {},
+        },
+        trade_type="NORMAL",
+    )
+
+    unknowns = set(plan["unknowns"])
+
+    assert "MARKET_QUALITY_EVIDENCE_NOT_READY" in unknowns
+    assert "PARTICIPATION_EVIDENCE_UNKNOWN" in unknowns
+    assert "MARKET_QUALITY_LIQUIDITY_UNKNOWN" in unknowns
+    assert plan["wallet_authority"] is False
+    blockers = set(plan["blockers"])
+
+    assert "MARKET_QUALITY_EVIDENCE_NOT_READY" not in blockers
+    assert "PARTICIPATION_EVIDENCE_UNKNOWN" not in blockers
+    assert "MARKET_QUALITY_LIQUIDITY_UNKNOWN" not in blockers
+    assert plan["paper_eligible"] is True
+    assert plan["execution_authority"] is False
+
+
+
+def test_normal_hot_edge_cannot_cross_price_series_provenance():
+    plan = build_trade_plan(
+        entry_price=0.80,
+        available_capital_usdt=10000.0,
+        price_series=[1.00, 0.70, 0.80],
+        quote_reserve_usd=50000.0,
+        lp_protected_fraction=1.0,
+        sellability_status="SELLABILITY_OK",
+        hard_block=False,
+        sellability_data=_sellability(),
+        exit_evidence=_exit_evidence(),
+        market_context={
+            "runtime_intelligence": {},
+            "opportunity": {
+                "state": "HOT",
+                "price_series_source": "PAIR_RUNTIME_ONCHAIN",
+                "latest_log_return": 0.13353139262452257,
+                "trailing_positive_log_move": 0.13353139262452257,
+            },
+            "plan_price_series_source": "PAIR_BLOCK_HISTORY",
+        },
+        trade_type="NORMAL",
+    )
+
+    assert (
+        plan["statistics"]["edge_horizon"]["source"]
+        == "FULL_OBSERVED_SERIES"
+    )
+    assert (
+        plan["statistics"]["edge_horizon"][
+            "opportunity_provenance_matches"
+        ]
+        is False
+    )
+    assert "KNOWN_COMPONENT_EDGE_NOT_POSITIVE" in plan["blockers"]
+    assert plan["paper_eligible"] is False

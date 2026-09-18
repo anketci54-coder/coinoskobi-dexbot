@@ -12,9 +12,9 @@ OTHER_PAIR = (
 )
 
 
-def _local(*, protected=0.0):
+def _local(*, protected=0.0, completed=True):
     return {
-        "completed": True,
+        "completed": completed,
         "lp_security": {
             "pair": PAIR,
             "state": (
@@ -27,7 +27,7 @@ def _local(*, protected=0.0):
             "lp_withdrawable_fraction": 1.0 - protected,
         },
         "exit_feasibility": {
-            "evidence_complete": True,
+            "evidence_complete": completed,
         },
         "lp_error": None,
         "exit_error": None,
@@ -276,3 +276,38 @@ def test_existing_onchain_protection_does_not_call_goplus(
         ["lp_protected_fraction"]
         == 1.0
     )
+
+
+def test_lp_lock_enrichment_does_not_wait_for_exit_history_completion(
+    monkeypatch,
+):
+    monkeypatch.setattr(
+        module,
+        "_analyze_goplus_once",
+        lambda *args, **kwargs: _secondary(),
+    )
+
+    primary = _primary()
+    primary["data"]["local_evidence"] = _local(
+        protected=0.0,
+        completed=False,
+    )
+
+    result = module._with_goplus_fallback(
+        ADDRESS,
+        primary,
+        pair=PAIR,
+    )
+
+    data = result["data"]
+    lp = data["local_evidence"]["lp_security"]
+
+    assert data["sellability_provider"] == "honeypot.is"
+    assert data["sellable"] is True
+    assert data["goplus_lp_protection_verified"] is True
+    assert lp["lp_protected_fraction"] == 0.75
+    assert (
+        lp["lp_protection_source"]
+        == "GOPLUS_PRIMARY_POOL_LOCKED_HOLDERS"
+    )
+    assert result["local_evidence_complete"] is False

@@ -1650,10 +1650,15 @@ def build_trade_plan(
     # NORMAL and VUR_KAC remain separate admission paths:
     # - NORMAL may use the currently observed positive continuation for edge.
     # - VUR_KAC may use it only after its dedicated price+flow gate is ready.
+    normalized_trade_type = str(
+        trade_type or ""
+    ).strip().upper()
+
     use_active_continuation = (
-        not vur_kac_entry.get("enforced")
+        normalized_trade_type == "NORMAL"
         or (
-            vur_kac_entry.get("ready")
+            vur_kac_entry.get("enforced")
+            and vur_kac_entry.get("ready")
             and vur_kac_entry.get("reason")
             == "VUR_KAC_ENTRY_SIGNAL_READY"
         )

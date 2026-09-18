@@ -434,3 +434,35 @@ def test_absent_market_quality_keeps_unknowns_and_empirical_gate():
     assert plan["live_eligible"] is False
     assert plan["wallet_authority"] is False
     assert plan["execution_authority"] is False
+
+
+
+def test_partial_market_quality_reports_all_soft_unknowns():
+    plan = build_trade_plan(
+        entry_price=1.10,
+        available_capital_usdt=10000.0,
+        price_series=[1.00, 1.05, 1.10],
+        quote_reserve_usd=100000.0,
+        lp_protected_fraction=1.0,
+        sellability_status="SELLABILITY_OK",
+        hard_block=False,
+        sellability_data=_sellability(),
+        exit_evidence=_exit_evidence(),
+        market_context={
+            "opportunity": {
+                "state": "HOT",
+                "latest_log_return": 0.04652001563489291,
+                "trailing_positive_log_move": 0.09531017980432493,
+            },
+            "market_quality": {},
+        },
+        trade_type="NORMAL",
+    )
+
+    unknowns = set(plan["unknowns"])
+
+    assert "MARKET_QUALITY_EVIDENCE_NOT_READY" in unknowns
+    assert "PARTICIPATION_EVIDENCE_UNKNOWN" in unknowns
+    assert "MARKET_QUALITY_LIQUIDITY_UNKNOWN" in unknowns
+    assert plan["wallet_authority"] is False
+    assert plan["execution_authority"] is False

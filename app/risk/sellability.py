@@ -722,19 +722,35 @@ def _with_goplus_fallback(address, primary, *, pair=None):
 
     local = primary_data.get("local_evidence")
 
-    if not (
-        isinstance(local, dict)
-        and local.get("completed") is True
-    ):
+    if not isinstance(local, dict):
         return primary
+
+    local_completed = (
+        local.get("completed")
+        is True
+    )
+
+    lp_local = local.get(
+        "lp_security"
+    )
 
     current_lp_fraction = _local_lp_protected_fraction(local)
     needs_lp_evidence = (
-        current_lp_fraction is None
-        or current_lp_fraction <= 0
+        isinstance(
+            lp_local,
+            dict,
+        )
+        and (
+            current_lp_fraction is None
+            or current_lp_fraction <= 0
+        )
     )
+
+    # Preserve the existing sellability fallback boundary: a secondary
+    # sellability verdict still requires complete local exit evidence.
     needs_sellability = (
-        primary_data.get("sellable") is None
+        local_completed
+        and primary_data.get("sellable") is None
     )
 
     if not needs_lp_evidence and not needs_sellability:
@@ -767,10 +783,14 @@ def _with_goplus_fallback(address, primary, *, pair=None):
     # only when the primary provider remained UNKNOWN. Existing
     # Honeypot.is SELLABILITY_OK remains the canonical sellability
     # verdict while GoPlus can independently enrich LP evidence.
-    if needs_sellability and secondary_data.get("sellable") in {
-        True,
-        False,
-    }:
+    if (
+        needs_sellability
+        and local_completed
+        and secondary_data.get("sellable") in {
+            True,
+            False,
+        }
+    ):
         enriched_local = data.get("local_evidence")
         merged = dict(secondary)
         merged_data = dict(secondary_data)

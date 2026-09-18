@@ -1304,7 +1304,7 @@ def vur_kac_entry_admission_state(
 
 
 
-def _runtime_admission_evidence_blockers(
+def _runtime_admission_evidence_state(
     *,
     stats,
     market_context,
@@ -1348,9 +1348,13 @@ def _runtime_admission_evidence_blockers(
         quality,
         dict,
     ):
-        return []
+        return {
+            "blockers": [],
+            "unknowns": [],
+        }
 
     blockers = []
+    unknowns = []
 
     informative_count = (
         stats.get(
@@ -1370,18 +1374,24 @@ def _runtime_admission_evidence_blockers(
             if value != 0.0
         )
 
+    # A usable empirical movement history is required to derive
+    # risk distance and position economics. This remains a blocker.
     if informative_count < 2:
         blockers.append(
             "EMPIRICAL_MOVEMENT_INSUFFICIENT"
         )
 
+    # Missing market/participant intelligence is uncertainty, not
+    # affirmative danger. Preserve it in plan unknowns so it remains
+    # observable, but do not let an unavailable soft readmodel veto an
+    # otherwise safe PAPER plan. Confirmed adverse facts below still block.
     if (
         quality.get(
             "market_evidence_ready"
         )
         is False
     ):
-        blockers.append(
+        unknowns.append(
             "MARKET_QUALITY_EVIDENCE_NOT_READY"
         )
 
@@ -1403,7 +1413,7 @@ def _runtime_admission_evidence_blockers(
     ).upper()
 
     if participation == "UNKNOWN":
-        blockers.append(
+        unknowns.append(
             "PARTICIPATION_EVIDENCE_UNKNOWN"
         )
 
@@ -1419,7 +1429,12 @@ def _runtime_admission_evidence_blockers(
         or "UNKNOWN"
     ).upper()
 
-    if liquidity == "NO_LIQUIDITY":
+    if liquidity == "UNKNOWN":
+        unknowns.append(
+            "MARKET_QUALITY_LIQUIDITY_UNKNOWN"
+        )
+
+    elif liquidity == "NO_LIQUIDITY":
         blockers.append(
             "MARKET_QUALITY_NO_LIQUIDITY"
         )
@@ -1432,11 +1447,18 @@ def _runtime_admission_evidence_blockers(
             "MARKET_QUALITY_LIQUIDITY_DETERIORATING_FAST"
         )
 
-    return list(
-        dict.fromkeys(
-            blockers
-        )
-    )
+    return {
+        "blockers": list(
+            dict.fromkeys(
+                blockers
+            )
+        ),
+        "unknowns": list(
+            dict.fromkeys(
+                unknowns
+            )
+        ),
+    }
 
 
 def build_trade_plan(
@@ -1535,11 +1557,18 @@ def build_trade_plan(
 
     blockers = []
 
-    blockers.extend(
-        _runtime_admission_evidence_blockers(
+    runtime_admission = (
+        _runtime_admission_evidence_state(
             stats=stats,
             market_context=market_context,
         )
+    )
+
+    blockers.extend(
+        runtime_admission.get(
+            "blockers"
+        )
+        or []
     )
 
     vur_kac_entry = (
@@ -1571,6 +1600,13 @@ def build_trade_plan(
         costs[
             "unknown_components"
         ]
+    )
+
+    unknowns.extend(
+        runtime_admission.get(
+            "unknowns"
+        )
+        or []
     )
 
     if hard_block:
@@ -1793,6 +1829,12 @@ def build_trade_plan(
         "friction_log": friction_log,
         "known_net_log_edge": (
             known_net_log_edge
+        ),
+        "confirmed_active_opportunity_edge": (
+            active_opportunity_edge
+            if edge_horizon_source
+            == "CONFIRMED_ACTIVE_OPPORTUNITY"
+            else None
         ),
         "runtime_vur_kac": bool(
             vur_kac_entry.get("enforced")

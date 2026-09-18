@@ -1061,10 +1061,10 @@ def calculate_paper_position_size(
             calibration_reason
         )
 
-    lp_withdrawal_protection_verified = (
-        liquidity_capacity_source
-        == "VERIFIED_LP_PROTECTION"
-    )
+    if liquidity_capacity_source == "EMPIRICAL_RESERVE_FLOOR":
+        blockers.append(
+            "LP_WITHDRAWAL_PROTECTION_UNVERIFIED"
+        )
 
     if raw_amount <= 0:
         blockers.append("PLAN_AMOUNT_ZERO")
@@ -1387,16 +1387,6 @@ def calculate_paper_position_size(
         "cost_samples": calibration.get("cost_samples"),
         "effective_edge_fraction": effective_edge,
         "cost_complete": cost_complete,
-        "liquidity_capacity_source": (
-            liquidity_capacity_source
-        ),
-        "lp_withdrawal_protection_verified": (
-            lp_withdrawal_protection_verified
-        ),
-        "paper_only": True,
-        "live_authority": False,
-        "wallet_authority": False,
-        "execution_authority": False,
         "kelly_diagnostic_only": True,
         "canonical_token_amount": bound_plan["token_amount"],
         "canonical_initial_sl": bound_plan["initial_sl"],

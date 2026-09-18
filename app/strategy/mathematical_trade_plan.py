@@ -1344,15 +1344,6 @@ def _runtime_admission_evidence_state(
             else None
         )
 
-    if not isinstance(
-        quality,
-        dict,
-    ):
-        return {
-            "blockers": [],
-            "unknowns": [],
-        }
-
     blockers = []
     unknowns = []
 
@@ -1375,11 +1366,35 @@ def _runtime_admission_evidence_state(
         )
 
     # A usable empirical movement history is required to derive
-    # risk distance and position economics. This remains a blocker.
+    # risk distance and position economics. This remains a blocker
+    # even when market-quality intelligence itself is unavailable.
     if informative_count < 2:
         blockers.append(
             "EMPIRICAL_MOVEMENT_INSUFFICIENT"
         )
+
+    if not isinstance(
+        quality,
+        dict,
+    ):
+        unknowns.extend([
+            "MARKET_QUALITY_EVIDENCE_NOT_READY",
+            "PARTICIPATION_EVIDENCE_UNKNOWN",
+            "MARKET_QUALITY_LIQUIDITY_UNKNOWN",
+        ])
+
+        return {
+            "blockers": list(
+                dict.fromkeys(
+                    blockers
+                )
+            ),
+            "unknowns": list(
+                dict.fromkeys(
+                    unknowns
+                )
+            ),
+        }
 
     # Missing market/participant intelligence is uncertainty, not
     # affirmative danger. Preserve it in plan unknowns so it remains

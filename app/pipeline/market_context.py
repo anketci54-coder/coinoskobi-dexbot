@@ -11,6 +11,25 @@ from app.pipeline.news_market_context import (
 )
 
 
+def _positive_number(value):
+    """Return a non-negative float or None when the value is unusable."""
+    if value is None:
+        return None
+
+    try:
+        value = float(value)
+    except (
+        TypeError,
+        ValueError,
+    ):
+        return None
+
+    if value < 0:
+        return None
+
+    return value
+
+
 def _origin_participation(runtime_feed, pair):
     """
     Build conservative participant evidence from resolved transaction.from.
@@ -303,10 +322,9 @@ def build_market_context(
             DEFAULT_NEWS_EVIDENCE_STORE,
         )
 
-    snapshot = _live_candidate_snapshot(
-        runtime_feed,
+    snapshot = runtime_feed.snapshot(
         row.get("pool"),
-        row,
+        candidate=row,
     )
 
     context[

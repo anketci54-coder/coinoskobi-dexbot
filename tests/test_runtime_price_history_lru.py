@@ -59,12 +59,14 @@ def test_runtime_math_history_grows_across_revisit():
             **common,
             price=1.0,
             upstream_price_series=[1.0, 1.0, 1.0, 1.0],
+            price_series_source="PAIR_RUNTIME_ONCHAIN",
         )
 
         second = engine_module._runtime_math_evidence(
             **common,
             price=1.1,
             upstream_price_series=[1.1, 1.1, 1.1, 1.1],
+            price_series_source="PAIR_RUNTIME_ONCHAIN",
         )
 
         assert first["price_series"] == [

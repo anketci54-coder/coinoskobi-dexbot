@@ -1404,7 +1404,7 @@ def _runtime_admission_evidence_state(
         quality.get(
             "market_evidence_ready"
         )
-        is False
+        is not True
     ):
         unknowns.append(
             "MARKET_QUALITY_EVIDENCE_NOT_READY"

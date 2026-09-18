@@ -1643,12 +1643,23 @@ def build_trade_plan(
 
     trailing_positive_returns = []
 
-    if (
-        vur_kac_entry.get("enforced")
-        and vur_kac_entry.get("ready")
-        and vur_kac_entry.get("reason")
-        == "VUR_KAC_ENTRY_SIGNAL_READY"
-    ):
+    # Entry economics must describe the active move, not be permanently
+    # cancelled by stale drawdown that happened before the current
+    # continuation. Risk statistics still use the complete observed series.
+    #
+    # NORMAL and VUR_KAC remain separate admission paths:
+    # - NORMAL may use the currently observed positive continuation for edge.
+    # - VUR_KAC may use it only after its dedicated price+flow gate is ready.
+    use_active_continuation = (
+        not vur_kac_entry.get("enforced")
+        or (
+            vur_kac_entry.get("ready")
+            and vur_kac_entry.get("reason")
+            == "VUR_KAC_ENTRY_SIGNAL_READY"
+        )
+    )
+
+    if use_active_continuation:
         for value in reversed(
             stats.get("log_returns")
             or ()
@@ -1671,7 +1682,7 @@ def build_trade_plan(
             )
 
             edge_horizon_source = (
-                "TRAILING_POSITIVE_CONTINUATION"
+                "ACTIVE_POSITIVE_CONTINUATION"
             )
 
     buy_retention = (

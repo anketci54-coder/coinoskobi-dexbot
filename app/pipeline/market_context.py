@@ -338,6 +338,9 @@ def build_market_context(
         "runtime_market_flow"
     ] = snapshot
 
+    if snapshot is None:
+        return context
+
     market = dict(
         (
             snapshot.get(

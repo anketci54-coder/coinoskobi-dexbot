@@ -41,6 +41,8 @@ jobs:
           tests/test_origin_participation_binding.py
           tests/test_origin_participation_admission_integration.py
           tests/test_vur_kac_entry_admission.py
+          tests/test_mathematical_trade_plan.py
+          tests/test_lp_withdrawal_authority_guard.py
           tests/test_sellability_goplus_lp_evidence.py
           tests/test_catastrophic_gap_calibration.py
           tests/test_paper_outcome_integrity_exclusion.py

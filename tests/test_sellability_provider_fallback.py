@@ -124,6 +124,18 @@ def _install_sequence(
 ):
     calls = []
 
+    # These tests cover only the canonical Honeypot.is fallback order.
+    # Keep the independent GoPlus LP-enrichment path out of this unit scope.
+    monkeypatch.setattr(
+        module,
+        "_analyze_goplus_once",
+        lambda *args, **kwargs: _result(
+            success=False,
+            status=None,
+            sellable=None,
+        ),
+    )
+
     helper = getattr(
         module,
         "_request_once",

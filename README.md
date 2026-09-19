@@ -22,6 +22,23 @@ Temel ilke:
 
 Canonical faz sahipliği ve mimari sınırlar için `ROADMAP.md`, güncel operasyonel checkpoint için `PROJECT_STATE.md`, tarihsel doğrulama kanıtları için `TEST_RESULTS.md` kullanılır.
 
+## Canonical Maintenance Routing Protocol
+
+Bu protokol yeni sohbet, yeni AI/agent oturumu ve tüm maintenance çalışmaları için zorunludur:
+
+1. Önce `README.md` → `ROADMAP.md` → `PROJECT_STATE.md` → `TEST_RESULTS.md` okunur.
+2. Yeni iş önce mevcut **Phase 0–15** ana sahipliğine atanır.
+3. İlgili ana Phase altındaki mevcut düz-harf alt fazlar (`A/B/C/D...`) kontrol edilir.
+4. İş mevcut bir alt fazın kapsamındaysa yeni alt faz açılmaz; **mevcut alt faz güncellenir/değiştirilir**.
+5. İş mevcut alt fazların hiçbirine gerçekten sığmayan ayrı ve kalıcı bir sahiplik gerektiriyorsa yalnız aynı ana Phase altında **sıradaki kullanılmamış düz harf** açılabilir.
+6. İç içe numaralandırma (`14B1`, `12B2A` vb.), yeni Phase, ERA, architecture V2/V3 veya paralel roadmap oluşturulmaz.
+7. Yeni modül/script/service/provider/router eklemeden önce repository-wide mevcut implementation aranır; mümkünse mevcut canonical parça genişletilir veya değiştirilir. Paralel/duplicate mimari kurulmaz.
+8. Kullanılmayan, duplicate, superseded, debug/disposable veya artık referanslanmayan executable script/modül/config/test-helper dosyaları reference audit + test sonrasında kaldırılır. Tarihsel audit/evidence belgeleri kanıt olarak tutulabilir; dead executable code tutulmaz.
+9. Mimari iskelet, canonical data flow, authority sınırları, runtime/DB sahipliği ve fail-closed güvenlik davranışı korunur; bakım işi mimari mutasyon gerekçesi değildir.
+10. Kapanış sırası: targeted test → canonical smoke/E2E → gerekiyorsa full regression → post-audit → GitHub → VPS sync/runtime acceptance.
+
+Alt faz açmak normal bug-fix mekanizması değildir. Küçük düzeltme/refactor/test/provider ayarı/panel düzeltmesi mevcut sahiplik içinde maintenance olarak kalır. Ayrıntılı ve bağlayıcı sınıflandırma kuralı `ROADMAP.md` içindeki **MİMARİ ANAYASA** ve **ALT FAZ YÖNETİM PROTOKOLÜ** bölümlerindedir.
+
 ## Canonical Runtime
 
 - Main application: `main.py`
@@ -198,6 +215,9 @@ Bir PASS tamamlanmadan sonraki riskli adıma geçilmez.
 - network/DEX için pipeline kopyalanmaz
 - tarihsel commit/test adları yeni roadmap zinciri sayılmaz
 - maintenance işi yeni Phase açmak yerine mevcut Phase 0–15'e bağlanır
+- mevcut alt faz sahipliği varken aynı kapsam için yeni alt faz açılmaz
+- yeni executable dosya eklemeden önce existing implementation/reference audit yapılır
+- unused/duplicate/superseded executable script/modül/config/test-helper reference audit + test sonrası kaldırılır
 
 ## Repository Structure
 

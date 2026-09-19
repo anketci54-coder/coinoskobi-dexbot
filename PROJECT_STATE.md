@@ -215,6 +215,13 @@ Phase 13 bounded observation contract:
 
 Vezir/Groq operator support remains Phase 14 maintenance.
 
+Active maintenance tracker:
+- `PHASE14_VEZIR_MAINTENANCE_TRACKER.md`
+- status: ACTIVE / PLANNING
+- any new ChatGPT/Codex/AI session working on Vezir must read this tracker after the four canonical documents
+- current next safe step: Phase 14 history/subphase/dead-code inventory before assigning any new Phase 14 letter or starting implementation
+- this tracker is subordinate maintenance state, not a new roadmap/Phase/ERA/version tree
+
 Merged changes:
 - PR #79 — read-only Groq intent router + compact Vezir presentation
 - PR #80 — GPT-OSS empty-output fix

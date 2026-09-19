@@ -215,11 +215,12 @@ Phase 13 bounded observation contract:
 
 Vezir/Groq operator support remains Phase 14 maintenance.
 
-Active maintenance tracker:
-- `PHASE14_VEZIR_MAINTENANCE_TRACKER.md`
-- status: ACTIVE / PLANNING
-- any new ChatGPT/Codex/AI session working on Vezir must read this tracker after the four canonical documents
-- current next safe step: Phase 14 history/subphase/dead-code inventory before assigning any new Phase 14 letter or starting implementation
+Active cross-phase maintenance tracker:
+- `ACTIVE_MAINTENANCE_TRACKER.md`
+- status: ACTIVE
+- any new ChatGPT/Codex/AI session doing current Coinoskobi maintenance must read this tracker after the four canonical documents
+- scope includes current PAPER recovery closure, low-token/multi-model engineering workflow, NVIDIA/Codex benchmarking, Vezir evolution, security research/diagnosis, cleanup and validation
+- current next safe step: close/verify the current PAPER recovery work, then complete repository ownership/subphase/dead-code inventory before new AI/Vezir implementation
 - this tracker is subordinate maintenance state, not a new roadmap/Phase/ERA/version tree
 
 Merged changes:

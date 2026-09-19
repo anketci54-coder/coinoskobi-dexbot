@@ -139,13 +139,14 @@ def test_missing_quote_flow_does_not_veto_valid_continuation():
     assert result["opportunity"]["quote_flow_state"] == "UNKNOWN"
 
 
-def test_high_execution_exposure_stays_watch():
+def test_high_execution_exposure_is_diagnostic_not_veto():
     result = evaluate(
         prices=[1.0, 1.05, 1.12],
         mev_status="HIGH_EXPOSURE",
     )
-    assert result["opportunity_state"] == "WATCH"
-    assert result["opportunity_reason"] == "EXECUTION_EXPOSURE_HIGH"
+    assert result["opportunity_state"] == "HOT"
+    assert result["opportunity_reason"] == "ACTIVE_CONTINUATION_READY"
+    assert result["opportunity"]["mev_status"] == "HIGH_EXPOSURE"
 
 
 def test_confirmed_hard_block_rejects():

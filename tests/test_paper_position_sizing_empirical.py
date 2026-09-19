@@ -1006,9 +1006,7 @@ def test_known_modeled_cost_is_not_charged_twice_in_uncertainty(
     plan = {
         "entry": {"band_low": 90.0},
         "cost_model": {
-            "buy_retention_known": 0.99,
             "sell_retention_known": 0.99,
-            "buy_gas_usd": 0.0,
             "sell_gas_usd": 0.0,
         },
     }
@@ -1051,11 +1049,12 @@ def test_known_modeled_cost_is_not_charged_twice_in_uncertainty(
 
     result = _empirical_outcome_calibration(str(db_path))
 
-    # Observed execution cost is 2%. The plan already modeled 1.99%
-    # round-trip retention loss, so uncertainty is only the 0.01% residual.
+    # Gross PnL is already post-buy accounting, so its 2% gross-to-net
+    # spread contains sell-side deductions only. Subtract the modeled 1%
+    # sell retention cost and preserve the remaining 1% uncertainty.
     assert math.isclose(
         result["cost_uncertainty_fraction"],
-        0.0001,
+        0.01,
         abs_tol=1e-12,
     )
     assert result["cost_samples"] == 1

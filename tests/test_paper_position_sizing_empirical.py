@@ -976,3 +976,86 @@ def test_legacy_float_dust_does_not_poison_calibration(
     assert result["gap_samples"] == 1
     assert result["account_risk_samples"] == 1
     assert result["account_risk_budget_usdt"] == 20.0
+
+
+def test_known_modeled_cost_is_not_charged_twice_in_uncertainty(
+    tmp_path,
+):
+    import json
+    import sqlite3
+
+    db_path = tmp_path / "known_cost_residual.db"
+    db = sqlite3.connect(db_path)
+
+    db.execute(
+        """
+        CREATE TABLE paper_trades (
+            status TEXT,
+            entry_price REAL,
+            current_price REAL,
+            entry_amount_usdt REAL,
+            net_pnl REAL,
+            mathematical_plan_json TEXT,
+            math_state_json TEXT,
+            gross_pnl_usdt REAL,
+            net_pnl_usdt REAL
+        )
+        """
+    )
+
+    plan = {
+        "entry": {"band_low": 90.0},
+        "cost_model": {
+            "buy_retention_known": 0.99,
+            "sell_retention_known": 0.99,
+            "buy_gas_usd": 0.0,
+            "sell_gas_usd": 0.0,
+        },
+    }
+
+    db.execute(
+        """
+        INSERT INTO paper_trades (
+            status,
+            entry_price,
+            current_price,
+            entry_amount_usdt,
+            net_pnl,
+            mathematical_plan_json,
+            math_state_json,
+            gross_pnl_usdt,
+            net_pnl_usdt
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "CLOSED",
+            100.0,
+            80.0,
+            100.0,
+            -22.0,
+            json.dumps(plan),
+            json.dumps({}),
+            -20.0,
+            -22.0,
+        ),
+    )
+
+    _stamp_outcome_fingerprints(db)
+    db.commit()
+    db.close()
+
+    from app.risk.paper_position_sizing import (
+        _empirical_outcome_calibration,
+    )
+
+    result = _empirical_outcome_calibration(str(db_path))
+
+    # Observed execution cost is 2%. The plan already modeled 1.99%
+    # round-trip retention loss, so uncertainty is only the 0.01% residual.
+    assert math.isclose(
+        result["cost_uncertainty_fraction"],
+        0.0001,
+        abs_tol=1e-12,
+    )
+    assert result["cost_samples"] == 1

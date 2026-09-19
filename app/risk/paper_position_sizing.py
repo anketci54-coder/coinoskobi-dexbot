@@ -603,37 +603,35 @@ def _modeled_known_cost_fraction(row):
         else {}
     )
 
-    buy_retention = _number(
-        cost_model.get("buy_retention_known")
-    )
-    sell_retention = _number(
-        cost_model.get("sell_retention_known")
+    sell_retention = (
+        1.0
+        if "sell_retention_known" not in cost_model
+        else _number(
+            cost_model.get("sell_retention_known")
+        )
     )
 
     if (
-        buy_retention is None
-        or sell_retention is None
-        or buy_retention <= 0
+        sell_retention is None
         or sell_retention <= 0
-        or buy_retention > 1
         or sell_retention > 1
     ):
         return 0.0
 
+    # gross_pnl_usdt is already based on the post-buy token amount.
+    # Therefore gross-to-net observed cost contains only exit-side
+    # deductions; subtracting buy-side friction here would understate
+    # empirical execution-cost uncertainty.
     retention_cost = max(
         0.0,
-        1.0 - buy_retention * sell_retention,
+        1.0 - sell_retention,
     )
 
-    buy_gas = max(
-        0.0,
-        _number(cost_model.get("buy_gas_usd")) or 0.0,
-    )
     sell_gas = max(
         0.0,
         _number(cost_model.get("sell_gas_usd")) or 0.0,
     )
-    gas_cost = (buy_gas + sell_gas) / amount
+    gas_cost = sell_gas / amount
 
     value = retention_cost + gas_cost
     return value if math.isfinite(value) else None

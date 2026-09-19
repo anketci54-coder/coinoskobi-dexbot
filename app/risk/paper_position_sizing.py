@@ -622,9 +622,26 @@ def _modeled_known_cost_fraction(row):
     # Therefore gross-to-net observed cost contains only exit-side
     # deductions; subtracting buy-side friction here would understate
     # empirical execution-cost uncertainty.
-    retention_cost = max(
-        0.0,
-        1.0 - sell_retention,
+    gross_pnl = _number(row["gross_pnl_usdt"])
+    gross_exit_proceeds = (
+        amount + gross_pnl
+        if gross_pnl is not None
+        else None
+    )
+    if (
+        gross_exit_proceeds is None
+        or not math.isfinite(gross_exit_proceeds)
+        or gross_exit_proceeds < 0
+    ):
+        return 0.0
+
+    retention_cost = (
+        max(
+            0.0,
+            1.0 - sell_retention,
+        )
+        * gross_exit_proceeds
+        / amount
     )
 
     sell_gas = max(

@@ -26,6 +26,10 @@ Repository, VPS working tree, runtime services and runtime databases together fo
 - Phase 0–15 are CLOSED; Phase 15 is the final roadmap phase.
 - No Phase 16, ERA, architecture V2/V3, OCR/R-number, post-roadmap or parallel roadmap chain.
 - Maintenance is assigned to an existing Phase 0–15 owner.
+- Within that owner, reuse/update the matching existing flat-letter subphase first; only work that does not fit any existing subphase and needs distinct durable ownership may take the next unused flat letter under the same Phase.
+- Nested subphase numbering, duplicate architecture and parallel runtime/provider/router paths are forbidden.
+- Unused/duplicate/superseded executable scripts, modules, configs and test helpers are removed after reference audit and tests; historical audit/evidence documents may remain as evidence.
+- Canonical maintenance classification is governed by `README.md` and `ROADMAP.md`; new sessions/agents must read them before planning or applying work.
 - No side/test panel architecture and no fake runtime/panel data.
 - Missing evidence remains `UNKNOWN`.
 - AI trade authority = 0.

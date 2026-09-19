@@ -27,7 +27,7 @@ Canonical faz sahipliği ve mimari sınırlar için `ROADMAP.md`, güncel operas
 Bu protokol yeni sohbet, yeni AI/agent oturumu ve tüm maintenance çalışmaları için zorunludur:
 
 1. Önce `README.md` → `ROADMAP.md` → `PROJECT_STATE.md` → `TEST_RESULTS.md` okunur.
-2. `PROJECT_STATE.md` aktif bir maintenance tracker işaret ediyorsa, planlama/uygulamadan önce o tracker da okunur. Güncel aktif tracker: `ACTIVE_MAINTENANCE_TRACKER.md`.
+2. `PROJECT_STATE.md` aktif bir maintenance tracker işaret ediyorsa, planlama/uygulamadan önce o tracker da okunur. Güncel aktif tracker: `planlı yapılacaklar.md`.
 3. Yeni iş önce mevcut **Phase 0–15** ana sahipliğine atanır.
 4. İlgili ana Phase altındaki mevcut düz-harf alt fazlar (`A/B/C/D...`) kontrol edilir.
 5. İş mevcut bir alt fazın kapsamındaysa yeni alt faz açılmaz; **mevcut alt faz güncellenir/değiştirilir**.

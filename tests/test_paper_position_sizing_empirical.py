@@ -1049,12 +1049,12 @@ def test_known_modeled_cost_is_not_charged_twice_in_uncertainty(
 
     result = _empirical_outcome_calibration(str(db_path))
 
-    # Gross PnL is already post-buy accounting, so its 2% gross-to-net
-    # spread contains sell-side deductions only. Subtract the modeled 1%
-    # sell retention cost and preserve the remaining 1% uncertainty.
+    # Gross exit proceeds are $80, so 1% modeled sell retention costs
+    # $0.80, not $1.00 of entry notional. The observed $2.00 spread
+    # therefore leaves $1.20 / $100 = 1.2% residual uncertainty.
     assert math.isclose(
         result["cost_uncertainty_fraction"],
-        0.01,
+        0.012,
         abs_tol=1e-12,
     )
     assert result["cost_samples"] == 1

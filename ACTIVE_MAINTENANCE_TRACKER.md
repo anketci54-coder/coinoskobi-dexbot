@@ -182,14 +182,58 @@ Ownership: development/orchestration support mapped into existing Phase ownershi
 
 Goal: avoid dependence on one premium model and continue work when one quota is exhausted.
 
-Candidate tools/providers to benchmark, not automatically install:
+## Research baseline that must not be lost
 
-- existing Codex CLI;
-- NVIDIA hosted/NIM coding models;
-- existing Groq path where appropriate;
-- Aider-style low-context coding workflow;
-- GitHub/Copilot/CodeRabbit;
-- other approved reviewers only when they add measurable value.
+The previously researched GitHub/NVIDIA options are part of this active work and must be evaluated, not forgotten:
+
+- **Codex CLI ↔ NVIDIA NIM direct backend**: priority experiment. Preserve the current Codex CLI experience while testing NVIDIA as a second inference backend/profile. Do not break the current OpenAI Codex configuration.
+- **Aider**: priority low-token coding benchmark because repo-map/context budgeting can reduce full-repo context use.
+- **LiteLLM**: candidate shared gateway/router for provider budgets, fallback and cache. Do not install by default; adopt only if benchmarked provider complexity proves a shared router is necessary.
+- **OpenCode**: alternative provider-independent terminal harness. Do not run unrestricted as root; require sandbox/policy isolation if adopted.
+- **Continue CLI**: candidate for headless/CI/read-only automation.
+- **Plandex**: candidate for very large multi-file planning/diff work.
+- **smolagents**: lightweight orchestration candidate if existing code cannot satisfy Harekât Subayı coordination cleanly.
+- **Cline CLI**: alternative terminal/MCP coding agent candidate.
+- **Roo Code**: archived historical option; do not adopt as a new dependency unless its status materially changes and is re-audited.
+
+NVIDIA technologies to evaluate:
+
+- **NVIDIA NIM** for OpenAI-compatible inference / Responses-style tool use.
+- **Laguna XS 2.1** as an initial coding-agent benchmark candidate.
+- **DeepSeek V4 Pro / Nemotron family** as alternative stronger/fallback NVIDIA-hosted candidates.
+- **NemoClaw / OpenShell** as sandbox/policy isolation candidates for agents that can edit files or run shell commands.
+- **NeMo Guardrails** for tool-call validation, injection resistance and action-policy enforcement where it adds value beyond existing controls.
+- **NVIDIA GenerativeAIExamples / Data Flywheel** for incident→evidence→fix→test→runtime-result learning workflow patterns.
+- **NeMo Curator** for future engineering-dataset deduplication/quality filtering.
+- **NVIDIA RAG Blueprint / Agentic RAG** only for bounded historical/canonical retrieval where ordinary local retrieval is insufficient.
+- **NeMo PEFT / QLoRA** only after a sufficiently large clean Coinoskobi engineering dataset exists.
+- **Knowledge Distillation** only as a later cost-reduction path after strong teacher-generated/verified examples exist.
+
+The purpose of this list is evaluation and selective reuse. It is not permission to install every project.
+
+## Preferred task-routing ladder
+
+The default execution order should be:
+
+```text
+0. NO LLM
+   git / rg / SQLite aggregate / pytest result / journal parser / repo map
+        ↓
+1. CHEAP/FREE MODEL
+   triage / file selection / log classification / test summary
+        ↓
+2. MID-TIER MODEL
+   bounded code change / ordinary root cause / unit test
+        ↓
+3. STRONG MODEL
+   difficult multi-file bug / architecture-sensitive issue / security analysis
+        ↓
+4. PREMIUM MODEL
+   only unresolved critical problems
+        ↓
+5. VERIFIER
+   sees task + diff + tests + evidence, not the whole repository again
+```
 
 Rules:
 
@@ -198,31 +242,42 @@ Rules:
 - cheap/free models handle simple work;
 - stronger/premium models are escalation;
 - model choice must be based on measured Coinoskobi results;
-- no new router middleware merely because it exists.
+- no new router middleware merely because it exists;
+- avoid provider lock-in;
+- do not expose private keys, seeds or secrets to model context;
+- benchmark before adoption;
+- any adopted tool must fit existing Phase/subphase ownership and canonical authority boundaries.
 
 Tasks:
 
 - [ ] Build a benchmark set from solved real Coinoskobi incidents.
-- [ ] Include examples such as paper manager failure, price freshness, neutral flow, reserve collapse, timestamp integrity, sizing and Vezir intent/context.
+- [ ] Include paper manager failure, price freshness, neutral flow, reserve collapse, timestamp integrity, sizing, Vezir intent/context and other representative cases.
 - [ ] Define scoring: correct file, root cause, patch quality, tests, latency, input/output tokens, cost.
+- [ ] Create a separate NVIDIA NIM/Codex test profile without changing the current default Codex profile.
 - [ ] Benchmark NVIDIA read-only first.
-- [ ] Test a separate NVIDIA/Codex-compatible profile without breaking current Codex configuration.
-- [ ] Benchmark low-context/repo-map coding workflow.
-- [ ] Compare against Codex on the same tasks.
+- [ ] Benchmark Laguna XS 2.1 first, then compare other NVIDIA candidates only if needed/available.
+- [ ] Benchmark Aider/repo-map workflow against the same tasks.
+- [ ] Evaluate OpenCode only inside an appropriate isolation boundary.
+- [ ] Evaluate Continue CLI/Plandex/Cline/smolagents only if a concrete gap remains after Codex+NVIDIA+Aider testing.
+- [ ] Compare all tested options against Codex on the same tasks.
 - [ ] Define escalation: local → cheap/free → stronger → premium.
 - [ ] Require deterministic tests before accepting any model-produced patch.
-- [ ] Define model/provider timeout/failure fallback.
+- [ ] Define model/provider timeout/quota/failure fallback.
 - [ ] Measure token/cost per task.
 - [ ] Add caching only where correctness/freshness permits.
 - [ ] Decide only after benchmark whether a shared provider/router abstraction is actually necessary.
-- [ ] If routing is necessary, extend/reuse an existing canonical abstraction when possible.
-- [ ] Do not add LiteLLM or any equivalent until measured need is proven.
+- [ ] If shared routing is necessary, compare extending existing code vs LiteLLM before adding a dependency.
+- [ ] Evaluate sandbox/policy need before any agent gets file-write/shell capability.
+- [ ] Evaluate NemoClaw/OpenShell/Guardrails against existing permission boundaries rather than layering them blindly.
+- [ ] Record rejected tools and why, so later sessions do not repeat the same evaluation.
 
 Definition of done:
 
 - premium quota exhaustion no longer necessarily stops read/analyze/test work;
 - routing/tool choice is evidence-based;
-- production runtime remains minimal.
+- production runtime remains minimal;
+- the selected toolchain demonstrably lowers token/cost or improves correctness on Coinoskobi tasks;
+- unused/rejected experimental tooling is removed.
 
 ---
 
@@ -541,6 +596,37 @@ Always denied unless explicitly changed by canonical governance:
 - live self-enable;
 - bypassing hard safety/Risk Gate.
 
+## Target permission model to evaluate
+
+```text
+ALLOW / AUTONOMOUS CANDIDATES
+git/read-only inspection
+pytest
+SQLite read / bounded queries
+journalctl / health inspection
+external research
+report generation
+
+REQUIRE APPROVAL
+source/config edit
+persistent DB mutation
+service restart
+git commit
+git push
+deployment
+
+DENY BY DEFAULT
+private key / seed access
+wallet signing
+live order creation
+live self-enable
+hard-safety / Risk Gate bypass
+destructive unrestricted shell actions
+unapproved arbitrary outbound actions
+```
+
+This is a capability-policy target, not an instruction to grant new permissions.
+
 Tasks:
 
 - [ ] Encode capability/permission matrix.
@@ -559,7 +645,27 @@ Definition of done:
 
 Ownership: existing Phase 11/13 for learning semantics; Phase 14 only consumes/operator-presents it. Exact subphase mapping after inventory.
 
-Goal: prepare high-quality data before considering LoRA/QLoRA/distillation.
+Goal: build a verified engineering data flywheel first; consider model training only after retrieval/tooling/routing are already effective.
+
+## Data flywheel target
+
+```text
+INCIDENT / TASK
+      ↓
+BOUNDED EVIDENCE
+      ↓
+ROOT CAUSE
+      ↓
+PATCH / RECOMMENDATION
+      ↓
+TEST PASS/FAIL
+      ↓
+RUNTIME / DB RESULT
+      ↓
+OPERATOR ACCEPT/REJECT
+      ↓
+CLEAN VERIFIED EXAMPLE
+```
 
 Collect structured examples:
 
@@ -570,7 +676,17 @@ Collect structured examples:
 - patch;
 - tests;
 - runtime result;
-- operator acceptance.
+- operator acceptance;
+- model/provider used;
+- token/cost/latency where available.
+
+NVIDIA research items retained for later evaluation:
+
+- **GenerativeAIExamples / Data Flywheel** patterns for tool-calling, evaluation, RAG, guardrails and human-in-the-loop workflows.
+- **NeMo Curator** for exact/fuzzy/semantic deduplication, quality filtering, decontamination and dataset preparation.
+- **RAG Blueprint / Agentic RAG** for canonical docs, architecture history, old bug/fix records, DB schema history, runbooks and security rules when simple retrieval is insufficient.
+- **PEFT / QLoRA** only after a sufficiently large high-quality dataset exists.
+- **Knowledge Distillation** only after verified strong-model solutions provide suitable teacher examples.
 
 Tasks:
 
@@ -579,14 +695,22 @@ Tasks:
 - [ ] Deduplicate examples.
 - [ ] Separate correct fixes from failed attempts.
 - [ ] Keep engineering-model learning separate from trading calibration.
+- [ ] Store provenance: commit SHA, tests, runtime evidence and acceptance.
+- [ ] Build a reusable benchmark corpus before any fine-tuning.
+- [ ] Evaluate NeMo Curator only when dataset volume makes manual/local cleanup insufficient.
+- [ ] Use ordinary local retrieval first; evaluate RAG only for real retrieval gaps.
 - [ ] Accumulate enough high-quality examples before fine-tuning.
 - [ ] Evaluate NVIDIA NeMo/QLoRA/distillation only after retrieval/tool/routing is strong.
+- [ ] Compare any trained/specialized model against the benchmark before adoption.
+- [ ] Never let model training alter trading authority or auto-apply strategy thresholds.
 - [ ] Never create a new architecture tree for training.
 
 Definition of done:
 
 - a clean benchmark/evaluation corpus exists;
-- no premature training dependency has been introduced.
+- incident→fix→test→runtime evidence is reusable;
+- no premature training dependency has been introduced;
+- any later fine-tuning/distillation decision is justified by measured cost/quality gains.
 
 ---
 
@@ -700,6 +824,16 @@ This file keeps only the active cross-phase work state.
 ---
 
 # CHANGE LOG
+
+## 2026-09-19 — GitHub/NVIDIA research scope restored
+
+- Restored the full researched candidate set into the active tracker instead of leaving only generic “multi-model” wording.
+- Preserved Codex↔NVIDIA NIM as the priority backend experiment.
+- Preserved Aider, LiteLLM, OpenCode, Continue CLI, Plandex, smolagents, Cline and Roo-Code status as explicit evaluation items.
+- Preserved NemoClaw/OpenShell, NeMo Guardrails, GenerativeAIExamples/Data Flywheel, NeMo Curator, RAG Blueprint, QLoRA and distillation as staged NVIDIA research items.
+- Added the local→cheap/free→mid→strong→premium→verifier routing ladder.
+- Added explicit sandbox/permission policy evaluation.
+- These remain evaluation/maintenance items inside existing Phase 0–15 ownership; they do not create a new architecture tree.
 
 ## 2026-09-19 — Active tracker established
 

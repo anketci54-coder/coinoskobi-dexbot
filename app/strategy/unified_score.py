@@ -225,13 +225,11 @@ class UnifiedScoreEngine:
                 **diagnostics,
             }
 
-        if mev_status == "HIGH_EXPOSURE":
-            return {
-                "state": "WATCH",
-                "reason": "EXECUTION_EXPOSURE_HIGH",
-                **diagnostics,
-            }
-
+        # MEVExposureAnalyzer reports execution exposure only. It explicitly
+        # has no trade or hard-block authority, so HIGH_EXPOSURE must remain a
+        # diagnostic here rather than vetoing an otherwise confirmed active
+        # opportunity. Measured execution costs are handled by the economic
+        # cost/sizing path; confirmed hard risk remains owned by RiskGate.
         reason = (
             "ACTIVE_RECOVERY_BREAKOUT_READY"
             if recovery_breakout and len(trailing_positive) < 2

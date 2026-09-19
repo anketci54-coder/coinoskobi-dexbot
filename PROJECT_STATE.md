@@ -216,7 +216,7 @@ Phase 13 bounded observation contract:
 Vezir/Groq operator support remains Phase 14 maintenance.
 
 Active cross-phase maintenance tracker:
-- `ACTIVE_MAINTENANCE_TRACKER.md`
+- `planlı yapılacaklar.md`
 - status: ACTIVE
 - any new ChatGPT/Codex/AI session doing current Coinoskobi maintenance must read this tracker after the four canonical documents
 - scope includes current PAPER recovery closure, low-token/multi-model engineering workflow, NVIDIA/Codex benchmarking, Vezir evolution, security research/diagnosis, cleanup and validation

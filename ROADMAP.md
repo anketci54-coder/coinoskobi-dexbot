@@ -8,6 +8,8 @@ Bu dosya Coinoskobi'nin tek resmi mimari ve geliştirme sınıflandırmasıdır.
 - PHASE 16, ERA, architecture V2/V3 veya eşdeğer paralel roadmap zinciri açılmaz.
 - PancakeSwap V2/V3 adları yalnız gerçek DEX protokol sürümünü ifade eder.
 - Yeni iş önce mevcut Phase 0–15 sahibine atanır.
+- Mevcut alt faz sahipliği işi karşılıyorsa o alt faz güncellenir; aynı kapsam için yeni alt faz açılmaz.
+- Mevcut alt fazlara sığmayan ayrı ve kalıcı sahiplik gerekiyorsa yalnız aynı ana Phase altında sıradaki kullanılmamış düz harf açılabilir.
 - Küçük bug fix, provider ayarı, test, refactor, isim değişikliği veya panel düzeltmesi için yeni faz/alt faz açılmaz.
 - Mevcut alt faz adları düz harflerle kalır; 12B1/12B2A gibi iç içe numaralandırma kullanılmaz.
 - Geçici probe, disposable script, deney collector'ı veya ayrı araştırma roadmap'i kalıcı mimariye eklenmez.
@@ -21,6 +23,23 @@ Bu dosya Coinoskobi'nin tek resmi mimari ve geliştirme sınıflandırmasıdır.
 - Private key, seed phrase veya provider secret repository/log/status çıktısına yazılmaz.
 - Gereksiz mikroservis, Kafka, Celery, Redis veya paralel runtime kurulmaz.
 - Kalıcı değişiklikler targeted test + smoke/E2E + gerektiğinde full regression + post-audit ile kapanır.
+
+## ALT FAZ YÖNETİM PROTOKOLÜ
+
+Bu protokol Phase 0–15 iskeletinin bozulmadan genişletilmesi için bağlayıcıdır:
+
+1. Her yeni bakım/geliştirme işi önce mevcut **Phase 0–15** ana sahibine atanır.
+2. İlgili ana Phase'in mevcut canonical alt fazları düz harf sırasıyla (`A/B/C/D...`) incelenir.
+3. İş mevcut alt fazın amacı/sahipliği içinde kalıyorsa **o alt faz güncellenir veya değiştirilir**; yeni alt faz açılmaz.
+4. İş mevcut alt fazların hiçbirine sığmayan, ayrı ve kalıcı bir sahiplik gerektiriyorsa yalnız aynı ana Phase altında **sıradaki kullanılmamış düz harf** açılabilir.
+5. Yeni alt faz ancak gerçek sahiplik ayrımı için açılır; küçük bug fix, provider ayarı, test, refactor, isim değişikliği, UI/panel düzeltmesi veya tekil runtime repair için açılmaz.
+6. `14B1`, `12B2A` gibi nested numaralandırma; Phase 16; ERA; architecture V2/V3; OCR/R-number; post-roadmap veya paralel roadmap yasaktır.
+7. Yeni modül/script/service/provider/router/pipeline oluşturmadan önce repository-wide existing implementation ve reference audit yapılır. Aynı işi yapan ikinci canonical yol kurulmaz; mevcut parça genişletilir, değiştirilir veya yerini yeni parça alıyorsa eski parça kaldırılır.
+8. Kullanılmayan, duplicate, superseded, debug/disposable veya artık referanslanmayan executable script/modül/config/test-helper dosyaları reference audit + targeted/full test kanıtından sonra silinir. Dead executable code "belki lazım olur" gerekçesiyle tutulmaz.
+9. Tarihsel phase-scoped raporlar, closure kayıtları ve audit evidence belgeleri kanıt olarak tutulabilir; bunlar aktif mimari veya executable sahiplik oluşturmaz.
+10. Her değişiklik canonical data flow, authority ayrımı, fail-closed güvenlik, DB/runtime sahipliği ve bounded çalışma kurallarını korur. Maintenance işi mimari mutasyon yaratamaz.
+11. Kapanış sırası: mevcut sahipliği doğrula → targeted implementation → targeted tests → canonical smoke/E2E → gerekiyorsa full regression → compile/DB integrity/post-audit → GitHub → VPS clean-state/sync → runtime acceptance.
+12. Yeni sohbet/AI/agent oturumu bu sınıflandırmayı tahmin ederek değil, önce canonical dokümanları okuyarak uygular.
 
 ## PROJE DURUMU
 

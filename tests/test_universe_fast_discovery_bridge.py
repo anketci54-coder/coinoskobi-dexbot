@@ -283,44 +283,122 @@ def test_fast_discovery_cooldown_rotates_unseen_pool_batch(
     assert set(first).isdisjoint(second)
 
 
-def test_hot_universe_bridge_is_bounded_and_v2_only():
-    pipeline = Pipeline()
-
-    base = next(iter(module.BASE_TOKEN_SET))
-    rows = []
-
-    for i in range(module.FAST_HOT_UNIVERSE_MAX_CANDIDATES + 5):
-        rows.append({
-            "token": address(9000 + i),
-            "pool": address(10000 + i),
-            "quote_token": base,
-            "dex": module.DEX_PANCAKESWAP_V2,
-            "market_state": "HOT",
-        })
-
-    rows.append({
-        "token": address(12001),
-        "pool": address(12002),
-        "quote_token": base,
-        "dex": "pancakeswap_v3",
-        "market_state": "HOT",
-    })
-
-    rows.append({
-        "token": address(12003),
-        "pool": address(12004),
-        "quote_token": base,
-        "dex": module.DEX_PANCAKESWAP_V2,
-        "market_state": "WARM",
-    })
-
-    pipeline.hot_deep_candidates = (
-        lambda *, max_candidates: rows[:max_candidates]
+def test_hot_universe_bridge_is_bounded_v2_only_and_worker_thread_safe(
+    tmp_path,
+    monkeypatch,
+):
+    db_path = tmp_path / "cache.db"
+    db = sqlite3.connect(db_path)
+    db.row_factory = sqlite3.Row
+    db.execute(
+        """
+        CREATE TABLE universe_pool_registry(
+            chain TEXT,
+            dex TEXT,
+            pool TEXT,
+            token0 TEXT,
+            token1 TEXT,
+            creation_block INTEGER,
+            market_state TEXT,
+            latest_snapshot_at TEXT,
+            latest_price_usd REAL,
+            latest_liquidity_usd REAL,
+            latest_volume_24h REAL,
+            latest_snapshot_source TEXT
+        )
+        """
+    )
+    db.execute(
+        """
+        CREATE TABLE universe_seismic_evaluation_v1(
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            chain TEXT,
+            dex TEXT,
+            pool TEXT,
+            observed_at TEXT,
+            score REAL
+        )
+        """
     )
 
-    job = FastWatchRevisitJob(pipeline)
-    selected = job._hot_universe_identities()
+    base = next(iter(module.BASE_TOKEN_SET))
 
+    for i in range(module.FAST_HOT_UNIVERSE_MAX_CANDIDATES + 5):
+        pool = address(10000 + i)
+        db.execute(
+            """
+            INSERT INTO universe_pool_registry(
+                chain, dex, pool, token0, token1, creation_block,
+                market_state, latest_snapshot_at
+            )
+            VALUES('bsc', ?, ?, ?, ?, ?, 'HOT', ?)
+            """,
+            (
+                module.DEX_PANCAKESWAP_V2,
+                pool,
+                base,
+                address(9000 + i),
+                20000 + i,
+                f"2026-09-20T00:00:{i:02d}+00:00",
+            ),
+        )
+        db.execute(
+            """
+            INSERT INTO universe_seismic_evaluation_v1(
+                chain, dex, pool, observed_at, score
+            )
+            VALUES('bsc', ?, ?, ?, ?)
+            """,
+            (
+                module.DEX_PANCAKESWAP_V2,
+                pool,
+                f"2026-09-20T00:00:{i:02d}+00:00",
+                100 - i,
+            ),
+        )
+
+    db.execute(
+        """
+        INSERT INTO universe_pool_registry(
+            chain, dex, pool, token0, token1, creation_block,
+            market_state, latest_snapshot_at
+        )
+        VALUES('bsc', 'pancakeswap_v3', ?, ?, ?, 30000, 'HOT', 'now')
+        """,
+        (address(12002), base, address(12001)),
+    )
+    db.execute(
+        """
+        INSERT INTO universe_pool_registry(
+            chain, dex, pool, token0, token1, creation_block,
+            market_state, latest_snapshot_at
+        )
+        VALUES('bsc', ?, ?, ?, ?, 30001, 'WARM', 'now')
+        """,
+        (
+            module.DEX_PANCAKESWAP_V2,
+            address(12004),
+            base,
+            address(12003),
+        ),
+    )
+    db.commit()
+    db.close()
+
+    monkeypatch.setattr(module, "DEFAULT_DB", db_path)
+
+    job = FastWatchRevisitJob(Pipeline())
+    captured = {}
+
+    def worker():
+        captured["selected"] = job._hot_universe_identities()
+
+    thread = threading.Thread(target=worker)
+    thread.start()
+    thread.join(timeout=5)
+
+    assert not thread.is_alive()
+    selected = captured["selected"]
     assert (
         len(selected)
         == module.FAST_HOT_UNIVERSE_MAX_CANDIDATES

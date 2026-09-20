@@ -13,7 +13,7 @@ from app.config.strategy import SELLABILITY_CACHE_TTL_SECONDS
 from app.pipeline.market_context import build_market_context
 from app.risk import sellability as sellability_module
 from app.scanner.adapters.source_router import normalize_source_rows
-from app.universe.hot_path import BASE_TOKEN_SET
+from app.universe.hot_path import BASE_TOKEN_SET, HotDeepPathRouter
 from app.universe.registry import DEFAULT_DB
 from app.universe.schema import DEX_PANCAKESWAP_V2
 
@@ -327,19 +327,16 @@ class FastWatchRevisitJob:
         """
         Return a bounded rotating set of HOT full-universe V2 pools.
 
-        Universe HOT classification is observation-only. Exact-pool provider
-        hydration, ingress, analyzers, Risk Engine and PAPER admission still
-        run through the existing canonical fast-watch path before any decision.
+        Fast-watch runs in a worker thread, while PipelineEngine's canonical
+        UniverseRegistry connection is created on the runner thread. Read the
+        same durable HOT rows through a short-lived read-only connection owned
+        by this worker so SQLite thread affinity is never crossed.
+
+        Universe HOT classification remains observation-only. Exact-pool
+        provider hydration, ingress, analyzers, Risk Engine and PAPER admission
+        still run through the existing canonical fast-watch path before any
+        decision.
         """
-        hot_candidates = getattr(
-            self.pipeline,
-            "hot_deep_candidates",
-            None,
-        )
-
-        if not callable(hot_candidates):
-            return []
-
         now = time.monotonic()
 
         self._discovery_retry_after = {
@@ -349,21 +346,54 @@ class FastWatchRevisitJob:
             if retry_after > now
         }
 
+        connection = None
+
         try:
-            rows = hot_candidates(
-                max_candidates=FAST_DISCOVERY_ROW_BUDGET,
-            ) or []
+            connection = sqlite3.connect(
+                f"file:{DEFAULT_DB}?mode=ro",
+                uri=True,
+                timeout=0.1,
+            )
+            connection.row_factory = sqlite3.Row
+            rows = connection.execute(
+                """
+                SELECT registry.*,
+                       COALESCE((
+                           SELECT score
+                           FROM universe_seismic_evaluation_v1 AS seismic
+                           WHERE seismic.chain=registry.chain
+                             AND seismic.dex=registry.dex
+                             AND seismic.pool=registry.pool
+                           ORDER BY seismic.observed_at DESC, seismic.id DESC
+                           LIMIT 1
+                       ), 0) AS seismic_score
+                FROM universe_pool_registry AS registry
+                WHERE market_state='HOT'
+                ORDER BY seismic_score DESC, latest_snapshot_at DESC,
+                         creation_block DESC
+                LIMIT ?
+                """,
+                (FAST_DISCOVERY_ROW_BUDGET,),
+            ).fetchall()
         except Exception:
             logger.exception(
                 "Fast HOT universe candidate query failed"
             )
             return []
+        finally:
+            if connection is not None:
+                connection.close()
 
         selected = []
         seen = set()
 
         for raw in rows:
-            item = dict(raw or {})
+            item = HotDeepPathRouter._candidate(
+                dict(raw)
+            )
+
+            if item is None:
+                continue
 
             if (
                 str(

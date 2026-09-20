@@ -1,11 +1,25 @@
 import sqlite3
 import threading
+from contextlib import contextmanager
 from pathlib import Path
 
 DB = Path("data/cache/cache.db")
 
 
 class GeckoCache:
+
+    @contextmanager
+    def _price_write(self):
+        # A 30-second market-cache wait would consume the entire PAPER price
+        # freshness window before the manager can use its provider snapshot.
+        with self._lock:
+            previous_timeout = self.db.execute("PRAGMA busy_timeout").fetchone()[0]
+            self.db.execute("PRAGMA busy_timeout=100")
+            try:
+                with self.db:
+                    yield
+            finally:
+                self.db.execute(f"PRAGMA busy_timeout={int(previous_timeout)}")
 
     def __init__(self):
         DB.parent.mkdir(
@@ -20,7 +34,7 @@ class GeckoCache:
             check_same_thread=False,
         )
 
-        with self._lock:
+        with self._lock, self.db:
             self.db.execute(
                 "PRAGMA journal_mode=WAL;"
             )
@@ -167,7 +181,7 @@ class GeckoCache:
             or "bsc"
         ).strip().lower()
 
-        with self._lock:
+        with self._lock, self.db:
             self.db.execute("""
 
             INSERT OR REPLACE INTO gecko_pool_cache(
@@ -426,7 +440,7 @@ class GeckoCache:
             )
             params.extend(preserve)
 
-        with self._lock:
+        with self._lock, self.db:
             cursor = self.db.execute(
                 sql,
                 params,
@@ -462,7 +476,7 @@ class GeckoCache:
         if not token.startswith("bsc_"):
             token = f"bsc_{token}"
 
-        with self._lock:
+        with self._price_write():
             self.db.execute(
                 """
                 INSERT INTO gecko_pool_cache(
@@ -492,7 +506,7 @@ class GeckoCache:
                 "price must be positive"
             )
 
-        with self._lock:
+        with self._price_write():
             cursor = self.db.execute(
                 """
                 UPDATE gecko_pool_cache

@@ -1,6 +1,31 @@
 # COINOSKOBI CANONICAL PROJECT STATE
 
-Updated: 2026-09-17
+Updated: 2026-09-19
+
+## WORKSTREAM 01 PAPER recovery closure — 2026-09-19
+
+Current workspace continuation, not a new phase or architecture track.
+Ownership remains Phase 1/2 (cache transactions), Phase 3/4 (existing sizing/lifecycle recovery), Phase 12 (runtime acceptance).
+
+- HEAD at continuation: `9188790`; pre-existing Astra/Codex working changes retained; no commit/push.
+- Missing requested continuation document: `planlı yapılacaklar.md` was not present in this workspace.
+- Cache writes now roll back on exceptions. Price writes wait at most 100 ms for SQLite locks, then restore the connection's previous timeout.
+- Follow-up snapshot persistence always closes its connection, including swallowed SQLite errors after partial writes; rollback and writer release are covered by a real SQLite failure regression.
+- Fresh exact-pool provider snapshots can reach PAPER management when cache persistence fails. Their observation time is captured before cache waits; stale/invalid prices still defer exits.
+- Missing scanner rows recover from persisted position pool/DEX identity. Price-only writes preserve market-quality freshness.
+- Existing None/invalid-price manager protection, per-position isolation and bounded sizing changes were retained and tested.
+- PAPER service restarted cleanly at `2026-09-19 20:08:42 UTC`, PID `1187041`; panel was not restarted.
+- Positions #43/#44, opened earlier in AUTO for 45.3838598685 / 22.5567661749 USDT, recovered exact-pool prices at `20:09:17 UTC`.
+- Both closed automatically at `20:09:32 UTC` via `NORMAL_STOP_LOSS`, using current prices 0.000000004296 / 0.000000003703 rather than historical stop fills.
+- Net PnL: -45.3838598685 / -22.5567661749 USDT; remaining inventory and basis zero; active-run accounting reconciles to 4394.005301906082 USDT available, zero OPEN positions.
+- Current control mode remains `MANUAL`; historical AUTO entry evidence and isolated AUTO insertion tests are verified. No operator mode change or forced new trade.
+- Initial post-restart journal: manager NoneType/traceback/cache-lock/independent-runtime failure counts all zero.
+- Subsequent scanner-only lock warnings exposed the additional follow-up connection cleanup issue; its targeted suite passed (33 tests) and a final PAPER restart was requested. These scanner warnings are not counted as a clean final cache soak.
+- Both production SQLite databases passed full `PRAGMA integrity_check` (`ok`).
+- Targeted/smoke: 70 passed; additional AUTO/provider/lifecycle regression: 29 passed. Final full regression is in progress outside the sandbox, whose asyncio thread wakeup failure was independently reproduced.
+- Unreferenced, non-executable backups retained: `app/risk/paper_position_sizing.py.bak.1789819519`, `app/risk/paper_position_sizing.py.bak.1789819646`; exclude these from any future commit.
+- Natural NORMAL TP1/TP2/TP3/runner progression remains unobserved; automatic stop-close recovery is runtime-proven. Historical oversized losses (#40–42) remain unchanged.
+- No LIVE/WALLET/SIGNING authority or safety/sellability/hard-risk gate change was made during this continuation.
 
 ## CANONICAL SOURCE
 
@@ -393,3 +418,23 @@ Runtime:
 - paper runtime active after deploy
 - panel service active after deploy
 - final 10K reset audit PASS
+
+## PAPER runtime recovery closure — 2026-09-20
+<!-- PAPER_RUNTIME_RECOVERY_CLOSED_2026_09_20 -->
+
+Status: CLOSED_VERIFIED.
+
+Evidence:
+- PAPER DB integrity: `ok`
+- cache DB integrity: `ok`
+- final regression: `1719 passed, 1 warning`
+- `git diff --check`: PASS
+- post-fix runtime observation: 11 completed scanner cycles
+- `SQLITE_BUSY`: 0
+- `CACHE_WRITER_BUSY`: 0
+- `database is locked`: 0
+- runtime Traceback/ERROR/CRITICAL/OperationalError: 0
+- PAPER runtime service: active
+
+Root cause recovery remained inside the existing Phase 0–15 architecture.
+No LIVE, wallet, signing or order-create authority was enabled.

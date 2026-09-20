@@ -12,6 +12,9 @@ from app.strategy.mathematical_trade_plan import (
 )
 
 
+from app.config.trading import MAX_OPEN_PAPER_POSITIONS
+
+
 PAPER_CAPITAL_USDT = 10_000.0
 PAPER_OUTCOME_EXCLUSIONS_PATH = (
     Path(__file__).resolve().parents[2]
@@ -904,6 +907,7 @@ def _zero_result(
         "formula_authority": "DATA_DERIVED",
         "magic_percentage_rule": False,
         "sizing_model": "EMPIRICAL_GAP_EXIT_CAPACITY_V2",
+        "concentration_cap_usdt": available / max(1, MAX_OPEN_PAPER_POSITIONS),
         "blockers": sorted(set(blockers)),
         "raw_plan_amount_usdt": raw_amount,
         "safe_quote_reserve_usd": safe_quote_reserve,
@@ -1122,6 +1126,20 @@ def calculate_paper_position_size(
     )
 
     blockers = []
+    # Partition deployable capital across the configured concurrent slots.
+    # Kelly/edge may reduce this ceiling, never concentrate the account.
+    concentration_cap = available / max(1, MAX_OPEN_PAPER_POSITIONS)
+    opportunity = (plan.get("market_context") or {}).get("opportunity") or {}
+    if opportunity.get("catastrophic_reserve_collapse"):
+        blockers.append("CATASTROPHIC_RESERVE_COLLAPSE")
+    if plan.get("blockers"):
+        blockers.append("PLAN_BLOCKED")
+    if plan.get("hard_block"):
+        blockers.append("HARD_BLOCK")
+    if plan.get("sellability_status") not in (None, "SELLABILITY_OK"):
+        blockers.append("SELLABILITY_NOT_OK")
+    if plan.get("paper_eligible") is False:
+        blockers.append("PLAN_NOT_PAPER_ELIGIBLE")
 
     calibration_reason = str(
         calibration.get("reason")
@@ -1175,14 +1193,49 @@ def calculate_paper_position_size(
         available
     )
 
+    def economic_blockers(amount):
+        if amount <= 0:
+            return ["MATHEMATICAL_POSITION_SIZE_ZERO"]
+        if amount < accounting_quantum:
+            return ["ENTRY_AMOUNT_BELOW_ACCOUNTING_PRECISION"]
+        buy_gas = max(0.0, _number(cost_model.get("buy_gas_usd")) or 0.0)
+        sell_gas = max(0.0, _number(cost_model.get("sell_gas_usd")) or 0.0)
+        # Edge already includes proportional friction; fixed gas must also
+        # be recovered at the FINAL notional, not the larger raw Kelly size.
+        if (amount * effective_edge
+                - buy_gas * (1.0 + effective_edge) - sell_gas) <= 0:
+            return ["FIXED_COST_NET_EDGE_NOT_POSITIVE"]
+        return []
+
+    def blocked_amount(reasons):
+        return _zero_result(
+            available=available, raw_amount=raw_amount,
+            safe_quote_reserve=safe_quote_reserve,
+            risk_log_distance=risk_log_distance, gap_multiplier=gap_multiplier,
+            calibration=calibration,
+            empirical_cost_uncertainty=empirical_cost_uncertainty,
+            effective_edge=effective_edge, cost_complete=cost_complete,
+            blockers=reasons,
+        )
+
     # Paper-only calibration bootstrap.
-    # Bootstrap is allowed only when the complete cost model already proves
-    # a positive full-net edge. It may fill the unknown gap/account-risk
-    # calibration, but it may not bypass uncertain or non-positive economics.
+    # Positive economics require either complete costs or measured residual
+    # cost uncertainty. Unverified LP protection may only enter the bounded
+    # total-loss lane with repeated reserve evidence and HOT/WARM momentum.
+    empirical_liquidity_bootstrap = (
+        liquidity_capacity_source == "EMPIRICAL_RESERVE_FLOOR"
+        and (_number(capital.get("reserve_observation_count")) or 0) >= 2
+        and (_positive(capital.get("observed_min_quote_reserve_usd")) is not None)
+        and opportunity.get("state") in {"HOT", "WARM"}
+        and not opportunity.get("catastrophic_reserve_collapse")
+    )
     bootstrap_blockers = {
         "GAP_RISK_UNOBSERVED",
         "ACCOUNT_RISK_BUDGET_UNOBSERVED",
     }
+
+    if empirical_liquidity_bootstrap:
+        bootstrap_blockers.add("LP_WITHDRAWAL_PROTECTION_UNVERIFIED")
 
     paper_calibration_bootstrap = (
         bool(plan.get("paper_eligible"))
@@ -1190,10 +1243,12 @@ def calculate_paper_position_size(
         and available > 0
         and safe_quote_reserve is not None
         and risk_log_distance is not None
-        and cost_complete
+        and (cost_complete or empirical_cost_uncertainty is not None)
         and effective_edge is not None
         and effective_edge > 0
-        and liquidity_capacity_source != "EMPIRICAL_RESERVE_FLOOR"
+        and (liquidity_capacity_source != "EMPIRICAL_RESERVE_FLOOR"
+             or empirical_liquidity_bootstrap)
+        and bool(blockers)
         and set(blockers).issubset(
             bootstrap_blockers
         )
@@ -1202,7 +1257,7 @@ def calculate_paper_position_size(
     if paper_calibration_bootstrap:
         risk_retention = math.exp(-risk_log_distance)
         stop_loss_fraction = 1.0 - risk_retention
-        base_risk_notional = min(raw_amount, available)
+        base_risk_notional = min(raw_amount, concentration_cap)
         bootstrap_risk_budget = (
             base_risk_notional * stop_loss_fraction
         )
@@ -1219,6 +1274,7 @@ def calculate_paper_position_size(
                 available,
                 safe_quote_reserve,
                 bootstrap_risk_budget,
+                account_risk_budget if account_risk_budget is not None else bootstrap_risk_budget,
             ),
         )
 
@@ -1244,6 +1300,10 @@ def calculate_paper_position_size(
                     "ACCOUNTING_PRECISION"
                 ],
             )
+
+        economic_reasons = economic_blockers(bootstrap_amount)
+        if economic_reasons:
+            return blocked_amount(economic_reasons)
 
         if bootstrap_amount > 0:
             risk = (
@@ -1279,6 +1339,8 @@ def calculate_paper_position_size(
                     "PAPER_CALIBRATION_BOOTSTRAP_V2"
                 ),
                 "paper_calibration_bootstrap": True,
+                "liquidity_protection_unverified": empirical_liquidity_bootstrap,
+                "concentration_cap_usdt": concentration_cap,
                 "blockers": [],
                 "raw_plan_amount_usdt": raw_amount,
                 "safe_quote_reserve_usd": safe_quote_reserve,
@@ -1341,7 +1403,7 @@ def calculate_paper_position_size(
     risk_retention = math.exp(-risk_log_distance)
     stop_loss_fraction = 1.0 - risk_retention
 
-    base_risk_notional = min(raw_amount, available)
+    base_risk_notional = min(raw_amount, concentration_cap)
     raw_stop_risk_budget = base_risk_notional * stop_loss_fraction
     capped_stop_risk_budget = min(
         raw_stop_risk_budget,
@@ -1374,6 +1436,7 @@ def calculate_paper_position_size(
             available,
             empirical_exit_cap,
             tail_risk_amount_cap,
+            concentration_cap,
         ),
     )
 
@@ -1408,6 +1471,10 @@ def calculate_paper_position_size(
             ],
         )
 
+    economic_reasons = economic_blockers(amount)
+    if economic_reasons:
+        return blocked_amount(economic_reasons)
+
     risk = amount * tail_loss_fraction
     bound_plan = _bind_final_trade_plan(
         plan,
@@ -1433,6 +1500,7 @@ def calculate_paper_position_size(
         "formula_authority": "DATA_DERIVED",
         "magic_percentage_rule": False,
         "sizing_model": "EMPIRICAL_GAP_EXIT_CAPACITY_V2",
+        "concentration_cap_usdt": concentration_cap,
         "blockers": [],
         "raw_plan_amount_usdt": raw_amount,
         "safe_quote_reserve_usd": safe_quote_reserve,

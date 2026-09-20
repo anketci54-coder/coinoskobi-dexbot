@@ -386,3 +386,79 @@ def test_registered_overflow_survives_unknown_eviction_pressure():
     promoted = radar.run_once(finalized_block=962)
 
     assert promoted["priority_pools"] == [V3_POOL]
+
+
+def _production_radar(tmp_path):
+    from app.universe.registry import UniverseRegistry
+
+    registry = UniverseRegistry(tmp_path / "cache.db")
+    registry.db.execute("PRAGMA journal_mode=WAL")
+    registry.ingest([
+        {
+            "dex": "pancakeswap_v2", "pool": f"0x{i:040x}",
+            "factory": V2_POOL, "creation_block": i,
+            "discovery_branch": "EXISTING",
+        }
+        for i in range(1, 2001)
+    ])
+    radar = PancakeActivityRadar(
+        registry, lambda **_: [], priority_batch=1, max_pending=100,
+    )
+    return registry, radar
+
+
+def test_activity_trim_bounds_work_inside_cache_write_transaction(tmp_path):
+    registry, radar = _production_radar(tmp_path)
+    statements = []
+    registry.db.set_trace_callback(statements.append)
+    # A VM instruction budget catches the nested full-DEX scans without a
+    # timing-dependent assertion or a production-sized database.
+    registry.db.set_progress_handler(lambda: 1, 200000)
+    try:
+        radar._persist_scan(
+            to_block=100,
+            known=[],
+            unknown=[f"0x{i:040x}" for i in range(3000, 3200)],
+        )
+        assert not registry.db.in_transaction
+        assert len(radar._unknown_pending) == 100
+        assert next(iter(radar._unknown_pending)) == f"0x{3100:040x}"
+        trim = next(s for s in statements if "LEFT JOIN universe_pool_registry" in s)
+        plan = registry.db.execute("EXPLAIN QUERY PLAN " + trim).fetchall()
+        assert any("idx_universe_pool_dex" in row[3] for row in plan)
+    finally:
+        registry.db.set_progress_handler(None, 0)
+        registry.close()
+
+
+def test_activity_failed_scan_releases_writer_and_recovers(tmp_path, monkeypatch):
+    import pytest
+    from app.cache import gecko_cache
+
+    registry, radar = _production_radar(tmp_path)
+    monkeypatch.setattr(gecko_cache, "DB", tmp_path / "cache.db")
+    cache = gecko_cache.GeckoCache()
+    registry.db.execute("""
+        CREATE TRIGGER fail_activity_cursor BEFORE INSERT
+        ON universe_activity_cursor_v1
+        BEGIN SELECT RAISE(ABORT, 'cursor failure'); END
+    """)
+    try:
+        with pytest.raises(sqlite3.IntegrityError, match="cursor failure"):
+            radar._persist_scan(to_block=100, known=[V2_POOL], unknown=[])
+        assert not registry.db.in_transaction
+        assert radar._last_scanned_block is None
+        assert registry.db.execute(
+            "SELECT COUNT(*) FROM universe_activity_pending_v1"
+        ).fetchone()[0] == 0
+        # Independent canonical cache connection must be immediately writable.
+        cache.upsert_tracked_price(V2_POOL, V3_POOL, 1.0)
+        registry.db.execute("DROP TRIGGER fail_activity_cursor")
+        radar._persist_scan(to_block=101, known=[V2_POOL], unknown=[])
+        assert radar._last_scanned_block == 101
+        assert not registry.db.in_transaction
+        cache.upsert_tracked_price(V2_POOL, V3_POOL, 2.0)
+        assert cache.all()[0]["price_usd"] == 2.0
+    finally:
+        cache.db.close()
+        registry.close()

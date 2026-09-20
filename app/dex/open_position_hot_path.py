@@ -1141,6 +1141,8 @@ class _ExactOpenPoolPrice:
 
 def process_hot_positions(
     pipeline,
+    *,
+    refreshed_rows=None,
 ):
     manager = getattr(
         pipeline,
@@ -1166,6 +1168,12 @@ def process_hot_positions(
         for row in cache_rows
         if _address(row.get("pool"))
     }
+
+    # Exact-pool provider snapshots remain usable during a cache write lock.
+    # They must pass the same freshness and numeric checks as persisted rows.
+    for pool, row in (refreshed_rows or {}).items():
+        if _fresh_cache_price(row) is not None:
+            cache_by_pool[_address(pool)] = row
 
     token_prices = {}
     blocked_tokens = set()

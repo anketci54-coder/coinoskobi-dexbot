@@ -60,6 +60,7 @@ def persist_registered_followup_snapshots(
         ).isoformat()
     )
 
+    db = None
     try:
         db = sqlite3.connect(path, timeout=5)
         db.execute("PRAGMA busy_timeout=5000;")
@@ -83,7 +84,6 @@ def persist_registered_followup_snapshots(
         ).fetchone()
 
         if registry_exists is None or cache_exists is None:
-            db.close()
             return {
                 "state": "REGISTRY_UNAVAILABLE",
                 "updated": 0,
@@ -259,7 +259,6 @@ def persist_registered_followup_snapshots(
                 history += 1
 
         db.commit()
-        db.close()
 
         return {
             "state": "UPDATED",
@@ -273,3 +272,8 @@ def persist_registered_followup_snapshots(
             "updated": 0,
             "history": 0,
         }
+    finally:
+        # close() rolls back an unfinished transaction, including failures
+        # after a successful cache UPDATE but before its history INSERT.
+        if db is not None:
+            db.close()

@@ -1,5 +1,7 @@
 import math
 
+from app.config.trading import MAX_OPEN_PAPER_POSITIONS
+
 from app.risk.paper_position_sizing import (
     calculate_paper_position_size,
 )
@@ -755,7 +757,7 @@ def test_tail_gap_cannot_expand_original_stop_risk_budget(
         result[
             "stop_risk_budget_usdt"
         ],
-        original_stop_budget,
+        original_stop_budget / MAX_OPEN_PAPER_POSITIONS,
     )
 
 

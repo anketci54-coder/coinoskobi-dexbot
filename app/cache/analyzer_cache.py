@@ -28,7 +28,7 @@ class AnalyzerCache:
             check_same_thread=False,
         )
 
-        with self._lock:
+        with self._lock, self.db:
             self.db.execute(
                 "PRAGMA journal_mode=WAL"
             )
@@ -130,7 +130,7 @@ class AnalyzerCache:
         cache_key,
         payload,
     ):
-        with self._lock:
+        with self._lock, self.db:
             self.db.execute(
                 """
                 INSERT INTO analyzer_cache_v1(
@@ -163,7 +163,7 @@ class AnalyzerCache:
         payload,
     ):
         """Replace a cached payload without extending its provider TTL."""
-        with self._lock:
+        with self._lock, self.db:
             cursor = self.db.execute(
                 """
                 UPDATE analyzer_cache_v1
@@ -194,7 +194,7 @@ class AnalyzerCache:
         If another analyzer refreshed the entry after it was read, rowcount is
         zero and the newer verdict remains authoritative.
         """
-        with self._lock:
+        with self._lock, self.db:
             cursor = self.db.execute(
                 """
                 UPDATE analyzer_cache_v1
@@ -219,7 +219,7 @@ class AnalyzerCache:
         namespace,
         cache_key,
     ):
-        with self._lock:
+        with self._lock, self.db:
             self.db.execute(
                 """
                 DELETE FROM analyzer_cache_v1

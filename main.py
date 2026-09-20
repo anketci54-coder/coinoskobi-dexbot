@@ -856,6 +856,11 @@ def build_application(
                 pipeline
             )
 
+        if refresh.get("fallback_price_rows"):
+            return process_hot_positions(
+                pipeline,
+                refreshed_rows=refresh["fallback_price_rows"],
+            )
         return process_hot_positions(
             pipeline
         )

@@ -1,6 +1,8 @@
 import json
 import logging
 import math
+import sqlite3
+from datetime import datetime, timezone
 import threading
 
 from app.analyzer.token import analyze as token_analyze
@@ -1087,15 +1089,16 @@ class PipelineEngine:
         selected = positions[:max(1, int(max_positions))]
 
         pool_by_token = {}
+        identity_by_pool = {}
         failed = 0
 
         for position in selected:
-            pool = None
+            pool = position.get("pool")
             raw_context = position.get(
                 "opening_context_json"
             )
 
-            if raw_context:
+            if raw_context and not pool:
                 try:
                     opening_context = json.loads(
                         raw_context
@@ -1119,7 +1122,13 @@ class PipelineEngine:
                 )
 
             if pool:
+                pool = str(pool).strip().lower()
                 pool_by_token[position["token"]] = pool
+                if position.get("dex"):
+                    identity_by_pool[pool] = {
+                        "chain": "bsc", "pool": pool,
+                        "dex": position["dex"], "token": position["token"],
+                    }
             else:
                 failed += 1
 
@@ -1145,14 +1154,27 @@ class PipelineEngine:
             )
 
             if pool_prices is not None:
-                prices = pool_prices(pools)
+                # Open trades survive scanner-cache eviction. Their stored
+                # pool/DEX identity is authoritative for the canonical broker.
+                identities = (
+                    [identity_by_pool.get(pool, pool) for pool in pools]
+                    if getattr(self.scanner, "_market_data_broker", None) is not None
+                    else pools
+                )
+                prices = pool_prices(identities)
             else:
                 prices = {
                     pool: self.scanner.pool_price(pool)
                     for pool in pools
                 }
 
-        except Exception:
+            if not isinstance(prices, dict):
+                raise ValueError("pool price response must be a mapping")
+            # Cache lock waits must not rejuvenate the provider observation.
+            observed_at = datetime.now(timezone.utc).isoformat()
+
+        except Exception as exc:
+            logger.warning("PAPER_PRICE_REFRESH_FAILED pools=%s error=%s", len(pools), exc)
             return {
                 "state": "FAILED_USING_CACHE",
                 "open_positions": len(positions),
@@ -1163,40 +1185,54 @@ class PipelineEngine:
             }
 
         refreshed = 0
+        fallback_price_rows = {}
 
         for pool in pools:
             price = prices.get(pool.lower())
 
+            price = _runtime_positive_number(price)
             if price is None:
                 failed += 1
                 continue
 
-            if self.cache.update_pool_price(pool, price):
-                refreshed += 1
-            else:
-                upsert = getattr(
-                    self.cache,
-                    "upsert_tracked_price",
-                    None,
-                )
-
-                token = next(
-                    (
-                        token
-                        for token, tracked_pool
-                        in pool_by_token.items()
-                        if tracked_pool == pool
-                    ),
-                    None,
-                )
-
-                if upsert is not None and token:
-                    upsert(pool, token, price)
+            try:
+                if self.cache.update_pool_price(pool, price):
                     refreshed += 1
                 else:
-                    failed += 1
+                    upsert = getattr(
+                        self.cache,
+                        "upsert_tracked_price",
+                        None,
+                    )
 
-        return {
+                    token = next(
+                        (
+                            token
+                            for token, tracked_pool
+                            in pool_by_token.items()
+                            if tracked_pool == pool
+                        ),
+                        None,
+                    )
+
+                    if upsert is not None and token:
+                        upsert(pool, token, price)
+                        refreshed += 1
+                    else:
+                        failed += 1
+            except sqlite3.Error as exc:
+                # A market-cache write must not suppress a verified fresh
+                # exit price. PAPER accounting is persisted in a separate DB.
+                fallback_price_rows[pool] = {
+                    "pool": pool, "price_usd": price,
+                    "price_updated_at": observed_at,
+                }
+                logger.warning("PAPER_PRICE_CACHE_WRITE_FAILED pool=%s code=%s; using fresh snapshot",
+                               pool, getattr(exc, "sqlite_errorname", type(exc).__name__))
+                failed += 1
+
+
+        result = {
             "state": "REFRESHED",
             "open_positions": len(positions),
             "refreshed": refreshed,
@@ -1204,6 +1240,9 @@ class PipelineEngine:
             "requests": 1,
             "bounded": True,
         }
+        if fallback_price_rows:
+            result["fallback_price_rows"] = fallback_price_rows
+        return result
 
     def _hybrid_exit_runtime_evidence(
         self,

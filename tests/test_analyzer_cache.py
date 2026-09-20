@@ -1,8 +1,35 @@
 import sqlite3
+import pytest
 from concurrent.futures import ThreadPoolExecutor
 
 import app.cache.analyzer_cache as cache_module
 from app.cache.analyzer_cache import AnalyzerCache
+
+
+@pytest.mark.parametrize("operation", ["set", "replace_payload_preserve_age", "replace_payload_if_version", "delete"])
+def test_failed_analyzer_write_releases_shared_cache_writer(tmp_path, operation):
+    path = tmp_path / "cache.db"
+    cache = AnalyzerCache(path)
+    other = AnalyzerCache(path)
+    try:
+        cache.set("risk", "token", "original")
+        version = cache.get_versioned("risk", "token", 60)["updated_at"]
+        cache.db.execute("""CREATE TRIGGER reject_delete BEFORE DELETE
+            ON analyzer_cache_v1 BEGIN SELECT RAISE(ABORT, 'rejected'); END""")
+        with pytest.raises(sqlite3.IntegrityError):
+            if operation == "delete":
+                cache.delete("risk", "token")
+            elif operation == "replace_payload_if_version":
+                cache.replace_payload_if_version("risk", "token", None, version)
+            else:
+                getattr(cache, operation)("risk", "token", None)
+        assert not cache.db.in_transaction
+        assert cache.get("risk", "token", 60) == "original"
+        other.db.execute("PRAGMA busy_timeout=100")
+        other.set("risk", "other", "valid")
+    finally:
+        cache.close()
+        other.close()
 
 
 def test_cache_miss(tmp_path):

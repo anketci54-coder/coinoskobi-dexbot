@@ -83,6 +83,13 @@ class UniverseRegistry:
                 CREATE INDEX IF NOT EXISTS idx_universe_dex_block
                 ON universe_pool_registry(dex, creation_block)
             """)
+            # Activity queue eviction joins by pool/dex while holding the
+            # shared cache write transaction. The chain-prefixed primary key
+            # and dex/block index otherwise scan each DEX for every queued pool.
+            self.db.execute("""
+                CREATE INDEX IF NOT EXISTS idx_universe_pool_dex
+                ON universe_pool_registry(pool, dex)
+            """)
             self.db.execute("""
                 CREATE INDEX IF NOT EXISTS idx_universe_token0
                 ON universe_pool_registry(token0)

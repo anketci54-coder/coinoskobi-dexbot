@@ -1,9 +1,12 @@
 import sqlite3
 import time
 
+import pytest
+
 from app.scanner.followup_snapshot_cache import (
     persist_registered_followup_snapshots,
 )
+from app.learning.counterfactual_observation import CounterfactualObservationStore
 
 
 def _db(path):
@@ -64,6 +67,100 @@ def _db(path):
     )
 
     return db
+
+
+def test_followup_prune_guard_uses_normalized_pool_index(tmp_path):
+    path = tmp_path / "cache.db"
+    db = _db(path)
+    store = CounterfactualObservationStore.__new__(CounterfactualObservationStore)
+    store._cache_db_path = str(path)
+    try:
+        assert store._ensure_cache_followup_registry() is True
+        db.executemany(
+            "INSERT INTO candidate_followup_registry VALUES(?,?,?,?)",
+            [(f"0xpool{i}", f"token{i}", 200, 100) for i in range(2000)],
+        )
+        db.execute("ANALYZE candidate_followup_registry")
+        plan = db.execute("""
+            EXPLAIN QUERY PLAN
+            SELECT 1 FROM candidate_followup_registry r
+            WHERE lower(r.pool)=lower(?) AND r.expires_at > unixepoch()
+        """, ("0xpool",)).fetchall()
+        assert any("idx_candidate_followup_pool_expiry" in row[3] for row in plan)
+    finally:
+        db.close()
+
+
+def test_failed_followup_history_closes_connection_and_releases_cache_writer(tmp_path, monkeypatch):
+    path = tmp_path / "cache.db"
+    db = _db(path)
+    db.execute("INSERT INTO gecko_pool_cache(pool, token, price_usd) VALUES('pool', 'token', 1)")
+    db.execute("INSERT INTO candidate_followup_registry VALUES('pool', 'token', 200, 100)")
+    db.execute("""CREATE TRIGGER reject_history BEFORE INSERT
+        ON market_observation_history BEGIN SELECT RAISE(ABORT, 'history failed'); END""")
+    db.commit()
+    original_connect = sqlite3.connect
+    connections = []
+    def connect(*args, **kwargs):
+        connection = original_connect(*args, **kwargs)
+        connections.append(connection)
+        return connection
+    monkeypatch.setattr(sqlite3, "connect", connect)
+    try:
+        result = persist_registered_followup_snapshots(
+            [{"pool": "pool", "base_token": "token", "price_usd": 2}],
+            db_path=path, now=100,
+        )
+        assert result == {"state": "DB_ERROR", "updated": 0, "history": 0}
+        with pytest.raises(sqlite3.ProgrammingError, match="closed"):
+            connections[0].execute("SELECT 1")
+        assert db.execute("SELECT price_usd FROM gecko_pool_cache").fetchone()[0] == 1
+        db.execute("PRAGMA busy_timeout=100")
+        db.execute("UPDATE gecko_pool_cache SET price_usd=3")
+        db.commit()
+    finally:
+        db.close()
+        for connection in connections:
+            connection.close()
+
+
+@pytest.mark.parametrize("operation", ["register", "sync"])
+def test_counterfactual_cache_error_always_closes_connection(tmp_path, monkeypatch, operation):
+    path = tmp_path / "cache.db"
+    db = _db(path)
+    db.execute("INSERT INTO gecko_pool_cache(pool, token, price_usd) VALUES('pool', 'token', 1)")
+    table, event = ("candidate_followup_registry", "INSERT") if operation == "register" else ("gecko_pool_cache", "UPDATE")
+    db.execute(f"""CREATE TRIGGER reject_write BEFORE {event} ON {table}
+        BEGIN SELECT RAISE(ABORT, 'rejected'); END""")
+    db.commit()
+    store = CounterfactualObservationStore.__new__(CounterfactualObservationStore)
+    store._cache_db_path = str(path)
+    store._db = sqlite3.connect(":memory:")
+    store._db.execute("CREATE TABLE counterfactual_observations(pool, token, completed_at)")
+    store._db.execute("INSERT INTO counterfactual_observations VALUES('pool', 'token', NULL)")
+    original_connect = sqlite3.connect
+    connections = []
+    def connect(*args, **kwargs):
+        connection = original_connect(*args, **kwargs)
+        connections.append(connection)
+        return connection
+    monkeypatch.setattr(sqlite3, "connect", connect)
+    try:
+        if operation == "register":
+            assert store._register_followup(token="token", pool="pool", observed_at=100) is False
+        else:
+            assert store._sync_exact_pool_cache_price(token="token::pool::pool", current_price=2) == 0
+        for connection in connections:
+            with pytest.raises(sqlite3.ProgrammingError, match="closed"):
+                connection.execute("SELECT 1")
+        db.execute("PRAGMA busy_timeout=100")
+        db.execute("INSERT INTO gecko_pool_cache(pool, token, price_usd) VALUES('other', 'other', 3)")
+        db.commit()
+    finally:
+        store._db.close()
+        db.close()
+        for connection in connections:
+            connection.close()
 
 
 def test_only_registered_followup_pool_gets_fresh_market_snapshot(

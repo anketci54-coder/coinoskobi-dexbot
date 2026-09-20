@@ -2,6 +2,8 @@ import math
 
 import pytest
 
+from app.config.trading import MAX_OPEN_PAPER_POSITIONS
+
 from app.risk.paper_position_sizing import calculate_paper_position_size
 
 
@@ -51,7 +53,7 @@ def test_paper_calibration_bootstrap_is_bounded_by_plan_stop_risk(tmp_path):
     )
 
     stop_loss_fraction = 1.0 - math.exp(-0.20)
-    expected_budget = 1000.0 * stop_loss_fraction
+    expected_budget = min(1000.0, 10000.0 / MAX_OPEN_PAPER_POSITIONS) * stop_loss_fraction
 
     assert result["entry_amount_usdt"] == pytest.approx(expected_budget)
     assert result["risk_amount_usdt"] == pytest.approx(expected_budget)
@@ -80,7 +82,7 @@ def test_hotdog_shape_cannot_bootstrap_sixty_percent_of_account(tmp_path):
         db_path=str(tmp_path / "missing.db"),
     )
 
-    expected_budget = raw_amount * (
+    expected_budget = min(raw_amount, available / MAX_OPEN_PAPER_POSITIONS) * (
         1.0 - math.exp(-risk_log_distance)
     )
 

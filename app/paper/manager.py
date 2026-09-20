@@ -1,5 +1,6 @@
 import json
 import logging
+import math
 
 from datetime import (
     datetime,
@@ -2570,131 +2571,128 @@ class PaperManager:
         results = []
 
         for pos in positions:
-            token = pos[
-                "token"
-            ]
-
             try:
-                current = (
-                    self.price
-                    .get_price(
-                        token
-                    )
-                )
-
-            except Exception as exc:
-                logger.warning(
-                    "[ERROR] token=%s error=%s",
-                    token,
-                    exc,
-                )
-
+                result = self._process_position(pos)
+            except Exception:
+                # One corrupt/unavailable position must not starve exits for
+                # all other positions. Never synthesize a price or close.
+                logger.exception("PAPER_POSITION_FAILED position_id=%s", pos.get("id"))
                 continue
+            if result is not None:
+                results.append(result)
+        return results
 
-            highest = max(
-                float(
-                    pos[
-                        "highest_price"
-                    ]
-                ),
-                current,
-            )
+    @staticmethod
+    def _positive_price(value):
+        try:
+            number = float(value)
+        except (TypeError, ValueError):
+            return None
+        return number if math.isfinite(number) and number > 0 else None
 
-            lowest = min(
-                float(
-                    pos[
-                        "lowest_price"
-                    ]
-                ),
-                current,
-            )
+    def _process_position(self, pos):
+        token = pos[
+            "token"
+        ]
 
-            entry = float(
-                pos[
-                    "entry_price"
-                ]
-            )
-
-            if (
-                entry <= 0
-                or float(
-                    pos[
-                        "token_amount"
-                    ]
-                )
-                <= 0
-            ):
-                continue
-
-            plan = decode_plan(
-                pos.get(
-                    "mathematical_plan_json"
+        try:
+            current = (
+                self.price
+                .get_price(
+                    token
                 )
             )
 
-            if (
-                plan
-                and plan.get(
-                    "contract"
-                )
-                == (
-                    "mathematical_trade_plan"
-                )
-            ):
-                trade_type = lifecycle_trade_type(
-                    pos
-                )
+        except Exception as exc:
+            logger.warning(
+                "[ERROR] token=%s error=%s",
+                token,
+                exc,
+            )
 
-                if trade_type == "VUR_KAC":
-                    result = (
-                        self._process_vur_kac_position(
-                            pos,
-                            current,
-                            highest,
-                            lowest,
-                            plan,
-                        )
-                    )
+            return None
 
-                else:
-                    if trade_type != "NORMAL":
-                        logger.warning(
-                            "Unknown trade type=%s "
-                            "position_id=%s; "
-                            "using NORMAL fail-safe",
-                            trade_type,
-                            pos.get("id"),
-                        )
+        current = self._positive_price(current)
+        if current is None:
+            logger.warning(
+                "PAPER_PRICE_UNAVAILABLE position_id=%s token=%s; exits deferred",
+                pos.get("id"), token,
+            )
+            return None
 
-                    result = (
-                        self._process_normal_math_position(
-                            pos,
-                            current,
-                            highest,
-                            lowest,
-                            plan,
-                        )
-                    )
+        entry = self._positive_price(pos.get("entry_price"))
+        tokens = self._positive_price(pos.get("token_amount"))
+        if entry is None or tokens is None:
+            logger.warning("PAPER_INVENTORY_INVALID position_id=%s", pos.get("id"))
+            return None
 
-            else:
-                # Legacy compatibility only.
-                # New positions are created
-                # with mathematical_plan_json.
+        highest = max(self._positive_price(pos.get("highest_price")) or entry, current)
+        lowest = min(self._positive_price(pos.get("lowest_price")) or entry, current)
+
+        plan = decode_plan(
+            pos.get(
+                "mathematical_plan_json"
+            )
+        )
+
+        if (
+            plan
+            and plan.get(
+                "contract"
+            )
+            == (
+                "mathematical_trade_plan"
+            )
+        ):
+            trade_type = lifecycle_trade_type(
+                pos
+            )
+
+            if trade_type == "VUR_KAC":
                 result = (
-                    self._process_legacy_position(
+                    self._process_vur_kac_position(
                         pos,
                         current,
                         highest,
                         lowest,
+                        plan,
                     )
                 )
 
-            if result is not None:
-                results.append(
-                    result
+            else:
+                if trade_type != "NORMAL":
+                    logger.warning(
+                        "Unknown trade type=%s "
+                        "position_id=%s; "
+                        "using NORMAL fail-safe",
+                        trade_type,
+                        pos.get("id"),
+                    )
+
+                result = (
+                    self._process_normal_math_position(
+                        pos,
+                        current,
+                        highest,
+                        lowest,
+                        plan,
+                    )
                 )
 
-        return results
+        else:
+            # Legacy compatibility only.
+            # New positions are created
+            # with mathematical_plan_json.
+            result = (
+                self._process_legacy_position(
+                    pos,
+                    current,
+                    highest,
+                    lowest,
+                )
+            )
+
+        return result
 
 
 if __name__ == "__main__":

@@ -2111,6 +2111,24 @@ def build_trade_plan(
             "UNAVAILABLE"
         )
 
+    # A dust-sized locked LP share is not usable exit protection. Keep its
+    # measured value visible, but allow observed liquidity to be considered
+    # by the PAPER total-loss sizing lane; do not label it verified liquidity.
+    verified_quote_reserve = safe_quote_reserve if liquidity_capacity_source == "VERIFIED_LP_PROTECTION" else 0.0
+    buy_gas = _number(costs.get("buy_gas_usd")) or 0.0
+    sell_gas = _number(costs.get("sell_gas_usd")) or 0.0
+    protected_notional = safe_quote_reserve * max(0.0, edge_fraction)
+    protected_expected_profit = (
+        protected_notional * max(0.0, edge_fraction)
+        - buy_gas * (1.0 + max(0.0, edge_fraction)) - sell_gas
+    )
+    if (liquidity_capacity_source == "VERIFIED_LP_PROTECTION"
+            and protected_expected_profit <= 0
+            and empirical_reserve_ready):
+        safe_quote_reserve = min(quote_reserve, observed_min_quote_reserve)
+        liquidity_capacity_source = "EMPIRICAL_RESERVE_FLOOR"
+        unknowns.append("LP_PROTECTION_BELOW_ECONOMIC_CAPACITY")
+
     # Constant-product liquidity cap:
     # position notional is bounded by
     # verified persistent quote liquidity
@@ -2385,6 +2403,7 @@ def build_trade_plan(
                 kelly_cap
             ),
 
+            "verified_quote_reserve_usd": verified_quote_reserve,
             "safe_quote_reserve_usd": (
                 safe_quote_reserve
             ),

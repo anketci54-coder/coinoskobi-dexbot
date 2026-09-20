@@ -550,3 +550,17 @@ Validation:
 - current-run trades at reset: 0
 - historical trades preserved: 39
 - final post-deploy 10K audit: PASS
+
+## 2026-09-20 — PAPER runtime recovery final acceptance
+<!-- PAPER_RUNTIME_RECOVERY_CLOSED_2026_09_20 -->
+
+- Full regression: **1719 passed, 1 warning**
+- PAPER DB `PRAGMA integrity_check`: **ok**
+- Cache DB `PRAGMA integrity_check`: **ok**
+- Runtime observation: **11 completed scanner cycles**
+- `SQLITE_BUSY`: **0**
+- `CACHE_WRITER_BUSY`: **0**
+- `database is locked`: **0**
+- Runtime error counters: **0**
+- `git diff --check`: **PASS**
+- Result: **PASS / CLOSED_VERIFIED**

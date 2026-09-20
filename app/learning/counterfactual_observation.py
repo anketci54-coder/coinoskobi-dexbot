@@ -242,6 +242,7 @@ class CounterfactualObservationStore:
         if not path.exists():
             return False
 
+        db = None
         try:
             db = sqlite3.connect(path, timeout=5)
             db.execute("PRAGMA busy_timeout=5000;")
@@ -255,6 +256,18 @@ class CounterfactualObservationStore:
                     expires_at REAL NOT NULL,
                     updated_at REAL NOT NULL
                 )
+                """
+            )
+
+            # The cache-retention trigger probes this registry once per
+            # pruned pool. Its LOWER(pool) predicate cannot use the primary
+            # key on raw pool; index the exact predicate to keep the shared
+            # SQLite write transaction bounded as the registry grows.
+            db.execute(
+                """
+                CREATE INDEX IF NOT EXISTS
+                idx_candidate_followup_pool_expiry
+                ON candidate_followup_registry(lower(pool), expires_at)
                 """
             )
 
@@ -286,11 +299,13 @@ class CounterfactualObservationStore:
                 )
 
             db.commit()
-            db.close()
             return True
 
         except sqlite3.Error:
             return False
+        finally:
+            if db is not None:
+                db.close()
 
     def _register_followup(
         self,

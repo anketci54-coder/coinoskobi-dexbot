@@ -67,6 +67,7 @@ class IntegrityCounterfactualObservationStore(
         if not self._ensure_cache_followup_registry():
             return False
 
+        db = None
         try:
             db = sqlite3.connect(
                 self._cache_db_path,
@@ -100,10 +101,12 @@ class IntegrityCounterfactualObservationStore(
                 ),
             )
             db.commit()
-            db.close()
             return True
         except sqlite3.Error:
             return False
+        finally:
+            if db is not None:
+                db.close()
 
     def _resolve_single_pending_pool(self, token):
         if self._db is None:
@@ -293,6 +296,7 @@ class IntegrityCounterfactualObservationStore(
         if not path.exists():
             return 0
 
+        db = None
         try:
             db = sqlite3.connect(path, timeout=5)
             db.execute("PRAGMA busy_timeout=5000;")
@@ -307,10 +311,12 @@ class IntegrityCounterfactualObservationStore(
             )
             db.commit()
             updated = int(cursor.rowcount or 0)
-            db.close()
             return updated
         except sqlite3.Error:
             return 0
+        finally:
+            if db is not None:
+                db.close()
 
     def _sync_exact_pool_cache_price(
         self,

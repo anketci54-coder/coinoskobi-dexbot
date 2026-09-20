@@ -78,6 +78,9 @@ class GeckoScanner:
 
     @staticmethod
     def _normalized_addresses(pools, max_pools):
+        # Startup/follow-up callers can supply canonical identity mappings
+        # before the market-data broker is bound. Serialize only the address.
+        pools = [item.get("pool") if isinstance(item, dict) else item for item in pools]
         addresses = list(dict.fromkeys(
             str(pool or "").strip().lower()
             for pool in pools

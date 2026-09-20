@@ -3596,6 +3596,7 @@ class PipelineEngine:
 
         evaluation = store.observe(
             token=token,
+            pool=pool,
             current_price=price,
             evaluated_at=now,
         )

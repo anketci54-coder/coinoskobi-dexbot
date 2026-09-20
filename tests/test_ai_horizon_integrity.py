@@ -469,3 +469,103 @@ def test_legacy_completed_without_24h_is_quarantined(tmp_path):
     assert quality["horizon_capture_window_seconds"] == 300
     assert quality["training_authority"] is False
     assert quality["live_authority"] is False
+
+
+
+def test_immediate_observe_cannot_cross_write_other_pool(tmp_path):
+    store = _store(tmp_path)
+    now = 6_000_000.0
+
+    token = "0xsame"
+    pool_a = "0xpoola"
+    pool_b = "0xpoolb"
+
+    recorded = store.record(
+        token=token,
+        pool=pool_a,
+        entry_price=1.0,
+        signal_state="POSITIVE",
+        candidate_action="DOWNGRADE",
+        observed_at=now - 300,
+    )
+
+    assert recorded["state"] == "RECORDED"
+
+    db = sqlite3.connect(store._cache_db_path)
+    db.executemany(
+        """
+        INSERT INTO gecko_pool_cache(
+            pool,
+            token,
+            price_usd,
+            updated_at
+        ) VALUES(?,?,?,?)
+        """,
+        [
+            (pool_a, token, 1.0, "old"),
+            (pool_b, token, 99.0, "old"),
+        ],
+    )
+    db.commit()
+    db.close()
+
+    result = store.observe(
+        token=token,
+        pool=pool_b,
+        current_price=99.0,
+        evaluated_at=now,
+    )
+
+    assert result["state"] == "POOL_MISMATCH"
+
+    row = store._db.execute(
+        """
+        SELECT last_price, max_price, min_price
+        FROM counterfactual_observations
+        WHERE lower(token)=lower(?)
+          AND lower(pool)=lower(?)
+        """,
+        (token, pool_a),
+    ).fetchone()
+
+    assert row["last_price"] == 1.0
+    assert row["max_price"] == 1.0
+    assert row["min_price"] == 1.0
+
+    db = sqlite3.connect(store._cache_db_path)
+    prices = dict(
+        db.execute(
+            """
+            SELECT pool, price_usd
+            FROM gecko_pool_cache
+            WHERE pool IN (?,?)
+            """,
+            (pool_a, pool_b),
+        ).fetchall()
+    )
+    db.close()
+
+    assert prices[pool_a] == 1.0
+    assert prices[pool_b] == 99.0
+
+    correct = store.observe(
+        token=token,
+        pool=pool_a,
+        current_price=2.0,
+        evaluated_at=now + 1,
+    )
+
+    assert correct["state"] == "EVALUATED"
+
+    row = store._db.execute(
+        """
+        SELECT last_price, max_price
+        FROM counterfactual_observations
+        WHERE lower(token)=lower(?)
+          AND lower(pool)=lower(?)
+        """,
+        (token, pool_a),
+    ).fetchone()
+
+    assert row["last_price"] == 2.0
+    assert row["max_price"] == 2.0

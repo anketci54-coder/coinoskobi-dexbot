@@ -1163,9 +1163,11 @@ class CounterfactualObservationStore:
         *,
         token,
         current_price,
+        pool=None,
         evaluated_at=None,
     ):
         key = self._canonical(token)
+        pool_key = self._canonical(pool)
         price = self._finite_positive(current_price)
 
         if not key or price is None:
@@ -1177,27 +1179,84 @@ class CounterfactualObservationStore:
             else time.time()
         )
 
+        # Backward-compatible single-RAM-row resolution for callers that
+        # predate the explicit pool argument. Runtime callers must provide
+        # the exact current pool.
+        with self._lock:
+            ram_row = self._rows.get(key)
+
+        if not pool_key and ram_row is not None:
+            pool_key = self._canonical(
+                ram_row.get("pool")
+            )
+
+        observation_key = key
+
+        encode_handle = getattr(
+            self,
+            "_encode_handle",
+            None,
+        )
+
+        if pool_key and callable(encode_handle):
+            # Force an exact token+pool handle even when only one historical
+            # pool is currently pending. This prevents a newly observed pool
+            # price from being applied to an older pool for the same token.
+            observation_key = encode_handle(
+                key,
+                pool_key,
+                2,
+            )
+
         self._persist_observe(
-            token=key,
+            token=observation_key,
             current_price=price,
             evaluated_at=now,
         )
 
         self._sync_exact_pool_cache_price(
-            token=key,
+            token=observation_key,
             current_price=price,
         )
 
-        self._persist_paper_promotion(
-            token=key,
-            observed_at=now,
+        exact_promotion = getattr(
+            self,
+            "_persist_paper_promotion_exact",
+            None,
         )
+
+        if pool_key and callable(exact_promotion):
+            exact_promotion(
+                token=key,
+                pool=pool_key,
+                observed_at=now,
+            )
+        elif not pool_key:
+            self._persist_paper_promotion(
+                token=key,
+                observed_at=now,
+            )
 
         with self._lock:
             row = self._rows.get(key)
 
             if row is None:
                 return self._out("UNKNOWN")
+
+            row_pool = self._canonical(
+                row.get("pool")
+            )
+
+            if (
+                pool_key
+                and row_pool
+                and row_pool != pool_key
+            ):
+                return self._out(
+                    "POOL_MISMATCH",
+                    expected_pool=row_pool,
+                    observed_pool=pool_key,
+                )
 
             age = max(
                 0.0,
@@ -1271,7 +1330,9 @@ class CounterfactualObservationStore:
             automatic_apply_allowed=False,
         )
 
-        outcome_id = f"{key}:{row['observed_at']}"
+        outcome_id = (
+            f"{key}:{row_pool}:{row['observed_at']}"
+        )
 
         with self._lock:
             self.evaluated_count += 1

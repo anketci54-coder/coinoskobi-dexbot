@@ -37,6 +37,7 @@ FAST_WATCH_PROVIDER_BATCH_SIZE = 30
 # same canonical ingress/risk/paper path used by fast-watch. This grants no
 # decision/live/wallet/execution authority and does not relax any gate.
 FAST_DISCOVERY_MAX_CANDIDATES = 8
+FAST_HOT_UNIVERSE_MAX_CANDIDATES = 8
 FAST_DISCOVERY_ROW_BUDGET = 64
 FAST_DISCOVERY_BLOCK_WINDOW = 2000
 FAST_DISCOVERY_RETRY_SECONDS = 60.0
@@ -321,6 +322,126 @@ class FastWatchRevisitJob:
                 selected.append(eligible)
 
         return selected
+
+    def _hot_universe_identities(self):
+        """
+        Return a bounded rotating set of HOT full-universe V2 pools.
+
+        Universe HOT classification is observation-only. Exact-pool provider
+        hydration, ingress, analyzers, Risk Engine and PAPER admission still
+        run through the existing canonical fast-watch path before any decision.
+        """
+        hot_candidates = getattr(
+            self.pipeline,
+            "hot_deep_candidates",
+            None,
+        )
+
+        if not callable(hot_candidates):
+            return []
+
+        now = time.monotonic()
+
+        self._discovery_retry_after = {
+            identity: retry_after
+            for identity, retry_after
+            in self._discovery_retry_after.items()
+            if retry_after > now
+        }
+
+        try:
+            rows = hot_candidates(
+                max_candidates=FAST_DISCOVERY_ROW_BUDGET,
+            ) or []
+        except Exception:
+            logger.exception(
+                "Fast HOT universe candidate query failed"
+            )
+            return []
+
+        selected = []
+        seen = set()
+
+        for raw in rows:
+            item = dict(raw or {})
+
+            if (
+                str(
+                    item.get("dex")
+                    or ""
+                ).strip().lower()
+                != DEX_PANCAKESWAP_V2
+            ):
+                continue
+
+            if (
+                str(
+                    item.get("market_state")
+                    or ""
+                ).strip().upper()
+                != "HOT"
+            ):
+                continue
+
+            token = self._canonical(
+                item.get("token")
+            )
+            pool = self._canonical(
+                item.get("pool")
+            )
+
+            identity = (
+                token,
+                pool,
+            )
+
+            if (
+                not token
+                or not pool
+                or identity in seen
+            ):
+                continue
+
+            seen.add(identity)
+
+            if (
+                self._discovery_retry_after.get(
+                    identity,
+                    0.0,
+                )
+                > now
+            ):
+                continue
+
+            if self._has_canonical_trade_history_block(
+                token
+            ):
+                continue
+
+            selected.append((
+                token,
+                pool,
+                DEX_PANCAKESWAP_V2,
+            ))
+
+            if (
+                len(selected)
+                >= FAST_HOT_UNIVERSE_MAX_CANDIDATES
+            ):
+                break
+
+        retry_after = (
+            now
+            + FAST_DISCOVERY_RETRY_SECONDS
+        )
+
+        for identity in selected:
+            self._discovery_retry_after[
+                identity[:2]
+            ] = retry_after
+
+        return selected
+
 
     def _unseen_universe_identities(self):
         """
@@ -785,16 +906,26 @@ class FastWatchRevisitJob:
         return result
 
     def _run_cycle_sync(self):
-        discovery_identities = self._unseen_universe_identities()
-        watched_identities = self._watched_identities()
+        hot_universe_identities = (
+            self._hot_universe_identities()
+        )
+        discovery_identities = (
+            self._unseen_universe_identities()
+        )
+        watched_identities = (
+            self._watched_identities()
+        )
 
         identities = []
         seen = set()
 
-        # Factory-discovered identities go first so a full WATCH backlog cannot
-        # starve first analysis. The overall provider/analyzer cap is unchanged.
+        # HOT full-universe activity gets first bounded access to the existing
+        # exact-pool hydration + ingress + risk + PAPER path. New factory pools
+        # remain second and durable WATCH revisits remain third. No gate or
+        # authority is relaxed.
         for identity in (
-            list(discovery_identities)
+            list(hot_universe_identities)
+            + list(discovery_identities)
             + list(watched_identities)
         ):
             identity_key = (

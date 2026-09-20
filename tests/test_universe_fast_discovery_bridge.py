@@ -281,3 +281,138 @@ def test_fast_discovery_cooldown_rotates_unseen_pool_batch(
     assert len(first) == module.FAST_DISCOVERY_MAX_CANDIDATES
     assert len(second) == 2
     assert set(first).isdisjoint(second)
+
+
+def test_hot_universe_bridge_is_bounded_and_v2_only():
+    pipeline = Pipeline()
+
+    base = next(iter(module.BASE_TOKEN_SET))
+    rows = []
+
+    for i in range(module.FAST_HOT_UNIVERSE_MAX_CANDIDATES + 5):
+        rows.append({
+            "token": address(9000 + i),
+            "pool": address(10000 + i),
+            "quote_token": base,
+            "dex": module.DEX_PANCAKESWAP_V2,
+            "market_state": "HOT",
+        })
+
+    rows.append({
+        "token": address(12001),
+        "pool": address(12002),
+        "quote_token": base,
+        "dex": "pancakeswap_v3",
+        "market_state": "HOT",
+    })
+
+    rows.append({
+        "token": address(12003),
+        "pool": address(12004),
+        "quote_token": base,
+        "dex": module.DEX_PANCAKESWAP_V2,
+        "market_state": "WARM",
+    })
+
+    pipeline.hot_deep_candidates = (
+        lambda *, max_candidates: rows[:max_candidates]
+    )
+
+    job = FastWatchRevisitJob(pipeline)
+    selected = job._hot_universe_identities()
+
+    assert (
+        len(selected)
+        == module.FAST_HOT_UNIVERSE_MAX_CANDIDATES
+    )
+    assert all(
+        identity[2]
+        == module.DEX_PANCAKESWAP_V2
+        for identity in selected
+    )
+
+
+def test_fast_cycle_prioritizes_hot_universe_before_discovery_and_watch(
+    monkeypatch,
+):
+    pipeline = Pipeline()
+    job = FastWatchRevisitJob(pipeline)
+
+    hot = (
+        address(13001),
+        address(13002),
+        module.DEX_PANCAKESWAP_V2,
+    )
+    discovery = (
+        address(13003),
+        address(13004),
+        module.DEX_PANCAKESWAP_V2,
+    )
+    watch = (
+        address(13005),
+        address(13006),
+        module.DEX_PANCAKESWAP_V2,
+    )
+
+    monkeypatch.setattr(
+        job,
+        "_hot_universe_identities",
+        lambda: [hot],
+    )
+    monkeypatch.setattr(
+        job,
+        "_unseen_universe_identities",
+        lambda: [discovery],
+    )
+    monkeypatch.setattr(
+        job,
+        "_watched_identities",
+        lambda: [watch],
+    )
+
+    captured = {}
+
+    def fresh_rows(identities):
+        captured["identities"] = list(identities)
+        return [
+            {
+                "token": identity[0],
+                "pool": identity[1],
+                "quote_token": address(13999),
+            }
+            for identity in identities
+        ]
+
+    monkeypatch.setattr(
+        job,
+        "_fresh_rows",
+        fresh_rows,
+    )
+    monkeypatch.setattr(
+        job,
+        "_refresh_local_sellability_evidence",
+        lambda row: True,
+    )
+    monkeypatch.setattr(
+        job,
+        "_process",
+        lambda row: {
+            "data": {
+                "paper": {
+                    "action": "WATCH",
+                }
+            }
+        },
+    )
+
+    result = job._run_cycle_sync()
+
+    assert captured["identities"] == [
+        hot,
+        discovery,
+        watch,
+    ]
+    assert result["state"] == "READY"
+    assert result["selected"] == 3
+    assert result["processed"] == 3
+    assert result["failed"] == 0

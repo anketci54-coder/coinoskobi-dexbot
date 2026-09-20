@@ -430,6 +430,64 @@ def test_runtime_math_history_separates_block_and_runtime_pair_sources():
         engine_module._RUNTIME_PRICE_HISTORY.clear()
 
 
+def test_runtime_math_history_hydrates_fresh_pair_rows_only():
+    from datetime import datetime, timedelta, timezone
+    from app.pipeline import engine as engine_module
+
+    engine_module._RUNTIME_PRICE_HISTORY.clear()
+    now = datetime.now(timezone.utc)
+    common = dict(
+        token_address="0xtoken", pool="0xpool", price=1.0,
+        upstream_price_series=[], price_series_source="PAIR_BLOCK_HISTORY",
+        exit_evidence={}, lp_evidence={}, market_context={}, sellability_data={},
+    )
+    rows = [
+        {"token": "0xtoken", "pool": "0xpool", "price_usd": 1.0,
+         "observed_at": (now - timedelta(minutes=2)).isoformat()},
+        {"token": "0xtoken", "pool": "0xpool", "price_usd": 1.1,
+         "observed_at": (now - timedelta(minutes=1)).isoformat()},
+        {"token": "0xother", "pool": "0xpool", "price_usd": 100.0,
+         "observed_at": now.isoformat()},
+        {"token": "0xtoken", "pool": "0xotherpool", "price_usd": 200.0,
+         "observed_at": now.isoformat()},
+        {"token": "0xtoken", "pool": "0xpool", "price_usd": 0.5,
+         "observed_at": (now - timedelta(hours=2)).isoformat()},
+    ]
+    try:
+        result = engine_module._runtime_math_evidence(
+            **common, durable_pair_history=rows,
+        )
+        assert result["price_series"] == [1.0, 1.1]
+
+        newer = {"token": "0xtoken", "pool": "0xpool", "price_usd": 1.2,
+                 "observed_at": now.isoformat()}
+        advanced = engine_module._runtime_math_evidence(
+            **{**common, "price": 1.2},
+            durable_pair_history=rows + [newer],
+        )
+        assert advanced["price_series"] == [1.0, 1.1, 1.2]
+
+        repeated = engine_module._runtime_math_evidence(
+            **{**common, "price": 1.2},
+            durable_pair_history=rows + [newer],
+        )
+        assert repeated["price_series"] == advanced["price_series"]
+
+        cache = engine_module._runtime_math_evidence(
+            **{**common, "price": 5.0, "price_series_source": "TOKEN_CACHE"},
+            durable_pair_history=rows + [newer],
+        )
+        assert cache["price_series"] == [5.0]
+        assert engine_module._RUNTIME_PRICE_HISTORY[
+            ("0xtoken", "0xpool", "PAIR_BLOCK_HISTORY")
+        ] == [1.0, 1.1, 1.2]
+        assert engine_module._RUNTIME_PRICE_HISTORY[
+            ("0xtoken", "0xpool", "TOKEN_CACHE")
+        ] == [5.0]
+    finally:
+        engine_module._RUNTIME_PRICE_HISTORY.clear()
+
+
 def test_new_auto_paper_positions_use_selected_trade_type():
     source = Path(
         "app/pipeline/engine.py"

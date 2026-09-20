@@ -35,6 +35,36 @@ class UnifiedScoreEngine:
         return out
 
     @classmethod
+    def select_price_series(cls, exit_data):
+        """
+        Select one coherent pair-price provenance for active opportunity math.
+
+        A restart seeds runtime-onchain history with only one fresh observation.
+        That partial runtime series must not hide an already complete measured
+        block-history series. Once runtime history reaches the three samples
+        required for continuation, it becomes authoritative again.
+        """
+        exit_data = exit_data or {}
+
+        runtime_prices = cls._positive_prices(
+            exit_data.get("runtime_spot_price_series_usd")
+        )
+        block_prices = cls._positive_prices(
+            exit_data.get("spot_price_series_usd")
+        )
+
+        if len(runtime_prices) >= 3:
+            return runtime_prices, "PAIR_RUNTIME_ONCHAIN"
+
+        if len(block_prices) >= 3:
+            return block_prices, "PAIR_BLOCK_HISTORY"
+
+        if runtime_prices:
+            return runtime_prices, "PAIR_RUNTIME_ONCHAIN"
+
+        return block_prices, "PAIR_BLOCK_HISTORY"
+
+    @classmethod
     def _opportunity_state(cls, *, strategy, risk_gate, mev_risk):
         if risk_gate.get("hard_block"):
             return {
@@ -57,19 +87,12 @@ class UnifiedScoreEngine:
         local = risk_gate.get("local_evidence") or {}
         exit_data = local.get("exit_feasibility") or {}
 
-        runtime_prices = cls._positive_prices(
-            exit_data.get("runtime_spot_price_series_usd")
+        (
+            prices,
+            price_series_source,
+        ) = cls.select_price_series(
+            exit_data
         )
-        block_prices = cls._positive_prices(
-            exit_data.get("spot_price_series_usd")
-        )
-
-        if runtime_prices:
-            prices = runtime_prices
-            price_series_source = "PAIR_RUNTIME_ONCHAIN"
-        else:
-            prices = block_prices
-            price_series_source = "PAIR_BLOCK_HISTORY"
 
         if len(prices) < 3:
             return {

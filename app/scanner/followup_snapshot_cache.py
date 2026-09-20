@@ -14,6 +14,14 @@ def _canonical(value):
     return value
 
 
+def _first(row, *keys):
+    for key in keys:
+        value = row.get(key)
+        if value is not None:
+            return value
+    return None
+
+
 def persist_registered_followup_snapshots(
     snapshots,
     *,
@@ -169,6 +177,53 @@ def persist_registered_followup_snapshots(
                 else None
             )
 
+            source = str(
+                _first(row, "source")
+                or "geckoterminal_followup"
+            ).strip().lower() or "geckoterminal_followup"
+
+            display_name = _first(
+                row,
+                "display_name",
+                "name",
+            )
+            liquidity = _first(
+                row,
+                "liquidity_usd",
+                "liquidity",
+            )
+            volume_24h = _first(
+                row,
+                "volume_h24_usd",
+                "volume_24h",
+            )
+            buys_24h = _first(
+                row,
+                "buys_h24",
+                "buys_24h",
+            )
+            sells_24h = _first(
+                row,
+                "sells_h24",
+                "sells_24h",
+            )
+            fdv = _first(
+                row,
+                "fdv_usd",
+                "fdv",
+            )
+            market_cap = _first(
+                row,
+                "market_cap_usd",
+                "market_cap",
+            )
+            created_at = _first(
+                row,
+                "pool_created_at",
+                "created_at",
+                "pair_created_at_ms",
+            )
+
             cursor = db.execute(
                 """
                 UPDATE gecko_pool_cache
@@ -189,15 +244,15 @@ def persist_registered_followup_snapshots(
                 (
                     token_db,
                     quote_db,
-                    row.get("name"),
+                    display_name,
                     row.get("dex"),
-                    row.get("liquidity"),
-                    row.get("volume_24h"),
-                    row.get("buys_24h"),
-                    row.get("sells_24h"),
-                    row.get("fdv"),
+                    liquidity,
+                    volume_24h,
+                    buys_24h,
+                    sells_24h,
+                    fdv,
                     row.get("price_usd"),
-                    row.get("created_at"),
+                    created_at,
                     pool,
                 ),
             )
@@ -229,8 +284,7 @@ def persist_registered_followup_snapshots(
                     VALUES(
                         'MARKET_OBSERVATION_V1',
                         'bsc',
-                        'geckoterminal_followup',
-                        ?,?,?,?,?,?,?,?,?,?,?,?,?,
+                        ?,?,?,?,?,?,?,?,?,?,?,?,?,?,
                         strftime(
                             '%Y-%m-%dT%H:%M:%fZ',
                             'now'
@@ -238,18 +292,19 @@ def persist_registered_followup_snapshots(
                     )
                     """,
                     (
+                        source,
                         row.get("dex"),
                         pool,
                         token or None,
                         quote or None,
                         row.get("price_usd"),
-                        row.get("liquidity"),
-                        row.get("volume_24h"),
-                        row.get("buys_24h"),
-                        row.get("sells_24h"),
-                        row.get("fdv"),
-                        row.get("market_cap"),
-                        row.get("created_at"),
+                        liquidity,
+                        volume_24h,
+                        buys_24h,
+                        sells_24h,
+                        fdv,
+                        market_cap,
+                        created_at,
                         (
                             row.get("observed_at")
                             or fallback_observed_at

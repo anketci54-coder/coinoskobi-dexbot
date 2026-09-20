@@ -1220,8 +1220,8 @@ def calculate_paper_position_size(
 
     # Paper-only calibration bootstrap.
     # Positive economics require either complete costs or measured residual
-    # cost uncertainty. Unverified LP protection may only enter the bounded
-    # total-loss lane with repeated reserve evidence and HOT/WARM momentum.
+    # cost uncertainty. Unverified LP withdrawal protection never grants
+    # NORMAL/VUR_KAC PAPER capital; such candidates remain observation-only.
     empirical_liquidity_bootstrap = (
         liquidity_capacity_source == "EMPIRICAL_RESERVE_FLOOR"
         and (_number(capital.get("reserve_observation_count")) or 0) >= 2
@@ -1234,9 +1234,6 @@ def calculate_paper_position_size(
         "ACCOUNT_RISK_BUDGET_UNOBSERVED",
     }
 
-    if empirical_liquidity_bootstrap:
-        bootstrap_blockers.add("LP_WITHDRAWAL_PROTECTION_UNVERIFIED")
-
     paper_calibration_bootstrap = (
         bool(plan.get("paper_eligible"))
         and raw_amount > 0
@@ -1246,8 +1243,7 @@ def calculate_paper_position_size(
         and (cost_complete or empirical_cost_uncertainty is not None)
         and effective_edge is not None
         and effective_edge > 0
-        and (liquidity_capacity_source != "EMPIRICAL_RESERVE_FLOOR"
-             or empirical_liquidity_bootstrap)
+        and liquidity_capacity_source != "EMPIRICAL_RESERVE_FLOOR"
         and bool(blockers)
         and set(blockers).issubset(
             bootstrap_blockers

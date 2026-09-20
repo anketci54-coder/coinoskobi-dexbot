@@ -75,3 +75,40 @@ def test_verified_lp_protection_preserves_paper_sizing(monkeypatch):
     assert result["risk_amount_usdt"] <= 10.0
     assert result["account_risk_budget_usdt"] == 10.0
     assert result["blockers"] == []
+
+
+def test_hot_empirical_reserve_floor_cannot_bootstrap_real_paper(monkeypatch):
+    monkeypatch.setattr(
+        sizing,
+        "_empirical_outcome_calibration",
+        lambda db_path: _calibration(),
+    )
+
+    plan = _plan("EMPIRICAL_RESERVE_FLOOR")
+    plan["paper_eligible"] = True
+    plan["capital"].update({
+        "reserve_observation_count": 4,
+        "observed_min_quote_reserve_usd": 10000.0,
+    })
+    plan["entry"] = {"price": 1.0}
+    plan["sl"]["initial_price"] = 0.90
+    plan["position"] = {}
+    plan["market_context"] = {
+        "opportunity": {
+            "state": "HOT",
+            "catastrophic_reserve_collapse": False,
+        }
+    }
+
+    result = sizing.calculate_paper_position_size(
+        mathematical_plan=plan,
+        available_capital_usdt=1000.0,
+    )
+
+    assert result["entry_amount_usdt"] == 0.0
+    assert result["risk_amount_usdt"] == 0.0
+    assert (
+        "LP_WITHDRAWAL_PROTECTION_UNVERIFIED"
+        in result["blockers"]
+    )
+    assert result.get("paper_calibration_bootstrap") is not True

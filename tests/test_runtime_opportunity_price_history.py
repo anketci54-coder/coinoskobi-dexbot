@@ -154,3 +154,23 @@ def test_block_history_remains_fallback_when_runtime_series_is_absent():
     assert result["opportunity_state"] == "WATCH"
     assert result["opportunity_reason"] == "ACTIVE_MOMENTUM_NOT_POSITIVE"
     assert result["opportunity"]["price_series_source"] == "PAIR_BLOCK_HISTORY"
+
+
+def test_partial_runtime_history_does_not_hide_complete_block_fallback():
+    result = _evaluate(
+        runtime_prices=[1.20],
+    )
+
+    assert result["opportunity_state"] == "WATCH"
+    assert result["opportunity_reason"] == "ACTIVE_MOMENTUM_NOT_POSITIVE"
+    assert result["opportunity"]["price_series_source"] == "PAIR_BLOCK_HISTORY"
+
+
+def test_complete_runtime_history_takes_over_after_restart_warmup():
+    result = _evaluate(
+        runtime_prices=[1.00, 1.01, 1.02],
+    )
+
+    assert result["opportunity_state"] == "HOT"
+    assert result["opportunity_reason"] == "ACTIVE_CONTINUATION_READY"
+    assert result["opportunity"]["price_series_source"] == "PAIR_RUNTIME_ONCHAIN"

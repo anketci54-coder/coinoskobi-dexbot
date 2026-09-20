@@ -272,8 +272,6 @@ class IntegrityCounterfactualObservationStore(
         evaluated_at,
     ):
         real_token, pool = self._decode_handle(token)
-        if pool is None:
-            pool = self._resolve_single_pending_pool(real_token)
         if not real_token or not pool:
             return 0
         return self._persist_observe_exact(
@@ -325,9 +323,7 @@ class IntegrityCounterfactualObservationStore(
         current_price,
     ):
         real_token, pool = self._decode_handle(token)
-        if pool is None:
-            pool = self._resolve_single_pending_pool(real_token)
-        if not pool:
+        if not real_token or not pool:
             return 0
         return self._sync_pool_cache_price(
             pool=pool,

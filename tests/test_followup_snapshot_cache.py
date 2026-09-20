@@ -336,3 +336,116 @@ def test_only_registered_followup_pool_gets_fresh_market_snapshot(
         321,
     )
     assert history[0][6]
+
+
+def test_canonical_snapshot_fields_and_provider_source_are_persisted(tmp_path):
+    path = tmp_path / "cache.db"
+    db = _db(path)
+
+    db.execute(
+        """
+        INSERT INTO gecko_pool_cache(
+            pool, token, dex, price_usd, updated_at
+        )
+        VALUES(
+            '0xtracked',
+            'bsc_0xtoken1',
+            'pancakeswap_v2',
+            1.0,
+            datetime('now')
+        )
+        """
+    )
+    db.execute(
+        """
+        INSERT INTO candidate_followup_registry(
+            pool, token, expires_at, updated_at
+        )
+        VALUES('0xtracked','0xtoken1',200,100)
+        """
+    )
+    db.commit()
+    db.close()
+
+    result = persist_registered_followup_snapshots(
+        [{
+            "schema_version": "DEXSCREENER_SNAPSHOT_V1",
+            "source": "dexscreener",
+            "pool": "0xtracked",
+            "base_token": "0xtoken1",
+            "quote_token": "0xquote1",
+            "display_name": "TOKEN1 / WBNB",
+            "dex": "pancakeswap_v2",
+            "price_usd": 2.5,
+            "liquidity_usd": 250000.0,
+            "volume_h24_usd": 750000.0,
+            "buys_h24": 321,
+            "sells_h24": 123,
+            "fdv_usd": 1250000.0,
+            "market_cap_usd": 1000000.0,
+            "pair_created_at_ms": 1780000000000,
+            "observed_at": "2026-09-20T17:30:07+00:00",
+        }],
+        db_path=path,
+        now=100,
+    )
+
+    assert result == {
+        "state": "UPDATED",
+        "updated": 1,
+        "history": 1,
+    }
+
+    db = sqlite3.connect(path)
+
+    cache_row = db.execute(
+        """
+        SELECT
+            liquidity,
+            volume24,
+            buys24,
+            sells24,
+            fdv,
+            price_usd
+        FROM gecko_pool_cache
+        WHERE pool='0xtracked'
+        """
+    ).fetchone()
+
+    history_row = db.execute(
+        """
+        SELECT
+            source,
+            liquidity_usd,
+            volume_24h,
+            buys_24h,
+            sells_24h,
+            fdv_usd,
+            market_cap_usd,
+            price_usd
+        FROM market_observation_history
+        WHERE pool='0xtracked'
+        """
+    ).fetchone()
+
+    db.close()
+
+    assert cache_row == (
+        250000.0,
+        750000.0,
+        321,
+        123,
+        1250000.0,
+        2.5,
+    )
+
+    assert history_row == (
+        "dexscreener",
+        250000.0,
+        750000.0,
+        321,
+        123,
+        1250000.0,
+        1000000.0,
+        2.5,
+    )

@@ -1,6 +1,6 @@
 # COINOSKOBI — PLANLI YAPILACAKLAR
 
-Updated: 2026-09-19  
+Updated: 2026-09-20  
 Status: **ACTIVE**  
 Purpose: Coinoskobi Phase 0–15 mimarisini bozmadan devam eden bakım, geliştirme, Vezir, AI mühendislik, güvenlik, otomasyon ve optimizasyon çalışmalarının tek aktif takip belgesi.
 
@@ -93,32 +93,36 @@ Eski scriptler, duplicate yollar, gereksiz deney kodları ve superseded parçala
 
 # 5. PAPER RUNTIME RECOVERY CLOSURE
 
-**Owner:** mevcut Phase 3 / Phase 4 / Phase 12 sahiplikleri.
+**Owner:** mevcut Phase 3 / Phase 4 / Phase 12 sahiplikleri.  
+**Status:** CLOSED / VERIFIED — 2026-09-20.
 
-Önce mevcut recovery çalışması tamamen kapatılacak.
+- [x] VPS current HEAD doğrulandı
+- [x] working tree doğrulandı
+- [x] uncommitted değişiklikler kapatıldı
+- [x] `.bak`, debug ve disposable dosya kontrolü yapıldı
+- [x] `AUTO/MANUAL` control state doğrulandı
+- [x] manager `NoneType` recovery kapatıldı
+- [x] açık PAPER pozisyon refresh zinciri doğrulandı
+- [x] exit manager fresh-price evidence zinciri doğrulandı
+- [x] devasa sizing korumaları doğrulandı
+- [x] bootstrap/degraded sizing bounded hale getirildi
+- [x] PnL/accounting invariants doğrulandı
+- [x] SQLite integrity doğrulandı
+- [x] targeted tests tamamlandı
+- [x] paper/exit/panel regression tamamlandı
+- [x] `git diff --check` PASS
+- [x] runtime smoke tamamlandı
+- [x] final diff review tamamlandı
+- [x] commit/push tamamlandı
+- [x] PROJECT_STATE recovery seal mevcut
+- [x] TEST_RESULTS recovery evidence mevcut
+- [x] HOT universe bridge SQLite thread-affinity regression kapatıldı
+- [x] restart sonrası pair-price-history hydration kapatıldı
+- [x] LP withdrawal protection doğrulanmamış adayların gerçek NORMAL/VUR_KAC PAPER sermayesi alması engellendi
+- [x] follow-up snapshot source/liquidity/volume/buy/sell persistence alan eşlemesi düzeltildi
 
-- [ ] VPS current HEAD doğrula
-- [ ] working tree doğrula
-- [ ] Astra/Codex uncommitted değişikliklerini çıkar
-- [ ] `.bak`, debug ve disposable dosyaları kontrol et
-- [ ] `AUTO/MANUAL` control state doğrula
-- [ ] manager `NoneType` hatasının tamamen bittiğini doğrula
-- [ ] açık PAPER pozisyon refresh zincirini doğrula
-- [ ] exit manager’ın fresh-price evidence ile çalıştığını doğrula
-- [ ] devasa sizing tekrar oluşamıyor mu doğrula
-- [ ] bootstrap/degraded sizing varsa bounded olduğunu doğrula
-- [ ] PnL/accounting invariants doğrula
-- [ ] SQLite integrity
-- [ ] targeted tests
-- [ ] paper/exit/panel regression
-- [ ] `git diff --check`
-- [ ] runtime smoke
-- [ ] final diff review
-- [ ] commit/push
-- [ ] PROJECT_STATE seal
-- [ ] TEST_RESULTS evidence
-
-**DONE:** emergency/unknown production patch kalmayacak.
+**Kural:** Yeni gerçek PAPER işlemlerinde görülen kritik entry/exit/data incidentleri eski recovery işini yeniden açmaz.  
+Her incident kendi owner Phase’inde **root cause → smallest fix → targeted test → deploy → tek runtime acceptance → close** sırasıyla çözülür.
 
 ---
 
@@ -918,6 +922,21 @@ VERIFIED EXAMPLE
 
 ---
 
+## YouTube / harici strateji fikirlerinden doğrulanacak adaylar
+
+Bu maddeler yeni Phase, yeni runtime veya ikinci strateji motoru oluşturmaz. Önce mevcut implementation aranır; yalnız ölçülebilir ek değer varsa mevcut owner Phase genişletilir.
+
+- [ ] **Phase 7:** mevcut regime/flow kodunu envanterle; HMM veya benzeri rejim modeli eklemeden önce mevcut deterministic rejim sinyalleriyle karşılaştır
+- [ ] **Phase 7:** regime state yanında confidence / stability / transition-risk evidence adaylarını ölç
+- [ ] **Phase 7:** strateji/entry uygunluğunu rejim evidence ile etiketle; Risk Gate ve hard safety her zaman üstün kalsın
+- [ ] **Phase 11/13:** tek canonical deney zinciri kur: `hypothesis → backtest → out-of-sample → walk-forward → PAPER → outcome`
+- [ ] **Phase 11:** edge-decay ölçümü ve `RETIRE_CANDIDATE` benzeri proposal-only strateji yaşlanma çıktısını değerlendir
+- [ ] **Phase 11/13:** her strateji deneyinde gas / fee / slippage / liquidity / sellability / exit-capacity maliyetlerini zorunlu evidence olarak kullan
+- [ ] **Phase 11/13:** aynı stratejinin farklı market regime’lerde sonuçlarını ayrı ölç; tek dönem performansını genelleme
+- [ ] **Phase 14:** Vezir deney sonuçlarını okuyup FACT / ANALYSIS / RECOMMENDATION üretsin; threshold/strategy auto-apply yetkisi olmasın
+- [ ] **AI mühendislik:** ucuz model tarama/rutin işte, güçlü model zor root-cause/architecture işinde; ikinci model review yalnız riskli değişikliklerde
+- [ ] YouTube kâr ekranı, creator iddiası veya TradingView screenshot’u doğrulama evidence sayılmasın; yalnız test edilecek hypothesis kaynağı olsun
+
 # 27. NEMO CURATOR
 
 Dataset büyüyünce değerlendirilir:
@@ -1199,37 +1218,46 @@ Trade/risk/runtime sahipliği mevcut Phase’lerde kalır.
 
 # 36. UYGULAMA ÖNCELİK SIRASI
 
-1. [ ] **PAPER recovery’yi kapat**
-2. [ ] **Phase/subphase + dead-code inventory**
-3. [ ] **Local evidence/token reducer**
-4. [ ] **Codex↔NVIDIA read-only benchmark**
-5. [ ] **Aider düşük-token benchmark**
-6. [ ] **Model/cost telemetry**
-7. [ ] **Gerekliyse routing/fallback**
-8. [ ] **Vezir gerçek conversation**
-9. [ ] **Vezir memory**
-10. [ ] **Vezir reports/recommendations**
-11. [ ] **Vezir internal health/security**
-12. [ ] **Vezir external adversary research**
-13. [ ] **Vezir root-cause/code/test**
-14. [ ] **Harekât Subayı multi-agent report ingestion**
-15. [ ] **Command Center UX**
-16. [ ] **Sandbox/policy hardening**
-17. [ ] **Data Flywheel**
-18. [ ] **RAG gerekiyorsa**
-19. [ ] **Dataset/Curator gerekiyorsa**
-20. [ ] **QLoRA ancak veri yeterliyse**
-21. [ ] **Distillation daha sonra**
-22. [ ] **final cleanup / regression / seal**
+1. [x] **PAPER recovery closure + 2026-09-20 kritik runtime düzeltmeleri**
+2. [ ] **Yeni gerçek PAPER işleminde kritik entry/exit/data incidenti çıkarsa onu önce kapat**
+3. [ ] **Phase/subphase + dead-code inventory**
+4. [ ] **Local evidence/token reducer**
+5. [ ] **YouTube/harici fikir adaylarını mevcut Phase 7 / 11 / 13 / 14 koduyla karşılaştır; duplicate yaratma**
+6. [ ] **Rejim / experiment-lifecycle / edge-decay adaylarından yalnız ölçülebilir olanları shadow/backtest planına al**
+7. [ ] **Codex↔NVIDIA read-only benchmark**
+8. [ ] **Aider düşük-token benchmark**
+9. [ ] **Model/cost telemetry**
+10. [ ] **Gerekliyse routing/fallback**
+11. [ ] **Vezir gerçek conversation**
+12. [ ] **Vezir memory**
+13. [ ] **Vezir reports/recommendations**
+14. [ ] **Vezir internal health/security**
+15. [ ] **Vezir external adversary research**
+16. [ ] **Vezir root-cause/code/test**
+17. [ ] **Harekât Subayı multi-agent report ingestion**
+18. [ ] **Command Center UX**
+19. [ ] **Sandbox/policy hardening**
+20. [ ] **Data Flywheel**
+21. [ ] **RAG gerekiyorsa**
+22. [ ] **Dataset/Curator gerekiyorsa**
+23. [ ] **QLoRA ancak veri yeterliyse**
+24. [ ] **Distillation daha sonra**
+25. [ ] **final cleanup / regression / seal**
 
 ---
 
 # CURRENT NEXT SAFE STEP
 
-**Önce PAPER recovery closure.**
+**Öncelik 1:** AUTO PAPER çalışırken ortaya çıkan gerçek kritik entry / exit / data incidentlerini hedefli biçimde kapat. Normal piyasa zararı tek başına bug/tuning gerekçesi değildir.
 
-Ardından:
+Aktif kritik incident yoksa:
 
 **Repository / Phase-subphase / dead-code inventory.**
 
-Bu iki iş tamamlanmadan yeni AI/Vezir implementasyonuna başlanmaz.
+Ardından:
+
+**Local evidence / token reducer.**
+
+YouTube/harici kaynaklardan çıkarılan regime, walk-forward, experiment lifecycle ve edge-decay fikirleri tracker’a eklenmiştir; **envanter ve mevcut implementation karşılaştırması yapılmadan kodlanmaz.**
+
+Yeni AI/Vezir implementationı da repository inventory tamamlanmadan başlamaz.

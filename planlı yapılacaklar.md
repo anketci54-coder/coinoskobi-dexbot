@@ -91,7 +91,7 @@ Eski scriptler, duplicate yollar, gereksiz deney kodları ve superseded parçala
 
 ---
 
-# 5. WORKSTREAM 01 — PAPER RUNTIME RECOVERY CLOSURE
+# 5. PAPER RUNTIME RECOVERY CLOSURE
 
 **Owner:** mevcut Phase 3 / Phase 4 / Phase 12 sahiplikleri.
 
@@ -122,7 +122,7 @@ Eski scriptler, duplicate yollar, gereksiz deney kodları ve superseded parçala
 
 ---
 
-# 6. WORKSTREAM 02 — REPOSITORY / SUBPHASE / DEAD-CODE ENVANTERİ
+# 6. REPOSITORY / SUBPHASE / DEAD-CODE ENVANTERİ
 
 Yeni AI/Vezir implementation başlamadan önce yapılacak.
 
@@ -154,7 +154,7 @@ Bu envanter çıkmadan yeni `14X` veya başka alt-faz harfi verilmeyecek.
 
 ---
 
-# 7. WORKSTREAM 03 — LOCAL EVIDENCE ENGINE / TOKEN AZALTMA
+# 7. LOCAL EVIDENCE ENGINE / TOKEN AZALTMA
 
 Ana prensip:
 
@@ -218,7 +218,7 @@ Bu yaklaşım token maliyetinin ana kontrol mekanizması olacak.
 
 ---
 
-# 8. WORKSTREAM 04 — MULTI-MODEL AI MÜHENDİSLİK SİSTEMİ
+# 8. MULTI-MODEL AI MÜHENDİSLİK SİSTEMİ
 
 Amaç:
 
@@ -473,7 +473,7 @@ unapproved privileged action
 
 ---
 
-# 15. WORKSTREAM 05 — VEZİR’İ GERÇEK OPERASYON AJANINA DÖNÜŞTÜRME
+# 15. VEZİR’İ GERÇEK OPERASYON AJANINA DÖNÜŞTÜRME
 
 Şu anki Vezir:
 
@@ -1118,7 +1118,7 @@ Her kapanan çalışma sonrası bu tracker güncellenir:
 
 ```text
 DATE:
-WORKSTREAM:
+ÇALIŞMA ALANI:
 OWNER PHASE/SUBPHASE:
 TASK:
 STATUS:
@@ -1226,10 +1226,10 @@ Trade/risk/runtime sahipliği mevcut Phase’lerde kalır.
 
 # CURRENT NEXT SAFE STEP
 
-**Önce WORKSTREAM 01 PAPER recovery closure.**
+**Önce PAPER recovery closure.**
 
 Ardından:
 
-**WORKSTREAM 02 repository / Phase-subphase / dead-code inventory.**
+**Repository / Phase-subphase / dead-code inventory.**
 
 Bu iki iş tamamlanmadan yeni AI/Vezir implementasyonuna başlanmaz.

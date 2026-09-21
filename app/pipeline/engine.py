@@ -2417,6 +2417,15 @@ class PipelineEngine:
                         )
                     )
 
+                    mathematical_plan.setdefault("entry", {}).update({
+                        key: sizing.get(key)
+                        for key in (
+                            "entry_zone_low", "entry_zone_high",
+                            "preferred_entry", "chase_limit",
+                            "immediate_entry_allowed",
+                        )
+                    })
+
                     # CANONICAL_PAPER_EXECUTION_INVENTORY_V1
                     # Canonical inventory comes from the same sizing
                     # calculation that binds entry risk and exits.
@@ -2478,6 +2487,9 @@ class PipelineEngine:
                         block_reason = (
                             "PLAN_BLOCKED"
                         )
+
+                    elif "ENTRY_ABOVE_CHASE_LIMIT" in sizing_blockers:
+                        block_reason = "ENTRY_ABOVE_CHASE_LIMIT"
 
                     elif (
                         entry_amount_usdt <= 0

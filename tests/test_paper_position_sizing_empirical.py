@@ -1,4 +1,5 @@
 import math
+import pytest
 
 from app.config.trading import MAX_OPEN_PAPER_POSITIONS
 
@@ -198,6 +199,46 @@ def test_incomplete_cost_does_not_equal_zero():
         is not None
         or result["entry_amount_usdt"] == 0.0
     )
+
+
+def test_entry_plan_uses_observed_move_and_edge_without_fixed_percentages(tmp_path):
+    plan = _plan(
+        raw_amount=1000,
+        available=10000,
+        reserve=5000,
+        risk_distance=0.2,
+        known_edge=0.1,
+        full_edge=0.1,
+        cost_complete=True,
+    )
+    plan["entry"] = {"price": 2.0}
+    plan["statistics"] = {"log_returns": [0.02, -0.03]}
+
+    result = calculate_paper_position_size(
+        mathematical_plan=plan,
+        db_path=str(tmp_path / "missing.db"),
+    )
+
+    assert result["entry_zone_low"] == pytest.approx(2.0 * math.exp(-0.03))
+    assert result["entry_zone_high"] == pytest.approx(2.0)
+    assert result["preferred_entry"] == pytest.approx(2.0 * math.exp(-0.015))
+    assert result["chase_limit"] == pytest.approx(2.0 * math.exp(0.03))
+    assert result["immediate_entry_allowed"] is True
+
+
+def test_nonpositive_edge_zeros_sizing():
+    plan = _plan(
+        raw_amount=1000,
+        available=10000,
+        reserve=5000,
+        risk_distance=0.2,
+        known_edge=0.0,
+        full_edge=-0.01,
+        cost_complete=True,
+    )
+    result = calculate_paper_position_size(mathematical_plan=plan)
+    assert result["entry_amount_usdt"] == 0.0
+    assert "NET_EDGE_NOT_POSITIVE" in result["blockers"]
 
 
 def test_full_net_edge_used_when_complete():

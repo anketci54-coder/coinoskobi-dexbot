@@ -1189,6 +1189,33 @@ def calculate_paper_position_size(
     if effective_edge is None or effective_edge <= 0:
         blockers.append("NET_EDGE_NOT_POSITIVE")
 
+    entry = plan.get("entry") if isinstance(plan.get("entry"), dict) else {}
+    current_price = _positive(entry.get("price"))
+    statistics = plan.get("statistics") if isinstance(plan.get("statistics"), dict) else {}
+    returns = statistics.get("log_returns") or []
+    observed_moves = [abs(value) for value in (_number(item) for item in returns)
+                      if value is not None and math.isfinite(value)]
+    observed_move = max(observed_moves, default=0.0)
+    edge_move = _positive(effective_edge)
+    entry_timing = {
+        "entry_zone_low": None,
+        "entry_zone_high": None,
+        "preferred_entry": None,
+        "chase_limit": None,
+        "immediate_entry_allowed": False,
+    }
+    if current_price is not None and edge_move is not None:
+        tolerated_move = min(edge_move, observed_move)
+        entry_timing.update({
+            "entry_zone_low": current_price * math.exp(-tolerated_move),
+            "entry_zone_high": current_price,
+            "preferred_entry": current_price * math.exp(-tolerated_move / 2.0),
+            "chase_limit": current_price * math.exp(tolerated_move),
+            "immediate_entry_allowed": True,
+        })
+        if current_price > entry_timing["chase_limit"]:
+            blockers.append("ENTRY_ABOVE_CHASE_LIMIT")
+
     accounting_quantum = _accounting_quantum(
         available
     )
@@ -1208,7 +1235,7 @@ def calculate_paper_position_size(
         return []
 
     def blocked_amount(reasons):
-        return _zero_result(
+        result = _zero_result(
             available=available, raw_amount=raw_amount,
             safe_quote_reserve=safe_quote_reserve,
             risk_log_distance=risk_log_distance, gap_multiplier=gap_multiplier,
@@ -1217,6 +1244,8 @@ def calculate_paper_position_size(
             effective_edge=effective_edge, cost_complete=cost_complete,
             blockers=reasons,
         )
+        result.update(entry_timing)
+        return result
 
     # Paper-only calibration bootstrap.
     # Positive economics require either complete costs or measured residual
@@ -1389,10 +1418,11 @@ def calculate_paper_position_size(
                     bound_plan["tp1_activation_price"]
                 ),
                 "kelly_diagnostic_only": True,
+                **entry_timing,
             }
 
     if blockers:
-        return _zero_result(
+        result = _zero_result(
             available=available,
             raw_amount=raw_amount,
             safe_quote_reserve=safe_quote_reserve,
@@ -1404,6 +1434,8 @@ def calculate_paper_position_size(
             cost_complete=cost_complete,
             blockers=blockers,
         )
+        result.update(entry_timing)
+        return result
 
     risk_retention = math.exp(-risk_log_distance)
     stop_loss_fraction = 1.0 - risk_retention
@@ -1536,6 +1568,7 @@ def calculate_paper_position_size(
         "effective_edge_fraction": effective_edge,
         "cost_complete": cost_complete,
         "kelly_diagnostic_only": True,
+        **entry_timing,
         "canonical_token_amount": bound_plan["token_amount"],
         "canonical_initial_sl": bound_plan["initial_sl"],
         "canonical_initial_net_risk_usdt": (

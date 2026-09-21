@@ -3654,18 +3654,28 @@ class PipelineEngine:
         pool = row.get("pool")
         price = row.get("price_usd")
 
-        evidence_at = (
-            _runtime_observation_epoch(now)
-            if now is not None
-            else _runtime_observation_epoch(
-                row.get("observed_at")
-            )
+        evidence_at = _runtime_observation_epoch(
+            row.get("observed_at")
         )
+        if evidence_at is None and now is not None:
+            evidence_at = _runtime_observation_epoch(now)
 
         if evidence_at is None:
-            evidence_at = datetime.now(
-                timezone.utc
-            ).timestamp()
+            return {
+                "evaluation": {"state": "INVALID_OBSERVATION_TIME"},
+                "record": {
+                    "state": "INVALID_OBSERVATION_TIME",
+                    "stored": False,
+                },
+                "probe_observation": {
+                    "state": "INVALID_OBSERVATION_TIME",
+                },
+                "probe_open": {
+                    "state": "INVALID_OBSERVATION_TIME",
+                    "created": False,
+                },
+                "status": store.status(),
+            }
 
         now = evidence_at
 
@@ -4096,6 +4106,7 @@ class PipelineEngine:
 
                 result = observer(
                     token=token,
+                    pool=pool,
                     current_price=price,
                     **kwargs,
                 )

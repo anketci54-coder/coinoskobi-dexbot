@@ -318,10 +318,12 @@ class IntegrityCounterfactualObservationStore(
         self,
         *,
         token,
+        pool=None,
         current_price,
         evaluated_at,
     ):
-        real_token, pool = self._decode_handle(token)
+        real_token, handle_pool = self._decode_handle(token)
+        pool = self._canonical(pool or handle_pool)
         if not real_token or not pool:
             return 0
         return self._persist_observe_exact(
@@ -370,9 +372,11 @@ class IntegrityCounterfactualObservationStore(
         self,
         *,
         token,
+        pool=None,
         current_price,
     ):
-        real_token, pool = self._decode_handle(token)
+        real_token, handle_pool = self._decode_handle(token)
+        pool = self._canonical(pool or handle_pool)
         if not real_token or not pool:
             return 0
         return self._sync_pool_cache_price(

@@ -1,7 +1,6 @@
 import logging
 import threading
 import time
-from datetime import datetime, timezone
 
 import requests
 
@@ -462,21 +461,13 @@ class GeckoScanner:
         if response is None:
             return []
 
-        observed_at = datetime.now(
-            timezone.utc
-        ).isoformat()
-
-        rows = []
-
-        for raw in response.json().get(
-            "data",
-            [],
-        ):
-            row = self._row_to_candidate(raw)
-            row["observed_at"] = observed_at
-            rows.append(row)
-
-        return rows
+        return [
+            self._row_to_candidate(row)
+            for row in response.json().get(
+                "data",
+                [],
+            )
+        ]
 
 
 if __name__ == "__main__":

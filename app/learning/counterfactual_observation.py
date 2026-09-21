@@ -362,6 +362,7 @@ class CounterfactualObservationStore:
         self,
         *,
         token,
+        pool,
         current_price,
     ):
         if (
@@ -374,20 +375,8 @@ class CounterfactualObservationStore:
         if not path.exists():
             return 0
 
-        pools = [
-            row[0]
-            for row in self._db.execute(
-                """
-                SELECT DISTINCT pool
-                FROM counterfactual_observations
-                WHERE lower(token)=lower(?)
-                  AND completed_at IS NULL
-                """,
-                (self._canonical(token),),
-            ).fetchall()
-        ]
-
-        if not pools:
+        pool = self._canonical(pool)
+        if not pool:
             return 0
 
         try:
@@ -395,20 +384,16 @@ class CounterfactualObservationStore:
             db.execute("PRAGMA busy_timeout=5000;")
             updated = 0
 
-            for pool in pools:
-                cursor = db.execute(
-                    """
-                    UPDATE gecko_pool_cache
-                    SET price_usd=?,
-                        updated_at=datetime('now')
-                    WHERE lower(pool)=lower(?)
-                    """,
-                    (
-                        float(current_price),
-                        self._canonical(pool),
-                    ),
-                )
-                updated += int(cursor.rowcount or 0)
+            cursor = db.execute(
+                """
+                UPDATE gecko_pool_cache
+                SET price_usd=?,
+                    updated_at=datetime('now')
+                WHERE lower(pool)=lower(?)
+                """,
+                (float(current_price), pool),
+            )
+            updated += int(cursor.rowcount or 0)
 
             db.commit()
             db.close()
@@ -763,6 +748,7 @@ class CounterfactualObservationStore:
         self,
         *,
         token,
+        pool,
         current_price,
         evaluated_at,
     ):
@@ -770,6 +756,7 @@ class CounterfactualObservationStore:
             return 0
 
         key = self._canonical(token)
+        pool = self._canonical(pool)
         now = float(evaluated_at)
         price = float(current_price)
         updated = 0
@@ -780,13 +767,21 @@ class CounterfactualObservationStore:
                 SELECT *
                 FROM counterfactual_observations
                 WHERE lower(token)=lower(?)
+                  AND lower(pool)=lower(?)
                   AND completed_at IS NULL
                 ORDER BY id
                 """,
-                (key,),
+                (key, pool),
             ).fetchall()
 
             for row in rows:
+                latest_evidence_at = float(
+                    row["last_observed_at"]
+                    if row["last_observed_at"] is not None
+                    else row["observed_at"]
+                )
+                if now < latest_evidence_at:
+                    continue
                 entry = float(row["entry_price"])
                 age = max(
                     0.0,
@@ -894,9 +889,11 @@ class CounterfactualObservationStore:
         *,
         token,
         current_price,
+        pool=None,
         evaluated_at=None,
     ):
         key = self._canonical(token)
+        pool = self._canonical(pool)
         price = self._finite_positive(current_price)
 
         if not key or price is None:
@@ -905,26 +902,83 @@ class CounterfactualObservationStore:
                 durable_updated=0,
             )
 
+        if not pool and self._db is not None:
+            with self._lock:
+                pending_pools = self._db.execute(
+                    """
+                    SELECT DISTINCT pool
+                    FROM counterfactual_observations
+                    WHERE lower(token)=lower(?) AND completed_at IS NULL
+                    """,
+                    (key,),
+                ).fetchall()
+            if len(pending_pools) == 1:
+                pool = self._canonical(pending_pools[0][0])
+
+        if not pool:
+            return self._out(
+                "AMBIGUOUS_POOL",
+                durable_updated=0,
+                cache_updated=0,
+                promotion=None,
+            )
+
         now = (
             float(evaluated_at)
             if evaluated_at is not None
             else time.time()
         )
 
+        with self._lock:
+            latest = self._db.execute(
+                """
+                SELECT MAX(COALESCE(last_observed_at, observed_at))
+                FROM counterfactual_observations
+                WHERE lower(token)=lower(?) AND lower(pool)=lower(?)
+                  AND completed_at IS NULL
+                """,
+                (key, pool),
+            ).fetchone() if self._db is not None else None
+        if latest and latest[0] is not None and now < float(latest[0]):
+            return self._out(
+                "STALE_OBSERVATION",
+                durable_updated=0,
+                cache_updated=0,
+                promotion=None,
+                exact_pool=pool,
+            )
+
         updated = self._persist_observe(
             token=key,
+            pool=pool,
             current_price=price,
             evaluated_at=now,
         )
 
-        cache_updated = self._sync_exact_pool_cache_price(
-            token=key,
-            current_price=price,
-        )
+        cache_updated = 0
+        if updated:
+            cache_updated = self._sync_exact_pool_cache_price(
+                token=key,
+                pool=pool,
+                current_price=price,
+            )
 
-        promotion = self._persist_paper_promotion(
-            token=key,
-            observed_at=now,
+        exact_promotion = getattr(
+            self,
+            "_persist_paper_promotion_exact",
+            None,
+        )
+        promotion = (
+            exact_promotion(
+                token=key,
+                pool=pool,
+                observed_at=now,
+            )
+            if callable(exact_promotion)
+            else self._persist_paper_promotion(
+                token=key,
+                observed_at=now,
+            )
         )
 
         return self._out(
@@ -932,6 +986,7 @@ class CounterfactualObservationStore:
             durable_updated=updated,
             cache_updated=cache_updated,
             promotion=promotion,
+            exact_pool=pool,
         )
 
     def pending_pool_snapshot(
@@ -1190,34 +1245,43 @@ class CounterfactualObservationStore:
                 ram_row.get("pool")
             )
 
-        observation_key = key
+        # Reject an out-of-order observation before any durable or cache write.
+        with self._lock:
+            ram_row = self._rows.get(key)
+            if (
+                ram_row is not None
+                and self._canonical(ram_row.get("pool")) == pool_key
+                and now < float(ram_row["observed_at"])
+            ):
+                return self._out("STALE_OBSERVATION")
 
-        encode_handle = getattr(
-            self,
-            "_encode_handle",
-            None,
-        )
+        if self._db is not None and pool_key:
+            with self._lock:
+                latest = self._db.execute(
+                    """
+                    SELECT MAX(COALESCE(last_observed_at, observed_at))
+                    FROM counterfactual_observations
+                    WHERE lower(token)=lower(?) AND lower(pool)=lower(?)
+                      AND completed_at IS NULL
+                    """,
+                    (key, pool_key),
+                ).fetchone()
+            if latest and latest[0] is not None and now < float(latest[0]):
+                return self._out("STALE_OBSERVATION")
 
-        if pool_key and callable(encode_handle):
-            # Force an exact token+pool handle even when only one historical
-            # pool is currently pending. This prevents a newly observed pool
-            # price from being applied to an older pool for the same token.
-            observation_key = encode_handle(
-                key,
-                pool_key,
-                2,
-            )
-
-        self._persist_observe(
-            token=observation_key,
+        updated = self._persist_observe(
+            token=key,
+            pool=pool_key,
             current_price=price,
             evaluated_at=now,
         )
 
-        self._sync_exact_pool_cache_price(
-            token=observation_key,
-            current_price=price,
-        )
+        if updated:
+            self._sync_exact_pool_cache_price(
+                token=key,
+                pool=pool_key,
+                current_price=price,
+            )
 
         exact_promotion = getattr(
             self,
@@ -1247,17 +1311,6 @@ class CounterfactualObservationStore:
                 row.get("pool")
             )
 
-            if (
-                pool_key
-                and row_pool
-                and row_pool != pool_key
-            ):
-                return self._out(
-                    "POOL_MISMATCH",
-                    expected_pool=row_pool,
-                    observed_pool=pool_key,
-                )
-
             age = max(
                 0.0,
                 now - row["observed_at"],
@@ -1269,6 +1322,17 @@ class CounterfactualObservationStore:
                 return self._out(
                     "EXPIRED",
                     age_seconds=age,
+                )
+
+            if (
+                pool_key
+                and row_pool
+                and row_pool != pool_key
+            ):
+                return self._out(
+                    "POOL_MISMATCH",
+                    expected_pool=row_pool,
+                    observed_pool=pool_key,
                 )
 
             if age < self.horizon_seconds:

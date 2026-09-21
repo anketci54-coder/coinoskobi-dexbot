@@ -392,6 +392,7 @@ def test_durable_counterfactual_prices_use_scan_then_bounded_fetch():
             self,
             *,
             token,
+            pool=None,
             current_price,
         ):
             self.observed.append(

@@ -90,6 +90,27 @@ def test_pipeline_does_not_record_skip_or_buy():
     assert engine.counterfactual_store.size == 0
 
 
+def test_pipeline_uses_snapshot_time_before_processing_time():
+    engine = PipelineEngine.__new__(PipelineEngine)
+    engine.counterfactual_store = CounterfactualObservationStore()
+    row = {
+        "token": "0xtoken",
+        "pool": "0xpool",
+        "price_usd": 1.0,
+        "observed_at": "1970-01-01T00:16:40+00:00",
+    }
+    summary = {"paper": "WATCH"}
+
+    result = engine.observe_counterfactual_candidate(
+        row,
+        summary,
+        now=5000,
+    )
+
+    assert result["record"]["state"] == "RECORDED"
+    assert engine.counterfactual_store._rows["0xtoken"]["observed_at"] == 1000
+
+
 
 def test_engine_separates_plan_and_sizing_blockers():
     from pathlib import Path

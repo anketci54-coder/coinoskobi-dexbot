@@ -77,7 +77,7 @@ def test_verified_lp_protection_preserves_paper_sizing(monkeypatch):
     assert result["blockers"] == []
 
 
-def test_hot_empirical_reserve_floor_cannot_bootstrap_real_paper(monkeypatch):
+def test_hot_empirical_reserve_floor_uses_bounded_total_loss_paper(monkeypatch):
     monkeypatch.setattr(
         sizing,
         "_empirical_outcome_calibration",
@@ -105,10 +105,9 @@ def test_hot_empirical_reserve_floor_cannot_bootstrap_real_paper(monkeypatch):
         available_capital_usdt=1000.0,
     )
 
-    assert result["entry_amount_usdt"] == 0.0
-    assert result["risk_amount_usdt"] == 0.0
-    assert (
-        "LP_WITHDRAWAL_PROTECTION_UNVERIFIED"
-        in result["blockers"]
-    )
-    assert result.get("paper_calibration_bootstrap") is not True
+    assert result["entry_amount_usdt"] > 0.0
+    assert result["risk_amount_usdt"] == result["entry_amount_usdt"]
+    assert result["risk_amount_usdt"] <= 10.0
+    assert result["paper_calibration_bootstrap"] is True
+    assert result["liquidity_protection_unverified"] is True
+    assert result["blockers"] == []

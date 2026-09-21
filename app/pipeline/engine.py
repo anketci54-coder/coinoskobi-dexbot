@@ -88,6 +88,15 @@ from app.strategy.mathematical_trade_plan import initial_net_risk_usdt
 
 logger = logging.getLogger(__name__)
 
+
+def _paper_entry_timing_reason(sizing):
+    """Return a PAPER admission blocker when timing is not ready."""
+    if "ENTRY_ABOVE_CHASE_LIMIT" in (sizing.get("blockers") or []):
+        return "ENTRY_ABOVE_CHASE_LIMIT"
+    if not sizing.get("immediate_entry_allowed", False):
+        return "ENTRY_TIMING_NOT_READY"
+    return None
+
 _strategy = StrategyEngine()
 _unified_score = UnifiedScoreEngine()
 _unified_decision = UnifiedDecisionEngine()
@@ -2417,6 +2426,15 @@ class PipelineEngine:
                         )
                     )
 
+                    mathematical_plan.setdefault("entry", {}).update({
+                        key: sizing.get(key)
+                        for key in (
+                            "entry_zone_low", "entry_zone_high",
+                            "preferred_entry", "chase_limit",
+                            "immediate_entry_allowed",
+                        )
+                    })
+
                     # CANONICAL_PAPER_EXECUTION_INVENTORY_V1
                     # Canonical inventory comes from the same sizing
                     # calculation that binds entry risk and exits.
@@ -2479,6 +2497,9 @@ class PipelineEngine:
                             "PLAN_BLOCKED"
                         )
 
+                    elif _paper_entry_timing_reason(sizing) == "ENTRY_ABOVE_CHASE_LIMIT":
+                        block_reason = "ENTRY_ABOVE_CHASE_LIMIT"
+
                     elif (
                         entry_amount_usdt <= 0
                         or token_amount <= 0
@@ -2486,6 +2507,9 @@ class PipelineEngine:
                         block_reason = (
                             "POSITION_SIZING_BLOCKED"
                         )
+
+                    elif _paper_entry_timing_reason(sizing):
+                        block_reason = _paper_entry_timing_reason(sizing)
 
                     else:
                         block_reason = None

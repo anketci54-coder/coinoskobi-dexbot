@@ -1189,6 +1189,51 @@ def calculate_paper_position_size(
     if effective_edge is None or effective_edge <= 0:
         blockers.append("NET_EDGE_NOT_POSITIVE")
 
+    entry = plan.get("entry") if isinstance(plan.get("entry"), dict) else {}
+    current_price = _positive(entry.get("price"))
+    statistics = plan.get("statistics") if isinstance(plan.get("statistics"), dict) else {}
+    price_evidence = statistics.get("prices") or []
+    prior_prices = [
+        value for value in (_positive(item) for item in price_evidence[:-1])
+        if value is not None
+    ] if isinstance(price_evidence, (list, tuple)) else []
+    anchor_price = prior_prices[-1] if prior_prices else None
+    observed_moves = [
+        abs(math.log(current / previous))
+        for previous, current in zip(prior_prices, prior_prices[1:])
+        if previous > 0 and current > 0
+    ]
+    observed_move = max(observed_moves, default=0.0)
+    edge_move = _positive(effective_edge)
+    entry_timing = {
+        "entry_zone_low": None,
+        "entry_zone_high": None,
+        "preferred_entry": None,
+        "chase_limit": None,
+        "immediate_entry_allowed": False,
+    }
+    timing_ready = False
+    vur_kac_gate = plan.get("vur_kac_entry")
+    vur_kac_ready = not (
+        isinstance(vur_kac_gate, dict)
+        and vur_kac_gate.get("enforced")
+    ) or bool(vur_kac_gate.get("ready"))
+    if current_price is not None and anchor_price is not None and edge_move is not None:
+        tolerated_move = min(edge_move, observed_move)
+        entry_timing.update({
+            "entry_zone_low": anchor_price * math.exp(-tolerated_move),
+            "entry_zone_high": anchor_price,
+            "preferred_entry": anchor_price * math.exp(-tolerated_move / 2.0),
+            "chase_limit": anchor_price * math.exp(tolerated_move),
+        })
+        if current_price > entry_timing["chase_limit"]:
+            blockers.append("ENTRY_ABOVE_CHASE_LIMIT")
+        timing_ready = (
+            entry_timing["entry_zone_low"]
+            <= current_price
+            <= entry_timing["chase_limit"]
+        )
+
     accounting_quantum = _accounting_quantum(
         available
     )
@@ -1208,7 +1253,7 @@ def calculate_paper_position_size(
         return []
 
     def blocked_amount(reasons):
-        return _zero_result(
+        result = _zero_result(
             available=available, raw_amount=raw_amount,
             safe_quote_reserve=safe_quote_reserve,
             risk_log_distance=risk_log_distance, gap_multiplier=gap_multiplier,
@@ -1217,11 +1262,14 @@ def calculate_paper_position_size(
             effective_edge=effective_edge, cost_complete=cost_complete,
             blockers=reasons,
         )
+        result.update(entry_timing)
+        return result
 
     # Paper-only calibration bootstrap.
     # Positive economics require either complete costs or measured residual
-    # cost uncertainty. Unverified LP withdrawal protection never grants
-    # NORMAL/VUR_KAC PAPER capital; such candidates remain observation-only.
+    # cost uncertainty. HOT/WARM candidates with repeated empirical reserve
+    # evidence may enter only the bounded total-loss PAPER lane when LP
+    # withdrawal protection is unverified. This never grants live authority.
     empirical_liquidity_bootstrap = (
         liquidity_capacity_source == "EMPIRICAL_RESERVE_FLOOR"
         and (_number(capital.get("reserve_observation_count")) or 0) >= 2
@@ -1234,6 +1282,11 @@ def calculate_paper_position_size(
         "ACCOUNT_RISK_BUDGET_UNOBSERVED",
     }
 
+    if empirical_liquidity_bootstrap:
+        bootstrap_blockers.add(
+            "LP_WITHDRAWAL_PROTECTION_UNVERIFIED"
+        )
+
     paper_calibration_bootstrap = (
         bool(plan.get("paper_eligible"))
         and raw_amount > 0
@@ -1243,7 +1296,10 @@ def calculate_paper_position_size(
         and (cost_complete or empirical_cost_uncertainty is not None)
         and effective_edge is not None
         and effective_edge > 0
-        and liquidity_capacity_source != "EMPIRICAL_RESERVE_FLOOR"
+        and (
+            liquidity_capacity_source != "EMPIRICAL_RESERVE_FLOOR"
+            or empirical_liquidity_bootstrap
+        )
         and bool(blockers)
         and set(blockers).issubset(
             bootstrap_blockers
@@ -1279,7 +1335,7 @@ def calculate_paper_position_size(
             and accounting_quantum > 0.0
             and bootstrap_amount < accounting_quantum
         ):
-            return _zero_result(
+            result = _zero_result(
                 available=available,
                 raw_amount=raw_amount,
                 safe_quote_reserve=safe_quote_reserve,
@@ -1296,6 +1352,8 @@ def calculate_paper_position_size(
                     "ACCOUNTING_PRECISION"
                 ],
             )
+            result.update(entry_timing)
+            return result
 
         economic_reasons = economic_blockers(bootstrap_amount)
         if economic_reasons:
@@ -1313,7 +1371,7 @@ def calculate_paper_position_size(
                 available,
             )
 
-            return {
+            result = {
                 "entry_amount_usdt": bootstrap_amount,
                 "risk_amount_usdt": risk,
                 "capital_before_usdt": available,
@@ -1380,10 +1438,15 @@ def calculate_paper_position_size(
                     bound_plan["tp1_activation_price"]
                 ),
                 "kelly_diagnostic_only": True,
+                **entry_timing,
             }
+            result["immediate_entry_allowed"] = (
+                timing_ready and vur_kac_ready
+            )
+            return result
 
     if blockers:
-        return _zero_result(
+        result = _zero_result(
             available=available,
             raw_amount=raw_amount,
             safe_quote_reserve=safe_quote_reserve,
@@ -1395,6 +1458,8 @@ def calculate_paper_position_size(
             cost_complete=cost_complete,
             blockers=blockers,
         )
+        result.update(entry_timing)
+        return result
 
     risk_retention = math.exp(-risk_log_distance)
     stop_loss_fraction = 1.0 - risk_retention
@@ -1478,7 +1543,7 @@ def calculate_paper_position_size(
         available,
     )
 
-    return {
+    result = {
         "entry_amount_usdt": amount,
         "risk_amount_usdt": risk,
         "capital_before_usdt": available,
@@ -1527,6 +1592,7 @@ def calculate_paper_position_size(
         "effective_edge_fraction": effective_edge,
         "cost_complete": cost_complete,
         "kelly_diagnostic_only": True,
+        **entry_timing,
         "canonical_token_amount": bound_plan["token_amount"],
         "canonical_initial_sl": bound_plan["initial_sl"],
         "canonical_initial_net_risk_usdt": (
@@ -1536,3 +1602,7 @@ def calculate_paper_position_size(
             bound_plan["tp1_activation_price"]
         ),
     }
+    result["immediate_entry_allowed"] = (
+        timing_ready and vur_kac_ready
+    )
+    return result

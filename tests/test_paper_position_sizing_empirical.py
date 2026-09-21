@@ -1,10 +1,12 @@
 import math
+import pytest
 
 from app.config.trading import MAX_OPEN_PAPER_POSITIONS
 
 from app.risk.paper_position_sizing import (
     calculate_paper_position_size,
 )
+from app.pipeline.engine import _paper_entry_timing_reason
 
 
 def _stamp_outcome_fingerprints(db):
@@ -198,6 +200,155 @@ def test_incomplete_cost_does_not_equal_zero():
         is not None
         or result["entry_amount_usdt"] == 0.0
     )
+
+
+def test_entry_plan_uses_observed_move_and_edge_without_fixed_percentages(tmp_path):
+    plan = _plan(
+        raw_amount=1000,
+        available=10000,
+        reserve=5000,
+        risk_distance=0.2,
+        known_edge=0.1,
+        full_edge=0.1,
+        cost_complete=True,
+    )
+    plan["entry"] = {"price": 2.0}
+    plan["statistics"] = {
+        "prices": [2.0, 2.0 * math.exp(0.03), 2.0],
+        "log_returns": [0.02, -0.03],
+    }
+
+    result = calculate_paper_position_size(
+        mathematical_plan=plan,
+        db_path=str(tmp_path / "missing.db"),
+    )
+
+    anchor = 2.0 * math.exp(0.03)
+    assert result["entry_zone_low"] == pytest.approx(anchor * math.exp(-0.03))
+    assert result["entry_zone_high"] == pytest.approx(anchor)
+    assert result["preferred_entry"] == pytest.approx(anchor * math.exp(-0.015))
+    assert result["chase_limit"] == pytest.approx(anchor * math.exp(0.03))
+    # The derived zone is valid, but the plan's remaining calibration
+    # blockers still prevent immediate PAPER admission.
+    assert result["immediate_entry_allowed"] is False
+
+
+def _timing_plan(*, price, history, edge=0.1, trade_type="NORMAL", gate=None):
+    plan = _plan(
+        raw_amount=1000,
+        available=10000,
+        reserve=5000,
+        risk_distance=0.2,
+        known_edge=edge,
+        full_edge=edge,
+        cost_complete=True,
+    )
+    plan["paper_eligible"] = True
+    plan["entry"] = {"price": price}
+    plan["statistics"] = {
+        "prices": [*history, price],
+    }
+    if trade_type == "VUR_KAC":
+        plan["vur_kac_entry"] = {"enforced": True, "ready": bool(gate)}
+    return plan
+
+
+def test_price_above_derived_chase_limit_is_blocked():
+    plan = _timing_plan(price=3.0, history=[1.0, 1.1])
+    result = calculate_paper_position_size(mathematical_plan=plan)
+    assert result["chase_limit"] == pytest.approx(1.1 * 1.1)
+    assert result["chase_limit"] < 3.0
+    assert result["entry_amount_usdt"] == 0.0
+    assert result["immediate_entry_allowed"] is False
+    assert "ENTRY_ABOVE_CHASE_LIMIT" in result["blockers"]
+    assert _paper_entry_timing_reason(result) == "ENTRY_ABOVE_CHASE_LIMIT"
+
+
+def test_price_inside_derived_zone_is_timing_eligible():
+    plan = _timing_plan(price=1.01, history=[0.99, 1.0])
+    result = calculate_paper_position_size(mathematical_plan=plan)
+    assert result["entry_zone_low"] <= 1.01 <= result["chase_limit"]
+    assert result["immediate_entry_allowed"] is True
+    assert _paper_entry_timing_reason(result) is None
+
+
+def test_price_below_entry_zone_with_positive_size_is_watch_only():
+    plan = _timing_plan(price=0.95, history=[0.99, 1.0])
+    plan["capital"].update({
+        "liquidity_capacity_source": "EMPIRICAL_RESERVE_FLOOR",
+        "reserve_observation_count": 2,
+        "observed_min_quote_reserve_usd": 5000,
+    })
+    plan["market_context"] = {"opportunity": {"state": "HOT"}}
+    result = calculate_paper_position_size(mathematical_plan=plan)
+    assert result["entry_amount_usdt"] > 0
+    assert result["immediate_entry_allowed"] is False
+    assert _paper_entry_timing_reason(result) == "ENTRY_TIMING_NOT_READY"
+
+
+def test_vur_kac_without_flow_readiness_is_not_immediate():
+    plan = _timing_plan(price=1.01, history=[0.99, 1.0], trade_type="VUR_KAC", gate=False)
+    plan["capital"].update({
+        "liquidity_capacity_source": "EMPIRICAL_RESERVE_FLOOR",
+        "reserve_observation_count": 2,
+        "observed_min_quote_reserve_usd": 5000,
+    })
+    plan["market_context"] = {"opportunity": {"state": "HOT"}}
+    result = calculate_paper_position_size(mathematical_plan=plan)
+    assert result["entry_amount_usdt"] > 0
+    assert result["immediate_entry_allowed"] is False
+    assert _paper_entry_timing_reason(result) == "ENTRY_TIMING_NOT_READY"
+
+
+def test_vur_kac_with_continuation_and_flow_readiness_is_immediate():
+    plan = _timing_plan(price=1.01, history=[0.99, 1.0], trade_type="VUR_KAC", gate=True)
+    result = calculate_paper_position_size(mathematical_plan=plan)
+    assert result["immediate_entry_allowed"] is True
+
+
+def test_negative_edge_or_hard_risk_keeps_zero_entry():
+    plan = _timing_plan(price=1.01, history=[0.99, 1.0], edge=-0.01)
+    result = calculate_paper_position_size(mathematical_plan=plan)
+    assert result["entry_amount_usdt"] == 0.0
+    assert "NET_EDGE_NOT_POSITIVE" in result["blockers"]
+    plan["hard_block"] = True
+    result = calculate_paper_position_size(mathematical_plan=plan)
+    assert result["entry_amount_usdt"] == 0.0
+
+
+def test_bounded_lp_bootstrap_returns_immediate_when_timing_ready(tmp_path):
+    plan = _timing_plan(price=1.01, history=[0.99, 1.0])
+    plan["capital"].update({
+        "liquidity_capacity_source": "EMPIRICAL_RESERVE_FLOOR",
+        "reserve_observation_count": 2,
+        "observed_min_quote_reserve_usd": 5000,
+    })
+    plan["market_context"] = {
+        "opportunity": {"state": "HOT"},
+    }
+    result = calculate_paper_position_size(
+        mathematical_plan=plan,
+        db_path=str(tmp_path / "missing.db"),
+    )
+    assert result["paper_calibration_bootstrap"] is True
+    assert result["entry_amount_usdt"] > 0
+    assert result["immediate_entry_allowed"] is True
+    assert _paper_entry_timing_reason(result) is None
+
+
+def test_nonpositive_edge_zeros_sizing():
+    plan = _plan(
+        raw_amount=1000,
+        available=10000,
+        reserve=5000,
+        risk_distance=0.2,
+        known_edge=0.0,
+        full_edge=-0.01,
+        cost_complete=True,
+    )
+    result = calculate_paper_position_size(mathematical_plan=plan)
+    assert result["entry_amount_usdt"] == 0.0
+    assert "NET_EDGE_NOT_POSITIVE" in result["blockers"]
 
 
 def test_full_net_edge_used_when_complete():

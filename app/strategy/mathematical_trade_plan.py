@@ -2380,6 +2380,11 @@ def build_trade_plan(
                 "CURRENT_PRICE_WITHIN_"
                 "EMPIRICAL_RISK_ENVELOPE"
             ),
+            "entry_zone_low": None,
+            "entry_zone_high": entry,
+            "preferred_entry": None,
+            "chase_limit": None,
+            "immediate_entry_allowed": False,
         },
 
         "capital": {

@@ -95,3 +95,126 @@ def test_real_gecko_cache_pool_lookup_uses_tuple_row(tmp_path, monkeypatch):
     })
 
     assert cache.pool_for_token("0xtoken") == "0xpool"
+
+
+def test_open_position_full_snapshot_preserves_provider_provenance():
+    class SnapshotDB:
+        def open_positions(self):
+            return [{
+                "token": "0xtoken1",
+                "pool": "0xpool1",
+                "dex": "pancakeswap_v2",
+            }]
+
+    class SnapshotCache:
+        def __init__(self):
+            self.updated = []
+            self.observations = []
+
+        def record_market_observation(
+            self,
+            row,
+        ):
+            self.observations.append(
+                dict(row)
+            )
+            return True
+
+        def update_pool_price(
+            self,
+            pool,
+            price,
+        ):
+            self.updated.append(
+                (pool, price)
+            )
+            return 1
+
+    class SnapshotScanner:
+        def pool_snapshots(
+            self,
+            pools,
+            *,
+            persist_followups=True,
+        ):
+            assert persist_followups is False
+            assert pools == ["0xpool1"]
+
+            return [{
+                "schema_version": (
+                    "DEXSCREENER_SNAPSHOT_V1"
+                ),
+                "chain": "bsc",
+                "source": "dexscreener",
+                "dex": "pancakeswap_v2",
+                "pool": "0xpool1",
+                "base_token": "0xtoken1",
+                "quote_token": "0xquote",
+                "price_usd": 0.000123,
+                "liquidity_usd": 45678.0,
+                "fdv_usd": 123456.0,
+                "market_cap_usd": 120000.0,
+                "volume_h24_usd": 9876.0,
+                "buys_h24": 55,
+                "sells_h24": 21,
+                "observed_at": (
+                    "2026-09-21T11:04:00+00:00"
+                ),
+            }]
+
+    engine = PipelineEngine.__new__(
+        PipelineEngine
+    )
+
+    engine.manager = type(
+        "Manager",
+        (),
+        {"db": SnapshotDB()},
+    )()
+
+    engine.cache = SnapshotCache()
+    engine.scanner = SnapshotScanner()
+
+    result = (
+        engine.refresh_open_position_prices()
+    )
+
+    assert result == {
+        "state": "REFRESHED",
+        "open_positions": 1,
+        "refreshed": 1,
+        "failed": 0,
+        "requests": 1,
+        "bounded": True,
+    }
+
+    assert engine.cache.updated == [
+        ("0xpool1", 0.000123)
+    ]
+
+    assert len(
+        engine.cache.observations
+    ) == 1
+
+    observation = (
+        engine.cache.observations[0]
+    )
+
+    assert observation["pool"] == (
+        "0xpool1"
+    )
+    assert observation["source"] == (
+        "dexscreener"
+    )
+    assert observation["price_usd"] == (
+        0.000123
+    )
+    assert observation[
+        "liquidity_usd"
+    ] == 45678.0
+    assert observation["fdv_usd"] == (
+        123456.0
+    )
+    assert observation[
+        "observed_at"
+    ] == "2026-09-21T11:04:00+00:00"

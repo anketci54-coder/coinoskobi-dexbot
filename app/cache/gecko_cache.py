@@ -1,6 +1,8 @@
+import math
 import sqlite3
 import threading
 from contextlib import contextmanager
+from datetime import datetime, timezone
 from pathlib import Path
 
 DB = Path("data/cache/cache.db")
@@ -303,6 +305,161 @@ class GeckoCache:
             )
 
             self.db.commit()
+
+    def record_market_observation(self, row):
+        if not isinstance(row, dict):
+            raise ValueError(
+                "market observation must be a mapping"
+            )
+
+        def canonical_address(value):
+            value = str(
+                value or ""
+            ).strip().lower()
+
+            if value.startswith("bsc_"):
+                value = value[4:]
+
+            return value or None
+
+        def first(*keys):
+            for key in keys:
+                value = row.get(key)
+                if value is not None:
+                    return value
+            return None
+
+        pool = canonical_address(
+            row.get("pool")
+        )
+
+        try:
+            price = float(
+                row.get("price_usd")
+            )
+        except (
+            TypeError,
+            ValueError,
+        ):
+            price = None
+
+        if (
+            not pool
+            or price is None
+            or not math.isfinite(price)
+            or price <= 0
+        ):
+            raise ValueError(
+                "valid pool and positive price required"
+            )
+
+        token = canonical_address(
+            row.get("base_token")
+            or row.get("token")
+        )
+
+        quote_token = canonical_address(
+            row.get("quote_token")
+        )
+
+        source = str(
+            row.get("source")
+            or "paper_price_refresh"
+        ).strip().lower()
+
+        chain = str(
+            row.get("chain")
+            or "bsc"
+        ).strip().lower()
+
+        observed_at = str(
+            row.get("observed_at")
+            or datetime.now(
+                timezone.utc
+            ).isoformat()
+        )
+
+        with self._lock, self.db:
+            self.db.execute(
+                """
+                INSERT INTO market_observation_history(
+                    schema_version,
+                    chain,
+                    source,
+                    dex,
+                    pool,
+                    token,
+                    quote_token,
+                    price_usd,
+                    liquidity_usd,
+                    volume_24h,
+                    buys_24h,
+                    sells_24h,
+                    fdv_usd,
+                    market_cap_usd,
+                    pool_created_at,
+                    observed_at,
+                    ingested_at
+                )
+                VALUES(
+                    ?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,
+                    strftime(
+                        '%Y-%m-%dT%H:%M:%fZ',
+                        'now'
+                    )
+                )
+                """,
+                (
+                    str(
+                        row.get("schema_version")
+                        or "MARKET_OBSERVATION_V1"
+                    ),
+                    chain,
+                    source,
+                    row.get("dex"),
+                    pool,
+                    token,
+                    quote_token,
+                    price,
+                    first(
+                        "liquidity_usd",
+                        "liquidity",
+                    ),
+                    first(
+                        "volume_h24_usd",
+                        "volume_24h",
+                        "volume24",
+                    ),
+                    first(
+                        "buys_h24",
+                        "buys_24h",
+                        "buys24",
+                    ),
+                    first(
+                        "sells_h24",
+                        "sells_24h",
+                        "sells24",
+                    ),
+                    first(
+                        "fdv_usd",
+                        "fdv",
+                    ),
+                    first(
+                        "market_cap_usd",
+                        "market_cap",
+                    ),
+                    first(
+                        "pair_created_at_ms",
+                        "pool_created_at",
+                        "created_at",
+                    ),
+                    observed_at,
+                ),
+            )
+
+            self.db.commit()
+
+        return True
 
     def history_for_pool(
         self,

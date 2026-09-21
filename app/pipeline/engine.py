@@ -1235,32 +1235,101 @@ class PipelineEngine:
                 "bounded": True,
             }
 
+        snapshots_by_pool = {}
+
         try:
-            pool_prices = getattr(
+            # Open trades survive scanner-cache eviction. Their stored
+            # pool/DEX identity is authoritative for the canonical broker.
+            identities = (
+                [identity_by_pool.get(pool, pool) for pool in pools]
+                if getattr(
+                    self.scanner,
+                    "_market_data_broker",
+                    None,
+                ) is not None
+                else pools
+            )
+
+            pool_snapshots = getattr(
                 self.scanner,
-                "pool_prices",
+                "pool_snapshots",
                 None,
             )
 
-            if pool_prices is not None:
-                # Open trades survive scanner-cache eviction. Their stored
-                # pool/DEX identity is authoritative for the canonical broker.
-                identities = (
-                    [identity_by_pool.get(pool, pool) for pool in pools]
-                    if getattr(self.scanner, "_market_data_broker", None) is not None
-                    else pools
+            if callable(pool_snapshots):
+                snapshots = pool_snapshots(
+                    identities,
+                    persist_followups=False,
                 )
-                prices = pool_prices(identities)
-            else:
+
+                if not isinstance(
+                    snapshots,
+                    list,
+                ):
+                    raise ValueError(
+                        "pool snapshot response must be a list"
+                    )
+
+                for snapshot in snapshots:
+                    if not isinstance(
+                        snapshot,
+                        dict,
+                    ):
+                        continue
+
+                    pool_key = str(
+                        snapshot.get("pool")
+                        or ""
+                    ).strip().lower()
+
+                    price = _runtime_positive_number(
+                        snapshot.get("price_usd")
+                    )
+
+                    if (
+                        pool_key in pools
+                        and price is not None
+                    ):
+                        snapshots_by_pool[
+                            pool_key
+                        ] = dict(snapshot)
+
                 prices = {
-                    pool: self.scanner.pool_price(pool)
-                    for pool in pools
+                    pool: snapshot[
+                        "price_usd"
+                    ]
+                    for pool, snapshot
+                    in snapshots_by_pool.items()
                 }
 
+            else:
+                pool_prices = getattr(
+                    self.scanner,
+                    "pool_prices",
+                    None,
+                )
+
+                if pool_prices is not None:
+                    prices = pool_prices(
+                        identities
+                    )
+                else:
+                    prices = {
+                        pool: self.scanner.pool_price(
+                            pool
+                        )
+                        for pool in pools
+                    }
+
             if not isinstance(prices, dict):
-                raise ValueError("pool price response must be a mapping")
+                raise ValueError(
+                    "pool price response must be a mapping"
+                )
+
             # Cache lock waits must not rejuvenate the provider observation.
-            observed_at = datetime.now(timezone.utc).isoformat()
+            observed_at = datetime.now(
+                timezone.utc
+            ).isoformat()
 
         except Exception as exc:
             logger.warning("PAPER_PRICE_REFRESH_FAILED pools=%s error=%s", len(pools), exc)
@@ -1283,6 +1352,32 @@ class PipelineEngine:
             if price is None:
                 failed += 1
                 continue
+
+            snapshot = snapshots_by_pool.get(
+                pool.lower()
+            )
+
+            recorder = getattr(
+                self.cache,
+                "record_market_observation",
+                None,
+            )
+
+            if (
+                snapshot is not None
+                and callable(recorder)
+            ):
+                try:
+                    recorder(snapshot)
+                except Exception as exc:
+                    # Provenance telemetry must never suppress a verified
+                    # fresh PAPER exit price.
+                    logger.warning(
+                        "PAPER_PRICE_PROVENANCE_WRITE_FAILED "
+                        "pool=%s error=%s",
+                        pool,
+                        type(exc).__name__,
+                    )
 
             try:
                 if self.cache.update_pool_price(pool, price):

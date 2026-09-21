@@ -132,6 +132,47 @@ class IntegrityCounterfactualObservationStore(
             return None
         return self._canonical(rows[0]["pool"])
 
+    def _observation_is_stale(
+        self,
+        *,
+        token,
+        pool,
+        evaluated_at,
+    ):
+        if self._db is None:
+            return False
+
+        token = self._canonical(token)
+        pool = self._canonical(pool)
+
+        if not token or not pool:
+            return False
+
+        with self._lock:
+            row = self._db.execute(
+                """
+                SELECT MAX(
+                    COALESCE(
+                        last_observed_at,
+                        observed_at
+                    )
+                )
+                FROM counterfactual_observations
+                WHERE lower(token)=lower(?)
+                  AND lower(pool)=lower(?)
+                  AND completed_at IS NULL
+                """,
+                (token, pool),
+            ).fetchone()
+
+        if row is None or row[0] is None:
+            return False
+
+        return (
+            float(evaluated_at)
+            < float(row[0])
+        )
+
     def _persist_observe_exact(
         self,
         *,
@@ -163,6 +204,15 @@ class IntegrityCounterfactualObservationStore(
             ).fetchall()
 
             for row in rows:
+                latest_evidence_at = float(
+                    row["last_observed_at"]
+                    if row["last_observed_at"] is not None
+                    else row["observed_at"]
+                )
+
+                if now < latest_evidence_at:
+                    continue
+
                 entry = float(row["entry_price"])
                 age = max(
                     0.0,
@@ -464,6 +514,19 @@ class IntegrityCounterfactualObservationStore(
             else time.time()
         )
 
+        if self._observation_is_stale(
+            token=real_token,
+            pool=exact_pool,
+            evaluated_at=now,
+        ):
+            return self._out(
+                "STALE_OBSERVATION",
+                durable_updated=0,
+                cache_updated=0,
+                promotion=None,
+                exact_pool=exact_pool,
+            )
+
         updated = self._persist_observe_exact(
             token=real_token,
             pool=exact_pool,
@@ -471,9 +534,13 @@ class IntegrityCounterfactualObservationStore(
             evaluated_at=now,
         )
 
-        cache_updated = self._sync_pool_cache_price(
-            pool=exact_pool,
-            current_price=price,
+        cache_updated = (
+            self._sync_pool_cache_price(
+                pool=exact_pool,
+                current_price=price,
+            )
+            if updated
+            else 0
         )
 
         promotion = self._persist_paper_promotion_exact(

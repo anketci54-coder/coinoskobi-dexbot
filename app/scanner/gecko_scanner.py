@@ -461,8 +461,12 @@ class GeckoScanner:
         if response is None:
             return []
 
+        observed_at = time.time()
         return [
-            self._row_to_candidate(row)
+            {
+                **self._row_to_candidate(row),
+                "observed_at": observed_at,
+            }
             for row in response.json().get(
                 "data",
                 [],

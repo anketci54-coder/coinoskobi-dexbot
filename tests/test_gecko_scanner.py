@@ -64,6 +64,47 @@ def test_scanner_retries_429_then_succeeds(
     ]
 
 
+def test_scanner_rows_use_fetch_time_as_observation_time(
+    monkeypatch,
+):
+    import app.scanner.gecko_scanner as module
+
+    class Response:
+        status_code = 200
+
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {
+                "data": [
+                    {
+                        "attributes": {
+                            "address": "0xpool",
+                            "base_token_price_usd": "1.25",
+                        },
+                        "relationships": {},
+                    },
+                ],
+            }
+
+    observed_at = 1_800_000_000.0
+    monkeypatch.setattr(
+        module.GeckoScanner,
+        "_fetch",
+        lambda self: Response(),
+    )
+    monkeypatch.setattr(
+        module.time,
+        "time",
+        lambda: observed_at,
+    )
+
+    rows = module.GeckoScanner().scan()
+
+    assert rows[0]["observed_at"] == observed_at
+
+
 def test_scanner_429_retry_is_bounded_and_fails_closed(
     monkeypatch,
 ):

@@ -229,6 +229,42 @@ def _runtime_positive_number(value):
     return number
 
 
+def _runtime_observation_epoch(value):
+    if value is None:
+        return None
+
+    if isinstance(value, (int, float)):
+        number = float(value)
+        return number if math.isfinite(number) else None
+
+    text = str(value).strip()
+
+    if not text:
+        return None
+
+    try:
+        number = float(text)
+    except ValueError:
+        number = None
+
+    if number is not None:
+        return number if math.isfinite(number) else None
+
+    try:
+        parsed = datetime.fromisoformat(
+            text.replace("Z", "+00:00")
+        )
+    except ValueError:
+        return None
+
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(
+            tzinfo=timezone.utc
+        )
+
+    return parsed.timestamp()
+
+
 def _runtime_walk_evidence(value):
     if isinstance(value, dict):
         yield value
@@ -3618,12 +3654,57 @@ class PipelineEngine:
         pool = row.get("pool")
         price = row.get("price_usd")
 
+        evidence_at = _runtime_observation_epoch(
+            row.get("observed_at")
+        )
+        if evidence_at is None and now is not None:
+            evidence_at = _runtime_observation_epoch(now)
+
+        if evidence_at is None:
+            return {
+                "evaluation": {"state": "INVALID_OBSERVATION_TIME"},
+                "record": {
+                    "state": "INVALID_OBSERVATION_TIME",
+                    "stored": False,
+                },
+                "probe_observation": {
+                    "state": "INVALID_OBSERVATION_TIME",
+                },
+                "probe_open": {
+                    "state": "INVALID_OBSERVATION_TIME",
+                    "created": False,
+                },
+                "status": store.status(),
+            }
+
+        now = evidence_at
+
         evaluation = store.observe(
             token=token,
             pool=pool,
             current_price=price,
             evaluated_at=now,
         )
+
+        if (
+            evaluation.get("state")
+            == "STALE_OBSERVATION"
+        ):
+            return {
+                "evaluation": evaluation,
+                "record": {
+                    "state": "STALE_OBSERVATION",
+                    "stored": False,
+                },
+                "probe_observation": {
+                    "state": "STALE_OBSERVATION",
+                },
+                "probe_open": {
+                    "state": "STALE_OBSERVATION",
+                    "created": False,
+                },
+                "status": store.status(),
+            }
 
         probe_observation = probe_store.observe(
             token=token,
@@ -3989,7 +4070,14 @@ class PipelineEngine:
                 price = 0.0
 
             if pool and price > 0:
-                current_prices[pool] = price
+                current_prices[pool] = {
+                    "price": price,
+                    "observed_at": (
+                        _runtime_observation_epoch(
+                            row.get("observed_at")
+                        )
+                    ),
+                }
 
         observed = 0
         direct = 0
@@ -3998,15 +4086,29 @@ class PipelineEngine:
         requests = 0
 
         for pool, tokens in pool_tokens.items():
-            price = current_prices.get(pool)
+            snapshot = current_prices.get(pool)
 
-            if price is None:
+            if snapshot is None:
                 continue
 
+            price = snapshot["price"]
+            observed_at = snapshot.get(
+                "observed_at"
+            )
+
             for token in tokens:
+                kwargs = {}
+
+                if observed_at is not None:
+                    kwargs["evaluated_at"] = (
+                        observed_at
+                    )
+
                 result = observer(
                     token=token,
+                    pool=pool,
                     current_price=price,
+                    **kwargs,
                 )
 
                 if result.get("state") == "OBSERVED":

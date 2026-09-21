@@ -103,6 +103,12 @@ class GeckoCache:
                     "ADD COLUMN price_updated_at TEXT"
                 )
 
+            if "observed_at" not in columns:
+                self.db.execute(
+                    "ALTER TABLE gecko_pool_cache "
+                    "ADD COLUMN observed_at TEXT"
+                )
+
             self.db.execute("""
             CREATE TABLE IF NOT EXISTS market_observation_history(
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -199,14 +205,16 @@ class GeckoCache:
                 price_usd,
                 created_at,
                 updated_at,
-                price_updated_at
+                price_updated_at,
+                observed_at
 
             )
 
             VALUES(
                 ?,?,?,?,?,?,?,?,?,?,?,?,
                 datetime('now'),
-                datetime('now')
+                datetime('now'),
+                ?
             )
 
             """,(
@@ -222,7 +230,8 @@ class GeckoCache:
                 row.get("sells_24h"),
                 row["fdv"],
                 row["price_usd"],
-                row["created_at"]
+                row["created_at"],
+                row.get("observed_at"),
 
             ))
 
@@ -540,7 +549,8 @@ class GeckoCache:
             price_usd,
             created_at,
             updated_at,
-            price_updated_at
+            price_updated_at,
+            observed_at
 
             FROM gecko_pool_cache
 

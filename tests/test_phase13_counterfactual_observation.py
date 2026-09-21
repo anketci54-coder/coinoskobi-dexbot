@@ -286,3 +286,108 @@ def test_durable_counterfactual_horizons_use_paper_db(
     assert status["paper_authority"] is False
     assert status["live_authority"] is False
     assert status["execution_authority"] is False
+
+
+def test_out_of_order_snapshot_cannot_change_durable_extrema_or_cache(
+    tmp_path,
+):
+    paper_path = tmp_path / "paper.db"
+    cache_path = tmp_path / "cache.db"
+
+    conn = sqlite3.connect(paper_path)
+    ensure_paper_schema(conn)
+    conn.close()
+
+    conn = sqlite3.connect(cache_path)
+    conn.execute(
+        "CREATE TABLE gecko_pool_cache "
+        "(pool TEXT PRIMARY KEY, price_usd REAL, updated_at TEXT)"
+    )
+    conn.executemany(
+        "INSERT INTO gecko_pool_cache VALUES(?,?,?)",
+        [("pool-a", 1.0, "initial"), ("pool-b", 9.0, "initial")],
+    )
+    conn.commit()
+    conn.close()
+
+    store = CounterfactualObservationStore(
+        db_path=paper_path,
+        cache_db_path=cache_path,
+    )
+    store.record(
+        token="token",
+        pool="pool-a",
+        entry_price=1.0,
+        signal_state="POSITIVE",
+        candidate_action="DOWNGRADE",
+        observed_at=1000,
+    )
+    store.record(
+        token="token",
+        pool="pool-b",
+        entry_price=1.0,
+        signal_state="POSITIVE",
+        candidate_action="DOWNGRADE",
+        observed_at=1000,
+    )
+
+    fresh = store.observe(
+        token="token",
+        pool="pool-a",
+        current_price=2.0,
+        evaluated_at=1100,
+    )
+    stale = store.observe(
+        token="token",
+        pool="pool-a",
+        current_price=0.5,
+        evaluated_at=1050,
+    )
+
+    assert fresh["state"] == "PENDING"
+    assert stale["state"] == "STALE_OBSERVATION"
+
+    row = store._db.execute(
+        "SELECT last_observed_at,last_price,max_price,min_price "
+        "FROM counterfactual_observations WHERE lower(pool)='pool-a'"
+    ).fetchone()
+    assert tuple(row) == (1100.0, 2.0, 2.0, 1.0)
+
+    conn = sqlite3.connect(cache_path)
+    prices = dict(conn.execute("SELECT pool,price_usd FROM gecko_pool_cache"))
+    conn.close()
+    assert prices == {"pool-a": 2.0, "pool-b": 9.0}
+
+
+def test_expired_ram_pool_row_allows_new_pool_record():
+    store = CounterfactualObservationStore(
+        horizon_seconds=300,
+        ttl_seconds=900,
+    )
+    store.record(
+        token="token",
+        pool="old-pool",
+        entry_price=1.0,
+        signal_state="POSITIVE",
+        candidate_action="DOWNGRADE",
+        observed_at=1000,
+    )
+
+    expired = store.observe(
+        token="token",
+        pool="new-pool",
+        current_price=1.1,
+        evaluated_at=2000,
+    )
+    recorded = store.record(
+        token="token",
+        pool="new-pool",
+        entry_price=1.1,
+        signal_state="POSITIVE",
+        candidate_action="DOWNGRADE",
+        observed_at=2000,
+    )
+
+    assert expired["state"] == "EXPIRED"
+    assert recorded["state"] == "RECORDED"
+    assert store._rows["token"]["pool"] == "new-pool"

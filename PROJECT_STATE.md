@@ -63,6 +63,24 @@ Repository, VPS working tree, runtime services and runtime databases together fo
 - Paper execution remains isolated from live execution.
 - Hot path remains fast/bounded; heavy provider work remains bounded slow-path/worker work.
 
+## PHASE 15H MAINTENANCE OPEN — EXECUTION-GRADE PAPER SIMULATION — 2026-09-21
+
+Phase 15 remains the CLOSED final roadmap phase. Under the canonical flat-letter maintenance protocol, **15H** is opened as a bounded maintenance subphase because transaction-level PAPER execution simulation is not owned by existing 15A–15G scopes.
+
+15H owns only deterministic, non-broadcast PAPER BUY/SELL execution simulation and its raw execution evidence/provenance. It does not own risk/sellability decisions, paper admission, TP/SL lifecycle, provider resilience, MEV/adversary classification, runtime orchestration, learning/calibration, panel/Vezir, or Phase 15A–15G drift logic.
+
+Required integration boundary:
+- reuse Phase 8 canonical provider/RPC path; no second provider transport architecture
+- Phase 4/12 may request/consume simulation evidence but retain lifecycle/runtime ownership
+- Phase 3 retains all Risk Gate/sellability/admission interpretation
+- Phase 10 retains MEV/adversary analysis
+- Phase 15B remains the canonical execution-evidence adapter into the existing 15A/15C/15F drift chain
+- no second PAPER engine, strategy engine, lifecycle engine, provider pipeline, wallet path, signing path, or live execution path
+
+Authority remains unchanged: AI trade authority 0; live execution authority 0; wallet/signing authority 0; transaction broadcast/signing/private-key use forbidden for 15H. PAPER OPEN/CLOSE authority and PAPER DB mutation are outside 15H.
+
+Status: **OPEN / DESIGN+IMPLEMENTATION PENDING**.
+
 ## CURRENT PRODUCTION SCOPE
 
 Production focus: **BNB Chain (BSC) + PancakeSwap**.

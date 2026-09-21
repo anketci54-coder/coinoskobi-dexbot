@@ -746,11 +746,12 @@ def _with_goplus_fallback(address, primary, *, pair=None):
         )
     )
 
-    # Preserve the existing sellability fallback boundary: a secondary
-    # sellability verdict still requires complete local exit evidence.
+    # Local exit history is not itself proof of sellability. GoPlus has
+    # independent fail-closed sellability requirements in its parser; use
+    # that verdict when the primary provider is unknown, even if local
+    # historical evidence is incomplete.
     needs_sellability = (
-        local_completed
-        and primary_data.get("sellable") is None
+        primary_data.get("sellable") is None
     )
 
     if not needs_lp_evidence and not needs_sellability:
@@ -785,7 +786,6 @@ def _with_goplus_fallback(address, primary, *, pair=None):
     # verdict while GoPlus can independently enrich LP evidence.
     if (
         needs_sellability
-        and local_completed
         and secondary_data.get("sellable") in {
             True,
             False,

@@ -139,6 +139,152 @@ def test_unknown_honeypot_uses_goplus_with_local_evidence(
     assert result["local_evidence_complete"] is True
 
 
+def test_unknown_honeypot_uses_verified_goplus_without_complete_history(
+    monkeypatch,
+):
+    primary = {
+        "success": False,
+        "provider_success": False,
+        "provider_status_code": 503,
+        "source": "sellability",
+        "error": "timeout",
+        "data": {
+            "sellable": None,
+            "honeypot": None,
+            "local_evidence": {
+                **_local_complete(),
+                "completed": False,
+                "exit_feasibility": {
+                    "evidence_complete": False,
+                },
+            },
+        },
+    }
+    secondary = {
+        "success": True,
+        "provider_success": True,
+        "provider_status_code": 200,
+        "source": "sellability",
+        "error": None,
+        "data": {
+            "sellable": True,
+            "honeypot": None,
+            "sellability_checked": True,
+            "sellability_provider": "goplus",
+        },
+    }
+    monkeypatch.setattr(
+        module,
+        "_analyze_provider_once",
+        lambda *args, **kwargs: primary,
+    )
+    monkeypatch.setattr(
+        module,
+        "_analyze_goplus_once",
+        lambda *args, **kwargs: secondary,
+    )
+
+    result = module.analyze(ADDRESS, pair=PAIR)
+
+    assert result["success"] is True
+    assert result["data"]["sellable"] is True
+    assert result["data"]["provider_fallback_mode"] == "GOPLUS"
+    assert result["local_evidence_complete"] is False
+    assert result["data"]["local_evidence"] == primary["data"]["local_evidence"]
+    assert result["data"]["local_evidence"]["exit_feasibility"]["evidence_complete"] is False
+
+
+def test_genuine_unknown_goplus_fallback_stays_unknown(
+    monkeypatch,
+):
+    primary = {
+        "success": False,
+        "provider_success": False,
+        "provider_status_code": 503,
+        "source": "sellability",
+        "error": "timeout",
+        "data": {
+            "sellable": None,
+            "honeypot": None,
+            "local_evidence": _local_complete(),
+        },
+    }
+    secondary = {
+        "success": True,
+        "provider_success": True,
+        "provider_status_code": 200,
+        "source": "sellability",
+        "error": None,
+        "data": {
+            "sellable": None,
+            "honeypot": None,
+            "sellability_provider": "goplus",
+        },
+    }
+    monkeypatch.setattr(
+        module,
+        "_analyze_provider_once",
+        lambda *args, **kwargs: primary,
+    )
+    monkeypatch.setattr(
+        module,
+        "_analyze_goplus_once",
+        lambda *args, **kwargs: secondary,
+    )
+
+    result = module.analyze(ADDRESS, pair=PAIR)
+
+    assert result["success"] is False
+    assert result["data"]["sellable"] is None
+
+
+def test_goplus_explicit_negative_stays_blocked_without_history(
+    monkeypatch,
+):
+    primary = {
+        "success": False,
+        "provider_success": False,
+        "provider_status_code": 503,
+        "source": "sellability",
+        "error": "timeout",
+        "data": {
+            "sellable": None,
+            "honeypot": None,
+            "local_evidence": {
+                **_local_complete(),
+                "completed": False,
+            },
+        },
+    }
+    secondary = {
+        "success": True,
+        "provider_success": True,
+        "provider_status_code": 200,
+        "source": "sellability",
+        "error": None,
+        "data": {
+            "sellable": False,
+            "honeypot": True,
+            "sellability_provider": "goplus",
+        },
+    }
+    monkeypatch.setattr(
+        module,
+        "_analyze_provider_once",
+        lambda *args, **kwargs: primary,
+    )
+    monkeypatch.setattr(
+        module,
+        "_analyze_goplus_once",
+        lambda *args, **kwargs: secondary,
+    )
+
+    result = module.analyze(ADDRESS, pair=PAIR)
+
+    assert result["data"]["sellable"] is False
+    assert result["data"]["honeypot"] is True
+
+
 def test_explicit_honeypot_is_never_overridden(
     monkeypatch,
 ):

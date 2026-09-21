@@ -1192,6 +1192,12 @@ def calculate_paper_position_size(
     entry = plan.get("entry") if isinstance(plan.get("entry"), dict) else {}
     current_price = _positive(entry.get("price"))
     statistics = plan.get("statistics") if isinstance(plan.get("statistics"), dict) else {}
+    price_evidence = statistics.get("prices") or []
+    prior_prices = [
+        value for value in (_positive(item) for item in price_evidence[:-1])
+        if value is not None
+    ] if isinstance(price_evidence, (list, tuple)) else []
+    anchor_price = prior_prices[-1] if prior_prices else None
     returns = statistics.get("log_returns") or []
     observed_moves = [abs(value) for value in (_number(item) for item in returns)
                       if value is not None and math.isfinite(value)]
@@ -1204,17 +1210,28 @@ def calculate_paper_position_size(
         "chase_limit": None,
         "immediate_entry_allowed": False,
     }
-    if current_price is not None and edge_move is not None:
+    if current_price is not None and anchor_price is not None and edge_move is not None:
         tolerated_move = min(edge_move, observed_move)
         entry_timing.update({
-            "entry_zone_low": current_price * math.exp(-tolerated_move),
-            "entry_zone_high": current_price,
-            "preferred_entry": current_price * math.exp(-tolerated_move / 2.0),
-            "chase_limit": current_price * math.exp(tolerated_move),
-            "immediate_entry_allowed": True,
+            "entry_zone_low": anchor_price * math.exp(-tolerated_move),
+            "entry_zone_high": anchor_price * math.exp(tolerated_move),
+            "preferred_entry": anchor_price,
+            "chase_limit": anchor_price * math.exp(tolerated_move),
         })
         if current_price > entry_timing["chase_limit"]:
             blockers.append("ENTRY_ABOVE_CHASE_LIMIT")
+        vur_kac_gate = plan.get("vur_kac_entry")
+        vur_kac_ready = (
+            not (isinstance(vur_kac_gate, dict) and vur_kac_gate.get("enforced"))
+            or bool(vur_kac_gate.get("ready"))
+        )
+        entry_timing["immediate_entry_allowed"] = (
+            current_price <= entry_timing["chase_limit"]
+            and effective_edge is not None
+            and effective_edge > 0
+            and not blockers
+            and vur_kac_ready
+        )
 
     accounting_quantum = _accounting_quantum(
         available

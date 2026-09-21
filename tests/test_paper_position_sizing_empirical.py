@@ -212,18 +212,83 @@ def test_entry_plan_uses_observed_move_and_edge_without_fixed_percentages(tmp_pa
         cost_complete=True,
     )
     plan["entry"] = {"price": 2.0}
-    plan["statistics"] = {"log_returns": [0.02, -0.03]}
+    plan["statistics"] = {
+        "prices": [2.0 / math.exp(-0.03), 2.0],
+        "log_returns": [0.02, -0.03],
+    }
 
     result = calculate_paper_position_size(
         mathematical_plan=plan,
         db_path=str(tmp_path / "missing.db"),
     )
 
-    assert result["entry_zone_low"] == pytest.approx(2.0 * math.exp(-0.03))
-    assert result["entry_zone_high"] == pytest.approx(2.0)
-    assert result["preferred_entry"] == pytest.approx(2.0 * math.exp(-0.015))
-    assert result["chase_limit"] == pytest.approx(2.0 * math.exp(0.03))
+    anchor = 2.0 / math.exp(-0.03)
+    assert result["entry_zone_low"] == pytest.approx(anchor * math.exp(-0.03))
+    assert result["entry_zone_high"] == pytest.approx(anchor * math.exp(0.03))
+    assert result["preferred_entry"] == pytest.approx(anchor)
+    assert result["chase_limit"] == pytest.approx(anchor * math.exp(0.03))
+    # The derived zone is valid, but the plan's remaining calibration
+    # blockers still prevent immediate PAPER admission.
+    assert result["immediate_entry_allowed"] is False
+
+
+def _timing_plan(*, price, history, edge=0.1, trade_type="NORMAL", gate=None):
+    plan = _plan(
+        raw_amount=1000,
+        available=10000,
+        reserve=5000,
+        risk_distance=0.2,
+        known_edge=edge,
+        full_edge=edge,
+        cost_complete=True,
+    )
+    plan["paper_eligible"] = True
+    plan["entry"] = {"price": price}
+    plan["statistics"] = {
+        "prices": [*history, price],
+        "log_returns": [math.log(b / a) for a, b in zip([*history, price], [*history, price][1:])],
+    }
+    if trade_type == "VUR_KAC":
+        plan["vur_kac_entry"] = {"enforced": True, "ready": bool(gate)}
+    return plan
+
+
+def test_price_above_derived_chase_limit_is_blocked():
+    plan = _timing_plan(price=3.0, history=[1.0, 1.1])
+    result = calculate_paper_position_size(mathematical_plan=plan)
+    assert result["chase_limit"] < 3.0
+    assert result["entry_amount_usdt"] == 0.0
+    assert result["immediate_entry_allowed"] is False
+    assert "ENTRY_ABOVE_CHASE_LIMIT" in result["blockers"]
+
+
+def test_price_inside_derived_zone_is_timing_eligible():
+    plan = _timing_plan(price=1.1, history=[1.0])
+    result = calculate_paper_position_size(mathematical_plan=plan)
+    assert result["entry_zone_low"] <= 1.1 <= result["chase_limit"]
     assert result["immediate_entry_allowed"] is True
+
+
+def test_vur_kac_without_flow_readiness_is_not_immediate():
+    plan = _timing_plan(price=1.1, history=[1.0], trade_type="VUR_KAC", gate=False)
+    result = calculate_paper_position_size(mathematical_plan=plan)
+    assert result["immediate_entry_allowed"] is False
+
+
+def test_vur_kac_with_continuation_and_flow_readiness_is_immediate():
+    plan = _timing_plan(price=1.1, history=[1.0], trade_type="VUR_KAC", gate=True)
+    result = calculate_paper_position_size(mathematical_plan=plan)
+    assert result["immediate_entry_allowed"] is True
+
+
+def test_negative_edge_or_hard_risk_keeps_zero_entry():
+    plan = _timing_plan(price=1.1, history=[1.0], edge=-0.01)
+    result = calculate_paper_position_size(mathematical_plan=plan)
+    assert result["entry_amount_usdt"] == 0.0
+    assert "NET_EDGE_NOT_POSITIVE" in result["blockers"]
+    plan["hard_block"] = True
+    result = calculate_paper_position_size(mathematical_plan=plan)
+    assert result["entry_amount_usdt"] == 0.0
 
 
 def test_nonpositive_edge_zeros_sizing():

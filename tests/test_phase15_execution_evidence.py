@@ -75,3 +75,71 @@ def test_execution_delay_may_be_derived_from_explicit_timestamps():
     )
     assert result["observed_execution"]["execution_delay_ms"] == 250.0
     _assert_zero_authority(result)
+
+
+def test_binds_phase15h_execution_without_unit_mismatch():
+    result = build_phase15_execution_evidence(
+        phase15h_execution={
+            "buy": {
+                "contract": "phase15h_transaction_simulation_v1",
+                "status": "SUCCESS",
+                "block": {
+                    "number": 123,
+                    "hash": "0xabc",
+                    "chain_id": 56,
+                },
+                "received_token_raw": 2000,
+                "recipient_balance_delta_raw": 2000,
+                "execution_price_native_per_token": 0.0005,
+                "gas_used": 120000,
+                "effective_gas_price": 1_000_000_000,
+                "execution_gas_cost_wei": 120_000_000_000_000,
+                "fill_status": "SIMULATED_RECIPIENT_DELTA",
+            },
+            "sell": {
+                "contract": "phase15h_transaction_simulation_v1",
+                "status": "SUCCESS",
+                "block": {
+                    "number": 124,
+                    "hash": "0xdef",
+                    "chain_id": 56,
+                },
+                "received_quote_raw": 990,
+                "quote_token": "0xquote",
+                "recipient_balance_delta_raw": 990,
+                "gas_used": 110000,
+                "effective_gas_price": 1_000_000_000,
+                "execution_gas_cost_wei": 110_000_000_000_000,
+                "fill_status": "SIMULATED_RECIPIENT_DELTA",
+            },
+        },
+    )
+
+    bound = result["phase15h_execution_evidence"]
+    assert bound["buy"]["status"] == "SUCCESS"
+    assert bound["buy"]["received_token_raw"] == 2000
+    assert bound["sell"]["status"] == "SUCCESS"
+    assert bound["sell"]["received_quote_raw"] == 990
+    assert result["phase15h_round_trip_complete"] is True
+
+    # Native BNB/token and wei evidence must not be mislabeled as USD drift.
+    assert result["observed_execution"]["entry_price"] is None
+    assert result["observed_execution"]["exit_price"] is None
+    assert result["observed_execution"]["gas_cost_usd"] is None
+    assert result["observed_evidence_count"] == 0
+    _assert_zero_authority(result)
+
+
+def test_phase15h_unknown_remains_unknown():
+    result = build_phase15_execution_evidence(
+        phase15h_execution={
+            "buy": {"status": "UNKNOWN"},
+            "sell": {"status": "REVERT"},
+        },
+    )
+
+    bound = result["phase15h_execution_evidence"]
+    assert bound["buy"]["status"] == "UNKNOWN"
+    assert bound["sell"]["status"] == "REVERT"
+    assert result["phase15h_round_trip_complete"] is False
+    _assert_zero_authority(result)

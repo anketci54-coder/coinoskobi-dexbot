@@ -339,6 +339,16 @@ Durum: CLOSED.
 
 Amaç: paper varsayımları ile gerçek execution koşulları arasındaki farkı ölçmek ve yalnız açık kullanıcı onayıyla kontrollü micro-live sınırını yönetmek.
 
+Canonical alt fazlar:
+- 15A — Simulation Drift Validator
+- 15B — Execution Evidence Adapter
+- 15C — Drift Composition
+- 15D — Runtime Observation Binding
+- 15E — Command Center Drift Projection
+- 15F — Deterministic Drift Classification
+- 15G — Drift No-Block / Authority Safety Boundary
+- 15H — Execution-Grade Paper Simulation
+
 Sahiplik:
 - simulation drift
 - signal-to-block latency/time drift
@@ -346,9 +356,55 @@ Sahiplik:
 - paper vs real execution drift
 - kill-switch ve explicit approval boundary
 
+### 15H — Execution-Grade Paper Simulation
+
+Amaç: gerçek fon, gerçek order, private key veya signing kullanmadan; explicit block identity üzerinden canonical BSC/Pancake state'inde transaction-level PAPER BUY/SELL execution simülasyonu üretmek.
+
+15H yalnız simulation evidence üretir. Canonical çıktı, mevcut Phase 15B execution-evidence adapter'ına beslenir; 15A/15C/15F drift zinciri bu evidence'ı karşılaştırır/sınıflandırır.
+
+15H sahipliği:
+- explicit block / state-snapshot tabanlı deterministic execution sandbox
+- canonical Pancake route üzerinde unsigned/synthetic PAPER BUY denemesi
+- simulated BUY sonucu: success/revert, received-token amount, execution price, gas/fee/slippage/fill evidence
+- mevcut lifecycle tarafından talep edilen zamanda unsigned/synthetic PAPER SELL denemesi
+- simulated SELL sonucu: success/revert, received-quote amount, execution price, gas/fee/slippage/fill evidence
+- BUY→SELL round-trip execution evidence ve explicit block/timestamp provenance
+- provider cevaplarından bağımsız olarak, simulation'ın gerçekten kanıtladığı execution sonucu; missing/unsupported sonuç UNKNOWN kalır
+
+15H sahip değildir ve devralmaz:
+- Phase 3: sellability/honeypot/rug/tax kararı, Risk Gate, entry feasibility, paper admission
+- Phase 4/6: TP/SL/runner tetikleme, position lifecycle veya exit-policy kararı
+- Phase 8: RPC/WSS provider broker, transport, retry, quota, cooldown veya provider resilience
+- Phase 10: MEV/sandwich/adversary detection, attribution veya classification
+- Phase 11/13: learning, calibration, outcome memory veya proposal üretimi
+- Phase 12: systemd/runtime ownership, scanner/pipeline orchestration, PAPER DB lifecycle veya operational E2E ownership
+- Phase 14: panel/Vezir/operator UI veya karar desteği
+- Phase 15A–15G: drift comparison, evidence adaptation, composition, classification, projection veya authority-boundary logic
+
+15H authority sınırı:
+- transaction broadcast = false
+- private key / seed = forbidden
+- real wallet use = false
+- signing = false
+- live order/create = false
+- live execution authority = false
+- wallet/signing authority = false
+- paper admission authority = false
+- Risk Gate / hard-block override authority = false
+- PAPER position OPEN/CLOSE kararı ve DB mutation 15H'nin görevi değildir
+
+Canonical entegrasyon kuralı:
+- Phase 8 canonical provider broker/RPC erişimi yeniden kullanılacak; ikinci provider/fork transport mimarisi kurulmayacak.
+- Phase 4/12 mevcut lifecycle/runtime, gerektiğinde 15H'den simulation evidence talep eder; 15H lifecycle sahibi olmaz.
+- Phase 3, 15H evidence'ını yalnız kendi mevcut risk/sellability kuralları içinde yorumlayabilir; 15H kendi başına SELLABILITY_OK veya trade permission vermez.
+- Phase 10 MEV evidence üretir; 15H MEV detector kopyalamaz.
+- Phase 15B, 15H çıktısını canonical execution evidence'a bağlayan tek adapter sınırı olarak kalır.
+- Aynı işi yapan ikinci PAPER engine, ikinci strategy engine, ikinci lifecycle veya ikinci provider pipeline oluşturulmaz.
+
 Phase 15 kapanışı live/wallet/signing authority'yi otomatik açmaz.
 
 Durum: CLOSED — FINAL ROADMAP PHASE.
+Maintenance sahipliği: **15H OPEN — Execution-Grade Paper Simulation**. Bu, Phase 15'i veya Phase 0–15 mimarisini yeniden açmaz; kapalı roadmap altında kontrollü maintenance genişlemesidir.
 
 ---
 
@@ -364,6 +420,7 @@ Phase 15 sonrasında çıkan her bug/iyileştirme/bakım işi önce Phase 0–15
 - news/market intelligence → mevcut Phase 5/7 kapsamı
 - Vezir/AI operator support → Phase 14
 - security/adversary evidence → Phase 3/10; core infrastructure security → Phase 1
+- transaction-level execution-grade PAPER simulation → Phase 15H
 
 ## CANONICAL DOCUMENTS
 

@@ -217,3 +217,53 @@ def test_phase15c_sellability_deterioration_visible():
     )
 
     assert_authority_zero(result)
+
+
+def test_phase15c_carries_phase15h_evidence_without_unit_laundering():
+    result = build_phase15_drift_composition(
+        phase15h_execution={
+            "buy": {
+                "status": "SUCCESS",
+                "block": {
+                    "number": 123,
+                    "hash": "0xabc",
+                    "chain_id": 56,
+                },
+                "received_token_raw": 2000,
+                "execution_price_native_per_token": 0.0005,
+                "gas_used": 120000,
+                "effective_gas_price": 1_000_000_000,
+                "execution_gas_cost_wei": 120_000_000_000_000,
+                "fill_status": "SIMULATED_RECIPIENT_DELTA",
+            },
+            "sell": {
+                "status": "SUCCESS",
+                "block": {
+                    "number": 124,
+                    "hash": "0xdef",
+                    "chain_id": 56,
+                },
+                "received_quote_raw": 990,
+                "gas_used": 110000,
+                "effective_gas_price": 1_000_000_000,
+                "execution_gas_cost_wei": 110_000_000_000_000,
+                "fill_status": "SIMULATED_RECIPIENT_DELTA",
+            },
+        },
+    )
+
+    evidence = result["execution_evidence"]
+    assert evidence["phase15h_round_trip_complete"] is True
+    assert (
+        evidence["phase15h_execution_evidence"]["buy"]["received_token_raw"]
+        == 2000
+    )
+    assert (
+        evidence["phase15h_execution_evidence"]["sell"]["received_quote_raw"]
+        == 990
+    )
+
+    # Phase 15A comparison still sees only unit-compatible observed fields.
+    assert result["observed_evidence_count"] == 0
+    assert result["comparison_complete"] is False
+    assert_authority_zero(result)

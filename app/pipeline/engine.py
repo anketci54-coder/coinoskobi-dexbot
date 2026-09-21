@@ -88,6 +88,15 @@ from app.strategy.mathematical_trade_plan import initial_net_risk_usdt
 
 logger = logging.getLogger(__name__)
 
+
+def _paper_entry_timing_reason(sizing):
+    """Return a PAPER admission blocker when timing is not ready."""
+    if "ENTRY_ABOVE_CHASE_LIMIT" in (sizing.get("blockers") or []):
+        return "ENTRY_ABOVE_CHASE_LIMIT"
+    if not sizing.get("immediate_entry_allowed", False):
+        return "ENTRY_TIMING_NOT_READY"
+    return None
+
 _strategy = StrategyEngine()
 _unified_score = UnifiedScoreEngine()
 _unified_decision = UnifiedDecisionEngine()
@@ -2488,7 +2497,7 @@ class PipelineEngine:
                             "PLAN_BLOCKED"
                         )
 
-                    elif "ENTRY_ABOVE_CHASE_LIMIT" in sizing_blockers:
+                    elif _paper_entry_timing_reason(sizing) == "ENTRY_ABOVE_CHASE_LIMIT":
                         block_reason = "ENTRY_ABOVE_CHASE_LIMIT"
 
                     elif (
@@ -2498,6 +2507,9 @@ class PipelineEngine:
                         block_reason = (
                             "POSITION_SIZING_BLOCKED"
                         )
+
+                    elif _paper_entry_timing_reason(sizing):
+                        block_reason = _paper_entry_timing_reason(sizing)
 
                     else:
                         block_reason = None

@@ -6,6 +6,7 @@ from app.config.trading import MAX_OPEN_PAPER_POSITIONS
 from app.risk.paper_position_sizing import (
     calculate_paper_position_size,
 )
+from app.pipeline.engine import _paper_entry_timing_reason
 
 
 def _stamp_outcome_fingerprints(db):
@@ -260,6 +261,7 @@ def test_price_above_derived_chase_limit_is_blocked():
     assert result["entry_amount_usdt"] == 0.0
     assert result["immediate_entry_allowed"] is False
     assert "ENTRY_ABOVE_CHASE_LIMIT" in result["blockers"]
+    assert _paper_entry_timing_reason(result) == "ENTRY_ABOVE_CHASE_LIMIT"
 
 
 def test_price_inside_derived_zone_is_timing_eligible():
@@ -267,18 +269,35 @@ def test_price_inside_derived_zone_is_timing_eligible():
     result = calculate_paper_position_size(mathematical_plan=plan)
     assert result["entry_zone_low"] <= 1.01 <= result["chase_limit"]
     assert result["immediate_entry_allowed"] is True
+    assert _paper_entry_timing_reason(result) is None
 
 
-def test_price_below_entry_zone_is_not_immediate():
+def test_price_below_entry_zone_with_positive_size_is_watch_only():
     plan = _timing_plan(price=0.95, history=[0.99, 1.0])
+    plan["capital"].update({
+        "liquidity_capacity_source": "EMPIRICAL_RESERVE_FLOOR",
+        "reserve_observation_count": 2,
+        "observed_min_quote_reserve_usd": 5000,
+    })
+    plan["market_context"] = {"opportunity": {"state": "HOT"}}
     result = calculate_paper_position_size(mathematical_plan=plan)
+    assert result["entry_amount_usdt"] > 0
     assert result["immediate_entry_allowed"] is False
+    assert _paper_entry_timing_reason(result) == "ENTRY_TIMING_NOT_READY"
 
 
 def test_vur_kac_without_flow_readiness_is_not_immediate():
     plan = _timing_plan(price=1.01, history=[0.99, 1.0], trade_type="VUR_KAC", gate=False)
+    plan["capital"].update({
+        "liquidity_capacity_source": "EMPIRICAL_RESERVE_FLOOR",
+        "reserve_observation_count": 2,
+        "observed_min_quote_reserve_usd": 5000,
+    })
+    plan["market_context"] = {"opportunity": {"state": "HOT"}}
     result = calculate_paper_position_size(mathematical_plan=plan)
+    assert result["entry_amount_usdt"] > 0
     assert result["immediate_entry_allowed"] is False
+    assert _paper_entry_timing_reason(result) == "ENTRY_TIMING_NOT_READY"
 
 
 def test_vur_kac_with_continuation_and_flow_readiness_is_immediate():
@@ -314,6 +333,7 @@ def test_bounded_lp_bootstrap_returns_immediate_when_timing_ready(tmp_path):
     assert result["paper_calibration_bootstrap"] is True
     assert result["entry_amount_usdt"] > 0
     assert result["immediate_entry_allowed"] is True
+    assert _paper_entry_timing_reason(result) is None
 
 
 def test_nonpositive_edge_zeros_sizing():

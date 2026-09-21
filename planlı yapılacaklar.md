@@ -1246,6 +1246,33 @@ Trade/risk/runtime sahipliği mevcut Phase’lerde kalır.
 
 ---
 
+# PHASE 15H — EXECUTION-GRADE PAPER SIMULATION
+
+**Owner:** Phase 15H only for transaction-level simulation engine/evidence production.
+
+Non-overlap contract:
+- Phase 3 owns risk/sellability/admission interpretation.
+- Phase 4/6 own position/exit lifecycle decisions.
+- Phase 8 owns canonical RPC/WSS/provider transport and resilience.
+- Phase 10 owns MEV/adversary detection/classification.
+- Phase 11/13 own learning/calibration/outcome memory.
+- Phase 12 owns operational PAPER runtime, DB lifecycle and E2E composition.
+- Phase 14 owns panel/Vezir/operator projection.
+- Phase 15A–15G own drift adapter/comparison/composition/classification/projection/safety boundaries.
+- 15H owns only non-broadcast execution sandbox + raw simulated BUY/SELL outcome evidence.
+
+Checklist:
+- [x] 15H canonical ownership and non-overlap boundary opened
+- [ ] existing execution/simulation/provider/router implementation reference audit
+- [ ] choose smallest deterministic simulation backend while reusing canonical Phase 8 transport
+- [ ] explicit-block simulated BUY with received amount/revert/gas/slippage/fill evidence
+- [ ] lifecycle-requested simulated SELL with received quote/revert/gas/slippage/fill evidence
+- [ ] BUY→SELL round-trip provenance and UNKNOWN-preserving result contract
+- [ ] bind 15H output through existing Phase 15B adapter; do not duplicate 15A–15G
+- [ ] authority tests: no broadcast, no private key, no wallet/signing/live/order-create, no Risk Gate override
+- [ ] targeted tests + integration smoke + runtime acceptance
+- [ ] canonical docs/test evidence seal after acceptance
+
 # CURRENT NEXT SAFE STEP
 
 **Öncelik 1:** AUTO PAPER çalışırken ortaya çıkan gerçek kritik entry / exit / data incidentlerini hedefli biçimde kapat. Normal piyasa zararı tek başına bug/tuning gerekçesi değildir.

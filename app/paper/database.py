@@ -256,6 +256,7 @@ class PaperDatabase:
                         SELECT 1
                         FROM paper_trades
                         WHERE lower(token)=lower(?)
+                          AND status='OPEN'
                         LIMIT 1
                         """,
                         (

@@ -68,7 +68,7 @@ def test_atomic_cap_rejects_duplicate_token():
     ) is False
 
 
-def test_closed_token_cannot_open_second_trade():
+def test_closed_token_can_open_second_trade():
     db = make_db()
 
     assert db.insert_if_below_open_limit(
@@ -96,7 +96,7 @@ def test_closed_token_cannot_open_second_trade():
     assert db.insert_if_below_open_limit(
         {"token": "0xsingle", "status": "OPEN"},
         30,
-    ) is False
+    ) is True
 
     count = db.conn.execute(
         """
@@ -107,7 +107,7 @@ def test_closed_token_cannot_open_second_trade():
         ("0xsingle",),
     ).fetchone()[0]
 
-    assert count == 1
+    assert count == 2
 
 
 def test_available_capital_uses_realized_account_truth():

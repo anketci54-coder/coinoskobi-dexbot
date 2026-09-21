@@ -25,12 +25,13 @@ def build_phase15_drift_composition(
     *,
     paper_position=None,
     runtime_evidence=None,
+    phase15h_execution=None,
 ):
     """
     Phase 15C pure-local drift composition.
 
     Binds:
-        existing paper/runtime facts
+        existing paper/runtime/15H facts
             ->
         Phase 15B execution evidence adapter
             ->
@@ -55,6 +56,7 @@ def build_phase15_drift_composition(
     evidence = build_phase15_execution_evidence(
         paper_position=paper_position,
         runtime_evidence=runtime_evidence,
+        phase15h_execution=phase15h_execution,
     )
 
     drift = build_simulation_drift(

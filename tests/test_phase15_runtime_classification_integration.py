@@ -205,3 +205,62 @@ def test_phase15h_engine_projects_runtime_classification(
         projected["hardblock_override_authority"]
         is False
     )
+
+def test_phase15h_runtime_buy_runs_only_after_paper_open(monkeypatch):
+    calls = []
+
+    def fake_buy(**kwargs):
+        calls.append(dict(kwargs))
+        return {
+            "contract": "phase15h_transaction_simulation_v1",
+            "side": "BUY",
+            "status": "SUCCESS",
+            "block": {
+                "number": kwargs["block_number"],
+                "hash": "0xabc",
+                "chain_id": 56,
+            },
+            "received_token_raw": 123,
+            "recipient_balance_delta_raw": 123,
+        }
+
+    monkeypatch.setattr(
+        engine_module,
+        "simulate_paper_buy",
+        fake_buy,
+    )
+
+    evidence = engine_module._runtime_phase15h_buy_evidence(
+        token_address="0x0000000000000000000000000000000000000002",
+        paper={
+            "action": "PAPER_BUY",
+            "entry_amount_usdt": 600.0,
+        },
+        exit_evidence={
+            "runtime_price_latest_block": 123456,
+            "wbnb_usd_estimate": 600.0,
+        },
+        sellability_data={"buy_tax": 1.0},
+    )
+
+    assert evidence["buy"]["status"] == "SUCCESS"
+    assert len(calls) == 1
+    assert calls[0]["amount_in_wei"] == 10 ** 18
+    assert calls[0]["block_number"] == 123456
+    assert calls[0]["fee_on_transfer"] is True
+
+    skipped = engine_module._runtime_phase15h_buy_evidence(
+        token_address="0x0000000000000000000000000000000000000002",
+        paper={
+            "action": "WATCH",
+            "entry_amount_usdt": 600.0,
+        },
+        exit_evidence={
+            "runtime_price_latest_block": 123456,
+            "wbnb_usd_estimate": 600.0,
+        },
+    )
+
+    assert skipped is None
+    assert len(calls) == 1
+

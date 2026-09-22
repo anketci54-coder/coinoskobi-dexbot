@@ -16,6 +16,12 @@ from app.paper.cache_price import (
 from app.paper.trade_routing import (
     lifecycle_trade_type,
 )
+from app.execution.paper_simulation import (
+    simulate_paper_sell,
+)
+from app.risk.exit_feasibility import (
+    analyze as analyze_exit_feasibility,
+)
 from app.chains.bsc import (
     w3 as canonical_bsc_web3,
 )
@@ -222,6 +228,272 @@ class PaperManager:
             )
             else {}
         )
+
+    @staticmethod
+    def _phase15h_unknown_sell(
+        *,
+        pos,
+        stage,
+        exit_fraction,
+        reason,
+    ):
+        return {
+            "sell": {
+                "contract": (
+                    "phase15h_transaction_simulation_v1"
+                ),
+                "side": "SELL",
+                "status": "UNKNOWN",
+                "paper_position_id": (
+                    (pos or {}).get("id")
+                ),
+                "trade_type": (
+                    lifecycle_trade_type(pos)
+                ),
+                "exit_stage": stage,
+                "paper_exit_fraction": (
+                    exit_fraction
+                ),
+                "evidence_reason": reason,
+            }
+        }
+
+    def _runtime_phase15h_sell_evidence(
+        self,
+        *,
+        pos,
+        current_price,
+        stage,
+        exit_fraction=1.0,
+        exit_notional_usdt=None,
+    ):
+        position = dict(pos or {})
+        trade_type = lifecycle_trade_type(
+            position
+        )
+
+        if trade_type not in {
+            "NORMAL",
+            "VUR_KAC",
+        }:
+            return None
+
+        token = position.get("token")
+        pool = position.get("pool")
+
+        try:
+            fraction = float(
+                exit_fraction
+            )
+        except (TypeError, ValueError):
+            fraction = 0.0
+
+        if not token or not pool:
+            return self._phase15h_unknown_sell(
+                pos=position,
+                stage=stage,
+                exit_fraction=fraction,
+                reason="TOKEN_OR_POOL_UNAVAILABLE",
+            )
+
+        try:
+            context_result = (
+                analyze_exit_feasibility(
+                    token,
+                    pool,
+                )
+            )
+        except Exception:
+            logger.exception(
+                (
+                    "PHASE15H_RUNTIME_SELL_CONTEXT_FAILED "
+                    "position_id=%s trade_type=%s stage=%s"
+                ),
+                position.get("id"),
+                trade_type,
+                stage,
+            )
+            return self._phase15h_unknown_sell(
+                pos=position,
+                stage=stage,
+                exit_fraction=fraction,
+                reason="EXIT_FEASIBILITY_EXCEPTION",
+            )
+
+        context = dict(
+            (
+                context_result
+                if isinstance(
+                    context_result,
+                    dict,
+                )
+                else {}
+            ).get("data")
+            or {}
+        )
+
+        try:
+            block_number = int(
+                context.get(
+                    "runtime_price_latest_block"
+                )
+                or 0
+            )
+            wbnb_usd = float(
+                context.get(
+                    "wbnb_usd_estimate"
+                )
+                or 0.0
+            )
+
+            if exit_notional_usdt is None:
+                notional_usdt = (
+                    float(
+                        position.get(
+                            "token_amount"
+                        )
+                        or 0.0
+                    )
+                    * float(
+                        current_price
+                        or 0.0
+                    )
+                    * fraction
+                )
+            else:
+                notional_usdt = float(
+                    exit_notional_usdt
+                )
+        except (TypeError, ValueError):
+            block_number = 0
+            wbnb_usd = 0.0
+            notional_usdt = 0.0
+
+        if (
+            block_number <= 0
+            or not math.isfinite(
+                wbnb_usd
+            )
+            or wbnb_usd <= 0
+            or not math.isfinite(
+                notional_usdt
+            )
+            or notional_usdt <= 0
+            or not math.isfinite(
+                fraction
+            )
+            or fraction <= 0
+            or fraction > 1
+        ):
+            return self._phase15h_unknown_sell(
+                pos=position,
+                stage=stage,
+                exit_fraction=fraction,
+                reason="SELL_EXECUTION_CONTEXT_UNAVAILABLE",
+            )
+
+        seed_amount_in_wei = int(
+            (
+                notional_usdt
+                / wbnb_usd
+            )
+            * (10 ** 18)
+        )
+
+        if seed_amount_in_wei <= 0:
+            return self._phase15h_unknown_sell(
+                pos=position,
+                stage=stage,
+                exit_fraction=fraction,
+                reason="SELL_SEED_AMOUNT_ZERO",
+            )
+
+        try:
+            sell_tax = float(
+                position.get(
+                    "sell_tax"
+                )
+                or 0.0
+            )
+        except (TypeError, ValueError):
+            sell_tax = 0.0
+
+        deadline = int(
+            datetime.now(
+                timezone.utc
+            ).timestamp()
+        ) + 300
+
+        try:
+            sell = simulate_paper_sell(
+                token=token,
+                block_number=block_number,
+                deadline=deadline,
+                seed_amount_in_wei=(
+                    seed_amount_in_wei
+                ),
+                fee_on_transfer=(
+                    sell_tax > 0
+                ),
+            )
+        except Exception:
+            logger.exception(
+                (
+                    "PHASE15H_RUNTIME_SELL_FAILED "
+                    "position_id=%s trade_type=%s stage=%s"
+                ),
+                position.get("id"),
+                trade_type,
+                stage,
+            )
+            return self._phase15h_unknown_sell(
+                pos=position,
+                stage=stage,
+                exit_fraction=fraction,
+                reason="SELL_SIMULATION_EXCEPTION",
+            )
+
+        sell = dict(sell or {})
+        sell.update({
+            "paper_position_id": (
+                position.get("id")
+            ),
+            "trade_type": trade_type,
+            "exit_stage": stage,
+            "paper_exit_fraction": fraction,
+            "paper_exit_notional_usdt": (
+                notional_usdt
+            ),
+        })
+
+        block = dict(
+            sell.get("block")
+            or {}
+        )
+
+        logger.info(
+            (
+                "PHASE15H_RUNTIME_SELL "
+                "position_id=%s trade_type=%s stage=%s "
+                "fraction=%s status=%s block=%s chain_id=%s "
+                "received_quote_raw=%s gas_used=%s"
+            ),
+            position.get("id"),
+            trade_type,
+            stage,
+            fraction,
+            sell.get("status"),
+            block.get("number"),
+            block.get("chain_id"),
+            sell.get(
+                "received_quote_raw"
+            ),
+            sell.get("gas_used"),
+        )
+
+        return {
+            "sell": sell,
+        }
 
     @staticmethod
     def _expected_exit_price(
@@ -1175,6 +1447,7 @@ class PaperManager:
         )
 
         learning = None
+        phase15h_execution = None
 
         if closed:
             outcome_position = dict(
@@ -1221,6 +1494,24 @@ class PaperManager:
                         False
                     ),
                 }
+
+            phase15h_execution = (
+                self._runtime_phase15h_sell_evidence(
+                    pos=pos,
+                    current_price=current,
+                    stage=reason,
+                    exit_fraction=1.0,
+                    exit_notional_usdt=(
+                        float(
+                            pos.get(
+                                "token_amount"
+                            )
+                            or 0.0
+                        )
+                        * float(current)
+                    ),
+                )
+            )
 
         return {
             "success": True,
@@ -1293,6 +1584,14 @@ class PaperManager:
                 ),
 
                 "mathematical_exit": True,
+                "trade_type": (
+                    lifecycle_trade_type(
+                        pos
+                    )
+                ),
+                "phase15h_execution": (
+                    phase15h_execution
+                ),
             },
         }
 
@@ -1556,6 +1855,24 @@ class PaperManager:
                         },
                     )
 
+                    phase15h_execution = (
+                        self._runtime_phase15h_sell_evidence(
+                            pos=pos,
+                            current_price=current,
+                            stage="NORMAL_TP1",
+                            exit_fraction=(
+                                realization.get(
+                                    "fraction"
+                                )
+                            ),
+                            exit_notional_usdt=(
+                                realization.get(
+                                    "gross_proceeds_usdt"
+                                )
+                            ),
+                        )
+                    )
+
                     return {
                         "success": True,
                         "source": "paper",
@@ -1574,6 +1891,9 @@ class PaperManager:
                             "static_sl": static_stop,
                             "trade_type": "NORMAL",
                             "mathematical_exit": True,
+                            "phase15h_execution": (
+                                phase15h_execution
+                            ),
                         },
                     }
 
@@ -1672,6 +1992,24 @@ class PaperManager:
                         },
                     )
 
+                    phase15h_execution = (
+                        self._runtime_phase15h_sell_evidence(
+                            pos=pos,
+                            current_price=current,
+                            stage="NORMAL_TP2",
+                            exit_fraction=(
+                                realization.get(
+                                    "fraction"
+                                )
+                            ),
+                            exit_notional_usdt=(
+                                realization.get(
+                                    "gross_proceeds_usdt"
+                                )
+                            ),
+                        )
+                    )
+
                     return {
                         "success": True,
                         "source": "paper",
@@ -1690,6 +2028,9 @@ class PaperManager:
                             "runner_active": True,
                             "trade_type": "NORMAL",
                             "mathematical_exit": True,
+                            "phase15h_execution": (
+                                phase15h_execution
+                            ),
                         },
                     }
 

@@ -205,6 +205,7 @@ def test_fast_watch_selects_only_active_momentum_reasons(monkeypatch):
 
     job = FastWatchRevisitJob(pipeline, max_candidates=30)
     monkeypatch.setattr(job, "_hot_universe_identities", lambda: [])
+    monkeypatch.setattr(job, "_warm_universe_identities", lambda: [])
     monkeypatch.setattr(job, "_unseen_universe_identities", lambda: [])
     result = job._run_cycle_sync()
 

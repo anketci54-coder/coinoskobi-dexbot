@@ -44,6 +44,7 @@ FAST_WATCH_PROVIDER_BATCH_SIZE = 30
 FAST_DISCOVERY_MAX_CANDIDATES = 8
 FAST_HOT_UNIVERSE_MAX_CANDIDATES = 8
 FAST_WARM_UNIVERSE_MAX_CANDIDATES = 8
+FAST_READY_SELLABILITY_MAX_CANDIDATES = 8
 FAST_DISCOVERY_ROW_BUDGET = 64
 FAST_DISCOVERY_BLOCK_WINDOW = 2000
 FAST_DISCOVERY_RETRY_SECONDS = 60.0
@@ -253,15 +254,13 @@ class FastWatchRevisitJob:
 
         return 1
 
-    def _durable_watched_identities(self, db, lock):
+    def _durable_watched_identity_buckets(self, db, lock):
         """
-        Find a bounded overfetch window of current eligible WATCH identities.
+        Return prioritized WATCH identities as separate buckets.
 
-        History is scanned newest-first in small keyset pages, but every cycle
-        has a hard total row budget. The first row seen for an identity is its
-        newest transition, so older WATCH rows cannot override newer states.
-        We intentionally overfetch identities here; the final 30-candidate cap
-        is applied only after fresh Gecko snapshot + ingress admission.
+        HOT/recovery-ready candidates waiting only on transient sellability
+        evidence receive their own bounded lane. Momentum/evidence watches stay
+        in the ordinary WATCH lane.
         """
         ready_sellability = []
         movement = []
@@ -311,7 +310,7 @@ class FastWatchRevisitJob:
                 logger.exception(
                     "Fast watch durable paged-decision query failed"
                 )
-                return []
+                return [], []
 
             if not rows:
                 break
@@ -349,22 +348,19 @@ class FastWatchRevisitJob:
             if len(rows) < query_limit:
                 break
 
-        return (
-            ready_sellability
-            + movement
-        )[:target]
+        return ready_sellability, movement
 
-    def _watched_identities(self):
+    def _watched_identity_buckets(self):
         store = getattr(self.pipeline, "counterfactual_store", None)
         db = getattr(store, "_db", None)
         lock = getattr(store, "_lock", None)
 
         if db is not None and lock is not None:
-            return self._durable_watched_identities(db, lock)
+            return self._durable_watched_identity_buckets(db, lock)
 
         snapshot = getattr(store, "decision_snapshot", None)
         if not callable(snapshot):
-            return []
+            return [], []
 
         target = self._selection_limit()
         rows = snapshot(limit=max(target * 2, target)) or []
@@ -401,10 +397,23 @@ class FastWatchRevisitJob:
                 )
                 bucket.append(eligible)
 
+        return ready_sellability, movement
+
+    def _durable_watched_identities(self, db, lock):
+        ready_sellability, movement = (
+            self._durable_watched_identity_buckets(db, lock)
+        )
         return (
             ready_sellability
             + movement
-        )[:target]
+        )[: self._selection_limit()]
+
+    def _watched_identities(self):
+        ready_sellability, movement = self._watched_identity_buckets()
+        return (
+            ready_sellability
+            + movement
+        )[: self._selection_limit()]
 
     def _hot_universe_identities(self):
         """
@@ -1158,22 +1167,29 @@ class FastWatchRevisitJob:
         discovery_identities = (
             self._unseen_universe_identities()
         )
-        watched_identities = (
-            self._watched_identities()
-        )
+        (
+            ready_sellability_identities,
+            movement_watch_identities,
+        ) = self._watched_identity_buckets()
 
         identities = []
         seen = set()
 
-        # HOT full-universe activity gets first bounded access. Positive
-        # WARM momentum gets a second bounded lane so early acceleration is
-        # evaluated before it is already HOT. New discovery and durable WATCH
-        # revisits follow. Canonical risk/admission gates remain unchanged.
+        # Candidates that are already HOT/recovery-ready and are waiting only
+        # on transient SELLABILITY_UNKNOWN evidence get first bounded access.
+        # They have already passed the momentum lane and should not be starved
+        # by rotating universe discovery. All canonical analyzers, RiskGate,
+        # sellability, sizing and PAPER admission remain unchanged.
         for identity in (
-            list(hot_universe_identities)
+            list(
+                ready_sellability_identities[
+                    :FAST_READY_SELLABILITY_MAX_CANDIDATES
+                ]
+            )
+            + list(hot_universe_identities)
             + list(warm_universe_identities)
             + list(discovery_identities)
-            + list(watched_identities)
+            + list(movement_watch_identities)
         ):
             identity_key = (
                 identity[0],

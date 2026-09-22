@@ -232,6 +232,68 @@ def test_fast_watch_selects_only_active_momentum_reasons(monkeypatch):
     assert result["execution_authority"] is False
 
 
+def test_hot_ready_sellability_unknown_is_revisited(monkeypatch):
+    row = _history_row("ACTIVE_CONTINUATION_READY")
+    context = json.loads(row["context_json"])
+    context.update({
+        "opportunity_state": "HOT",
+        "sellability": "SELLABILITY_UNKNOWN",
+    })
+    row["context_json"] = json.dumps(context)
+
+    pipeline = _Pipeline([row])
+    _patch_normalization(monkeypatch)
+    monkeypatch.setattr(
+        FastWatchRevisitJob,
+        "_refresh_local_sellability_evidence",
+        lambda self, row: False,
+    )
+
+    job = FastWatchRevisitJob(pipeline, max_candidates=30)
+    monkeypatch.setattr(job, "_hot_universe_identities", lambda: [])
+    monkeypatch.setattr(job, "_warm_universe_identities", lambda: [])
+    monkeypatch.setattr(job, "_unseen_universe_identities", lambda: [])
+
+    result = job._run_cycle_sync()
+
+    assert result["state"] == "READY"
+    assert result["selected"] == 1
+    assert result["processed"] == 1
+    assert len(pipeline.runs) == 1
+
+
+def test_hot_ready_with_sellability_ok_does_not_use_retry_lane():
+    row = _history_row("ACTIVE_CONTINUATION_READY")
+    context = json.loads(row["context_json"])
+    context.update({
+        "opportunity_state": "HOT",
+        "sellability": "SELLABILITY_OK",
+    })
+    row["context_json"] = json.dumps(context)
+
+    pipeline = _Pipeline([row])
+    job = FastWatchRevisitJob(pipeline)
+
+    assert job._watched_identities() == []
+
+
+def test_recovery_breakout_sellability_unknown_is_revisited():
+    row = _history_row("ACTIVE_RECOVERY_BREAKOUT_READY")
+    context = json.loads(row["context_json"])
+    context.update({
+        "opportunity_state": "HOT",
+        "sellability": "SELLABILITY_UNKNOWN",
+    })
+    row["context_json"] = json.dumps(context)
+
+    pipeline = _Pipeline([row])
+    job = FastWatchRevisitJob(pipeline)
+
+    assert job._watched_identities() == [
+        (TOKEN.lower(), POOL.lower(), "pancakeswap_v2")
+    ]
+
+
 def test_watch_without_explicit_dex_identity_fails_closed():
     row = _history_row("ACTIVE_MOMENTUM_NOT_POSITIVE")
     context = json.loads(row["context_json"])

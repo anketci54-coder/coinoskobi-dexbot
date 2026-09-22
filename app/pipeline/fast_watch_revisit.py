@@ -113,12 +113,12 @@ class FastWatchRevisitJob:
 
     def _has_canonical_trade_history_block(self, token):
         """
-        Mirror the canonical one-paper-trade-per-token database invariant.
+        Mirror canonical PAPER re-entry semantics.
 
-        PaperDatabase.insert_if_below_open_limit() rejects a token when any
-        prior paper row exists, including a closed row. Fast revisit must not
-        spend provider/RPC budget on a token the canonical insert path cannot
-        admit. This is deliberately stricter than an open-position-only check.
+        PaperDatabase.insert_if_below_open_limit() rejects only when the token
+        already has an OPEN paper position. Closed history must not suppress
+        fast-watch re-evaluation because canonical PAPER re-entry after a
+        closed trade is explicitly allowed.
         """
         databases = []
 
@@ -132,7 +132,7 @@ class FastWatchRevisitJob:
             databases.append(manager_db)
 
         for database in databases:
-            reader = getattr(database, "has_trade_history", None)
+            reader = getattr(database, "has_open_position", None)
             if not callable(reader):
                 continue
 
@@ -141,7 +141,7 @@ class FastWatchRevisitJob:
                     return True
             except Exception:
                 logger.exception(
-                    "Fast watch trade-history check failed token=%s",
+                    "Fast watch open-position check failed token=%s",
                     token,
                 )
                 return True

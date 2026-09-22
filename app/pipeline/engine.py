@@ -37,6 +37,7 @@ from app.filter.ingress_gate import IngressGate
 from app.pipeline.simulation_drift_composition import (
     build_phase15_drift_composition,
 )
+from app.execution.paper_simulation import simulate_paper_buy
 from app.pipeline.candidate_queue import CandidateAdmissionQueue
 from app.pipeline.conveyor import ConveyorLabeler
 from app.pipeline.work_scheduler import (
@@ -96,6 +97,87 @@ def _paper_entry_timing_reason(sizing):
     if not sizing.get("immediate_entry_allowed", False):
         return "ENTRY_TIMING_NOT_READY"
     return None
+
+
+def _runtime_phase15h_buy_evidence(
+    *,
+    token_address,
+    paper,
+    exit_evidence,
+    sellability_data=None,
+):
+    """Run Phase 15H BUY only after a real PAPER position was opened."""
+    paper = dict(paper or {})
+    exit_evidence = dict(exit_evidence or {})
+    sellability_data = dict(sellability_data or {})
+
+    if paper.get("action") != "PAPER_BUY":
+        return None
+
+    try:
+        block_number = int(
+            exit_evidence.get("runtime_price_latest_block")
+            or 0
+        )
+        wbnb_usd = float(
+            exit_evidence.get("wbnb_usd_estimate")
+            or 0.0
+        )
+        entry_amount_usdt = float(
+            paper.get("entry_amount_usdt")
+            or 0.0
+        )
+    except (TypeError, ValueError):
+        return None
+
+    if (
+        block_number <= 0
+        or wbnb_usd <= 0
+        or entry_amount_usdt <= 0
+    ):
+        return None
+
+    amount_in_wei = int(
+        (entry_amount_usdt / wbnb_usd)
+        * (10 ** 18)
+    )
+    if amount_in_wei <= 0:
+        return None
+
+    try:
+        buy_tax = float(
+            sellability_data.get("buy_tax")
+            or 0.0
+        )
+    except (TypeError, ValueError):
+        buy_tax = 0.0
+
+    deadline = int(
+        datetime.now(timezone.utc).timestamp()
+    ) + 300
+
+    try:
+        buy = simulate_paper_buy(
+            token=token_address,
+            amount_in_wei=amount_in_wei,
+            block_number=block_number,
+            deadline=deadline,
+            fee_on_transfer=(buy_tax > 0),
+        )
+    except Exception:
+        logger.exception(
+            "PHASE15H_RUNTIME_BUY_FAILED token=%s",
+            token_address,
+        )
+        return {
+            "buy": {
+                "contract": "phase15h_transaction_simulation_v1",
+                "side": "BUY",
+                "status": "UNKNOWN",
+            }
+        }
+
+    return {"buy": buy}
 
 _strategy = StrategyEngine()
 _unified_score = UnifiedScoreEngine()
@@ -3483,6 +3565,16 @@ class PipelineEngine:
             paper = {
                 "action": decision,
             }
+
+        if phase15h_execution is None:
+            phase15h_execution = (
+                _runtime_phase15h_buy_evidence(
+                    token_address=token_address,
+                    paper=paper,
+                    exit_evidence=local_math_exit,
+                    sellability_data=sellability_data,
+                )
+            )
 
         tactical_truth = (
             build_tactical_truth(

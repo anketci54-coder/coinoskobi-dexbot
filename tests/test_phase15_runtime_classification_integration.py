@@ -235,6 +235,7 @@ def test_phase15h_runtime_buy_runs_only_after_paper_open(monkeypatch, caplog):
         token_address="0x0000000000000000000000000000000000000002",
         paper={
             "action": "PAPER_BUY",
+            "trade_type": "VUR_KAC",
             "entry_amount_usdt": 600.0,
         },
         exit_evidence={
@@ -245,11 +246,13 @@ def test_phase15h_runtime_buy_runs_only_after_paper_open(monkeypatch, caplog):
     )
 
     assert evidence["buy"]["status"] == "SUCCESS"
+    assert evidence["buy"]["trade_type"] == "VUR_KAC"
     assert len(calls) == 1
     assert calls[0]["amount_in_wei"] == 10 ** 18
     assert calls[0]["block_number"] == 123456
     assert calls[0]["fee_on_transfer"] is True
     assert "PHASE15H_RUNTIME_BUY" in caplog.text
+    assert "trade_type=VUR_KAC" in caplog.text
     assert "status=SUCCESS" in caplog.text
     assert "block=123456" in caplog.text
 

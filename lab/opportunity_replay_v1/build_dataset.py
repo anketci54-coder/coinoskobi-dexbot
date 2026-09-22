@@ -211,39 +211,6 @@ def main():
         key = (row["chain"], row["dex"], row["pool"].lower())
         registry[key] = dict(row)
 
-    observations = defaultdict(list)
-    observation_count = 0
-    for row in con.execute(
-        """
-        SELECT id,chain,dex,pool,source,observed_at,
-               price_usd,liquidity_usd,volume_m5_usd,
-               buys_m5,sells_m5,txns_m5,change_m5
-        FROM universe_market_observation_v1
-        WHERE price_usd IS NOT NULL
-          AND price_usd > 0
-        ORDER BY chain,dex,pool,observed_at,id
-        """
-    ):
-        t = parse_time(row["observed_at"])
-        if t is None:
-            continue
-        key = (row["chain"], row["dex"], row["pool"].lower())
-        item = dict(row)
-        item["t"] = t
-        item["price_usd"] = float(item["price_usd"])
-        observations[key].append(item)
-        observation_count += 1
-
-    observation_times = {
-        key: [row["t"] for row in rows]
-        for key, rows in observations.items()
-    }
-
-    print(
-        f"OBSERVATIONS_LOADED rows={observation_count} pools={len(observations)}",
-        flush=True,
-    )
-
     seismic = defaultdict(list)
     events = []
     seismic_count = 0
@@ -277,9 +244,58 @@ def main():
     }
 
     events.sort(key=lambda item: (item[0], item[2]["id"]))
+    relevant_keys = sorted({key for _, key, _ in events})
 
     print(
-        f"SEISMIC_LOADED rows={seismic_count} replay_events={len(events)}",
+        f"SEISMIC_LOADED rows={seismic_count} replay_events={len(events)} "
+        f"relevant_pools={len(relevant_keys)}",
+        flush=True,
+    )
+
+    observations = defaultdict(list)
+    observation_count = 0
+
+    for pool_number, key in enumerate(relevant_keys, 1):
+        if pool_number == 1 or pool_number % 250 == 0:
+            print(
+                f"OBS_LOAD_PROGRESS {pool_number}/{len(relevant_keys)} "
+                f"rows={observation_count}",
+                flush=True,
+            )
+
+        chain, dex, pool = key
+        for row in con.execute(
+            """
+            SELECT id,chain,dex,pool,source,observed_at,
+                   price_usd,liquidity_usd,volume_m5_usd,
+                   buys_m5,sells_m5,txns_m5,change_m5
+            FROM universe_market_observation_v1
+            WHERE chain = ?
+              AND dex = ?
+              AND pool = ?
+              AND price_usd IS NOT NULL
+              AND price_usd > 0
+            ORDER BY observed_at,id
+            """,
+            (chain, dex, pool),
+        ):
+            t = parse_time(row["observed_at"])
+            if t is None:
+                continue
+            item = dict(row)
+            item["t"] = t
+            item["price_usd"] = float(item["price_usd"])
+            observations[key].append(item)
+            observation_count += 1
+
+    observation_times = {
+        key: [row["t"] for row in rows]
+        for key, rows in observations.items()
+    }
+
+    print(
+        f"OBSERVATIONS_LOADED rows={observation_count} "
+        f"pools={len(observations)}",
         flush=True,
     )
 

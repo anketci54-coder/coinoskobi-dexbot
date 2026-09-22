@@ -301,6 +301,7 @@ def _analysis_stubs(monkeypatch):
             "capital_before_usdt": 10000.0,
             "capital_after_entry_usdt": 9900.0,
             "canonical_token_amount": 100.0,
+            "immediate_entry_allowed": True,
             "sizing_reason": (
                 "TEST_DETERMINISTIC"
             ),

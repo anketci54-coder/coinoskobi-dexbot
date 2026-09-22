@@ -201,26 +201,17 @@ def main():
     if missing:
         raise SystemExit("missing tables: " + ", ".join(missing))
 
-    registry = {}
-    for row in con.execute(
-        """
-        SELECT chain,dex,pool,token0,token1
-        FROM universe_pool_registry
-        """
-    ):
-        key = (row["chain"], row["dex"], row["pool"].lower())
-        registry[key] = dict(row)
+    print("TRANSITION_SCAN_START", flush=True)
 
-    seismic = defaultdict(list)
     events = []
-    seismic_count = 0
     for row in con.execute(
         """
         SELECT id,chain,dex,pool,observed_at,
                previous_state,next_state,score,
                price_z,volume_z,txns_z,liquidity_ratio,evidence_count,reason
         FROM universe_seismic_evaluation_v1
-        ORDER BY chain,dex,pool,observed_at,id
+        WHERE next_state IN ('WARM','HOT')
+          AND previous_state <> next_state
         """
     ):
         t = parse_time(row["observed_at"])
@@ -229,41 +220,70 @@ def main():
         key = (row["chain"], row["dex"], row["pool"].lower())
         item = dict(row)
         item["t"] = t
-        seismic[key].append(item)
-        seismic_count += 1
-
-        if (
-            row["next_state"] in {"WARM", "HOT"}
-            and row["previous_state"] != row["next_state"]
-        ):
-            events.append((t, key, item))
-
-    seismic_times = {
-        key: [row["t"] for row in rows]
-        for key, rows in seismic.items()
-    }
+        events.append((t, key, item))
 
     events.sort(key=lambda item: (item[0], item[2]["id"]))
     relevant_keys = sorted({key for _, key, _ in events})
 
     print(
-        f"SEISMIC_LOADED rows={seismic_count} replay_events={len(events)} "
+        f"TRANSITIONS_LOADED replay_events={len(events)} "
         f"relevant_pools={len(relevant_keys)}",
         flush=True,
     )
 
+    registry = {}
+    seismic = defaultdict(list)
     observations = defaultdict(list)
+    seismic_count = 0
     observation_count = 0
 
     for pool_number, key in enumerate(relevant_keys, 1):
-        if pool_number == 1 or pool_number % 250 == 0:
+        if (
+            pool_number == 1
+            or pool_number % 100 == 0
+            or pool_number == len(relevant_keys)
+        ):
             print(
-                f"OBS_LOAD_PROGRESS {pool_number}/{len(relevant_keys)} "
-                f"rows={observation_count}",
+                f"POOL_LOAD_PROGRESS {pool_number}/{len(relevant_keys)} "
+                f"seismic_rows={seismic_count} observation_rows={observation_count}",
                 flush=True,
             )
 
         chain, dex, pool = key
+
+        meta = con.execute(
+            """
+            SELECT chain,dex,pool,token0,token1
+            FROM universe_pool_registry
+            WHERE chain = ? AND dex = ? AND pool = ?
+            LIMIT 1
+            """,
+            (chain, dex, pool),
+        ).fetchone()
+        if meta is not None:
+            registry[key] = dict(meta)
+
+        for row in con.execute(
+            """
+            SELECT id,chain,dex,pool,observed_at,
+                   previous_state,next_state,score,
+                   price_z,volume_z,txns_z,liquidity_ratio,evidence_count,reason
+            FROM universe_seismic_evaluation_v1
+            WHERE chain = ?
+              AND dex = ?
+              AND pool = ?
+            ORDER BY observed_at,id
+            """,
+            (chain, dex, pool),
+        ):
+            t = parse_time(row["observed_at"])
+            if t is None:
+                continue
+            item = dict(row)
+            item["t"] = t
+            seismic[key].append(item)
+            seismic_count += 1
+
         for row in con.execute(
             """
             SELECT id,chain,dex,pool,source,observed_at,
@@ -288,14 +308,18 @@ def main():
             observations[key].append(item)
             observation_count += 1
 
+    seismic_times = {
+        key: [row["t"] for row in rows]
+        for key, rows in seismic.items()
+    }
     observation_times = {
         key: [row["t"] for row in rows]
         for key, rows in observations.items()
     }
 
     print(
-        f"OBSERVATIONS_LOADED rows={observation_count} "
-        f"pools={len(observations)}",
+        f"RELEVANT_DATA_LOADED seismic_rows={seismic_count} "
+        f"observation_rows={observation_count} pools={len(relevant_keys)}",
         flush=True,
     )
 

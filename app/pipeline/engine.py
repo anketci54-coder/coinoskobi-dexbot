@@ -111,6 +111,17 @@ def _runtime_phase15h_buy_evidence(
     exit_evidence = dict(exit_evidence or {})
     sellability_data = dict(sellability_data or {})
 
+    trade_type = str(
+        paper.get("trade_type")
+        or "NORMAL"
+    ).upper()
+
+    if trade_type not in {
+        "NORMAL",
+        "VUR_KAC",
+    }:
+        trade_type = "NORMAL"
+
     if paper.get("action") != "PAPER_BUY":
         return None
 
@@ -164,13 +175,16 @@ def _runtime_phase15h_buy_evidence(
             deadline=deadline,
             fee_on_transfer=(buy_tax > 0),
         )
+        buy = dict(buy or {})
+        buy["trade_type"] = trade_type
         block = dict(buy.get("block") or {})
         logger.info(
             (
-                "PHASE15H_RUNTIME_BUY token=%s status=%s "
+                "PHASE15H_RUNTIME_BUY token=%s trade_type=%s status=%s "
                 "block=%s chain_id=%s received_token_raw=%s gas_used=%s"
             ),
             token_address,
+            trade_type,
             buy.get("status"),
             block.get("number"),
             block.get("chain_id"),
@@ -187,6 +201,7 @@ def _runtime_phase15h_buy_evidence(
                 "contract": "phase15h_transaction_simulation_v1",
                 "side": "BUY",
                 "status": "UNKNOWN",
+                "trade_type": trade_type,
             }
         }
 
@@ -3567,6 +3582,10 @@ class PipelineEngine:
 
                                 "paper_account_version": (
                                     "PAPER_10K_V2"
+                                ),
+
+                                "trade_type": (
+                                    selected_trade_type
                                 ),
 
                                 "vur_kac_entry_shadow": (

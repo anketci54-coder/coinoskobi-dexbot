@@ -206,8 +206,9 @@ def test_phase15h_engine_projects_runtime_classification(
         is False
     )
 
-def test_phase15h_runtime_buy_runs_only_after_paper_open(monkeypatch):
+def test_phase15h_runtime_buy_runs_only_after_paper_open(monkeypatch, caplog):
     calls = []
+    caplog.set_level("INFO", logger="app.pipeline.engine")
 
     def fake_buy(**kwargs):
         calls.append(dict(kwargs))
@@ -248,6 +249,9 @@ def test_phase15h_runtime_buy_runs_only_after_paper_open(monkeypatch):
     assert calls[0]["amount_in_wei"] == 10 ** 18
     assert calls[0]["block_number"] == 123456
     assert calls[0]["fee_on_transfer"] is True
+    assert "PHASE15H_RUNTIME_BUY" in caplog.text
+    assert "status=SUCCESS" in caplog.text
+    assert "block=123456" in caplog.text
 
     skipped = engine_module._runtime_phase15h_buy_evidence(
         token_address="0x0000000000000000000000000000000000000002",

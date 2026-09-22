@@ -85,7 +85,7 @@ class _PaperDB:
             for value in (traded or [])
         }
 
-    def has_trade_history(self, token):
+    def has_open_position(self, token):
         return str(token).lower() in self.traded
 
 
@@ -453,13 +453,32 @@ def test_newer_non_watch_transition_suppresses_older_watch():
     assert job._watched_identities() == []
 
 
-def test_existing_trade_history_suppresses_old_watch():
+def test_existing_open_position_suppresses_old_watch():
     rows = [_history_row("ACTIVE_MOMENTUM_NOT_POSITIVE")]
 
     pipeline = _Pipeline(rows, traded=[TOKEN])
     job = FastWatchRevisitJob(pipeline)
 
     assert job._watched_identities() == []
+
+
+def test_closed_history_does_not_suppress_watch():
+    rows = [_history_row("ACTIVE_MOMENTUM_NOT_POSITIVE")]
+
+    class ClosedHistoryOnlyDB:
+        def has_open_position(self, token):
+            return False
+
+        def has_trade_history(self, token):
+            return True
+
+    pipeline = _Pipeline(rows)
+    pipeline.paper_db = ClosedHistoryOnlyDB()
+    job = FastWatchRevisitJob(pipeline)
+
+    assert job._watched_identities() == [
+        (TOKEN.lower(), POOL.lower(), "pancakeswap_v2")
+    ]
 
 
 def test_recent_watch_waits_for_configured_interval():

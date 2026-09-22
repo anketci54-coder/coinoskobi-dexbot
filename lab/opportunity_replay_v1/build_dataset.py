@@ -105,6 +105,48 @@ def first_hot_after(rows, start: float, end: float):
     return None
 
 
+def cohort_summary(rows):
+    return {
+        "count": len(rows),
+        "median_pre_decision_return_pct": median(
+            row["pre_decision_return_pct"] for row in rows
+        ),
+        "median_pre_decision_mfe_pct": median(
+            row["pre_decision_mfe_pct"] for row in rows
+        ),
+        "median_pre_decision_mae_pct": median(
+            row["pre_decision_mae_pct"] for row in rows
+        ),
+        "median_eval_return_1h_pct": median(
+            row["eval_return_1h_pct"] for row in rows
+        ),
+        "median_eval_return_6h_pct": median(
+            row["eval_return_6h_pct"] for row in rows
+        ),
+        "median_eval_return_24h_pct": median(
+            row["eval_return_24h_pct"] for row in rows
+        ),
+        "median_eval_mfe_1h_pct": median(
+            row["eval_mfe_1h_pct"] for row in rows
+        ),
+        "median_eval_mfe_6h_pct": median(
+            row["eval_mfe_6h_pct"] for row in rows
+        ),
+        "median_eval_mfe_24h_pct": median(
+            row["eval_mfe_24h_pct"] for row in rows
+        ),
+        "median_eval_mae_24h_pct": median(
+            row["eval_mae_24h_pct"] for row in rows
+        ),
+        "median_time_to_peak_24h_seconds": median(
+            row["eval_time_to_peak_24h_seconds"] for row in rows
+        ),
+        "median_first_below_decision_seconds": median(
+            row["eval_first_below_decision_seconds"] for row in rows
+        ),
+    }
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--db", default="data/cache/cache.db")
@@ -307,6 +349,8 @@ def main():
             ),
             "event_price": event_price,
             "decision_price": decision_price,
+            "event_observation_age_seconds": event_t - event_obs["t"],
+            "decision_observation_age_seconds": decision_t - decision_obs["t"],
             "pre_decision_return_pct": pct(decision_price, event_price),
             "pre_decision_mfe_pct": pre_mfe,
             "pre_decision_mae_pct": pre_mae,
@@ -341,6 +385,24 @@ def main():
         writer.writerows(output_rows)
 
     state_counts = Counter(row["entry_state"] for row in output_rows)
+
+    hot_rows = [
+        row for row in output_rows
+        if row["entry_state"] == "HOT"
+    ]
+    warm_rows = [
+        row for row in output_rows
+        if row["entry_state"] == "WARM"
+    ]
+    warm_promoted_rows = [
+        row for row in warm_rows
+        if row["promoted_warm_to_hot_before_decision"]
+    ]
+    warm_not_promoted_rows = [
+        row for row in warm_rows
+        if not row["promoted_warm_to_hot_before_decision"]
+    ]
+
     summary = {
         "contract": "OPPORTUNITY_REPLAY_DATASET_V1",
         "database": str(db_path),
@@ -348,10 +410,18 @@ def main():
         "decision_delay_seconds": args.decision_delay_seconds,
         "event_count": len(output_rows),
         "entry_state_counts": dict(state_counts),
-        "warm_promoted_to_hot_before_decision": sum(
-            row["entry_state"] == "WARM"
-            and row["promoted_warm_to_hot_before_decision"]
-            for row in output_rows
+        "warm_promoted_to_hot_before_decision": len(warm_promoted_rows),
+        "cohorts": {
+            "HOT": cohort_summary(hot_rows),
+            "WARM": cohort_summary(warm_rows),
+            "WARM_PROMOTED_TO_HOT": cohort_summary(warm_promoted_rows),
+            "WARM_NOT_PROMOTED": cohort_summary(warm_not_promoted_rows),
+        },
+        "median_event_observation_age_seconds": median(
+            row["event_observation_age_seconds"] for row in output_rows
+        ),
+        "median_decision_observation_age_seconds": median(
+            row["decision_observation_age_seconds"] for row in output_rows
         ),
         "median_pre_decision_return_pct": median(
             row["pre_decision_return_pct"] for row in output_rows

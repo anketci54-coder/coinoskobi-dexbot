@@ -163,6 +163,8 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--db", default="data/cache/cache.db")
     parser.add_argument("--decision-delay-seconds", type=int, default=600)
+    parser.add_argument("--seismic-max-id", type=int)
+    parser.add_argument("--observation-max-id", type=int)
     parser.add_argument(
         "--out-dir",
         default="/tmp/coinoskobi-opportunity-replay-v1",
@@ -171,6 +173,10 @@ def main():
 
     if args.decision_delay_seconds <= 0:
         raise SystemExit("decision delay must be positive")
+    if args.seismic_max_id is not None and args.seismic_max_id <= 0:
+        raise SystemExit("seismic max id must be positive")
+    if args.observation_max_id is not None and args.observation_max_id <= 0:
+        raise SystemExit("observation max id must be positive")
 
     started = time.monotonic()
     db_path = Path(args.db).resolve()
@@ -178,7 +184,9 @@ def main():
     out_dir.mkdir(parents=True, exist_ok=True)
 
     print(
-        f"REPLAY_START delay={args.decision_delay_seconds}s db={db_path}",
+        f"REPLAY_START delay={args.decision_delay_seconds}s db={db_path} "
+        f"seismic_max_id={args.seismic_max_id} "
+        f"observation_max_id={args.observation_max_id}",
         flush=True,
     )
 
@@ -218,7 +226,9 @@ def main():
         FROM universe_seismic_evaluation_v1
         WHERE next_state IN ('WARM','HOT')
           AND previous_state <> next_state
+          AND (? IS NULL OR id <= ?)
         """
+        , (args.seismic_max_id, args.seismic_max_id)
     ):
         t = parse_time(row["observed_at"])
         if t is None:
@@ -292,9 +302,16 @@ def main():
             WHERE chain = ?
               AND dex = ?
               AND pool = ?
+              AND (? IS NULL OR id <= ?)
             ORDER BY observed_at,id
             """,
-            (chain, dex, pool),
+            (
+                chain,
+                dex,
+                pool,
+                args.seismic_max_id,
+                args.seismic_max_id,
+            ),
         ):
             t = parse_time(row["observed_at"])
             if t is None:
@@ -316,9 +333,16 @@ def main():
               AND pool = ?
               AND price_usd IS NOT NULL
               AND price_usd > 0
+              AND (? IS NULL OR id <= ?)
             ORDER BY observed_at,id
             """,
-            (chain, dex, pool),
+            (
+                chain,
+                dex,
+                pool,
+                args.observation_max_id,
+                args.observation_max_id,
+            ),
         ):
             t = parse_time(row["observed_at"])
             if t is None:
@@ -643,6 +667,8 @@ def main():
         "decision_delay_seconds": (
             args.decision_delay_seconds
         ),
+        "seismic_max_id": args.seismic_max_id,
+        "observation_max_id": args.observation_max_id,
         "event_count": len(output_rows),
         "skipped_no_observation": (
             skipped_no_observation

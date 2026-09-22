@@ -16,6 +16,12 @@ from app.paper.cache_price import (
 from app.paper.trade_routing import (
     lifecycle_trade_type,
 )
+from app.chains.bsc import (
+    w3 as canonical_bsc_web3,
+)
+from app.execution.paper_simulation import (
+    simulate_paper_sell,
+)
 from app.risk.hybrid_exit_controller import (
     evaluate_hybrid_exit,
 )
@@ -37,6 +43,102 @@ from app.strategy.mathematical_trade_plan import (
 logger = logging.getLogger(
     __name__
 )
+
+
+def _runtime_phase15h_sell_evidence(
+    *,
+    position,
+    action,
+):
+    """Run Phase 15H SELL only after a real PAPER exit mutation succeeded."""
+    position = dict(position or {})
+    action = str(action or "").upper()
+
+    if action not in {
+        "CLOSE",
+        "PARTIAL_TP1",
+        "PARTIAL_TP2",
+    }:
+        return None
+
+    token = position.get("token")
+    if not token:
+        return None
+
+    try:
+        block_number = int(
+            canonical_bsc_web3.eth.block_number
+        )
+    except Exception:
+        logger.exception(
+            "PHASE15H_RUNTIME_SELL_BLOCK_FAILED position_id=%s token=%s action=%s",
+            position.get("id"),
+            token,
+            action,
+        )
+        return {
+            "sell": {
+                "contract": "phase15h_transaction_simulation_v1",
+                "side": "SELL",
+                "status": "UNKNOWN",
+            }
+        }
+
+    try:
+        sell_tax = float(
+            position.get("sell_tax")
+            or 0.0
+        )
+    except (TypeError, ValueError):
+        sell_tax = 0.0
+
+    deadline = int(
+        datetime.now(timezone.utc).timestamp()
+    ) + 300
+
+    try:
+        sell = simulate_paper_sell(
+            token=token,
+            block_number=block_number,
+            deadline=deadline,
+            fee_on_transfer=(sell_tax > 0),
+        )
+        block = dict(
+            sell.get("block")
+            or {}
+        )
+        logger.info(
+            (
+                "PHASE15H_RUNTIME_SELL position_id=%s token=%s action=%s "
+                "status=%s block=%s chain_id=%s received_quote_raw=%s gas_used=%s"
+            ),
+            position.get("id"),
+            token,
+            action,
+            sell.get("status"),
+            block.get("number"),
+            block.get("chain_id"),
+            sell.get("received_quote_raw"),
+            sell.get("gas_used"),
+        )
+    except Exception:
+        logger.exception(
+            "PHASE15H_RUNTIME_SELL_FAILED position_id=%s token=%s action=%s",
+            position.get("id"),
+            token,
+            action,
+        )
+        return {
+            "sell": {
+                "contract": "phase15h_transaction_simulation_v1",
+                "side": "SELL",
+                "status": "UNKNOWN",
+            }
+        }
+
+    return {
+        "sell": sell,
+    }
 
 
 class PaperManager:
@@ -2579,6 +2681,22 @@ class PaperManager:
                 logger.exception("PAPER_POSITION_FAILED position_id=%s", pos.get("id"))
                 continue
             if result is not None:
+                data = (
+                    result.get("data")
+                    if isinstance(result, dict)
+                    else None
+                )
+                if isinstance(data, dict):
+                    phase15h_execution = (
+                        _runtime_phase15h_sell_evidence(
+                            position=pos,
+                            action=data.get("action"),
+                        )
+                    )
+                    if phase15h_execution is not None:
+                        data[
+                            "phase15h_execution"
+                        ] = phase15h_execution
                 results.append(result)
         return results
 

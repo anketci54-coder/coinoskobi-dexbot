@@ -64,6 +64,54 @@ def test_dust_lp_protection_is_not_economic_capacity(calibrated):
     assert r["liquidity_protection_unverified"] is True
 
 
+def test_verified_lp_provenance_survives_nonpositive_edge(calibrated):
+    p = build_trade_plan(
+        entry_price=1.0,
+        available_capital_usdt=10000.0,
+        price_series=[1.2, 1.1, 1.0],
+        quote_reserve_usd=50000.0,
+        lp_protected_fraction=1.0,
+        sellability_status="SELLABILITY_OK",
+        trade_type="NORMAL",
+        sellability_data={
+            "buy_tax": 0,
+            "sell_tax": 0,
+            "buy_gas": 100000,
+            "sell_gas": 100000,
+        },
+        exit_evidence={
+            "route_friction_fraction": 0.0025,
+            "gas_price_wei": 1000000000,
+            "wbnb_usd_estimate": 600.0,
+            "observed_min_quote_reserve_usd": 48000.0,
+            "reserve_observation_count": 4,
+        },
+        market_context={
+            "opportunity": {
+                "state": "HOT",
+                "catastrophic_reserve_collapse": False,
+            }
+        },
+    )
+
+    assert p["expected"]["known_net_edge_fraction"] <= 0
+    assert (
+        p["capital"]["liquidity_capacity_source"]
+        == "VERIFIED_LP_PROTECTION"
+    )
+
+    r = sizing.calculate_paper_position_size(
+        mathematical_plan=p
+    )
+
+    assert r["entry_amount_usdt"] == 0.0
+    assert "NET_EDGE_NOT_POSITIVE" in r["blockers"]
+    assert (
+        "LP_WITHDRAWAL_PROTECTION_UNVERIFIED"
+        not in r["blockers"]
+    )
+
+
 @pytest.mark.parametrize("gate", ["hard", "sellability", "collapse", "edge", "plan", "cold"])
 def test_bootstrap_never_bypasses_real_gates(calibrated, gate):
     p = plan()

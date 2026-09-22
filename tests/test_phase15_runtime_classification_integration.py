@@ -67,12 +67,16 @@ def test_phase15h_engine_projects_runtime_classification(
         *,
         paper_position=None,
         runtime_evidence=None,
+        phase15h_execution=None,
     ):
         captured["paper"] = dict(
             paper_position or {}
         )
         captured["runtime"] = dict(
             runtime_evidence or {}
+        )
+        captured["phase15h"] = dict(
+            phase15h_execution or {}
         )
 
         # Supply a paper baseline only for comparison.
@@ -102,6 +106,7 @@ def test_phase15h_engine_projects_runtime_classification(
         return real_builder(
             paper_position=paper,
             runtime_evidence=runtime,
+            phase15h_execution=phase15h_execution,
         )
 
     monkeypatch.setattr(
@@ -110,9 +115,43 @@ def test_phase15h_engine_projects_runtime_classification(
         capture_builder,
     )
 
+    phase15h_execution = {
+        "buy": {
+            "contract": "phase15h_transaction_simulation_v1",
+            "status": "SUCCESS",
+            "block": {
+                "number": 123191429,
+                "hash": "0xabc",
+                "chain_id": 56,
+            },
+            "received_token_raw": 2000,
+            "recipient_balance_delta_raw": 2000,
+            "gas_used": 120000,
+            "effective_gas_price": 1_000_000_000,
+            "execution_gas_cost_wei": 120_000_000_000_000,
+            "fill_status": "SIMULATED_RECIPIENT_DELTA",
+        },
+        "sell": {
+            "contract": "phase15h_transaction_simulation_v1",
+            "status": "SUCCESS",
+            "block": {
+                "number": 123191430,
+                "hash": "0xdef",
+                "chain_id": 56,
+            },
+            "received_quote_raw": 990,
+            "recipient_balance_delta_raw": 990,
+            "gas_used": 110000,
+            "effective_gas_price": 1_000_000_000,
+            "execution_gas_cost_wei": 110_000_000_000_000,
+            "fill_status": "SIMULATED_RECIPIENT_DELTA",
+        },
+    }
+
     result = engine.run(
         "0xphase15h",
         market_context=context,
+        phase15h_execution=phase15h_execution,
     )
 
     assert result["success"] is True
@@ -127,6 +166,14 @@ def test_phase15h_engine_projects_runtime_classification(
     ]
 
     assert captured["runtime"]["slippage_pct"] == 2.0
+    assert captured["phase15h"]["buy"]["status"] == "SUCCESS"
+
+    bound = source["execution_evidence"]["phase15h_execution_evidence"]
+    assert bound["buy"]["status"] == "SUCCESS"
+    assert bound["sell"]["status"] == "SUCCESS"
+    assert bound["buy"]["received_token_raw"] == 2000
+    assert bound["sell"]["received_quote_raw"] == 990
+    assert source["execution_evidence"]["phase15h_round_trip_complete"] is True
 
     assert (
         classification["contract"]

@@ -1797,6 +1797,7 @@ class PipelineEngine:
         token_address: str,
         market_context=None,
         operator_input=None,
+        phase15h_execution=None,
     ):
 
         self._raise_if_stopping()
@@ -3621,6 +3622,9 @@ class PipelineEngine:
                 paper_position=paper,
                 runtime_evidence=(
                     phase15_runtime_evidence
+                ),
+                phase15h_execution=(
+                    phase15h_execution
                 ),
             )
         )

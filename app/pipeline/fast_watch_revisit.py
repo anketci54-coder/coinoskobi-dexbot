@@ -32,6 +32,10 @@ FAST_WATCH_READY_SELLABILITY_REASONS = {
 }
 
 FAST_WATCH_MAX_CANDIDATES = 30
+FAST_WATCH_TIMING_REASONS = {
+    "ENTRY_ABOVE_CHASE_LIMIT",
+    "ENTRY_TIMING_NOT_READY",
+}
 FAST_WATCH_HISTORY_PAGE_SIZE = 128
 FAST_WATCH_HISTORY_ROW_BUDGET = 2048
 FAST_WATCH_IDENTITY_OVERSAMPLE = 8
@@ -48,6 +52,15 @@ FAST_READY_SELLABILITY_MAX_CANDIDATES = 8
 FAST_DISCOVERY_ROW_BUDGET = 64
 FAST_DISCOVERY_BLOCK_WINDOW = 2000
 FAST_DISCOVERY_RETRY_SECONDS = 60.0
+
+
+def _ready_timing_retry(context):
+    # Observation only: a later exact-pool snapshot must pass every gate
+    # again. Completed momentum/sellability must not strand a timing WATCH.
+    return (
+        str(context.get("sellability") or "").upper() == "SELLABILITY_OK"
+        and str(context.get("reason") or "").upper() in FAST_WATCH_TIMING_REASONS
+    )
 
 
 class FastWatchRevisitJob:
@@ -200,8 +213,10 @@ class FastWatchRevisitJob:
         ready_sellability_retry = (
             opportunity_reason
             in FAST_WATCH_READY_SELLABILITY_REASONS
-            and sellability
-            == "SELLABILITY_UNKNOWN"
+            and (
+                sellability == "SELLABILITY_UNKNOWN"
+                or _ready_timing_retry(context)
+            )
         )
 
         if not (
@@ -247,8 +262,10 @@ class FastWatchRevisitJob:
         if (
             opportunity_reason
             in FAST_WATCH_READY_SELLABILITY_REASONS
-            and sellability
-            == "SELLABILITY_UNKNOWN"
+            and (
+                sellability == "SELLABILITY_UNKNOWN"
+                or _ready_timing_retry(context)
+            )
         ):
             return 0
 
@@ -258,9 +275,9 @@ class FastWatchRevisitJob:
         """
         Return prioritized WATCH identities as separate buckets.
 
-        HOT/recovery-ready candidates waiting only on transient sellability
-        evidence receive their own bounded lane. Momentum/evidence watches stay
-        in the ordinary WATCH lane.
+        HOT/recovery-ready candidates waiting on transient sellability or
+        entry timing receive the same bounded ready lane. Momentum/evidence
+        watches stay in the ordinary WATCH lane.
         """
         ready_sellability = []
         movement = []
@@ -1193,7 +1210,7 @@ class FastWatchRevisitJob:
         seen = set()
 
         # Candidates that are already HOT/recovery-ready and are waiting only
-        # on transient SELLABILITY_UNKNOWN evidence get first bounded access.
+        # on transient SELLABILITY_UNKNOWN or entry timing get bounded access.
         # They have already passed the momentum lane and should not be starved
         # by rotating universe discovery. All canonical analyzers, RiskGate,
         # sellability, sizing and PAPER admission remain unchanged.

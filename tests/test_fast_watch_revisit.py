@@ -2,6 +2,8 @@ import json
 import threading
 import time
 
+import pytest
+
 import app.pipeline.fast_watch_revisit as module
 from app.core.runner import Runner
 from app.pipeline.fast_watch_revisit import FastWatchRevisitJob
@@ -276,6 +278,61 @@ def test_hot_ready_with_sellability_ok_does_not_use_retry_lane():
     job = FastWatchRevisitJob(pipeline)
 
     assert job._watched_identities() == []
+
+
+@pytest.mark.parametrize("reason", ["ENTRY_ABOVE_CHASE_LIMIT", "ENTRY_TIMING_NOT_READY"])
+def test_hot_timing_watch_reaches_fresh_canonical_evaluation(monkeypatch, reason):
+    # Runtime decision 88935: HOT + sellable + verified LP + positive edge,
+    # but still WATCH because the measured price exceeded the chase ceiling.
+    row = _history_row("ACTIVE_CONTINUATION_READY")
+    context = json.loads(row["context_json"])
+    context.update({
+        "opportunity_state": "HOT",
+        "sellability": "SELLABILITY_OK",
+        "reason": reason,
+    })
+    row["context_json"] = json.dumps(context)
+    pipeline = _Pipeline([row])
+    _patch_normalization(monkeypatch)
+    monkeypatch.setattr(FastWatchRevisitJob, "_refresh_local_sellability_evidence", lambda self, row: False)
+    job = FastWatchRevisitJob(pipeline)
+    monkeypatch.setattr(job, "_hot_universe_identities", lambda: [])
+    monkeypatch.setattr(job, "_warm_universe_identities", lambda: [])
+    monkeypatch.setattr(job, "_unseen_universe_identities", lambda: [])
+
+    result = job._run_cycle_sync()
+
+    assert result["processed"] == 1
+    assert len(pipeline.ingress_gate.calls) == 1
+    assert len(pipeline.runs) == 1
+    assert result["paper_buys"] == 0  # Retry is not admission.
+    assert pipeline.observed[0][1]["paper"] == "WATCH"
+
+
+@pytest.mark.parametrize("guard", ["hard_block", "sellability_fail", "open_position", "ingress_defer"])
+def test_hot_timing_retry_preserves_canonical_guards(monkeypatch, guard):
+    row = _history_row("ACTIVE_CONTINUATION_READY", hard_block=guard == "hard_block")
+    context = json.loads(row["context_json"])
+    context.update({
+        "opportunity_state": "HOT",
+        "sellability": "SELLABILITY_FAIL" if guard == "sellability_fail" else "SELLABILITY_OK",
+        "reason": "ENTRY_ABOVE_CHASE_LIMIT",
+    })
+    row["context_json"] = json.dumps(context)
+    pipeline = _Pipeline([row], ingress_active=guard != "ingress_defer",
+                         traded=[TOKEN] if guard == "open_position" else [])
+    _patch_normalization(monkeypatch)
+    job = FastWatchRevisitJob(pipeline)
+    monkeypatch.setattr(job, "_hot_universe_identities", lambda: [])
+    monkeypatch.setattr(job, "_warm_universe_identities", lambda: [])
+    monkeypatch.setattr(job, "_unseen_universe_identities", lambda: [])
+
+    result = job._run_cycle_sync()
+
+    assert result["paper_buys"] == 0
+    assert pipeline.runs == []
+    if guard == "ingress_defer":
+        assert len(pipeline.ingress_gate.calls) == 1
 
 
 def test_recovery_breakout_sellability_unknown_is_revisited():

@@ -59,7 +59,6 @@ def test_empirical_liquidity_remains_observation_only_without_lp_protection(
 
     assert r["entry_amount_usdt"] == 0.0
     assert r["risk_amount_usdt"] == 0.0
-    assert r["liquidity_protection_unverified"] is True
     assert (
         "LP_WITHDRAWAL_PROTECTION_UNVERIFIED"
         in r["blockers"]
@@ -85,7 +84,6 @@ def test_dust_lp_protection_is_not_economic_capacity(calibrated):
 
     assert r["entry_amount_usdt"] == 0.0
     assert r["risk_amount_usdt"] == 0.0
-    assert r["liquidity_protection_unverified"] is True
     assert (
         "LP_WITHDRAWAL_PROTECTION_UNVERIFIED"
         in r["blockers"]

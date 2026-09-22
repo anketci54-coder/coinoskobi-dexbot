@@ -2295,10 +2295,42 @@ def build_trade_plan(
         and entry_acceleration >= 0
     )
 
-    # Admission authority is intentionally disabled for this
-    # diagnostic signal. Full readiness is required.
-    early_paper_admission = False
-    bypassed_soft_blockers = []
+    # This PAPER-only lane uses the supplied empirical rule, not price
+    # continuation. Unlisted blockers fail closed, including future ones.
+    early_soft_blockers = {
+        "VUR_KAC_ENTRY_NOT_READY",
+        "VUR_KAC_PRICE_EVIDENCE_NOT_READY",
+        "VUR_KAC_FLOW_EVIDENCE_NOT_READY",
+        "VUR_KAC_PRICE_MOMENTUM_NOT_POSITIVE",
+        "VUR_KAC_PRICE_ACCELERATION_WEAKENING",
+        "VUR_KAC_FLOW_MOMENTUM_NOT_POSITIVE",
+        "VUR_KAC_FLOW_ACCELERATION_WEAKENING",
+    }
+    context = market_context if isinstance(market_context, dict) else {}
+    quality = context.get("market_quality")
+    if not isinstance(quality, dict):
+        runtime = context.get("runtime_intelligence")
+        quality = runtime.get("market_quality") if isinstance(runtime, dict) else None
+    quality = quality if isinstance(quality, dict) else {}
+    count_ratio = _number(quality.get("buy_sell_count_ratio"))
+    turnover = _number(quality.get("volume_turnover"))
+    buys = _number(quality.get("buys"))
+    early_paper_admission = (
+        bool(vur_kac_entry.get("enforced"))
+        and not vur_kac_entry.get("ready")
+        and not hard_block
+        and sellability_status == "SELLABILITY_OK"
+        and count_ratio is not None and count_ratio >= 1.34
+        and turnover is not None and 0 <= turnover <= 0.12
+        and buys is not None and 0 <= buys <= 11
+        and bool(blocker_set)
+        and blocker_set.issubset(early_soft_blockers)
+    )
+    bypassed_soft_blockers = sorted(blocker_set) if early_paper_admission else []
+    if early_paper_admission:
+        # Keep the unchanged readiness verdict in vur_kac_entry and the
+        # waived reasons in telemetry; sizing consumes active blockers.
+        blockers = []
 
     paper_eligible = (
         not blockers
@@ -2342,7 +2374,7 @@ def build_trade_plan(
 
         "paper_admission": {
             "mode": (
-                "EARLY_PRICE_CONTINUATION"
+                "EARLY_EMPIRICAL"
                 if early_paper_admission
                 else (
                     "FULL_EVIDENCE"
@@ -2355,6 +2387,7 @@ def build_trade_plan(
                     early_price_continuation
                 )
             ),
+            "early_paper_admission": early_paper_admission,
             "bypassed_soft_blockers": (
                 bypassed_soft_blockers
             ),

@@ -1218,6 +1218,16 @@ def calculate_paper_position_size(
         isinstance(vur_kac_gate, dict)
         and vur_kac_gate.get("enforced")
     ) or bool(vur_kac_gate.get("ready"))
+    admission = plan.get("paper_admission") or {}
+    vur_kac_ready = vur_kac_ready or (
+        plan.get("paper_eligible") is True
+        and not plan.get("blockers")
+        and not plan.get("hard_block")
+        and plan.get("sellability_status") == "SELLABILITY_OK"
+        and admission.get("mode") == "EARLY_EMPIRICAL"
+        and admission.get("early_paper_admission") is True
+        and admission.get("paper_only") is True
+    )
     if current_price is not None and anchor_price is not None and edge_move is not None:
         tolerated_move = min(edge_move, observed_move)
         entry_timing.update({

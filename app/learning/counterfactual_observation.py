@@ -1074,6 +1074,45 @@ class CounterfactualObservationStore:
         with self._lock:
             return len(self._rows)
 
+    def record_ingress_decision(self, row, *, lane, reason):
+        """Persist a denied ingress observation without opening a probe/follow-up.
+
+        A DROP may have no usable price or a stale provider timestamp. Record
+        the classification time and retain the provider facts separately;
+        neither is permission to refresh market evidence or run analyzers.
+        """
+        if lane not in {"DEFER", "DROP"}:
+            raise ValueError("denied ingress lane required")
+        action = "WATCH" if lane == "DEFER" else "REJECT"
+        return self._persist_decision_transition(
+            token=row.get("token"),
+            pool=row.get("pool"),
+            entry_price=self._finite_positive(row.get("price_usd")),
+            signal_state="UNKNOWN",
+            candidate_action=action,
+            observed_at=time.time(),
+            context={
+                "paper": action,
+                "reason": reason,
+                "opportunity_state": action,
+                "opportunity_reason": "INGRESS_" + lane,
+                "sellability": "SELLABILITY_SKIPPED",
+                "ingress": {"lane": lane, "reason": reason},
+                "market_context": {
+                    "candidate_pool": row.get("pool"),
+                    "candidate_dex": row.get("dex"),
+                    "candidate_quote_token": row.get("quote_token"),
+                    "liquidity_usd": row.get("liquidity"),
+                    "volume_usd": row.get("volume_24h"),
+                    "buys_24h": row.get("buys_24h"),
+                    "fdv_usd": row.get("fdv"),
+                    "price_usd": row.get("price_usd"),
+                    "observed_at": row.get("observed_at"),
+                    "source": row.get("source"),
+                },
+            },
+        )
+
     def record(
         self,
         *,

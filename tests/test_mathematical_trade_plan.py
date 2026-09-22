@@ -1,3 +1,5 @@
+import pytest
+
 from app.strategy.mathematical_trade_plan import (
     build_cost_model,
     build_trade_plan,
@@ -24,6 +26,19 @@ def sellability():
         "buy_gas": 0,
         "sell_gas": 0,
     }
+
+
+@pytest.mark.parametrize("prices", [[], [1.0], [1.0, 1.0, 1.0]])
+def test_verified_lp_with_unobservable_returns_fails_closed(prices):
+    plan = build_trade_plan(
+        entry_price=1.0, available_capital_usdt=1000,
+        price_series=prices, quote_reserve_usd=10000,
+        lp_protected_fraction=1.0, sellability_status="SELLABILITY_OK",
+        sellability_data=sellability(), exit_evidence=exit_evidence(),
+    )
+    assert plan["paper_eligible"] is False
+    assert plan["capital"]["entry_amount_usdt"] == 0
+    assert "RETURN_RISK_UNOBSERVABLE" in plan["blockers"]
 
 
 def test_plan_has_no_static_tp_fraction_or_tp3_price():

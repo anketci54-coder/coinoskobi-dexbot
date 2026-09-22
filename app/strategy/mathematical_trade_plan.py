@@ -2123,7 +2123,7 @@ def build_trade_plan(
         - buy_gas * (1.0 + max(0.0, edge_fraction)) - sell_gas
     )
     if (liquidity_capacity_source == "VERIFIED_LP_PROTECTION"
-            and positive_edge_fraction > 0
+            and edge_fraction > 0
             and protected_expected_profit <= 0
             and empirical_reserve_ready):
         safe_quote_reserve = min(quote_reserve, observed_min_quote_reserve)

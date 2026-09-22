@@ -981,6 +981,23 @@ class FastWatchRevisitJob:
                     selected.append(active[0])
                     if len(selected) >= self.max_candidates:
                         return selected
+                else:
+                    # classify_many received exactly one identity. Preserve
+                    # its canonical denial instead of leaving an older HOT
+                    # decision as the latest durable truth. No deep analysis
+                    # or paper/probe admission is allowed on this branch.
+                    lane = "DEFER" if ingress.get("deferred") else "DROP"
+                    reasons = (ingress.get("stats") or {}).get("reasons") or {}
+                    reason = next(iter(reasons), "INGRESS_UNKNOWN")
+                    store = getattr(self.pipeline, "counterfactual_store", None)
+                    record = getattr(store, "record_ingress_decision", None)
+                    outcome = record(candidate, lane=lane, reason=reason) if callable(record) else {}
+                    logger.info(
+                        "Fast watch ingress token=%s pool=%s lane=%s reason=%s "
+                        "decision_id=%s stored=%s sellability=SELLABILITY_SKIPPED",
+                        token, pool, lane, reason,
+                        outcome.get("decision_id"), outcome.get("stored", False),
+                    )
 
         return selected
 

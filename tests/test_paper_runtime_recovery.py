@@ -42,26 +42,54 @@ def plan(*, protected=0.0, state="HOT"):
 
 
 @pytest.mark.parametrize("state", ["HOT", "WARM"])
-def test_empirical_liquidity_has_small_total_loss_budget(calibrated, state):
+def test_empirical_liquidity_remains_observation_only_without_lp_protection(
+    calibrated,
+    state,
+):
     p = plan(state=state)
-    r = sizing.calculate_paper_position_size(mathematical_plan=p)
-    assert r["entry_amount_usdt"] > 0
-    assert r["entry_amount_usdt"] <= 50.0
-    assert r["entry_amount_usdt"] <= 10000 / MAX_OPEN_PAPER_POSITIONS * (1 - math.exp(-p["sl"]["risk_log_distance"]))
-    assert r["risk_amount_usdt"] == r["entry_amount_usdt"]
+    assert (
+        p["capital"]["liquidity_capacity_source"]
+        == "EMPIRICAL_RESERVE_FLOOR"
+    )
+    assert p["capital"]["entry_amount_usdt"] > 0
+
+    r = sizing.calculate_paper_position_size(
+        mathematical_plan=p
+    )
+
+    assert r["entry_amount_usdt"] == 0.0
+    assert r["risk_amount_usdt"] == 0.0
     assert r["liquidity_protection_unverified"] is True
-    assert r["canonical_token_amount"] > 0
+    assert (
+        "LP_WITHDRAWAL_PROTECTION_UNVERIFIED"
+        in r["blockers"]
+    )
+    assert r.get("paper_calibration_bootstrap") is not True
     assert p["live_eligible"] is False
     assert p["execution_authority"] is False
 
 
 def test_dust_lp_protection_is_not_economic_capacity(calibrated):
     p = plan(protected=1.8e-17)
-    assert p["capital"]["verified_quote_reserve_usd"] == pytest.approx(50000 * 1.8e-17)
-    assert p["capital"]["liquidity_capacity_source"] == "EMPIRICAL_RESERVE_FLOOR"
-    r = sizing.calculate_paper_position_size(mathematical_plan=p)
-    assert 0 < r["entry_amount_usdt"] <= 50
+    assert p["capital"]["verified_quote_reserve_usd"] == pytest.approx(
+        50000 * 1.8e-17
+    )
+    assert (
+        p["capital"]["liquidity_capacity_source"]
+        == "EMPIRICAL_RESERVE_FLOOR"
+    )
+
+    r = sizing.calculate_paper_position_size(
+        mathematical_plan=p
+    )
+
+    assert r["entry_amount_usdt"] == 0.0
+    assert r["risk_amount_usdt"] == 0.0
     assert r["liquidity_protection_unverified"] is True
+    assert (
+        "LP_WITHDRAWAL_PROTECTION_UNVERIFIED"
+        in r["blockers"]
+    )
 
 
 def test_verified_lp_provenance_survives_nonpositive_edge(calibrated):

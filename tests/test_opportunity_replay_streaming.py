@@ -145,6 +145,55 @@ def test_replay_streams_pool_histories_without_changing_results(
     out_dir = tmp_path / "out"
     _build_replay_db(db_path)
 
+    # Simulate live rows arriving after a frozen replay boundary.
+    db = sqlite3.connect(db_path)
+    db.execute(
+        """
+        INSERT INTO universe_pool_registry (
+            chain,dex,pool,token0,token1
+        )
+        VALUES ('bsc','pancakeswap_v2','0xpool3','0xtoken3','0xquote')
+        """
+    )
+    db.execute(
+        """
+        INSERT INTO universe_seismic_evaluation_v1 (
+            id,chain,dex,pool,observed_at,
+            previous_state,next_state,score,
+            price_z,volume_z,txns_z,
+            liquidity_ratio,evidence_count,reason
+        )
+        VALUES (
+            3,'bsc','pancakeswap_v2','0xpool3',1200,
+            'COLD','HOT',1.0,
+            1.0,1.0,1.0,
+            1.0,5,'LATE'
+        )
+        """
+    )
+    for observed_at, price in (
+        (1200.0, 3.0),
+        (1620.0, 3.3),
+        (3420.0, 3.6),
+    ):
+        db.execute(
+            """
+            INSERT INTO universe_market_observation_v1 (
+                chain,dex,pool,source,observed_at,
+                price_usd,liquidity_usd,volume_m5_usd,
+                buys_m5,sells_m5,txns_m5,change_m5
+            )
+            VALUES (
+                'bsc','pancakeswap_v2','0xpool3','TEST',?,
+                ?,100000,10000,
+                10,2,12,1.0
+            )
+            """,
+            (observed_at, price),
+        )
+    db.commit()
+    db.close()
+
     script = (
         Path(__file__).resolve().parents[1]
         / "lab"
@@ -160,6 +209,10 @@ def test_replay_streams_pool_histories_without_changing_results(
             str(db_path),
             "--decision-delay-seconds",
             "420",
+            "--seismic-max-id",
+            "2",
+            "--observation-max-id",
+            "6",
             "--out-dir",
             str(out_dir),
         ],
@@ -173,6 +226,8 @@ def test_replay_streams_pool_histories_without_changing_results(
     )
     assert summary["read_only"] is True
     assert summary["decision_delay_seconds"] == 420
+    assert summary["seismic_max_id"] == 2
+    assert summary["observation_max_id"] == 6
     assert summary["event_count"] == 2
     assert summary["entry_state_counts"] == {
         "HOT": 2,
@@ -201,5 +256,5 @@ def test_replay_streams_pool_histories_without_changing_results(
     db = sqlite3.connect(db_path)
     assert db.execute(
         "SELECT COUNT(*) FROM universe_market_observation_v1"
-    ).fetchone()[0] == 6
+    ).fetchone()[0] == 9
     db.close()

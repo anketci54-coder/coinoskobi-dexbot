@@ -227,6 +227,32 @@ class FastWatchRevisitJob:
 
         return (token, pool, dex)
 
+    @staticmethod
+    def _watch_retry_priority(item):
+        try:
+            context = json.loads(item.get("context_json") or "{}")
+        except (TypeError, ValueError, json.JSONDecodeError):
+            return 1
+
+        opportunity_reason = str(
+            context.get("opportunity_reason")
+            or ""
+        ).upper()
+        sellability = str(
+            context.get("sellability")
+            or ""
+        ).upper()
+
+        if (
+            opportunity_reason
+            in FAST_WATCH_READY_SELLABILITY_REASONS
+            and sellability
+            == "SELLABILITY_UNKNOWN"
+        ):
+            return 0
+
+        return 1
+
     def _durable_watched_identities(self, db, lock):
         """
         Find a bounded overfetch window of current eligible WATCH identities.
@@ -237,7 +263,8 @@ class FastWatchRevisitJob:
         We intentionally overfetch identities here; the final 30-candidate cap
         is applied only after fresh Gecko snapshot + ingress admission.
         """
-        selected = []
+        ready_sellability = []
+        movement = []
         seen = set()
         now = time.time()
         cursor = None
@@ -249,7 +276,7 @@ class FastWatchRevisitJob:
         )
 
         while (
-            len(selected) < target
+            len(ready_sellability) + len(movement) < target
             and scanned < FAST_WATCH_HISTORY_ROW_BUDGET
         ):
             query_limit = min(
@@ -306,14 +333,26 @@ class FastWatchRevisitJob:
 
                 eligible = self._eligible_watch_identity(item, now=now)
                 if eligible is not None:
-                    selected.append(eligible)
-                    if len(selected) >= target:
+                    bucket = (
+                        ready_sellability
+                        if self._watch_retry_priority(item) == 0
+                        else movement
+                    )
+                    bucket.append(eligible)
+                    if (
+                        len(ready_sellability)
+                        + len(movement)
+                        >= target
+                    ):
                         break
 
             if len(rows) < query_limit:
                 break
 
-        return selected
+        return (
+            ready_sellability
+            + movement
+        )[:target]
 
     def _watched_identities(self):
         store = getattr(self.pipeline, "counterfactual_store", None)
@@ -330,12 +369,17 @@ class FastWatchRevisitJob:
         target = self._selection_limit()
         rows = snapshot(limit=max(target * 2, target)) or []
 
-        selected = []
+        ready_sellability = []
+        movement = []
         seen = set()
         now = time.time()
 
         for item in rows:
-            if len(selected) >= target:
+            if (
+                len(ready_sellability)
+                + len(movement)
+                >= target
+            ):
                 break
 
             identity = (
@@ -350,9 +394,17 @@ class FastWatchRevisitJob:
             eligible = self._eligible_watch_identity(item, now=now)
 
             if eligible is not None:
-                selected.append(eligible)
+                bucket = (
+                    ready_sellability
+                    if self._watch_retry_priority(item) == 0
+                    else movement
+                )
+                bucket.append(eligible)
 
-        return selected
+        return (
+            ready_sellability
+            + movement
+        )[:target]
 
     def _hot_universe_identities(self):
         """

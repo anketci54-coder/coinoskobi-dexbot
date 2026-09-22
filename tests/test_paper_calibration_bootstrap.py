@@ -2,7 +2,6 @@ import math
 
 import pytest
 
-from app.config.trading import MAX_OPEN_PAPER_POSITIONS
 
 from app.risk.paper_position_sizing import calculate_paper_position_size
 
@@ -37,6 +36,8 @@ def _bootstrap_plan(
             "cost_complete": cost_complete,
         },
         "market_statistics": {
+            "second_moment": 0.04,
+            "tail_risk_fraction": 1.0 - math.exp(-risk_log_distance),
             "risk_log_distance": risk_log_distance,
         },
         "entry": {"price": 1.0},
@@ -53,10 +54,11 @@ def test_paper_calibration_bootstrap_is_bounded_by_plan_stop_risk(tmp_path):
     )
 
     stop_loss_fraction = 1.0 - math.exp(-0.20)
-    expected_budget = min(1000.0, 10000.0 / MAX_OPEN_PAPER_POSITIONS) * stop_loss_fraction
+    expected_budget = 10000.0 * (0.1 / (0.1 + stop_loss_fraction)) * stop_loss_fraction
 
-    assert result["entry_amount_usdt"] == pytest.approx(expected_budget)
-    assert result["risk_amount_usdt"] == pytest.approx(expected_budget)
+    expected_amount = min(expected_budget, 5000.0 * 0.1)
+    assert result["entry_amount_usdt"] == pytest.approx(expected_amount)
+    assert result["risk_amount_usdt"] == pytest.approx(expected_amount)
     assert result["bootstrap_risk_budget_usdt"] == pytest.approx(expected_budget)
     assert result["bootstrap_tail_loss_fraction"] == 1.0
     assert result["sizing_reason"] == "PAPER_CALIBRATION_BOOTSTRAP"
@@ -82,7 +84,7 @@ def test_hotdog_shape_cannot_bootstrap_sixty_percent_of_account(tmp_path):
         db_path=str(tmp_path / "missing.db"),
     )
 
-    expected_budget = min(raw_amount, available / MAX_OPEN_PAPER_POSITIONS) * (
+    expected_budget = available * (0.23102489735017798 / (0.23102489735017798 + 1 - math.exp(-risk_log_distance))) * (
         1.0 - math.exp(-risk_log_distance)
     )
 
@@ -91,7 +93,7 @@ def test_hotdog_shape_cannot_bootstrap_sixty_percent_of_account(tmp_path):
     assert result["position_size_pct"] == pytest.approx(
         100.0 * expected_budget / available
     )
-    assert result["position_size_pct"] < 5.0
+    assert result["entry_amount_usdt"] < available * (1 - math.exp(-risk_log_distance))
     assert result["risk_amount_usdt"] == pytest.approx(expected_budget)
     assert result["bootstrap_tail_loss_fraction"] == 1.0
 

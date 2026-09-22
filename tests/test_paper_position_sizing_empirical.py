@@ -1,7 +1,6 @@
 import math
 import pytest
 
-from app.config.trading import MAX_OPEN_PAPER_POSITIONS
 
 from app.risk.paper_position_sizing import (
     calculate_paper_position_size,
@@ -10,6 +9,7 @@ from app.pipeline.engine import _paper_entry_timing_reason
 
 
 def _stamp_outcome_fingerprints(db):
+    import json
     for table in (
         "paper_trades",
         "paper_trades_archive",
@@ -50,6 +50,10 @@ def _stamp_outcome_fingerprints(db):
 
         for index, row in enumerate(rows, 1):
             rowid = int(row[0])
+            raw = db.execute(f"SELECT mathematical_plan_json FROM {table} WHERE rowid=?", (rowid,)).fetchone()[0]
+            historical = json.loads(raw)
+            historical["capital"] = {"available_usdt": 10000.0}
+            db.execute(f"UPDATE {table} SET mathematical_plan_json=? WHERE rowid=?", (json.dumps(historical), rowid))
 
             db.execute(
                 f"""
@@ -86,6 +90,7 @@ def _plan(
             "available_usdt": available,
             "safe_quote_reserve_usd": reserve,
             "kelly_fraction": 1.0,
+            "liquidity_capacity_source": "VERIFIED_LP_PROTECTION",
         },
         "expected": {
             "known_net_edge_fraction": (
@@ -101,6 +106,8 @@ def _plan(
             ),
         },
         "market_statistics": {
+            "second_moment": 0.04,
+            "tail_risk_fraction": 0.2,
             "risk_log_distance": (
                 risk_distance
             ),
@@ -214,6 +221,7 @@ def test_entry_plan_uses_observed_move_and_edge_without_fixed_percentages(tmp_pa
     )
     plan["entry"] = {"price": 2.0}
     plan["statistics"] = {
+        "second_moment": 0.04, "tail_risk_fraction": 0.2,
         "prices": [2.0, 2.0 * math.exp(0.03), 2.0],
         "log_returns": [0.02, -0.03],
     }
@@ -246,6 +254,7 @@ def _timing_plan(*, price, history, edge=0.1, trade_type="NORMAL", gate=None):
     plan["paper_eligible"] = True
     plan["entry"] = {"price": price}
     plan["statistics"] = {
+        "second_moment": 0.04, "tail_risk_fraction": 0.2,
         "prices": [*history, price],
     }
     if trade_type == "VUR_KAC":
@@ -308,8 +317,9 @@ def test_negative_edge_or_hard_risk_keeps_zero_entry():
     assert result["entry_amount_usdt"] == 0.0
 
 
-def test_unverified_lp_bootstrap_stays_blocked_when_timing_ready(tmp_path):
+def test_unverified_lp_bootstrap_uses_total_loss_when_timing_ready(tmp_path):
     plan = _timing_plan(price=1.01, history=[0.99, 1.0])
+    plan["sellability_status"] = "SELLABILITY_OK"
     plan["capital"].update({
         "liquidity_capacity_source": "EMPIRICAL_RESERVE_FLOOR",
         "reserve_observation_count": 2,
@@ -322,10 +332,10 @@ def test_unverified_lp_bootstrap_stays_blocked_when_timing_ready(tmp_path):
         mathematical_plan=plan,
         db_path=str(tmp_path / "missing.db"),
     )
-    assert result["entry_amount_usdt"] == 0.0
-    assert result["risk_amount_usdt"] == 0.0
-    assert "LP_WITHDRAWAL_PROTECTION_UNVERIFIED" in result["blockers"]
-    assert result.get("paper_calibration_bootstrap") is not True
+    assert result["entry_amount_usdt"] > 0.0
+    assert result["risk_amount_usdt"] == result["entry_amount_usdt"]
+    assert result["liquidity_protection_unverified"] is True
+    assert result["bootstrap_tail_loss_fraction"] == 1.0
 
 
 def test_nonpositive_edge_zeros_sizing():
@@ -900,7 +910,7 @@ def test_tail_gap_cannot_expand_original_stop_risk_budget(
         result[
             "stop_risk_budget_usdt"
         ],
-        original_stop_budget / MAX_OPEN_PAPER_POSITIONS,
+        1000.0 * (0.25 / (0.25 + 0.2)) * (1 - math.exp(-0.2)),
     )
 
 
@@ -919,7 +929,7 @@ def test_positive_float_dust_is_blocked_by_accounting_precision(
             "gap_median": 1.0,
             "gap_statistic": "TEST",
             "cost_uncertainty_fraction": 0.0,
-            "account_risk_budget_usdt": 100.0,
+            "account_risk_budget_fraction": 0.01,
             "account_risk_statistic": "TEST",
             "gap_samples": 1,
             "cost_samples": 1,
@@ -998,7 +1008,7 @@ def test_id51_sub_quantum_micro_notional_is_blocked(
             "gap_median": gap_multiplier,
             "gap_statistic": "ID51_REGRESSION",
             "cost_uncertainty_fraction": 0.0,
-            "account_risk_budget_usdt": 100.0,
+            "account_risk_budget_fraction": 0.01,
             "account_risk_statistic": "TEST",
             "gap_samples": 1,
             "cost_samples": 1,
@@ -1120,7 +1130,7 @@ def test_legacy_float_dust_does_not_poison_calibration(
 
     assert result["gap_samples"] == 1
     assert result["account_risk_samples"] == 1
-    assert result["account_risk_budget_usdt"] == 20.0
+    assert result["account_risk_budget_fraction"] == 0.002
 
 
 def test_known_modeled_cost_is_not_charged_twice_in_uncertainty(

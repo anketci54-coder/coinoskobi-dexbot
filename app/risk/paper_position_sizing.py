@@ -12,9 +12,6 @@ from app.strategy.mathematical_trade_plan import (
 )
 
 
-from app.config.trading import MAX_OPEN_PAPER_POSITIONS
-
-
 PAPER_CAPITAL_USDT = 10_000.0
 PAPER_OUTCOME_EXCLUSIONS_PATH = (
     Path(__file__).resolve().parents[2]
@@ -404,7 +401,7 @@ def _calibration_empty(reason):
         "gap_median": None,
         "gap_statistic": None,
         "cost_uncertainty_fraction": None,
-        "account_risk_budget_usdt": None,
+        "account_risk_budget_fraction": None,
         "account_risk_statistic": None,
         "gap_samples": 0,
         "cost_samples": 0,
@@ -673,7 +670,7 @@ def _empirical_outcome_calibration(
     db_path="data/paper_trades.db",
 ):
     """
-    Learn gap overshoot, cost uncertainty, and realized account-loss
+    Learn gap overshoot, cost uncertainty, and capital-normalized account-loss
     budget from durable closed paper outcomes only. No fixed risk
     percentage is introduced.
 
@@ -762,17 +759,22 @@ def _empirical_outcome_calibration(
     cost_residuals = []
     account_losses = []
 
-    calibration_quantum = _accounting_quantum(
-        PAPER_CAPITAL_USDT
-    )
-
     for row in rows:
+        historical_plan = _json_dict(row["mathematical_plan_json"])
+        capital_evidence = historical_plan.get("capital")
+        historical_capital = _positive(
+            capital_evidence.get("available_usdt")
+            if isinstance(capital_evidence, dict) else None
+        )
+        if historical_capital is None:
+            return _calibration_empty("OUTCOME_CAPITAL_PROVENANCE_INVALID")
+        calibration_quantum = _accounting_quantum(historical_capital)
         entry_amount = _positive(
             row["entry_amount_usdt"]
         )
 
         # Historical trades whose notional could not change the
-        # PAPER_10K_V2 account balance at IEEE-754 precision are
+        # historical account balance at IEEE-754 precision are
         # accounting artifacts, not empirical risk observations.
         # Exclude them from every calibration statistic rather
         # than allowing legacy float dust to poison the sample.
@@ -795,7 +797,7 @@ def _empirical_outcome_calibration(
             account_loss is not None
             and math.isfinite(account_loss)
         ):
-            account_losses.append(account_loss)
+            account_losses.append(account_loss / historical_capital)
 
         if (
             cost_fraction is not None
@@ -871,9 +873,9 @@ def _empirical_outcome_calibration(
         "gap_median": gap_median,
         "gap_statistic": "MAX_OBSERVED" if gap_multiplier else None,
         "cost_uncertainty_fraction": cost_uncertainty,
-        "account_risk_budget_usdt": account_risk_budget,
+        "account_risk_budget_fraction": account_risk_budget,
         "account_risk_statistic": (
-            "MEDIAN_REALIZED_LOSS_USDT"
+            "MEDIAN_REALIZED_LOSS_CAPITAL_FRACTION"
             if account_risk_budget is not None
             else None
         ),
@@ -907,7 +909,7 @@ def _zero_result(
         "formula_authority": "DATA_DERIVED",
         "magic_percentage_rule": False,
         "sizing_model": "EMPIRICAL_GAP_EXIT_CAPACITY_V2",
-        "concentration_cap_usdt": available / max(1, MAX_OPEN_PAPER_POSITIONS),
+        "capital_bound_usdt": available,
         "blockers": sorted(set(blockers)),
         "raw_plan_amount_usdt": raw_amount,
         "safe_quote_reserve_usd": safe_quote_reserve,
@@ -918,8 +920,8 @@ def _zero_result(
             empirical_cost_uncertainty
         ),
         "cost_samples": calibration.get("cost_samples"),
-        "account_risk_budget_usdt": calibration.get(
-            "account_risk_budget_usdt"
+        "account_risk_budget_fraction": calibration.get(
+            "account_risk_budget_fraction"
         ),
         "account_risk_statistic": calibration.get(
             "account_risk_statistic"
@@ -1121,19 +1123,16 @@ def calculate_paper_position_size(
     empirical_cost_uncertainty = _number(
         calibration.get("cost_uncertainty_fraction")
     )
-    account_risk_budget = _positive(
-        calibration.get("account_risk_budget_usdt")
+    account_risk_fraction = _positive(calibration.get("account_risk_budget_fraction"))
+    account_risk_budget = (
+        available * min(1.0, account_risk_fraction)
+        if account_risk_fraction is not None else None
     )
 
     blockers = []
-    # Partition deployable capital across the configured concurrent slots.
-    # Kelly/edge may reduce this ceiling, never concentrate the account.
-    concentration_cap = available / max(1, MAX_OPEN_PAPER_POSITIONS)
     opportunity = (plan.get("market_context") or {}).get("opportunity") or {}
     if opportunity.get("catastrophic_reserve_collapse"):
         blockers.append("CATASTROPHIC_RESERVE_COLLAPSE")
-    if plan.get("blockers"):
-        blockers.append("PLAN_BLOCKED")
     if plan.get("hard_block"):
         blockers.append("HARD_BLOCK")
     if plan.get("sellability_status") not in (None, "SELLABILITY_OK"):
@@ -1149,15 +1148,32 @@ def calculate_paper_position_size(
     if calibration_reason in {
         "OUTCOME_EXCLUSION_REGISTRY_INVALID",
         "OUTCOME_FINGERPRINT_INVALID",
+        "OUTCOME_CAPITAL_PROVENANCE_INVALID",
     }:
         blockers.append(
             calibration_reason
         )
 
-    if liquidity_capacity_source == "EMPIRICAL_RESERVE_FLOOR":
-        blockers.append(
-            "LP_WITHDRAWAL_PROTECTION_UNVERIFIED"
-        )
+    lp_unverified = liquidity_capacity_source != "VERIFIED_LP_PROTECTION"
+    observed_reserve = _positive(capital.get("observed_min_quote_reserve_usd"))
+    empirical_exit_ready = (
+        liquidity_capacity_source == "EMPIRICAL_RESERVE_FLOOR"
+        and (_number(capital.get("reserve_observation_count")) or 0) >= 2
+        and observed_reserve is not None
+        and safe_quote_reserve is not None
+        and safe_quote_reserve <= observed_reserve
+        and plan.get("sellability_status") == "SELLABILITY_OK"
+        and plan.get("paper_eligible") is True
+        and opportunity.get("state") in {"HOT", "WARM"}
+    )
+    plan_blockers = plan.get("blockers") or []
+    if plan_blockers and not (
+        empirical_exit_ready
+        and set(plan_blockers) == {"LP_WITHDRAWAL_PROTECTION_UNVERIFIED"}
+    ):
+        blockers.append("PLAN_BLOCKED")
+    if lp_unverified and not empirical_exit_ready:
+        blockers.append("EMPIRICAL_EXIT_EVIDENCE_INVALID")
 
     if raw_amount <= 0:
         blockers.append("PLAN_AMOUNT_ZERO")
@@ -1180,6 +1196,7 @@ def calculate_paper_position_size(
         if (
             known_edge is None
             or empirical_cost_uncertainty is None
+            or empirical_cost_uncertainty < 0
         ):
             effective_edge = None
             blockers.append("COST_UNCERTAINTY_UNOBSERVED")
@@ -1188,6 +1205,28 @@ def calculate_paper_position_size(
 
     if effective_edge is None or effective_edge <= 0:
         blockers.append("NET_EDGE_NOT_POSITIVE")
+
+    measured_stats = plan.get("statistics") or plan.get("market_statistics") or {}
+    if not isinstance(measured_stats, dict):
+        measured_stats = {}
+    second_moment = _positive(measured_stats.get("second_moment"))
+    measured_tail = _positive(measured_stats.get("tail_risk_fraction"))
+    if second_moment is None or measured_tail is None or measured_tail > 1:
+        blockers.append("RETURN_RISK_UNOBSERVABLE")
+    # Recompute the capital fraction from current net edge and measured risk.
+    # Neither a stale raw USDT proposal nor concurrent slot count sets size.
+    stop_fraction = -math.expm1(-risk_log_distance) if risk_log_distance else 0.0
+    risk_fraction = max(stop_fraction, measured_tail or 0.0)
+    capital_fraction = (
+        min(1.0, math.log1p(effective_edge) / second_moment)
+        * effective_edge / (effective_edge + risk_fraction)
+        if effective_edge is not None and effective_edge > 0 and second_moment else 0.0
+    )
+    capital_notional = available * capital_fraction
+    liquidity_edge_cap = (
+        safe_quote_reserve * effective_edge
+        if safe_quote_reserve and effective_edge and effective_edge > 0 else 0.0
+    )
 
     entry = plan.get("entry") if isinstance(plan.get("entry"), dict) else {}
     current_price = _positive(entry.get("price"))
@@ -1255,10 +1294,16 @@ def calculate_paper_position_size(
             return ["ENTRY_AMOUNT_BELOW_ACCOUNTING_PRECISION"]
         buy_gas = max(0.0, _number(cost_model.get("buy_gas_usd")) or 0.0)
         sell_gas = max(0.0, _number(cost_model.get("sell_gas_usd")) or 0.0)
-        # Edge already includes proportional friction; fixed gas must also
-        # be recovered at the FINAL notional, not the larger raw Kelly size.
-        if (amount * effective_edge
-                - buy_gas * (1.0 + effective_edge) - sell_gas) <= 0:
+        # Quoted net edge includes proportional buy/sell friction, not gas.
+        # Residual uncertainty is charged on the entire final debit, just as
+        # historical calibration measures it, not only the post-gas notional.
+        quoted_edge = full_edge if cost_complete else known_edge
+        residual = 0.0 if cost_complete else empirical_cost_uncertainty
+        final_net = (
+            amount * quoted_edge - buy_gas * (1.0 + quoted_edge)
+            - sell_gas - amount * residual
+        )
+        if not math.isfinite(final_net) or final_net <= 0:
             return ["FIXED_COST_NET_EDGE_NOT_POSITIVE"]
         return []
 
@@ -1275,26 +1320,13 @@ def calculate_paper_position_size(
         result.update(entry_timing)
         return result
 
-    # Paper-only calibration bootstrap.
-    # Positive economics require either complete costs or measured residual
-    # cost uncertainty. Unverified LP withdrawal protection is never
-    # whitelisted here: empirical reserve stability cannot prove that LP
-    # cannot be removed in the next block. This never grants live authority.
-    empirical_liquidity_bootstrap = (
-        liquidity_capacity_source == "EMPIRICAL_RESERVE_FLOOR"
-        and (_number(capital.get("reserve_observation_count")) or 0) >= 2
-        and (_positive(capital.get("observed_min_quote_reserve_usd")) is not None)
-        and opportunity.get("state") in {"HOT", "WARM"}
-        and not opportunity.get("catastrophic_reserve_collapse")
-    )
+    # Missing historical gap evidence uses total loss during PAPER bootstrap.
+    # Reserve persistence never becomes verified withdrawal protection.
+    empirical_liquidity_bootstrap = empirical_exit_ready
     bootstrap_blockers = {
         "GAP_RISK_UNOBSERVED",
         "ACCOUNT_RISK_BUDGET_UNOBSERVED",
     }
-
-    # Deliberately do not add LP_WITHDRAWAL_PROTECTION_UNVERIFIED
-    # to bootstrap_blockers. Those candidates remain WATCH/counterfactual
-    # until withdrawal protection is independently verified.
 
     paper_calibration_bootstrap = (
         bool(plan.get("paper_eligible"))
@@ -1318,7 +1350,7 @@ def calculate_paper_position_size(
     if paper_calibration_bootstrap:
         risk_retention = math.exp(-risk_log_distance)
         stop_loss_fraction = 1.0 - risk_retention
-        base_risk_notional = min(raw_amount, concentration_cap)
+        base_risk_notional = capital_notional
         bootstrap_risk_budget = (
             base_risk_notional * stop_loss_fraction
         )
@@ -1331,9 +1363,10 @@ def calculate_paper_position_size(
         bootstrap_amount = max(
             0.0,
             min(
-                raw_amount,
+                capital_notional,
                 available,
-                safe_quote_reserve,
+                liquidity_edge_cap,
+                safe_quote_reserve * math.exp(-risk_log_distance),
                 bootstrap_risk_budget,
                 account_risk_budget if account_risk_budget is not None else bootstrap_risk_budget,
             ),
@@ -1403,7 +1436,7 @@ def calculate_paper_position_size(
                 ),
                 "paper_calibration_bootstrap": True,
                 "liquidity_protection_unverified": empirical_liquidity_bootstrap,
-                "concentration_cap_usdt": concentration_cap,
+                "capital_bound_usdt": available,
                 "blockers": [],
                 "raw_plan_amount_usdt": raw_amount,
                 "safe_quote_reserve_usd": safe_quote_reserve,
@@ -1473,16 +1506,17 @@ def calculate_paper_position_size(
     risk_retention = math.exp(-risk_log_distance)
     stop_loss_fraction = 1.0 - risk_retention
 
-    base_risk_notional = min(raw_amount, concentration_cap)
+    base_risk_notional = capital_notional
     raw_stop_risk_budget = base_risk_notional * stop_loss_fraction
     capped_stop_risk_budget = min(
         raw_stop_risk_budget,
         account_risk_budget,
     )
 
-    tail_loss_fraction = min(
-        1.0,
-        stop_loss_fraction * gap_multiplier,
+    tail_loss_fraction = (
+        1.0 if lp_unverified else min(
+            1.0, max(measured_tail, stop_loss_fraction * max(1.0, gap_multiplier)),
+        )
     )
 
     tail_risk_amount_cap = (
@@ -1496,17 +1530,17 @@ def calculate_paper_position_size(
     )
 
     empirical_exit_cap = (
-        risk_adjusted_exit_capacity / gap_multiplier
+        risk_adjusted_exit_capacity / max(1.0, gap_multiplier)
     )
 
     amount = max(
         0.0,
         min(
-            raw_amount,
+            capital_notional,
             available,
+            liquidity_edge_cap,
             empirical_exit_cap,
             tail_risk_amount_cap,
-            concentration_cap,
         ),
     )
 
@@ -1570,7 +1604,7 @@ def calculate_paper_position_size(
         "formula_authority": "DATA_DERIVED",
         "magic_percentage_rule": False,
         "sizing_model": "EMPIRICAL_GAP_EXIT_CAPACITY_V2",
-        "concentration_cap_usdt": concentration_cap,
+        "capital_bound_usdt": available,
         "blockers": [],
         "raw_plan_amount_usdt": raw_amount,
         "safe_quote_reserve_usd": safe_quote_reserve,
@@ -1587,6 +1621,8 @@ def calculate_paper_position_size(
             "account_risk_samples"
         ),
         "tail_loss_fraction": tail_loss_fraction,
+        "liquidity_protection_unverified": lp_unverified,
+        "account_risk_budget_fraction": account_risk_fraction,
         "tail_risk_amount_cap_usdt": tail_risk_amount_cap,
         "risk_adjusted_exit_capacity_usdt": (
             risk_adjusted_exit_capacity

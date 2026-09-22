@@ -5,7 +5,6 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.config.trading import MAX_OPEN_PAPER_POSITIONS
 from app.paper.manager import PaperManager
 from app.pipeline.engine import PipelineEngine
 from app.risk import paper_position_sizing as sizing
@@ -18,7 +17,7 @@ from app.dex.open_position_hot_path import process_hot_positions
 def calibrated(monkeypatch):
     monkeypatch.setattr(sizing, "_empirical_outcome_calibration", lambda **_: {
         "gap_multiplier": 3.0,
-        "account_risk_budget_usdt": 50.0,
+        "account_risk_budget_fraction": 0.005,
         "cost_uncertainty_fraction": 0.001,
         "gap_samples": 3, "cost_samples": 3,
     })
@@ -42,7 +41,7 @@ def plan(*, protected=0.0, state="HOT"):
 
 
 @pytest.mark.parametrize("state", ["HOT", "WARM"])
-def test_empirical_liquidity_remains_observation_only_without_lp_protection(
+def test_empirical_liquidity_sizes_for_total_loss_without_lp_protection(
     calibrated,
     state,
 ):
@@ -57,12 +56,10 @@ def test_empirical_liquidity_remains_observation_only_without_lp_protection(
         mathematical_plan=p
     )
 
-    assert r["entry_amount_usdt"] == 0.0
-    assert r["risk_amount_usdt"] == 0.0
-    assert (
-        "LP_WITHDRAWAL_PROTECTION_UNVERIFIED"
-        in r["blockers"]
-    )
+    assert r["entry_amount_usdt"] > 0.0
+    assert r["risk_amount_usdt"] == r["entry_amount_usdt"]
+    assert r["tail_loss_fraction"] == 1.0
+    assert r["liquidity_protection_unverified"] is True
     assert r.get("paper_calibration_bootstrap") is not True
     assert p["live_eligible"] is False
     assert p["execution_authority"] is False
@@ -82,12 +79,10 @@ def test_dust_lp_protection_is_not_economic_capacity(calibrated):
         mathematical_plan=p
     )
 
-    assert r["entry_amount_usdt"] == 0.0
-    assert r["risk_amount_usdt"] == 0.0
-    assert (
-        "LP_WITHDRAWAL_PROTECTION_UNVERIFIED"
-        in r["blockers"]
-    )
+    assert r["entry_amount_usdt"] > 0.0
+    assert r["risk_amount_usdt"] == r["entry_amount_usdt"]
+    assert r["tail_loss_fraction"] == 1.0
+    assert r["liquidity_protection_unverified"] is True
 
 
 def test_verified_lp_provenance_survives_nonpositive_edge(calibrated):
@@ -160,7 +155,7 @@ def test_bootstrap_never_bypasses_real_gates(calibrated, gate):
 
 def test_positive_but_gas_dominated_notional_is_rejected(calibrated):
     p = plan(protected=1.0)
-    p["capital"]["entry_amount_usdt"] = 0.001
+    p["capital"]["safe_quote_reserve_usd"] = 0.001
     r = sizing.calculate_paper_position_size(mathematical_plan=p)
     assert r["entry_amount_usdt"] == 0
     assert "FIXED_COST_NET_EDGE_NOT_POSITIVE" in r["blockers"]
@@ -170,7 +165,7 @@ def test_large_kelly_plan_cannot_concentrate_account(calibrated):
     p = plan(protected=1.0)
     p["capital"]["entry_amount_usdt"] = 9000.0
     r = sizing.calculate_paper_position_size(mathematical_plan=p)
-    assert 0 < r["entry_amount_usdt"] <= 10000 / MAX_OPEN_PAPER_POSITIONS
+    assert 0 < r["entry_amount_usdt"] <= r["tail_risk_amount_cap_usdt"]
     assert r["risk_amount_usdt"] <= 50.0
 
 

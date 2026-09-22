@@ -13,6 +13,7 @@ def _plan():
             "entry_amount_usdt": 1000.0,
             "available_usdt": 10000.0,
             "safe_quote_reserve_usd": 1000000.0,
+            "liquidity_capacity_source": "VERIFIED_LP_PROTECTION",
         },
         "expected": {
             "known_net_edge_fraction": 0.50,
@@ -22,6 +23,7 @@ def _plan():
             "cost_complete": True,
         },
         "market_statistics": {
+            "second_moment": 0.04, "tail_risk_fraction": 0.05,
             "risk_log_distance": 0.05,
         },
     }
@@ -70,6 +72,7 @@ def test_catastrophic_exit_overrides_stale_current_price(tmp_path):
             -100.0,
             -100.0,
             json.dumps({
+                "capital": {"available_usdt": 10000.0},
                 "entry": {
                     "band_low": 95.0,
                 }
@@ -98,7 +101,7 @@ def test_catastrophic_exit_overrides_stale_current_price(tmp_path):
     assert result["tail_loss_fraction"] > 0.95
 
     original_stop_budget = (
-        1000.0
+        10000.0 * (0.5 / (0.5 + 0.05))
         * (
             1.0
             - math.exp(-0.05)

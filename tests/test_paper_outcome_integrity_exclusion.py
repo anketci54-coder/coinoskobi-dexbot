@@ -33,6 +33,7 @@ def _build_db(path):
     )
 
     plan = json.dumps({
+        "capital": {"available_usdt": 10000.0},
         "entry": {
             "band_low": 9.0,
         },
@@ -185,7 +186,7 @@ def test_contaminated_outcome_is_excluded_only_from_calibration(
     assert calibration["gap_samples"] == 1
     assert calibration["gap_multiplier"] == pytest.approx(1.0)
     assert calibration["account_risk_samples"] == 1
-    assert calibration["account_risk_budget_usdt"] == pytest.approx(10.0)
+    assert calibration["account_risk_budget_fraction"] == pytest.approx(0.001)
 
     capital = sizing.paper_available_capital_usdt(
         db,
@@ -223,7 +224,7 @@ def test_exclusion_requires_exact_incident_fingerprint(
     assert calibration["gap_samples"] == 2
     assert calibration["gap_multiplier"] == pytest.approx(2.0)
     assert calibration["account_risk_samples"] == 2
-    assert calibration["account_risk_budget_usdt"] == pytest.approx(30.0)
+    assert calibration["account_risk_budget_fraction"] == pytest.approx(0.003)
 
 
 def test_missing_registry_fails_calibration_closed(

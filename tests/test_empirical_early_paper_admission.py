@@ -39,7 +39,7 @@ def calibrated(monkeypatch):
     monkeypatch.setattr("app.risk.paper_position_sizing._empirical_outcome_calibration",
         lambda *args, **kwargs: dict(ready=True, reason="EMPIRICAL_OUTCOME_CALIBRATION",
             gap_multiplier=1.0, cost_uncertainty_fraction=0.0,
-            account_risk_budget_usdt=100.0, gap_samples=1, cost_samples=1,
+            account_risk_budget_fraction=0.01, gap_samples=1, cost_samples=1,
             account_risk_samples=1))
 
 
@@ -94,7 +94,7 @@ def test_early_lane_cannot_bypass_chase_limit(calibrated):
     ("expected", {"known_net_edge_fraction": -0.01}, "NET_EDGE_NOT_POSITIVE"),
     ("capital", {"entry_amount_usdt": 0}, "PLAN_AMOUNT_ZERO"),
     ("capital", {"liquidity_capacity_source": "EMPIRICAL_RESERVE_FLOOR"},
-        "LP_WITHDRAWAL_PROTECTION_UNVERIFIED"),
+        "EMPIRICAL_EXIT_EVIDENCE_INVALID"),
 ])
 def test_early_sizing_preserves_economic_and_lp_guards(calibrated, field, value, blocker):
     plan = _plan(_quality())

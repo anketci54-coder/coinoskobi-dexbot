@@ -9,7 +9,7 @@ def _calibration():
         "gap_median": 1.0,
         "gap_statistic": "MAX_OBSERVED",
         "cost_uncertainty_fraction": 0.0,
-        "account_risk_budget_usdt": 10.0,
+        "account_risk_budget_fraction": 0.01,
         "account_risk_statistic": "MEDIAN_REALIZED_LOSS_USDT",
         "account_risk_samples": 1,
         "gap_samples": 1,
@@ -19,6 +19,8 @@ def _calibration():
 
 def _plan(source):
     return {
+        "sellability_status": "SELLABILITY_OK",
+        "statistics": {"second_moment": 0.04, "tail_risk_fraction": 0.1},
         "capital": {
             "entry_amount_usdt": 100.0,
             "available_usdt": 1000.0,
@@ -53,7 +55,7 @@ def test_empirical_reserve_floor_cannot_grant_paper_capital(monkeypatch):
     assert result["entry_amount_usdt"] == 0.0
     assert result["risk_amount_usdt"] == 0.0
     assert (
-        "LP_WITHDRAWAL_PROTECTION_UNVERIFIED"
+        "EMPIRICAL_EXIT_EVIDENCE_INVALID"
         in result["blockers"]
     )
 
@@ -77,7 +79,7 @@ def test_verified_lp_protection_preserves_paper_sizing(monkeypatch):
     assert result["blockers"] == []
 
 
-def test_hot_empirical_reserve_floor_remains_blocked_without_lp_protection(monkeypatch):
+def test_hot_empirical_reserve_floor_sizes_for_total_loss_without_lp_protection(monkeypatch):
     monkeypatch.setattr(
         sizing,
         "_empirical_outcome_calibration",
@@ -105,7 +107,8 @@ def test_hot_empirical_reserve_floor_remains_blocked_without_lp_protection(monke
         available_capital_usdt=1000.0,
     )
 
-    assert result["entry_amount_usdt"] == 0.0
-    assert result["risk_amount_usdt"] == 0.0
-    assert "LP_WITHDRAWAL_PROTECTION_UNVERIFIED" in result["blockers"]
+    assert result["entry_amount_usdt"] > 0.0
+    assert result["risk_amount_usdt"] == result["entry_amount_usdt"]
+    assert result["tail_loss_fraction"] == 1.0
+    assert result["liquidity_protection_unverified"] is True
     assert result.get("paper_calibration_bootstrap") is not True

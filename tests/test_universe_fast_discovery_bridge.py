@@ -304,6 +304,8 @@ def test_hot_universe_bridge_is_bounded_v2_only_and_worker_thread_safe(
             latest_price_usd REAL,
             latest_liquidity_usd REAL,
             latest_volume_24h REAL,
+            latest_txns_5m INTEGER,
+            latest_change_5m REAL,
             latest_snapshot_source TEXT
         )
         """
@@ -371,9 +373,10 @@ def test_hot_universe_bridge_is_bounded_v2_only_and_worker_thread_safe(
         """
         INSERT INTO universe_pool_registry(
             chain, dex, pool, token0, token1, creation_block,
-            market_state, latest_snapshot_at
+            market_state, latest_snapshot_at,
+            latest_txns_5m, latest_change_5m
         )
-        VALUES('bsc', ?, ?, ?, ?, 30001, 'WARM', 'now')
+        VALUES('bsc', ?, ?, ?, ?, 30001, 'WARM', 'now', 7, 12.5)
         """,
         (
             module.DEX_PANCAKESWAP_V2,
@@ -409,6 +412,15 @@ def test_hot_universe_bridge_is_bounded_v2_only_and_worker_thread_safe(
         for identity in selected
     )
 
+    warm_selected = job._warm_universe_identities()
+    assert warm_selected == [
+        (
+            address(12003),
+            address(12004),
+            module.DEX_PANCAKESWAP_V2,
+        )
+    ]
+
 
 def test_fast_cycle_prioritizes_hot_universe_before_discovery_and_watch(
     monkeypatch,
@@ -419,6 +431,11 @@ def test_fast_cycle_prioritizes_hot_universe_before_discovery_and_watch(
     hot = (
         address(13001),
         address(13002),
+        module.DEX_PANCAKESWAP_V2,
+    )
+    warm = (
+        address(13007),
+        address(13008),
         module.DEX_PANCAKESWAP_V2,
     )
     discovery = (
@@ -436,6 +453,11 @@ def test_fast_cycle_prioritizes_hot_universe_before_discovery_and_watch(
         job,
         "_hot_universe_identities",
         lambda: [hot],
+    )
+    monkeypatch.setattr(
+        job,
+        "_warm_universe_identities",
+        lambda: [warm],
     )
     monkeypatch.setattr(
         job,
@@ -487,10 +509,11 @@ def test_fast_cycle_prioritizes_hot_universe_before_discovery_and_watch(
 
     assert captured["identities"] == [
         hot,
+        warm,
         discovery,
         watch,
     ]
     assert result["state"] == "READY"
-    assert result["selected"] == 3
-    assert result["processed"] == 3
+    assert result["selected"] == 4
+    assert result["processed"] == 4
     assert result["failed"] == 0

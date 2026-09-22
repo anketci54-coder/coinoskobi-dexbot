@@ -11,7 +11,7 @@
   const esc = value => String(value ?? '').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'",'&#039;');
   const short = value => { const s = String(value || '').trim(); return !s ? '—' : s.length > 22 ? `${s.slice(0,9)}…${s.slice(-8)}` : s; };
   const money = value => { const x=n(value); return x===null?'—':`${x<0?'-':''}$${Math.abs(x).toLocaleString('tr-TR',{minimumFractionDigits:2,maximumFractionDigits:2})}`; };
-  const num = value => { const x=n(value); return x===null?'—':x.toLocaleString('tr-TR',{maximumFractionDigits:8}); };
+  const num = value => { const x=n(value); if(x===null)return '—'; const a=Math.abs(x); return a>0&&a<1e-8?x.toExponential(6):x.toLocaleString('tr-TR',{maximumFractionDigits:8}); };
   const pct = value => { const x=n(value); return x===null?'—':`${x>0?'+':''}${x.toFixed(2)}%`; };
   const cls = value => { const x=n(value); return x===null?'':x>0?'pos':x<0?'neg':''; };
   const get = async url => { const r=await fetch(url,{cache:'no-store'}); const d=await r.json().catch(()=>({})); if(!r.ok) throw new Error(d.detail||`${url} ${r.status}`); return d; };

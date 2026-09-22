@@ -38,6 +38,7 @@ FAST_WATCH_PROVIDER_BATCH_SIZE = 30
 # decision/live/wallet/execution authority and does not relax any gate.
 FAST_DISCOVERY_MAX_CANDIDATES = 8
 FAST_HOT_UNIVERSE_MAX_CANDIDATES = 8
+FAST_WARM_UNIVERSE_MAX_CANDIDATES = 8
 FAST_DISCOVERY_ROW_BUDGET = 64
 FAST_DISCOVERY_BLOCK_WINDOW = 2000
 FAST_DISCOVERY_RETRY_SECONDS = 60.0
@@ -457,6 +458,136 @@ class FastWatchRevisitJob:
             if (
                 len(selected)
                 >= FAST_HOT_UNIVERSE_MAX_CANDIDATES
+            ):
+                break
+
+        retry_after = (
+            now
+            + FAST_DISCOVERY_RETRY_SECONDS
+        )
+
+        for identity in selected:
+            self._discovery_retry_after[
+                identity[:2]
+            ] = retry_after
+
+        return selected
+
+
+    def _warm_universe_identities(self):
+        """
+        Return a bounded rotating set of positive-momentum WARM V2 pools.
+
+        This is only a prioritization bridge. Every selected pool still goes
+        through exact-pool hydration, ingress, analyzers, Risk Engine,
+        sellability, entry timing and PAPER admission. No gate is relaxed.
+        """
+        now = time.monotonic()
+
+        self._discovery_retry_after = {
+            identity: retry_after
+            for identity, retry_after
+            in self._discovery_retry_after.items()
+            if retry_after > now
+        }
+
+        connection = None
+
+        try:
+            connection = sqlite3.connect(
+                f"file:{DEFAULT_DB}?mode=ro",
+                uri=True,
+                timeout=0.1,
+            )
+            connection.row_factory = sqlite3.Row
+            rows = connection.execute(
+                """
+                SELECT registry.*,
+                       COALESCE((
+                           SELECT score
+                           FROM universe_seismic_evaluation_v1 AS seismic
+                           WHERE seismic.chain=registry.chain
+                             AND seismic.dex=registry.dex
+                             AND seismic.pool=registry.pool
+                           ORDER BY seismic.observed_at DESC, seismic.id DESC
+                           LIMIT 1
+                       ), 0) AS seismic_score
+                FROM universe_pool_registry AS registry
+                WHERE market_state='WARM'
+                  AND dex=?
+                  AND COALESCE(latest_change_5m, 0) > 0
+                  AND COALESCE(latest_txns_5m, 0) > 0
+                ORDER BY latest_change_5m DESC,
+                         seismic_score DESC,
+                         latest_snapshot_at DESC,
+                         creation_block DESC
+                LIMIT ?
+                """,
+                (
+                    DEX_PANCAKESWAP_V2,
+                    FAST_DISCOVERY_ROW_BUDGET,
+                ),
+            ).fetchall()
+        except Exception:
+            logger.exception(
+                "Fast WARM universe candidate query failed"
+            )
+            return []
+        finally:
+            if connection is not None:
+                connection.close()
+
+        selected = []
+        seen = set()
+
+        for raw in rows:
+            item = HotDeepPathRouter._candidate(
+                dict(raw)
+            )
+
+            if item is None:
+                continue
+
+            token = self._canonical(
+                item.get("token")
+            )
+            pool = self._canonical(
+                item.get("pool")
+            )
+            identity = (token, pool)
+
+            if (
+                not token
+                or not pool
+                or identity in seen
+            ):
+                continue
+
+            seen.add(identity)
+
+            if (
+                self._discovery_retry_after.get(
+                    identity,
+                    0.0,
+                )
+                > now
+            ):
+                continue
+
+            if self._has_canonical_trade_history_block(
+                token
+            ):
+                continue
+
+            selected.append((
+                token,
+                pool,
+                DEX_PANCAKESWAP_V2,
+            ))
+
+            if (
+                len(selected)
+                >= FAST_WARM_UNIVERSE_MAX_CANDIDATES
             ):
                 break
 
@@ -939,6 +1070,9 @@ class FastWatchRevisitJob:
         hot_universe_identities = (
             self._hot_universe_identities()
         )
+        warm_universe_identities = (
+            self._warm_universe_identities()
+        )
         discovery_identities = (
             self._unseen_universe_identities()
         )
@@ -949,12 +1083,13 @@ class FastWatchRevisitJob:
         identities = []
         seen = set()
 
-        # HOT full-universe activity gets first bounded access to the existing
-        # exact-pool hydration + ingress + risk + PAPER path. New factory pools
-        # remain second and durable WATCH revisits remain third. No gate or
-        # authority is relaxed.
+        # HOT full-universe activity gets first bounded access. Positive
+        # WARM momentum gets a second bounded lane so early acceleration is
+        # evaluated before it is already HOT. New discovery and durable WATCH
+        # revisits follow. Canonical risk/admission gates remain unchanged.
         for identity in (
             list(hot_universe_identities)
+            + list(warm_universe_identities)
             + list(discovery_identities)
             + list(watched_identities)
         ):

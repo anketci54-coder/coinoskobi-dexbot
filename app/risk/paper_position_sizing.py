@@ -1267,9 +1267,9 @@ def calculate_paper_position_size(
 
     # Paper-only calibration bootstrap.
     # Positive economics require either complete costs or measured residual
-    # cost uncertainty. HOT/WARM candidates with repeated empirical reserve
-    # evidence may enter only the bounded total-loss PAPER lane when LP
-    # withdrawal protection is unverified. This never grants live authority.
+    # cost uncertainty. Unverified LP withdrawal protection is never
+    # whitelisted here: empirical reserve stability cannot prove that LP
+    # cannot be removed in the next block. This never grants live authority.
     empirical_liquidity_bootstrap = (
         liquidity_capacity_source == "EMPIRICAL_RESERVE_FLOOR"
         and (_number(capital.get("reserve_observation_count")) or 0) >= 2
@@ -1282,10 +1282,9 @@ def calculate_paper_position_size(
         "ACCOUNT_RISK_BUDGET_UNOBSERVED",
     }
 
-    if empirical_liquidity_bootstrap:
-        bootstrap_blockers.add(
-            "LP_WITHDRAWAL_PROTECTION_UNVERIFIED"
-        )
+    # Deliberately do not add LP_WITHDRAWAL_PROTECTION_UNVERIFIED
+    # to bootstrap_blockers. Those candidates remain WATCH/counterfactual
+    # until withdrawal protection is independently verified.
 
     paper_calibration_bootstrap = (
         bool(plan.get("paper_eligible"))

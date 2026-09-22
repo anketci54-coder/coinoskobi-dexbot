@@ -274,11 +274,7 @@ def test_price_inside_derived_zone_is_timing_eligible():
 
 def test_price_below_entry_zone_with_positive_size_is_watch_only():
     plan = _timing_plan(price=0.95, history=[0.99, 1.0])
-    plan["capital"].update({
-        "liquidity_capacity_source": "EMPIRICAL_RESERVE_FLOOR",
-        "reserve_observation_count": 2,
-        "observed_min_quote_reserve_usd": 5000,
-    })
+    plan["capital"]["liquidity_capacity_source"] = "VERIFIED_LP_PROTECTION"
     plan["market_context"] = {"opportunity": {"state": "HOT"}}
     result = calculate_paper_position_size(mathematical_plan=plan)
     assert result["entry_amount_usdt"] > 0
@@ -288,11 +284,7 @@ def test_price_below_entry_zone_with_positive_size_is_watch_only():
 
 def test_vur_kac_without_flow_readiness_is_not_immediate():
     plan = _timing_plan(price=1.01, history=[0.99, 1.0], trade_type="VUR_KAC", gate=False)
-    plan["capital"].update({
-        "liquidity_capacity_source": "EMPIRICAL_RESERVE_FLOOR",
-        "reserve_observation_count": 2,
-        "observed_min_quote_reserve_usd": 5000,
-    })
+    plan["capital"]["liquidity_capacity_source"] = "VERIFIED_LP_PROTECTION"
     plan["market_context"] = {"opportunity": {"state": "HOT"}}
     result = calculate_paper_position_size(mathematical_plan=plan)
     assert result["entry_amount_usdt"] > 0
@@ -316,7 +308,7 @@ def test_negative_edge_or_hard_risk_keeps_zero_entry():
     assert result["entry_amount_usdt"] == 0.0
 
 
-def test_bounded_lp_bootstrap_returns_immediate_when_timing_ready(tmp_path):
+def test_unverified_lp_bootstrap_stays_blocked_when_timing_ready(tmp_path):
     plan = _timing_plan(price=1.01, history=[0.99, 1.0])
     plan["capital"].update({
         "liquidity_capacity_source": "EMPIRICAL_RESERVE_FLOOR",
@@ -330,10 +322,10 @@ def test_bounded_lp_bootstrap_returns_immediate_when_timing_ready(tmp_path):
         mathematical_plan=plan,
         db_path=str(tmp_path / "missing.db"),
     )
-    assert result["paper_calibration_bootstrap"] is True
-    assert result["entry_amount_usdt"] > 0
-    assert result["immediate_entry_allowed"] is True
-    assert _paper_entry_timing_reason(result) is None
+    assert result["entry_amount_usdt"] == 0.0
+    assert result["risk_amount_usdt"] == 0.0
+    assert "LP_WITHDRAWAL_PROTECTION_UNVERIFIED" in result["blockers"]
+    assert result.get("paper_calibration_bootstrap") is not True
 
 
 def test_nonpositive_edge_zeros_sizing():

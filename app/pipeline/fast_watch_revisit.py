@@ -26,6 +26,11 @@ FAST_WATCH_REASONS = {
     "POSITIVE_CONTINUATION_NOT_ESTABLISHED",
 }
 
+FAST_WATCH_READY_SELLABILITY_REASONS = {
+    "ACTIVE_CONTINUATION_READY",
+    "ACTIVE_RECOVERY_BREAKOUT_READY",
+}
+
 FAST_WATCH_MAX_CANDIDATES = 30
 FAST_WATCH_HISTORY_PAGE_SIZE = 128
 FAST_WATCH_HISTORY_ROW_BUDGET = 2048
@@ -45,7 +50,7 @@ FAST_DISCOVERY_RETRY_SECONDS = 60.0
 
 
 class FastWatchRevisitJob:
-    """Bounded canonical re-evaluation for momentum-only WATCH candidates."""
+    """Bounded canonical re-evaluation for evidence-limited WATCH candidates."""
 
     def __init__(
         self,
@@ -176,7 +181,32 @@ class FastWatchRevisitJob:
         if str(context.get("strategy") or "").upper() != "PAPER_BUY":
             return None
 
-        if str(context.get("opportunity_reason") or "").upper() not in FAST_WATCH_REASONS:
+        opportunity_reason = str(
+            context.get("opportunity_reason")
+            or ""
+        ).upper()
+
+        sellability = str(
+            context.get("sellability")
+            or ""
+        ).upper()
+
+        momentum_retry = (
+            opportunity_reason
+            in FAST_WATCH_REASONS
+        )
+
+        ready_sellability_retry = (
+            opportunity_reason
+            in FAST_WATCH_READY_SELLABILITY_REASONS
+            and sellability
+            == "SELLABILITY_UNKNOWN"
+        )
+
+        if not (
+            momentum_retry
+            or ready_sellability_retry
+        ):
             return None
 
         if bool(context.get("hard_block")):

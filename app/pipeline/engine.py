@@ -164,6 +164,19 @@ def _runtime_phase15h_buy_evidence(
             deadline=deadline,
             fee_on_transfer=(buy_tax > 0),
         )
+        block = dict(buy.get("block") or {})
+        logger.info(
+            (
+                "PHASE15H_RUNTIME_BUY token=%s status=%s "
+                "block=%s chain_id=%s received_token_raw=%s gas_used=%s"
+            ),
+            token_address,
+            buy.get("status"),
+            block.get("number"),
+            block.get("chain_id"),
+            buy.get("received_token_raw"),
+            buy.get("gas_used"),
+        )
     except Exception:
         logger.exception(
             "PHASE15H_RUNTIME_BUY_FAILED token=%s",

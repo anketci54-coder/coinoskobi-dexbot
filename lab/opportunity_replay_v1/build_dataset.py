@@ -203,7 +203,13 @@ def main():
 
     print("TRANSITION_SCAN_START", flush=True)
 
-    events = []
+    # Keep only the comparatively small transition set resident. Full seismic
+    # and market-observation histories are loaded one pool at a time below.
+    # This preserves replay semantics while bounding memory to the largest
+    # relevant pool instead of the entire 12k+ pool universe.
+    events_by_key = defaultdict(list)
+    replay_event_count = 0
+
     for row in con.execute(
         """
         SELECT id,chain,dex,pool,observed_at,
@@ -217,25 +223,38 @@ def main():
         t = parse_time(row["observed_at"])
         if t is None:
             continue
-        key = (row["chain"], row["dex"], row["pool"].lower())
+
+        key = (
+            row["chain"],
+            row["dex"],
+            row["pool"].lower(),
+        )
         item = dict(row)
         item["t"] = t
-        events.append((t, key, item))
+        events_by_key[key].append((t, item))
+        replay_event_count += 1
 
-    events.sort(key=lambda item: (item[0], item[2]["id"]))
-    relevant_keys = sorted({key for _, key, _ in events})
+    for pool_events in events_by_key.values():
+        pool_events.sort(
+            key=lambda item: (
+                item[0],
+                item[1]["id"],
+            )
+        )
+
+    relevant_keys = sorted(events_by_key)
 
     print(
-        f"TRANSITIONS_LOADED replay_events={len(events)} "
+        f"TRANSITIONS_LOADED replay_events={replay_event_count} "
         f"relevant_pools={len(relevant_keys)}",
         flush=True,
     )
 
-    registry = {}
-    seismic = defaultdict(list)
-    observations = defaultdict(list)
+    output_rows = []
+    skipped_no_observation = 0
     seismic_count = 0
     observation_count = 0
+    processed_events = 0
 
     for pool_number, key in enumerate(relevant_keys, 1):
         if (
@@ -245,13 +264,14 @@ def main():
         ):
             print(
                 f"POOL_LOAD_PROGRESS {pool_number}/{len(relevant_keys)} "
-                f"seismic_rows={seismic_count} observation_rows={observation_count}",
+                f"seismic_rows={seismic_count} "
+                f"observation_rows={observation_count}",
                 flush=True,
             )
 
         chain, dex, pool = key
 
-        meta = con.execute(
+        meta_row = con.execute(
             """
             SELECT chain,dex,pool,token0,token1
             FROM universe_pool_registry
@@ -260,9 +280,9 @@ def main():
             """,
             (chain, dex, pool),
         ).fetchone()
-        if meta is not None:
-            registry[key] = dict(meta)
+        meta = {} if meta_row is None else dict(meta_row)
 
+        state_rows = []
         for row in con.execute(
             """
             SELECT id,chain,dex,pool,observed_at,
@@ -281,9 +301,10 @@ def main():
                 continue
             item = dict(row)
             item["t"] = t
-            seismic[key].append(item)
+            state_rows.append(item)
             seismic_count += 1
 
+        obs_rows = []
         for row in con.execute(
             """
             SELECT id,chain,dex,pool,source,observed_at,
@@ -305,204 +326,294 @@ def main():
             item = dict(row)
             item["t"] = t
             item["price_usd"] = float(item["price_usd"])
-            observations[key].append(item)
+            obs_rows.append(item)
             observation_count += 1
 
-    seismic_times = {
-        key: [row["t"] for row in rows]
-        for key, rows in seismic.items()
-    }
-    observation_times = {
-        key: [row["t"] for row in rows]
-        for key, rows in observations.items()
-    }
+        state_times = [row["t"] for row in state_rows]
+        obs_times = [row["t"] for row in obs_rows]
 
-    print(
-        f"RELEVANT_DATA_LOADED seismic_rows={seismic_count} "
-        f"observation_rows={observation_count} pools={len(relevant_keys)}",
-        flush=True,
-    )
+        for event_t, event in events_by_key[key]:
+            processed_events += 1
+            if processed_events % 1000 == 0:
+                print(
+                    f"PROGRESS {processed_events}/{replay_event_count} "
+                    f"replayable={len(output_rows)}",
+                    flush=True,
+                )
 
-    output_rows = []
-    skipped_no_observation = 0
+            if not obs_rows or not obs_times:
+                skipped_no_observation += 1
+                continue
 
-    for event_number, (event_t, key, event) in enumerate(events, 1):
-        if event_number % 1000 == 0:
-            print(
-                f"PROGRESS {event_number}/{len(events)} replayable={len(output_rows)}",
-                flush=True,
+            decision_t = event_t + args.decision_delay_seconds
+
+            event_obs = latest_at_or_before(
+                obs_rows,
+                event_t,
+                obs_times,
+            )
+            decision_obs = latest_at_or_before(
+                obs_rows,
+                decision_t,
+                obs_times,
             )
 
-        obs_rows = observations.get(key)
-        obs_times = observation_times.get(key)
-        if not obs_rows or not obs_times:
-            skipped_no_observation += 1
-            continue
+            if event_obs is None or decision_obs is None:
+                skipped_no_observation += 1
+                continue
 
-        decision_t = event_t + args.decision_delay_seconds
+            event_price = float(event_obs["price_usd"])
+            decision_price = float(decision_obs["price_usd"])
 
-        event_obs = latest_at_or_before(obs_rows, event_t, obs_times)
-        decision_obs = latest_at_or_before(obs_rows, decision_t, obs_times)
+            pre = window(
+                obs_rows,
+                event_obs["t"],
+                decision_t,
+                obs_times,
+            )
+            if not pre:
+                skipped_no_observation += 1
+                continue
 
-        if event_obs is None or decision_obs is None:
-            skipped_no_observation += 1
-            continue
+            pre_prices = [
+                float(row["price_usd"])
+                for row in pre
+            ]
+            pre_mfe = pct(max(pre_prices), event_price)
+            pre_mae = pct(min(pre_prices), event_price)
 
-        event_price = float(event_obs["price_usd"])
-        decision_price = float(decision_obs["price_usd"])
-
-        pre = window(obs_rows, event_obs["t"], decision_t, obs_times)
-        if not pre:
-            skipped_no_observation += 1
-            continue
-
-        pre_prices = [float(row["price_usd"]) for row in pre]
-        pre_mfe = pct(max(pre_prices), event_price)
-        pre_mae = pct(min(pre_prices), event_price)
-
-        state_rows = seismic.get(key, [])
-        state_times = seismic_times.get(key, [])
-        state_at_decision = latest_state_at_or_before(
-            state_rows,
-            decision_t,
-            state_times,
-        )
-
-        promoted_t = None
-        if event["next_state"] == "WARM":
-            promoted_t = first_hot_after(
+            state_at_decision = latest_state_at_or_before(
                 state_rows,
-                event_t,
                 decision_t,
                 state_times,
             )
 
-        buys = decision_obs["buys_m5"]
-        sells = decision_obs["sells_m5"]
-        txns = decision_obs["txns_m5"]
+            promoted_t = None
+            if event["next_state"] == "WARM":
+                promoted_t = first_hot_after(
+                    state_rows,
+                    event_t,
+                    decision_t,
+                    state_times,
+                )
 
-        flow_imbalance = None
-        if buys is not None and sells is not None:
-            denom = int(buys) + int(sells)
-            if denom > 0:
-                flow_imbalance = (int(buys) - int(sells)) / denom
+            buys = decision_obs["buys_m5"]
+            sells = decision_obs["sells_m5"]
+            txns = decision_obs["txns_m5"]
 
-        future_values = {}
-        for name, seconds in HORIZONS.items():
-            end_t = decision_t + seconds
-            path = window(
+            flow_imbalance = None
+            if buys is not None and sells is not None:
+                denom = int(buys) + int(sells)
+                if denom > 0:
+                    flow_imbalance = (
+                        int(buys) - int(sells)
+                    ) / denom
+
+            future_values = {}
+            for name, seconds in HORIZONS.items():
+                end_t = decision_t + seconds
+                path = window(
+                    obs_rows,
+                    decision_obs["t"],
+                    end_t,
+                    obs_times,
+                )
+
+                if path:
+                    prices = [
+                        float(row["price_usd"])
+                        for row in path
+                    ]
+                    future_values[
+                        f"eval_mfe_{name}_pct"
+                    ] = pct(
+                        max(prices),
+                        decision_price,
+                    )
+                    future_values[
+                        f"eval_mae_{name}_pct"
+                    ] = pct(
+                        min(prices),
+                        decision_price,
+                    )
+                else:
+                    future_values[
+                        f"eval_mfe_{name}_pct"
+                    ] = None
+                    future_values[
+                        f"eval_mae_{name}_pct"
+                    ] = None
+
+                horizon_obs = first_at_or_after(
+                    obs_rows,
+                    end_t,
+                    max_gap=max(
+                        300,
+                        seconds * 0.25,
+                    ),
+                    times=obs_times,
+                )
+                future_values[
+                    f"eval_return_{name}_pct"
+                ] = (
+                    None
+                    if horizon_obs is None
+                    else pct(
+                        float(
+                            horizon_obs["price_usd"]
+                        ),
+                        decision_price,
+                    )
+                )
+
+            path24 = window(
                 obs_rows,
                 decision_obs["t"],
-                end_t,
+                decision_t + HORIZONS["24h"],
                 obs_times,
             )
 
-            if path:
-                prices = [float(row["price_usd"]) for row in path]
-                future_values[f"eval_mfe_{name}_pct"] = pct(
-                    max(prices),
-                    decision_price,
+            time_to_peak_24h = None
+            first_below_decision = None
+
+            if path24:
+                peak = max(
+                    path24,
+                    key=lambda row: float(
+                        row["price_usd"]
+                    ),
                 )
-                future_values[f"eval_mae_{name}_pct"] = pct(
-                    min(prices),
-                    decision_price,
+                time_to_peak_24h = max(
+                    0.0,
+                    peak["t"] - decision_t,
                 )
-            else:
-                future_values[f"eval_mfe_{name}_pct"] = None
-                future_values[f"eval_mae_{name}_pct"] = None
 
-            horizon_obs = first_at_or_after(
-                obs_rows,
-                end_t,
-                max_gap=max(300, seconds * 0.25),
-                times=obs_times,
-            )
-            future_values[f"eval_return_{name}_pct"] = (
-                None
-                if horizon_obs is None
-                else pct(
-                    float(horizon_obs["price_usd"]),
+                for row in path24:
+                    if row["t"] <= decision_t:
+                        continue
+                    if (
+                        float(row["price_usd"])
+                        < decision_price
+                    ):
+                        first_below_decision = (
+                            row["t"] - decision_t
+                        )
+                        break
+
+            output = {
+                "event_id": event["id"],
+                "chain": key[0],
+                "dex": key[1],
+                "pool": key[2],
+                "token0": meta.get("token0"),
+                "token1": meta.get("token1"),
+                "entry_state": event["next_state"],
+                "previous_state": event["previous_state"],
+                "event_time": iso_utc(event_t),
+                "decision_time": iso_utc(decision_t),
+                "decision_delay_seconds": (
+                    args.decision_delay_seconds
+                ),
+                "state_at_decision": state_at_decision,
+                "promoted_warm_to_hot_before_decision": (
+                    promoted_t is not None
+                ),
+                "seconds_to_hot": (
+                    None
+                    if promoted_t is None
+                    else promoted_t - event_t
+                ),
+                "event_price": event_price,
+                "decision_price": decision_price,
+                "event_observation_age_seconds": (
+                    event_t - event_obs["t"]
+                ),
+                "decision_observation_age_seconds": (
+                    decision_t - decision_obs["t"]
+                ),
+                "pre_decision_return_pct": pct(
                     decision_price,
-                )
-            )
+                    event_price,
+                ),
+                "pre_decision_mfe_pct": pre_mfe,
+                "pre_decision_mae_pct": pre_mae,
+                "pre_decision_samples": len(pre),
+                "decision_liquidity_usd": (
+                    decision_obs["liquidity_usd"]
+                ),
+                "decision_volume_m5_usd": (
+                    decision_obs["volume_m5_usd"]
+                ),
+                "decision_buys_m5": buys,
+                "decision_sells_m5": sells,
+                "decision_txns_m5": txns,
+                "decision_change_m5": (
+                    decision_obs["change_m5"]
+                ),
+                "decision_flow_imbalance": (
+                    flow_imbalance
+                ),
+                "event_score": event["score"],
+                "event_price_z": event["price_z"],
+                "event_volume_z": event["volume_z"],
+                "event_txns_z": event["txns_z"],
+                "event_liquidity_ratio": (
+                    event["liquidity_ratio"]
+                ),
+                "event_evidence_count": (
+                    event["evidence_count"]
+                ),
+                "event_reason": event["reason"],
+                "eval_time_to_peak_24h_seconds": (
+                    time_to_peak_24h
+                ),
+                "eval_first_below_decision_seconds": (
+                    first_below_decision
+                ),
+            }
+            output.update(future_values)
+            output_rows.append(output)
 
-        path24 = window(
-            obs_rows,
-            decision_obs["t"],
-            decision_t + HORIZONS["24h"],
-            obs_times,
-        )
+        # state_rows/obs_rows are intentionally pool-local. Rebinding them on
+        # the next iteration releases the previous pool instead of retaining
+        # the full universe in process memory.
 
-        time_to_peak_24h = None
-        first_below_decision = None
-
-        if path24:
-            peak = max(path24, key=lambda row: float(row["price_usd"]))
-            time_to_peak_24h = max(0.0, peak["t"] - decision_t)
-
-            for row in path24:
-                if row["t"] <= decision_t:
-                    continue
-                if float(row["price_usd"]) < decision_price:
-                    first_below_decision = row["t"] - decision_t
-                    break
-
-        meta = registry.get(key, {})
-        output = {
-            "event_id": event["id"],
-            "chain": key[0],
-            "dex": key[1],
-            "pool": key[2],
-            "token0": meta.get("token0"),
-            "token1": meta.get("token1"),
-            "entry_state": event["next_state"],
-            "previous_state": event["previous_state"],
-            "event_time": iso_utc(event_t),
-            "decision_time": iso_utc(decision_t),
-            "decision_delay_seconds": args.decision_delay_seconds,
-            "state_at_decision": state_at_decision,
-            "promoted_warm_to_hot_before_decision": promoted_t is not None,
-            "seconds_to_hot": (
-                None if promoted_t is None else promoted_t - event_t
-            ),
-            "event_price": event_price,
-            "decision_price": decision_price,
-            "event_observation_age_seconds": event_t - event_obs["t"],
-            "decision_observation_age_seconds": decision_t - decision_obs["t"],
-            "pre_decision_return_pct": pct(decision_price, event_price),
-            "pre_decision_mfe_pct": pre_mfe,
-            "pre_decision_mae_pct": pre_mae,
-            "pre_decision_samples": len(pre),
-            "decision_liquidity_usd": decision_obs["liquidity_usd"],
-            "decision_volume_m5_usd": decision_obs["volume_m5_usd"],
-            "decision_buys_m5": buys,
-            "decision_sells_m5": sells,
-            "decision_txns_m5": txns,
-            "decision_change_m5": decision_obs["change_m5"],
-            "decision_flow_imbalance": flow_imbalance,
-            "event_score": event["score"],
-            "event_price_z": event["price_z"],
-            "event_volume_z": event["volume_z"],
-            "event_txns_z": event["txns_z"],
-            "event_liquidity_ratio": event["liquidity_ratio"],
-            "event_evidence_count": event["evidence_count"],
-            "event_reason": event["reason"],
-            "eval_time_to_peak_24h_seconds": time_to_peak_24h,
-            "eval_first_below_decision_seconds": first_below_decision,
-        }
-        output.update(future_values)
-        output_rows.append(output)
+    print(
+        f"RELEVANT_DATA_LOADED seismic_rows={seismic_count} "
+        f"observation_rows={observation_count} "
+        f"pools={len(relevant_keys)}",
+        flush=True,
+    )
 
     if not output_rows:
         raise SystemExit("no replayable WARM/HOT events found")
 
+    # Pool-local processing changes traversal order, not replay semantics.
+    # Restore the prior deterministic chronological CSV order.
+    output_rows.sort(
+        key=lambda row: (
+            row["event_time"],
+            row["event_id"],
+        )
+    )
+
     csv_path = out_dir / "events.csv"
-    with csv_path.open("w", newline="", encoding="utf-8") as handle:
-        writer = csv.DictWriter(handle, fieldnames=list(output_rows[0]))
+    with csv_path.open(
+        "w",
+        newline="",
+        encoding="utf-8",
+    ) as handle:
+        writer = csv.DictWriter(
+            handle,
+            fieldnames=list(output_rows[0]),
+        )
         writer.writeheader()
         writer.writerows(output_rows)
 
-    state_counts = Counter(row["entry_state"] for row in output_rows)
+    state_counts = Counter(
+        row["entry_state"]
+        for row in output_rows
+    )
 
     hot_rows = [
         row for row in output_rows
@@ -514,36 +625,53 @@ def main():
     ]
     warm_promoted_rows = [
         row for row in warm_rows
-        if row["promoted_warm_to_hot_before_decision"]
+        if row[
+            "promoted_warm_to_hot_before_decision"
+        ]
     ]
     warm_not_promoted_rows = [
         row for row in warm_rows
-        if not row["promoted_warm_to_hot_before_decision"]
+        if not row[
+            "promoted_warm_to_hot_before_decision"
+        ]
     ]
 
     summary = {
         "contract": "OPPORTUNITY_REPLAY_DATASET_V1",
         "database": str(db_path),
         "read_only": True,
-        "decision_delay_seconds": args.decision_delay_seconds,
+        "decision_delay_seconds": (
+            args.decision_delay_seconds
+        ),
         "event_count": len(output_rows),
-        "skipped_no_observation": skipped_no_observation,
+        "skipped_no_observation": (
+            skipped_no_observation
+        ),
         "entry_state_counts": dict(state_counts),
-        "warm_promoted_to_hot_before_decision": len(warm_promoted_rows),
+        "warm_promoted_to_hot_before_decision": (
+            len(warm_promoted_rows)
+        ),
         "cohorts": {
             "HOT": cohort_summary(hot_rows),
             "WARM": cohort_summary(warm_rows),
-            "WARM_PROMOTED_TO_HOT": cohort_summary(warm_promoted_rows),
-            "WARM_NOT_PROMOTED": cohort_summary(warm_not_promoted_rows),
+            "WARM_PROMOTED_TO_HOT": cohort_summary(
+                warm_promoted_rows
+            ),
+            "WARM_NOT_PROMOTED": cohort_summary(
+                warm_not_promoted_rows
+            ),
         },
         "median_event_observation_age_seconds": median(
-            row["event_observation_age_seconds"] for row in output_rows
+            row["event_observation_age_seconds"]
+            for row in output_rows
         ),
         "median_decision_observation_age_seconds": median(
-            row["decision_observation_age_seconds"] for row in output_rows
+            row["decision_observation_age_seconds"]
+            for row in output_rows
         ),
         "median_pre_decision_return_pct": median(
-            row["pre_decision_return_pct"] for row in output_rows
+            row["pre_decision_return_pct"]
+            for row in output_rows
         ),
         "median_hot_pre_decision_return_pct": median(
             row["pre_decision_return_pct"]
@@ -556,28 +684,45 @@ def main():
             if row["entry_state"] == "WARM"
         ),
         "median_eval_mfe_1h_pct": median(
-            row["eval_mfe_1h_pct"] for row in output_rows
+            row["eval_mfe_1h_pct"]
+            for row in output_rows
         ),
         "median_eval_mfe_6h_pct": median(
-            row["eval_mfe_6h_pct"] for row in output_rows
+            row["eval_mfe_6h_pct"]
+            for row in output_rows
         ),
         "median_eval_mfe_24h_pct": median(
-            row["eval_mfe_24h_pct"] for row in output_rows
+            row["eval_mfe_24h_pct"]
+            for row in output_rows
         ),
         "median_eval_mae_24h_pct": median(
-            row["eval_mae_24h_pct"] for row in output_rows
+            row["eval_mae_24h_pct"]
+            for row in output_rows
         ),
-        "runtime_seconds": round(time.monotonic() - started, 3),
+        "runtime_seconds": round(
+            time.monotonic() - started,
+            3,
+        ),
         "events_csv": str(csv_path),
     }
 
     summary_path = out_dir / "summary.json"
     summary_path.write_text(
-        json.dumps(summary, indent=2, sort_keys=True),
+        json.dumps(
+            summary,
+            indent=2,
+            sort_keys=True,
+        ),
         encoding="utf-8",
     )
 
-    print(json.dumps(summary, indent=2, sort_keys=True))
+    print(
+        json.dumps(
+            summary,
+            indent=2,
+            sort_keys=True,
+        )
+    )
     con.close()
 
 

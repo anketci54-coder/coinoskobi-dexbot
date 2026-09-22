@@ -1,4 +1,5 @@
 from web3 import Web3
+from web3.middleware import ExtraDataToPOAMiddleware
 
 from app.config.settings import (
     RPC_URL,
@@ -47,7 +48,12 @@ def build_bsc_web3(
         public_urls=public_urls,
     )
 
-    return Web3(provider)
+    client = Web3(provider)
+    client.middleware_onion.inject(
+        ExtraDataToPOAMiddleware,
+        layer=0,
+    )
+    return client
 
 
 w3 = build_bsc_web3()

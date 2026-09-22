@@ -364,6 +364,63 @@ def test_fast_watch_overfetch_is_bounded_and_deduplicated():
     assert job._status(state="READY")["max_candidates"] == 30
 
 
+def test_hot_sellability_retry_lane_precedes_universe_rotation(monkeypatch):
+    ready = (
+        "0x00000000000000000000000000000000000000aa",
+        "0x00000000000000000000000000000000000000bb",
+        "pancakeswap_v2",
+    )
+
+    def identities(prefix, count):
+        return [
+            (
+                f"0x{prefix + index:040x}",
+                f"0x{prefix + 1000 + index:040x}",
+                "pancakeswap_v2",
+            )
+            for index in range(count)
+        ]
+
+    pipeline = _Pipeline([])
+    job = FastWatchRevisitJob(pipeline, max_candidates=30)
+
+    monkeypatch.setattr(
+        job,
+        "_watched_identity_buckets",
+        lambda: ([ready], identities(4000, 30)),
+    )
+    monkeypatch.setattr(
+        job,
+        "_hot_universe_identities",
+        lambda: identities(1000, 8),
+    )
+    monkeypatch.setattr(
+        job,
+        "_warm_universe_identities",
+        lambda: identities(2000, 8),
+    )
+    monkeypatch.setattr(
+        job,
+        "_unseen_universe_identities",
+        lambda: identities(3000, 8),
+    )
+
+    seen = []
+
+    def fresh(batch):
+        seen.extend(batch)
+        return []
+
+    monkeypatch.setattr(job, "_fresh_rows", fresh)
+
+    result = job._run_cycle_sync()
+
+    assert result["state"] == "NO_ACTIVE_WATCH_CANDIDATES"
+    assert seen
+    assert seen[0] == ready
+    assert len(seen) == 30
+
+
 def test_fresh_rows_batches_provider_calls_and_caps_after_ingress(monkeypatch):
     identities = []
     scanner_rows = []

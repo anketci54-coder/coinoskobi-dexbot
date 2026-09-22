@@ -295,6 +295,39 @@ def test_recovery_breakout_sellability_unknown_is_revisited():
     ]
 
 
+def test_hot_sellability_retry_is_prioritized_over_newer_momentum_watch():
+    hot_token = "0x00000000000000000000000000000000000000aa"
+    hot_pool = "0x00000000000000000000000000000000000000bb"
+
+    momentum = _history_row(
+        "ACTIVE_MOMENTUM_NOT_POSITIVE",
+        token=TOKEN,
+        pool=POOL,
+    )
+    hot = _history_row(
+        "ACTIVE_CONTINUATION_READY",
+        token=hot_token,
+        pool=hot_pool,
+    )
+    hot_context = json.loads(hot["context_json"])
+    hot_context.update({
+        "opportunity_state": "HOT",
+        "sellability": "SELLABILITY_UNKNOWN",
+    })
+    hot["context_json"] = json.dumps(hot_context)
+
+    pipeline = _Pipeline([momentum, hot])
+    job = FastWatchRevisitJob(pipeline)
+
+    identities = job._watched_identities()
+
+    assert identities[0] == (
+        hot_token.lower(),
+        hot_pool.lower(),
+        "pancakeswap_v2",
+    )
+
+
 def test_watch_without_explicit_dex_identity_fails_closed():
     row = _history_row("ACTIVE_MOMENTUM_NOT_POSITIVE")
     context = json.loads(row["context_json"])

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Read-only causal WARM/HOT replay dataset builder.
+"""Fast read-only causal WARM/HOT replay dataset builder.
 
 Decision features use only observations available at or before decision_time.
 Future fields are evaluation-only and must never be consumed by a decision policy.
@@ -13,6 +13,8 @@ import json
 import math
 import sqlite3
 import statistics
+import time
+from bisect import bisect_left, bisect_right
 from collections import Counter, defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
@@ -58,48 +60,58 @@ def pct(new: float, old: float) -> float | None:
 
 
 def median(values):
-    clean = [float(v) for v in values if v is not None and math.isfinite(float(v))]
+    clean = [
+        float(value)
+        for value in values
+        if value is not None and math.isfinite(float(value))
+    ]
     return statistics.median(clean) if clean else None
 
 
-def latest_at_or_before(rows, target: float):
-    result = None
-    for row in rows:
-        if row["t"] > target:
-            break
-        result = row
-    return result
-
-
-def first_at_or_after(rows, target: float, max_gap: float):
-    for row in rows:
-        if row["t"] < target:
-            continue
-        if row["t"] - target <= max_gap:
-            return row
+def latest_at_or_before(rows, target: float, times=None):
+    if not rows:
         return None
-    return None
+    if times is None:
+        times = [row["t"] for row in rows]
+    index = bisect_right(times, target) - 1
+    return None if index < 0 else rows[index]
 
 
-def window(rows, start: float, end: float):
-    return [row for row in rows if start <= row["t"] <= end]
+def first_at_or_after(rows, target: float, max_gap: float, times=None):
+    if not rows:
+        return None
+    if times is None:
+        times = [row["t"] for row in rows]
+    index = bisect_left(times, target)
+    if index >= len(rows):
+        return None
+    row = rows[index]
+    return row if row["t"] - target <= max_gap else None
 
 
-def latest_state_at_or_before(rows, target: float):
-    state = None
-    for row in rows:
-        if row["t"] > target:
-            break
-        state = row["next_state"]
-    return state
+def window(rows, start: float, end: float, times=None):
+    if not rows:
+        return []
+    if times is None:
+        times = [row["t"] for row in rows]
+    left = bisect_left(times, start)
+    right = bisect_right(times, end)
+    return rows[left:right]
 
 
-def first_hot_after(rows, start: float, end: float):
-    for row in rows:
-        if row["t"] <= start:
-            continue
-        if row["t"] > end:
-            break
+def latest_state_at_or_before(rows, target: float, times=None):
+    row = latest_at_or_before(rows, target, times)
+    return None if row is None else row["next_state"]
+
+
+def first_hot_after(rows, start: float, end: float, times=None):
+    if not rows:
+        return None
+    if times is None:
+        times = [row["t"] for row in rows]
+    left = bisect_right(times, start)
+    right = bisect_right(times, end)
+    for row in rows[left:right]:
         if row["next_state"] == "HOT":
             return row["t"]
     return None
@@ -160,9 +172,15 @@ def main():
     if args.decision_delay_seconds <= 0:
         raise SystemExit("decision delay must be positive")
 
+    started = time.monotonic()
     db_path = Path(args.db).resolve()
     out_dir = Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
+
+    print(
+        f"REPLAY_START delay={args.decision_delay_seconds}s db={db_path}",
+        flush=True,
+    )
 
     con = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
     con.row_factory = sqlite3.Row
@@ -194,6 +212,7 @@ def main():
         registry[key] = dict(row)
 
     observations = defaultdict(list)
+    observation_count = 0
     for row in con.execute(
         """
         SELECT id,chain,dex,pool,source,observed_at,
@@ -213,9 +232,21 @@ def main():
         item["t"] = t
         item["price_usd"] = float(item["price_usd"])
         observations[key].append(item)
+        observation_count += 1
+
+    observation_times = {
+        key: [row["t"] for row in rows]
+        for key, rows in observations.items()
+    }
+
+    print(
+        f"OBSERVATIONS_LOADED rows={observation_count} pools={len(observations)}",
+        flush=True,
+    )
 
     seismic = defaultdict(list)
     events = []
+    seismic_count = 0
     for row in con.execute(
         """
         SELECT id,chain,dex,pool,observed_at,
@@ -232,6 +263,7 @@ def main():
         item = dict(row)
         item["t"] = t
         seismic[key].append(item)
+        seismic_count += 1
 
         if (
             row["next_state"] in {"WARM", "HOT"}
@@ -239,28 +271,49 @@ def main():
         ):
             events.append((t, key, item))
 
+    seismic_times = {
+        key: [row["t"] for row in rows]
+        for key, rows in seismic.items()
+    }
+
     events.sort(key=lambda item: (item[0], item[2]["id"]))
 
-    output_rows = []
+    print(
+        f"SEISMIC_LOADED rows={seismic_count} replay_events={len(events)}",
+        flush=True,
+    )
 
-    for event_t, key, event in events:
-        obs_rows = observations.get(key, [])
-        if not obs_rows:
+    output_rows = []
+    skipped_no_observation = 0
+
+    for event_number, (event_t, key, event) in enumerate(events, 1):
+        if event_number % 1000 == 0:
+            print(
+                f"PROGRESS {event_number}/{len(events)} replayable={len(output_rows)}",
+                flush=True,
+            )
+
+        obs_rows = observations.get(key)
+        obs_times = observation_times.get(key)
+        if not obs_rows or not obs_times:
+            skipped_no_observation += 1
             continue
 
         decision_t = event_t + args.decision_delay_seconds
 
-        event_obs = latest_at_or_before(obs_rows, event_t)
-        decision_obs = latest_at_or_before(obs_rows, decision_t)
+        event_obs = latest_at_or_before(obs_rows, event_t, obs_times)
+        decision_obs = latest_at_or_before(obs_rows, decision_t, obs_times)
 
         if event_obs is None or decision_obs is None:
+            skipped_no_observation += 1
             continue
 
         event_price = float(event_obs["price_usd"])
         decision_price = float(decision_obs["price_usd"])
 
-        pre = window(obs_rows, event_obs["t"], decision_t)
+        pre = window(obs_rows, event_obs["t"], decision_t, obs_times)
         if not pre:
+            skipped_no_observation += 1
             continue
 
         pre_prices = [float(row["price_usd"]) for row in pre]
@@ -268,10 +321,21 @@ def main():
         pre_mae = pct(min(pre_prices), event_price)
 
         state_rows = seismic.get(key, [])
-        state_at_decision = latest_state_at_or_before(state_rows, decision_t)
+        state_times = seismic_times.get(key, [])
+        state_at_decision = latest_state_at_or_before(
+            state_rows,
+            decision_t,
+            state_times,
+        )
+
         promoted_t = None
         if event["next_state"] == "WARM":
-            promoted_t = first_hot_after(state_rows, event_t, decision_t)
+            promoted_t = first_hot_after(
+                state_rows,
+                event_t,
+                decision_t,
+                state_times,
+            )
 
         buys = decision_obs["buys_m5"]
         sells = decision_obs["sells_m5"]
@@ -286,14 +350,22 @@ def main():
         future_values = {}
         for name, seconds in HORIZONS.items():
             end_t = decision_t + seconds
-            path = window(obs_rows, decision_obs["t"], end_t)
+            path = window(
+                obs_rows,
+                decision_obs["t"],
+                end_t,
+                obs_times,
+            )
+
             if path:
                 prices = [float(row["price_usd"]) for row in path]
                 future_values[f"eval_mfe_{name}_pct"] = pct(
-                    max(prices), decision_price
+                    max(prices),
+                    decision_price,
                 )
                 future_values[f"eval_mae_{name}_pct"] = pct(
-                    min(prices), decision_price
+                    min(prices),
+                    decision_price,
                 )
             else:
                 future_values[f"eval_mfe_{name}_pct"] = None
@@ -303,21 +375,27 @@ def main():
                 obs_rows,
                 end_t,
                 max_gap=max(300, seconds * 0.25),
+                times=obs_times,
             )
             future_values[f"eval_return_{name}_pct"] = (
                 None
                 if horizon_obs is None
-                else pct(float(horizon_obs["price_usd"]), decision_price)
+                else pct(
+                    float(horizon_obs["price_usd"]),
+                    decision_price,
+                )
             )
 
         path24 = window(
             obs_rows,
             decision_obs["t"],
             decision_t + HORIZONS["24h"],
+            obs_times,
         )
 
         time_to_peak_24h = None
         first_below_decision = None
+
         if path24:
             peak = max(path24, key=lambda row: float(row["price_usd"]))
             time_to_peak_24h = max(0.0, peak["t"] - decision_t)
@@ -409,6 +487,7 @@ def main():
         "read_only": True,
         "decision_delay_seconds": args.decision_delay_seconds,
         "event_count": len(output_rows),
+        "skipped_no_observation": skipped_no_observation,
         "entry_state_counts": dict(state_counts),
         "warm_promoted_to_hot_before_decision": len(warm_promoted_rows),
         "cohorts": {
@@ -448,6 +527,7 @@ def main():
         "median_eval_mae_24h_pct": median(
             row["eval_mae_24h_pct"] for row in output_rows
         ),
+        "runtime_seconds": round(time.monotonic() - started, 3),
         "events_csv": str(csv_path),
     }
 

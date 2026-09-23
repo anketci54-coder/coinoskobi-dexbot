@@ -466,8 +466,8 @@ def test_fast_cycle_prioritizes_hot_universe_before_discovery_and_watch(
     )
     monkeypatch.setattr(
         job,
-        "_watched_identities",
-        lambda: [watch],
+        "_watched_identity_buckets",
+        lambda: ([], [watch]),
     )
 
     captured = {}

@@ -1170,14 +1170,6 @@ class FastWatchRevisitJob:
         )
         if callable(observer):
             observed_row = dict(row)
-            current_price = (
-                summary["market_context"].get("price_usd")
-                if isinstance(summary["market_context"], dict)
-                else None
-            )
-            if current_price is not None:
-                observed_row["price_usd"] = current_price
-
             observer(observed_row, summary)
 
         logger.info(

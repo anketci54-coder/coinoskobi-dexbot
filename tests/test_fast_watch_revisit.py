@@ -927,3 +927,56 @@ def test_runner_stop_requests_fast_watch_stop_immediately():
     assert runner.running is False
     assert runner.fast_watch_revisit._stop_event.is_set() is True
     assert stopping_scheduler.stop_requested is True
+
+
+def test_fast_watch_observer_preserves_provider_price_provenance(monkeypatch):
+    provider_price = 0.000216688311916183
+    planning_price = 2.4025261372187484e-09
+    provider_observed_at = 1790188980.908351
+
+    row = {
+        "chain": "bsc",
+        "token": TOKEN,
+        "pool": POOL,
+        "quote_token": QUOTE,
+        "dex": "pancakeswap_v2",
+        "source": "gecko",
+        "price_usd": provider_price,
+        "observed_at": provider_observed_at,
+    }
+
+    pipeline = _Pipeline([])
+
+    monkeypatch.setattr(
+        module,
+        "build_market_context",
+        lambda row, runtime_feed=None: {
+            "price_usd": planning_price,
+        },
+    )
+
+    job = FastWatchRevisitJob(pipeline)
+
+    result = job._process(row)
+
+    assert result is not None
+    assert len(pipeline.observed) == 1
+
+    stored_row, stored_summary = pipeline.observed[0]
+
+    assert stored_row["token"] == TOKEN
+    assert stored_row["pool"] == POOL
+    assert stored_row["quote_token"] == QUOTE
+    assert stored_row["dex"] == "pancakeswap_v2"
+    assert stored_row["source"] == "gecko"
+    assert stored_row["price_usd"] == provider_price
+    assert stored_row["observed_at"] == provider_observed_at
+
+    assert (
+        stored_summary["market_context"]["price_usd"]
+        == planning_price
+    )
+    assert (
+        stored_row["price_usd"]
+        != stored_summary["market_context"]["price_usd"]
+    )

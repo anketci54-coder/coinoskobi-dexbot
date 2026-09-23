@@ -249,7 +249,7 @@ fi
 echo "PY_COMPILE=PASS"
 
 # Refresh the compatible offline test harness before regression testing.
-curl -fsSL "https://raw.githubusercontent.com/anketci54-coder/coinoskobi-dexbot/bintrbot-bootstrap-20260923/ops/bintrbot/test_phase0c_sequence_recovery.sh" -o "$ROOT/state/test_phase0c_sequence_recovery.sh"
+curl -fsSL "https://raw.githubusercontent.com/anketci54-coder/coinoskobi-dexbot/efc50c31262850a6eae2b0413d1449ff748c3699/ops/bintrbot/test_phase0c_sequence_recovery.sh" -o "$ROOT/state/test_phase0c_sequence_recovery.sh"
 chmod +x "$ROOT/state/test_phase0c_sequence_recovery.sh"
 
 if ! "$ROOT/state/test_phase0c_sequence_recovery.sh"; then

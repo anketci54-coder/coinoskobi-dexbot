@@ -57,6 +57,9 @@ def make_obj(st):
     obj.snapshot_q = asyncio.Queue()
     obj.writer = DummyWriter()
     obj.depth_events = 0
+    obj.writer_queue_peak = 0
+    obj.writer_backpressure_events = 0
+    obj.writer_put_wait_ns_max = 0
     return obj
 
 def check(cond, name):

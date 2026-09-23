@@ -4,6 +4,24 @@ from app.learning.runtime_outcome_feed import (
 from app.paper.manager import PaperManager
 
 
+class DeterministicPriceIntegrity:
+    """Unit/E2E lifecycle fixture; price-integrity contract is tested separately."""
+    def __init__(self, price):
+        self.price = float(price)
+
+    def evaluate(self, position, evidence):
+        return {
+            "state": "VERIFIED_NORMAL",
+            "reason": "TEST_VERIFIED_PRICE",
+            "price": self.price,
+            "key": ("test", position.get("id")),
+            "observed_at": None,
+        }
+
+    def accept(self, result):
+        return None
+
+
 class FakeDB:
     def __init__(self):
         self.closed = []
@@ -70,6 +88,7 @@ def test_real_paper_close_feeds_phase11():
 
     manager.db = FakeDB()
     manager.price = FakePrice()
+    manager.price_integrity = DeterministicPriceIntegrity(2.0)
 
     results = manager.process()
 
@@ -170,6 +189,7 @@ def test_hold_does_not_create_outcome():
             return 1.0
 
     manager.price = HoldPrice()
+    manager.price_integrity = DeterministicPriceIntegrity(1.0)
 
     results = manager.process()
 

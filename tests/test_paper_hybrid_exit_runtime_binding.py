@@ -1,6 +1,24 @@
 from app.paper.manager import PaperManager
 
 
+class DeterministicPriceIntegrity:
+    """Unit/E2E lifecycle fixture; price-integrity contract is tested separately."""
+    def __init__(self, price):
+        self.price = float(price)
+
+    def evaluate(self, position, evidence):
+        return {
+            "state": "VERIFIED_NORMAL",
+            "reason": "TEST_VERIFIED_PRICE",
+            "price": self.price,
+            "key": ("test", position.get("id")),
+            "observed_at": None,
+        }
+
+    def accept(self, result):
+        return None
+
+
 class FakePrice:
     def __init__(self, price):
         self.price = price
@@ -116,6 +134,8 @@ def manager(
     m.price = FakePrice(
         price
     )
+
+    m.price_integrity = DeterministicPriceIntegrity(price)
 
     m.learning_feed = None
     m._learning_replay_after_id = 0

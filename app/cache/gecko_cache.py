@@ -1,4 +1,7 @@
 import math
+import json
+
+from app.risk.price_integrity import observation
 import sqlite3
 import threading
 from contextlib import contextmanager
@@ -86,6 +89,9 @@ class GeckoCache:
                     "PRAGMA table_info(gecko_pool_cache)"
                 )
             }
+
+            if "price_evidence_json" not in columns:
+                self.db.execute("ALTER TABLE gecko_pool_cache ADD COLUMN price_evidence_json TEXT")
 
             if "quote_token" not in columns:
                 self.db.execute(
@@ -208,7 +214,8 @@ class GeckoCache:
                 created_at,
                 updated_at,
                 price_updated_at,
-                observed_at
+                observed_at,
+                price_evidence_json
 
             )
 
@@ -216,7 +223,7 @@ class GeckoCache:
                 ?,?,?,?,?,?,?,?,?,?,?,?,
                 datetime('now'),
                 datetime('now'),
-                ?
+                ?,?
             )
 
             """,(
@@ -234,6 +241,7 @@ class GeckoCache:
                 row["price_usd"],
                 row["created_at"],
                 row.get("observed_at"),
+                json.dumps(observation(row)),
 
             ))
 
@@ -629,7 +637,7 @@ class GeckoCache:
 
         return row[0] if row else None
 
-    def upsert_tracked_price(self, pool, token, price):
+    def upsert_tracked_price(self, pool, token, price, evidence=None):
         pool = str(pool or "").strip().lower()
         token = str(token or "").strip().lower()
         price = float(price)
@@ -649,25 +657,26 @@ class GeckoCache:
                     pool,
                     token,
                     price_usd,
-                    price_updated_at
+                    price_updated_at, price_evidence_json
                 )
-                VALUES(?,?,?,datetime('now'))
+                VALUES(?,?,?,datetime('now'),?)
                 ON CONFLICT(pool) DO UPDATE SET
                     token=excluded.token,
                     price_usd=excluded.price_usd,
-                    price_updated_at=excluded.price_updated_at
+                    price_updated_at=excluded.price_updated_at,
+                    price_evidence_json=excluded.price_evidence_json
                 """,
-                (pool, token, price),
+                (pool, token, price, json.dumps(observation(evidence)) if evidence else None),
             )
 
             self.db.commit()
 
         return True
 
-    def update_pool_price(self, pool, price):
+    def update_pool_price(self, pool, price, evidence=None):
         price = float(price)
 
-        if price <= 0:
+        if not math.isfinite(price) or price <= 0:
             raise ValueError(
                 "price must be positive"
             )
@@ -678,10 +687,11 @@ class GeckoCache:
                 UPDATE gecko_pool_cache
                 SET
                     price_usd=?,
-                    price_updated_at=datetime('now')
+                    price_updated_at=datetime('now'),
+                    price_evidence_json=?
                 WHERE lower(pool)=lower(?)
                 """,
-                (price, pool),
+                (price, json.dumps(observation(evidence)) if evidence else None, pool),
             )
 
             self.db.commit()
@@ -707,7 +717,8 @@ class GeckoCache:
             created_at,
             updated_at,
             price_updated_at,
-            observed_at
+            observed_at,
+            price_evidence_json
 
             FROM gecko_pool_cache
 

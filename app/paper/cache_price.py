@@ -1,5 +1,6 @@
 import sqlite3
 import threading
+from app.risk.price_integrity import observation, context
 from pathlib import Path
 
 
@@ -15,6 +16,17 @@ class CachePrice:
         )
         self.db.row_factory = sqlite3.Row
         self._lock = threading.RLock()
+
+    def get_observation(self, position):
+        pool = position.get("pool") or (context(position).get("raw_signals") or {}).get("pool")
+        if not pool:
+            return None
+        with self._lock:
+            row = self.db.execute(
+                "SELECT * FROM gecko_pool_cache WHERE lower(pool)=lower(?)",
+                (pool,),
+            ).fetchone()
+        return observation(dict(row)) if row else None
 
     def get_price(self, token):
         with self._lock:

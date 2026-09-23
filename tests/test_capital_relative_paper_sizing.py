@@ -10,7 +10,7 @@ def plan():
         'paper_eligible': True, 'sellability_status': 'SELLABILITY_OK',
         'capital': {'available_usdt': 10000., 'entry_amount_usdt': 1000.,
                     'safe_quote_reserve_usd': 1000000.,
-                    'liquidity_capacity_source': 'EMPIRICAL_RESERVE_FLOOR',
+                    'liquidity_capacity_source': 'VERIFIED_LP_PROTECTION',
                     'reserve_observation_count': 4,
                     'observed_min_quote_reserve_usd': 1000000.},
         'statistics': {'risk_log_distance': .2, 'second_moment': .04,
@@ -29,14 +29,16 @@ def calibrated(monkeypatch):
     })
 
 
-def test_empirical_total_loss_and_capital_scaling(calibrated):
-    results = [sizing.calculate_paper_position_size(mathematical_plan=plan(),
+def test_verified_lp_total_loss_and_capital_scaling(calibrated):
+    p = plan()
+    p["statistics"]["tail_risk_fraction"] = 1.0
+    results = [sizing.calculate_paper_position_size(mathematical_plan=p,
                available_capital_usdt=c) for c in (100., 10000.)]
     for r, capital in zip(results, (100., 10000.)):
         assert 0 < r['entry_amount_usdt'] <= capital * .01
         assert r['tail_loss_fraction'] == 1
         assert r['risk_amount_usdt'] == r['entry_amount_usdt']
-        assert r['liquidity_protection_unverified'] is True
+        assert r['liquidity_protection_unverified'] is False
     assert results[1]['entry_amount_usdt'] == pytest.approx(100 * results[0]['entry_amount_usdt'])
 
 
@@ -54,8 +56,8 @@ def test_slots_and_raw_notional_do_not_set_amount(calibrated, monkeypatch):
 @pytest.mark.parametrize('change', ['exit', 'sellability', 'hard', 'collapse', 'edge', 'risk', 'precision', 'gas'])
 def test_fail_closed(calibrated, change):
     p = plan()
-    if change == 'exit': p['capital']['reserve_observation_count'] = 1
-    if change == 'sellability': p['sellability_status'] = None
+    if change == 'exit': p['capital']['safe_quote_reserve_usd'] = None
+    if change == 'sellability': p['sellability_status'] = 'SELLABILITY_UNKNOWN'
     if change == 'hard': p['hard_block'] = True
     if change == 'collapse': p['market_context']['opportunity']['catastrophic_reserve_collapse'] = True
     if change == 'edge': p['expected']['full_net_edge_fraction'] = 0
@@ -111,6 +113,7 @@ def test_invalid_historical_capital_never_bootstraps(tmp_path, capital_data):
 
 def test_final_costs_charge_uncertainty_on_final_notional(calibrated):
     p = plan()
+    p['statistics']['tail_risk_fraction'] = 1.0
     p['cost_model'] = {'cost_complete': False, 'buy_gas_usd': 8.22}
     # Final amount=100, known edge=.1, residual=.01:
     # (100-8.22)*1.1 -100 -100*.01 = -.042.
@@ -119,10 +122,13 @@ def test_final_costs_charge_uncertainty_on_final_notional(calibrated):
     assert 'FIXED_COST_NET_EDGE_NOT_POSITIVE' in r['blockers']
 
 
-def test_lp_warning_alone_does_not_override_valid_empirical_exit(calibrated):
+def test_lp_warning_cannot_be_bypassed_by_empirical_exit(calibrated):
     p = plan()
+    p['capital']['liquidity_capacity_source'] = 'EMPIRICAL_RESERVE_FLOOR'
     p['blockers'] = ['LP_WITHDRAWAL_PROTECTION_UNVERIFIED']
-    assert sizing.calculate_paper_position_size(mathematical_plan=p)['entry_amount_usdt'] > 0
+    result = sizing.calculate_paper_position_size(mathematical_plan=p)
+    assert result['entry_amount_usdt'] == 0
+    assert 'LP_WITHDRAWAL_PROTECTION_UNVERIFIED' in result['blockers']
 
 
 @pytest.mark.parametrize('field,value', [('second_moment', .4), ('tail_risk_fraction', .8)])

@@ -3,6 +3,7 @@ import math
 import threading
 from datetime import datetime, timezone
 
+from app.risk.price_integrity import PriceIntegrityGate, observation
 from app.dex.native_ingestion import SYNC_TOPIC
 
 
@@ -578,6 +579,7 @@ class HotPositionWSSBridge:
         self._targets = {}
         self._open_pairs = set()
         self._latest_ratio = {}
+        self._latest_events = {}
         self._anchor_ratio = {}
         self._anchor_price = {}
         self._dirty = set()
@@ -658,8 +660,7 @@ class HotPositionWSSBridge:
 
                 if (
                     previous is not None
-                    and previous.get("token_is_0")
-                    != meta.get("token_is_0")
+                    and previous != meta
                 ):
                     reset.add(pair)
 
@@ -754,6 +755,14 @@ class HotPositionWSSBridge:
             self.sync_count += 1
             first = pair not in self._latest_ratio
             self._latest_ratio[pair] = ratio
+            self._latest_events[pair] = {
+                "chain": "bsc", "dex": "pancakeswap_v2", "pool": pair,
+                "base_token": meta["token"], "quote_token": meta["quote_token"],
+                "source": "pancakeswap_v2_sync",
+                "observed_at": datetime.now(timezone.utc).isoformat(),
+                "block_number": event.get("blockNumber"),
+                "block_hash": event.get("blockHash"),
+            }
 
             if first:
                 self.baseline_count += 1
@@ -828,6 +837,21 @@ class HotPositionWSSBridge:
             "execution_authority": False,
         }
 
+    @staticmethod
+    def _check_paper_observation(pipeline, pair, evidence):
+        positions = [pos for pos in _open_positions(pipeline)
+                     if _address(pos.get("pool") or (_opening_context(pos).get("raw_signals") or {}).get("pool")) == pair]
+        if not positions:
+            return {"state": "PRICE_UNVERIFIED"}
+        # Always independently check bridge anchors/derived writes. The final
+        # manager gate alone advances a position's accepted reference.
+        result = {"state": "PRICE_UNVERIFIED"}
+        for pos in positions:
+            result = PriceIntegrityGate().evaluate(pos, evidence)
+            if result["state"] != "VERIFIED_EXTREME":
+                return result
+        return result
+
     def anchor_from_cache(
         self,
         pipeline,
@@ -843,28 +867,25 @@ class HotPositionWSSBridge:
         }
 
         anchored = []
-
         with self._lock:
-            for pair in self._open_pairs:
-                ratio = self._latest_ratio.get(
-                    pair
-                )
-                price = _fresh_cache_price(
-                    cache_by_pool.get(pair)
-                    or {}
-                )
-
-                if ratio is None or price is None:
+            candidates = [(pair, self._latest_ratio.get(pair)) for pair in self._open_pairs]
+        for pair, ratio in candidates:
+            row = cache_by_pool.get(pair) or {}
+            price = _fresh_cache_price(row)
+            if ratio is None or price is None:
+                continue
+            proof = self._check_paper_observation(pipeline, pair, observation(row))
+            if (proof.get("state") != "VERIFIED_EXTREME"
+                    or not math.isclose(proof.get("ratio_raw", 0), ratio, rel_tol=1e-9)):
+                continue
+            with self._lock:
+                if self._latest_ratio.get(pair) != ratio:
                     continue
-
                 self._anchor_ratio[pair] = ratio
                 self._anchor_price[pair] = price
                 self._dirty.discard(pair)
                 anchored.append(pair)
-
-            self.anchor_count += len(
-                anchored
-            )
+                self.anchor_count += 1
 
         return {
             "state": (
@@ -893,6 +914,7 @@ class HotPositionWSSBridge:
                 pair: self._latest_ratio.get(pair)
                 for pair in dirty
             }
+            events = {pair: dict(self._latest_events.get(pair) or {}) for pair in dirty}
             anchors = {
                 pair: (
                     self._anchor_ratio.get(pair),
@@ -986,7 +1008,14 @@ class HotPositionWSSBridge:
                 anchor_ratio is None
                 or anchor_price is None
             ):
+                proof = self._check_paper_observation(pipeline, pair, observation(cache_by_pool.get(pair)))
+                if (proof.get("state") != "VERIFIED_EXTREME"
+                        or not math.isclose(proof.get("ratio_raw", 0), ratio, rel_tol=1e-9)):
+                    failed += 1
+                    continue
                 with self._lock:
+                    if self._latest_ratio.get(pair) != ratio:
+                        continue
                     self._anchor_ratio[pair] = ratio
                     self._anchor_price[pair] = current
                     self._dirty.discard(pair)
@@ -1010,10 +1039,16 @@ class HotPositionWSSBridge:
                 failed += 1
                 continue
 
+            evidence = dict(events.get(pair) or {}, price_usd=updated_price)
+            proof = self._check_paper_observation(pipeline, pair, evidence)
+            if proof.get("state") != "VERIFIED_EXTREME":
+                failed += 1
+                continue
             try:
                 changed = updater(
                     pair,
                     updated_price,
+                    evidence=evidence,
                 )
             except Exception:
                 failed += 1
@@ -1107,7 +1142,9 @@ class _ExactOpenPoolPrice:
         token_prices,
         fallback,
         blocked_tokens=None,
+        rows_by_pool=None,
     ):
+        self.rows_by_pool = dict(rows_by_pool or {})
         self.token_prices = dict(
             token_prices
         )
@@ -1120,6 +1157,10 @@ class _ExactOpenPoolPrice:
             )
             if _address(token)
         }
+
+    def get_observation(self, position):
+        pool = position.get("pool") or (_opening_context(position).get("raw_signals") or {}).get("pool")
+        return observation(self.rows_by_pool.get(_address(pool)))
 
     def get_price(self, token):
         key = _address(token)
@@ -1241,6 +1282,7 @@ def process_hot_positions(
             token_prices,
             previous_price,
             blocked_tokens=blocked_tokens,
+            rows_by_pool=cache_by_pool,
         )
 
     try:

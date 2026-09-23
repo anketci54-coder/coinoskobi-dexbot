@@ -6,12 +6,11 @@ from datetime import datetime, timedelta, timezone
 import pytest
 from fastapi import HTTPException
 
-import app.api.panel_manual_paper_v2 as manual_module
-from app.api.panel_manual_paper_v2 import _buy, _preview_sell, _sell
+from app.api.panel_manual_paper_v2 import _buy, _preview_buy, _preview_sell, _sell
+from app.scanner.gecko_scanner import GeckoScanner
 from app.paper.schema import ensure_paper_schema
 from app.risk.paper_position_sizing import paper_available_capital_usdt
-
-
+from app.config.contracts import USDT
 TOKEN = "bsc_0x1111111111111111111111111111111111111111"
 POOL = "0x2222222222222222222222222222222222222222"
 
@@ -128,6 +127,7 @@ def _cache_db(path, *, price=2.0, age_seconds=0):
             token TEXT,
             name TEXT,
             dex TEXT,
+            quote_token TEXT,
             price_usd REAL,
             updated_at TEXT
         )
@@ -135,8 +135,8 @@ def _cache_db(path, *, price=2.0, age_seconds=0):
     )
     observed = datetime.now(timezone.utc) - timedelta(seconds=age_seconds)
     db.execute(
-        "INSERT INTO gecko_pool_cache VALUES(?,?,?,?,?,?)",
-        (POOL, TOKEN, "TEST/USDT", "pancakeswap", price, observed.isoformat()),
+        "INSERT INTO gecko_pool_cache VALUES(?,?,?,?,?,?,?)",
+        (POOL, TOKEN, "TEST/USDT", "pancakeswap_v2", USDT, price, observed.isoformat()),
     )
     db.commit()
     db.close()
@@ -152,7 +152,7 @@ def _set_price(path, price):
     db.close()
 
 
-def test_manual_paper_buy_sell_round_trip_and_balance_conservation(tmp_path):
+def test_manual_paper_buy_sell_round_trip_and_balance_conservation(tmp_path, monkeypatch):
     paper = tmp_path / "paper.db"
     cache = tmp_path / "cache.db"
     _paper_db(paper)
@@ -260,6 +260,7 @@ def _cache_db_with_universe(
             token TEXT,
             name TEXT,
             dex TEXT,
+            quote_token TEXT,
             price_usd REAL,
             updated_at TEXT
         )
@@ -276,13 +277,14 @@ def _cache_db_with_universe(
     db.execute(
         """
         INSERT INTO gecko_pool_cache
-        VALUES(?,?,?,?,?,?)
+        VALUES(?,?,?,?,?,?,?)
         """,
         (
             POOL,
             TOKEN,
             "TEST/USDT",
             "pancakeswap_v2",
+            USDT,
             gecko_price,
             gecko_observed.isoformat(),
         ),
@@ -294,6 +296,7 @@ def _cache_db_with_universe(
             pool TEXT,
             token0 TEXT,
             dex TEXT,
+            quote_token TEXT,
             latest_price_usd REAL,
             latest_snapshot_at TEXT
         )
@@ -313,15 +316,17 @@ def _cache_db_with_universe(
             pool,
             token0,
             dex,
+            quote_token,
             latest_price_usd,
             latest_snapshot_at
         )
-        VALUES(?,?,?,?,?)
+        VALUES(?,?,?,?,?,?)
         """,
         (
             POOL,
             TOKEN,
             "pancakeswap_v2",
+            USDT,
             universe_price,
             universe_observed.isoformat(),
         ),
@@ -333,6 +338,7 @@ def _cache_db_with_universe(
 
 def test_manual_buy_uses_fresh_universe_price_when_gecko_is_stale(
     tmp_path,
+monkeypatch,
 ):
     paper = tmp_path / "paper.db"
     cache = tmp_path / "cache.db"
@@ -372,6 +378,7 @@ def test_manual_buy_uses_fresh_universe_price_when_gecko_is_stale(
 
 def test_manual_buy_prefers_newest_valid_quote_source(
     tmp_path,
+monkeypatch,
 ):
     paper = tmp_path / "paper.db"
     cache = tmp_path / "cache.db"
@@ -451,12 +458,13 @@ def test_manual_buy_uses_ondemand_pool_quote_when_all_cache_is_stale(
                 "base_token": TOKEN,
                 "name": "TEST/USDT",
                 "dex": "pancakeswap_v2",
+                "quote_token": USDT,
                 "price_usd": 4.0,
             }
         ]
 
     monkeypatch.setattr(
-        manual_module.GeckoScanner,
+        GeckoScanner,
         "pool_snapshots",
         pool_snapshots,
     )
@@ -509,7 +517,7 @@ def test_fresh_cache_does_not_make_ondemand_request(
         )
 
     monkeypatch.setattr(
-        manual_module.GeckoScanner,
+        GeckoScanner,
         "pool_snapshots",
         forbidden,
     )
@@ -535,6 +543,7 @@ def test_fresh_cache_does_not_make_ondemand_request(
 
 def test_manual_sell_preview_is_read_only_and_uses_fresh_price(
     tmp_path,
+monkeypatch,
 ):
     paper = tmp_path / "paper.db"
     cache = tmp_path / "cache.db"
@@ -636,7 +645,6 @@ def test_manual_preview_route_exists_without_trade_confirmation():
     )
 
 
-
 def test_manual_buy_preview_returns_canonical_normal_plan(
     tmp_path,
 ):
@@ -650,7 +658,7 @@ def test_manual_buy_preview_returns_canonical_normal_plan(
     )
 
     preview = (
-        manual_module._preview_buy(
+        _preview_buy(
             paper_db=paper,
             cache_db=cache,
             payload={
@@ -702,6 +710,7 @@ def test_manual_buy_preview_returns_canonical_normal_plan(
 
 def test_manual_buy_level_override_provenance(
     tmp_path,
+monkeypatch,
 ):
     paper = tmp_path / "paper.db"
     cache = tmp_path / "cache.db"

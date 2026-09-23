@@ -2,6 +2,8 @@ import json
 import logging
 import math
 
+from app.risk.price_integrity import PriceIntegrityGate
+
 from datetime import (
     datetime,
     timezone,
@@ -2937,36 +2939,30 @@ class PaperManager:
             "token"
         ]
 
+        gate = getattr(self, "price_integrity", None)
+        if gate is None:
+            gate = self.price_integrity = PriceIntegrityGate()
+        reader = getattr(self.price, "get_observation", None)
         try:
-            current = (
-                self.price
-                .get_price(
-                    token
-                )
-            )
-
-        except Exception as exc:
-            logger.warning(
-                "[ERROR] token=%s error=%s",
-                token,
-                exc,
-            )
-
-            return None
-
-        current = self._positive_price(current)
+            evidence = reader(pos) if callable(reader) else None
+            checked = gate.evaluate(pos, evidence)
+        except Exception:
+            checked = {"state": "PRICE_UNVERIFIED", "reason": "OBSERVATION_UNAVAILABLE"}
+        if checked["state"] not in {"VERIFIED_NORMAL", "VERIFIED_EXTREME"}:
+            logger.warning("PAPER_PRICE_INTEGRITY position_id=%s state=%s reason=%s",
+                           pos.get("id"), checked["state"], checked.get("reason"))
+            return checked
+        current = self._positive_price(checked["price"])
         if current is None:
-            logger.warning(
-                "PAPER_PRICE_UNAVAILABLE position_id=%s token=%s; exits deferred",
-                pos.get("id"), token,
-            )
-            return None
+            return {"state": "PRICE_UNVERIFIED", "reason": "INVALID_PRICE"}
 
         entry = self._positive_price(pos.get("entry_price"))
         tokens = self._positive_price(pos.get("token_amount"))
         if entry is None or tokens is None:
             logger.warning("PAPER_INVENTORY_INVALID position_id=%s", pos.get("id"))
             return None
+
+        gate.accept(checked)
 
         highest = max(self._positive_price(pos.get("highest_price")) or entry, current)
         lowest = min(self._positive_price(pos.get("lowest_price")) or entry, current)

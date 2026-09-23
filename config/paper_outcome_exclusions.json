@@ -7,6 +7,132 @@
       "created_at": "2026-09-13T15:18:35.118255+00:00",
       "closed_at": "2026-09-13T16:25:18.506054+00:00",
       "reason": "BUG_CONTAMINATED_RUNTIME_LIFECYCLE_STARVATION_PR147"
+    },
+    {
+      "source_table": "paper_trades",
+      "position_id": 112,
+      "created_at": "2026-09-21T22:55:11.381752+00:00",
+      "closed_at": "2026-09-22T20:47:56.776232+00:00",
+      "reason": "CONTROLLED_PAPER_RESET_PRE_CAPITAL_RELATIVE_SIZING"
+    },
+    {
+      "source_table": "paper_trades",
+      "position_id": 124,
+      "created_at": "2026-09-22T01:30:07.545467+00:00",
+      "closed_at": "2026-09-22T20:47:56.776232+00:00",
+      "reason": "CONTROLLED_PAPER_RESET_PRE_CAPITAL_RELATIVE_SIZING"
+    },
+    {
+      "source_table": "paper_trades",
+      "position_id": 126,
+      "created_at": "2026-09-22T01:39:07.342875+00:00",
+      "closed_at": "2026-09-22T20:47:56.776232+00:00",
+      "reason": "CONTROLLED_PAPER_RESET_PRE_CAPITAL_RELATIVE_SIZING"
+    },
+    {
+      "source_table": "paper_trades",
+      "position_id": 140,
+      "created_at": "2026-09-22T04:46:49.426053+00:00",
+      "closed_at": "2026-09-22T20:47:56.776232+00:00",
+      "reason": "CONTROLLED_PAPER_RESET_PRE_CAPITAL_RELATIVE_SIZING"
+    },
+    {
+      "source_table": "paper_trades",
+      "position_id": 147,
+      "created_at": "2026-09-22T06:03:09.798941+00:00",
+      "closed_at": "2026-09-22T20:47:56.776232+00:00",
+      "reason": "CONTROLLED_PAPER_RESET_PRE_CAPITAL_RELATIVE_SIZING"
+    },
+    {
+      "source_table": "paper_trades",
+      "position_id": 149,
+      "created_at": "2026-09-22T06:11:29.430723+00:00",
+      "closed_at": "2026-09-22T20:47:56.776232+00:00",
+      "reason": "CONTROLLED_PAPER_RESET_PRE_CAPITAL_RELATIVE_SIZING"
+    },
+    {
+      "source_table": "paper_trades",
+      "position_id": 155,
+      "created_at": "2026-09-22T12:46:15.187584+00:00",
+      "closed_at": "2026-09-22T20:47:56.776232+00:00",
+      "reason": "CONTROLLED_PAPER_RESET_PRE_CAPITAL_RELATIVE_SIZING"
+    },
+    {
+      "source_table": "paper_trades",
+      "position_id": 158,
+      "created_at": "2026-09-22T14:46:54.733219+00:00",
+      "closed_at": "2026-09-22T20:47:56.776232+00:00",
+      "reason": "CONTROLLED_PAPER_RESET_PRE_CAPITAL_RELATIVE_SIZING"
+    },
+    {
+      "source_table": "paper_trades",
+      "position_id": 159,
+      "created_at": "2026-09-22T15:25:22.811712+00:00",
+      "closed_at": "2026-09-22T20:47:56.776232+00:00",
+      "reason": "CONTROLLED_PAPER_RESET_PRE_CAPITAL_RELATIVE_SIZING"
+    },
+    {
+      "source_table": "paper_trades",
+      "position_id": 160,
+      "created_at": "2026-09-22T15:31:34.023121+00:00",
+      "closed_at": "2026-09-22T20:47:56.776232+00:00",
+      "reason": "CONTROLLED_PAPER_RESET_PRE_CAPITAL_RELATIVE_SIZING"
+    },
+    {
+      "source_table": "paper_trades",
+      "position_id": 161,
+      "created_at": "2026-09-22T15:55:43.051114+00:00",
+      "closed_at": "2026-09-22T20:47:56.776232+00:00",
+      "reason": "CONTROLLED_PAPER_RESET_PRE_CAPITAL_RELATIVE_SIZING"
+    },
+    {
+      "source_table": "paper_trades",
+      "position_id": 162,
+      "created_at": "2026-09-22T16:58:11.790567+00:00",
+      "closed_at": "2026-09-22T20:47:56.776232+00:00",
+      "reason": "CONTROLLED_PAPER_RESET_PRE_CAPITAL_RELATIVE_SIZING"
+    },
+    {
+      "source_table": "paper_trades",
+      "position_id": 163,
+      "created_at": "2026-09-22T17:05:50.611736+00:00",
+      "closed_at": "2026-09-22T20:47:56.776232+00:00",
+      "reason": "CONTROLLED_PAPER_RESET_PRE_CAPITAL_RELATIVE_SIZING"
+    },
+    {
+      "source_table": "paper_trades",
+      "position_id": 164,
+      "created_at": "2026-09-22T17:16:14.715724+00:00",
+      "closed_at": "2026-09-22T20:47:56.776232+00:00",
+      "reason": "CONTROLLED_PAPER_RESET_PRE_CAPITAL_RELATIVE_SIZING"
+    },
+    {
+      "source_table": "paper_trades",
+      "position_id": 165,
+      "created_at": "2026-09-22T17:28:36.292785+00:00",
+      "closed_at": "2026-09-22T20:47:56.776232+00:00",
+      "reason": "CONTROLLED_PAPER_RESET_PRE_CAPITAL_RELATIVE_SIZING"
+    },
+    {
+      "source_table": "paper_trades",
+      "position_id": 166,
+      "created_at": "2026-09-22T18:03:04.790908+00:00",
+      "closed_at": "2026-09-22T20:47:56.776232+00:00",
+      "reason": "CONTROLLED_PAPER_RESET_PRE_CAPITAL_RELATIVE_SIZING"
+    },
+    {
+      "source_table": "paper_trades",
+      "position_id": 169,
+      "created_at": "2026-09-22T19:47:18.007449+00:00",
+      "closed_at": "2026-09-22T20:47:56.776232+00:00",
+      "reason": "CONTROLLED_PAPER_RESET_PRE_CAPITAL_RELATIVE_SIZING"
+    },
+    {
+      "source_table": "paper_trades",
+      "position_id": 170,
+      "created_at": "2026-09-22T19:57:48.454412+00:00",
+      "closed_at": "2026-09-22T20:47:56.776232+00:00",
+      "reason": "CONTROLLED_PAPER_RESET_PRE_CAPITAL_RELATIVE_SIZING"
     }
   ]
 }

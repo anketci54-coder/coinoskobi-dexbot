@@ -1490,7 +1490,7 @@ class PipelineEngine:
                     )
 
             try:
-                if self.cache.update_pool_price(pool, price):
+                if self.cache.update_pool_price(pool, price, evidence=snapshot):
                     refreshed += 1
                 else:
                     upsert = getattr(
@@ -1510,7 +1510,7 @@ class PipelineEngine:
                     )
 
                     if upsert is not None and token:
-                        upsert(pool, token, price)
+                        upsert(pool, token, price, evidence=snapshot)
                         refreshed += 1
                     else:
                         failed += 1
@@ -1518,7 +1518,7 @@ class PipelineEngine:
                 # A market-cache write must not suppress a verified fresh
                 # exit price. PAPER accounting is persisted in a separate DB.
                 fallback_price_rows[pool] = {
-                    "pool": pool, "price_usd": price,
+                    **(snapshot or {}), "pool": pool, "price_usd": price,
                     "price_updated_at": observed_at,
                 }
                 logger.warning("PAPER_PRICE_CACHE_WRITE_FAILED pool=%s code=%s; using fresh snapshot",
@@ -3083,6 +3083,13 @@ class PipelineEngine:
                             "execution_authority": False,
                         }
 
+                        from app.risk.price_integrity import observation
+                        opening_context["price_observation"] = next(
+                            (observation(row) for row in self.cache.all()
+                             if str(row.get("pool", "")).lower()
+                             == str(market_context.get("candidate_pool", "")).lower()),
+                            {},
+                        )
                         opening_context_json = (
                             json.dumps(
                                 opening_context,

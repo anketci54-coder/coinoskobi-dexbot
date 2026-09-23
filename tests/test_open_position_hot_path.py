@@ -1,5 +1,7 @@
 import importlib
 
+import pytest
+
 from app.dex.native_ingestion import SYNC_TOPIC
 from app.dex.open_position_hot_path import (
     HotPositionWSSBridge,
@@ -84,7 +86,7 @@ class FakeCache:
 
         return None
 
-    def update_pool_price(self, pool, price):
+    def update_pool_price(self, pool, price, evidence=None):
         self.update_calls.append(
             (pool, price)
         )
@@ -182,6 +184,71 @@ def scanner_target(pair, token):
     }
 
 
+@pytest.fixture
+def bridge_math_only(monkeypatch):
+    # These legacy tests isolate relative-ratio math using synthetic quotes.
+    # Real V1 eligibility, HTTP proof and rejection are covered in test_price_integrity.
+    def proof(self, pipeline, pair, evidence):
+        return {"state": "VERIFIED_EXTREME", "ratio_raw": self._latest_ratio[pair]}
+    monkeypatch.setattr(HotPositionWSSBridge, "_check_paper_observation", proof)
+
+
+@pytest.mark.parametrize("token_is_0", [True, False])
+@pytest.mark.parametrize("token_decimals", [6, 9, 18])
+@pytest.mark.parametrize("rebase", [False, True])
+def test_unequal_decimal_sync_preserves_usd_domain(
+    token_is_0, token_decimals, rebase, bridge_math_only,
+):
+    # 1,000,000 tokens and 1 WBNB at $800 imply $0.0008/token.
+    # Decimals are deliberately absent from bridge metadata: the factor
+    # cancels between the current and anchored raw reserve ratios.
+    quote = "0x" + ("ff" if token_is_0 else "00") * 20
+    target = scanner_target(OPEN_PAIR, TOKEN)
+    target["quote_token"] = quote
+    row = cache_row(price=0.0008)
+    row["quote_token"] = quote
+    pipeline = Pipeline([position()], [row])
+    pipeline.manager.price = FallbackPrice()
+    bridge = HotPositionWSSBridge()
+    bridge.replace_targets([target], open_pairs=[OPEN_PAIR])
+
+    token_raw = 1_000_000 * 10 ** token_decimals
+    quote_raw = 10 ** 18
+
+    def observe(quote_reserve):
+        reserves = (token_raw, quote_reserve)
+        bridge.observe_event(sync_event(
+            *(reserves if token_is_0 else reserves[::-1])
+        ))
+
+    observe(quote_raw)
+    assert bridge.drain_price_updates(pipeline)["anchored"] == 1
+    if rebase:
+        pipeline.cache.update_pool_price(OPEN_PAIR, 0.000856911362699739)
+        assert bridge.anchor_from_cache(pipeline)["anchored"] == 1
+    anchor_price = pipeline.cache.rows[0]["price_usd"]
+
+    for percent in (100, 99, 101):
+        observe(quote_raw * percent // 100)
+        assert bridge.drain_price_updates(pipeline)["updated"] == 1
+        expected = anchor_price * percent / 100
+        assert pipeline.cache.rows[0]["price_usd"] == pytest.approx(expected)
+        assert process_hot_positions(pipeline) == pytest.approx([expected])
+
+
+@pytest.mark.parametrize("price", [None, 0, float("nan")])
+def test_sync_without_valid_usd_anchor_never_publishes_price(price):
+    pipeline = Pipeline([position()], [cache_row(price=price)])
+    bridge = HotPositionWSSBridge()
+    bridge.replace_targets(
+        [scanner_target(OPEN_PAIR, TOKEN)], open_pairs=[OPEN_PAIR],
+    )
+    for quote_raw in (10 ** 18, 99 * 10 ** 16):
+        bridge.observe_event(sync_event(1_000_000 * 10 ** 9, quote_raw))
+        assert bridge.drain_price_updates(pipeline)["updated"] == 0
+    assert pipeline.cache.update_calls == []
+
+
 def test_open_position_targets_are_verified_and_prioritized():
     pipeline = Pipeline(
         [position()],
@@ -218,7 +285,7 @@ def test_open_position_targets_are_verified_and_prioritized():
     assert merged["targets"][1]["pair"] == SCAN_PAIR1
 
 
-def test_sync_hot_price_is_anchored_then_updates_exact_pool():
+def test_sync_hot_price_is_anchored_then_updates_exact_pool(bridge_math_only):
     pipeline = Pipeline(
         [position()],
         [cache_row(price=10.0)],
@@ -280,7 +347,7 @@ def test_sync_hot_price_is_anchored_then_updates_exact_pool():
     assert status["pending_count"] == 0
 
 
-def test_provider_anchor_rebases_future_relative_price():
+def test_provider_anchor_rebases_future_relative_price(bridge_math_only):
     pipeline = Pipeline(
         [position()],
         [cache_row(price=10.0)],
@@ -323,7 +390,7 @@ def test_provider_anchor_rebases_future_relative_price():
     ) < 1e-12
 
 
-def test_retraction_invalidates_hot_price_anchor():
+def test_retraction_invalidates_hot_price_anchor(bridge_math_only):
     pipeline = Pipeline(
         [position()],
         [cache_row(price=10.0)],

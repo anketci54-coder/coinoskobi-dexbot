@@ -317,7 +317,7 @@ def test_negative_edge_or_hard_risk_keeps_zero_entry():
     assert result["entry_amount_usdt"] == 0.0
 
 
-def test_unverified_lp_bootstrap_uses_total_loss_when_timing_ready(tmp_path):
+def test_unverified_lp_cannot_bootstrap_even_when_timing_ready(tmp_path):
     plan = _timing_plan(price=1.01, history=[0.99, 1.0])
     plan["sellability_status"] = "SELLABILITY_OK"
     plan["capital"].update({
@@ -332,10 +332,10 @@ def test_unverified_lp_bootstrap_uses_total_loss_when_timing_ready(tmp_path):
         mathematical_plan=plan,
         db_path=str(tmp_path / "missing.db"),
     )
-    assert result["entry_amount_usdt"] > 0.0
-    assert result["risk_amount_usdt"] == result["entry_amount_usdt"]
-    assert result["liquidity_protection_unverified"] is True
-    assert result["bootstrap_tail_loss_fraction"] == 1.0
+    assert result["entry_amount_usdt"] == 0.0
+    assert result["risk_amount_usdt"] == 0.0
+    assert "LP_WITHDRAWAL_PROTECTION_UNVERIFIED" in result["blockers"]
+    assert result.get("paper_calibration_bootstrap") is not True
 
 
 def test_nonpositive_edge_zeros_sizing():

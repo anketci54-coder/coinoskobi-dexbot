@@ -317,6 +317,8 @@ class GeckoScanner:
 
         for raw in response.json().get("data", []):
             snapshot = self._row_to_candidate(raw)
+            snapshot.update(chain="bsc", source="geckoterminal",
+                            observed_at=datetime.now(timezone.utc).isoformat())
             pool = str(
                 snapshot.get("pool") or ""
             ).strip().lower()
@@ -337,6 +339,8 @@ class GeckoScanner:
                 continue
 
             snapshot = self._dex_row_to_candidate(raw)
+            snapshot.update(chain="bsc", source="dexscreener",
+                            observed_at=datetime.now(timezone.utc).isoformat())
             pool = str(
                 snapshot.get("pool") or ""
             ).strip().lower()
@@ -469,6 +473,8 @@ class GeckoScanner:
             {
                 **self._row_to_candidate(row),
                 "observed_at": observed_at,
+                "chain": "bsc",
+                "source": "geckoterminal",
             }
             for row in response.json().get(
                 "data",

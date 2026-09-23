@@ -1,3 +1,4 @@
+from app.risk.price_integrity import admission_check
 import os
 import sqlite3
 import threading
@@ -186,6 +187,9 @@ class PaperDatabase:
         self,
         trade,
     ):
+        checked = admission_check(trade)
+        if checked["state"] != "VERIFIED_EXTREME":
+            raise ValueError(f"{checked['state']}: {checked['reason']}")
         with self._db_lock:
             self._insert_unlocked(
                 trade
@@ -209,6 +213,9 @@ class PaperDatabase:
         trade,
         max_open_positions,
     ):
+        checked = admission_check(trade)
+        if checked["state"] != "VERIFIED_EXTREME":
+            return False
         token = (
             trade
             or {}

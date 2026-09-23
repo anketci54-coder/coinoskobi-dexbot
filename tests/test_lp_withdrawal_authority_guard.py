@@ -1,3 +1,5 @@
+import pytest
+
 import app.risk.paper_position_sizing as sizing
 
 
@@ -79,7 +81,9 @@ def test_verified_lp_protection_preserves_paper_sizing(monkeypatch):
     assert result["blockers"] == []
 
 
-def test_hot_empirical_reserve_floor_sizes_for_total_loss_without_lp_protection(monkeypatch):
+@pytest.mark.parametrize("state", ["HOT", "WARM"])
+@pytest.mark.parametrize("plan_blockers", [[], ["LP_WITHDRAWAL_PROTECTION_UNVERIFIED"]])
+def test_empirical_floor_never_substitutes_for_verified_lp(monkeypatch, state, plan_blockers):
     monkeypatch.setattr(
         sizing,
         "_empirical_outcome_calibration",
@@ -88,6 +92,7 @@ def test_hot_empirical_reserve_floor_sizes_for_total_loss_without_lp_protection(
 
     plan = _plan("EMPIRICAL_RESERVE_FLOOR")
     plan["paper_eligible"] = True
+    plan["blockers"] = plan_blockers
     plan["capital"].update({
         "reserve_observation_count": 4,
         "observed_min_quote_reserve_usd": 10000.0,
@@ -97,7 +102,7 @@ def test_hot_empirical_reserve_floor_sizes_for_total_loss_without_lp_protection(
     plan["position"] = {}
     plan["market_context"] = {
         "opportunity": {
-            "state": "HOT",
+            "state": state,
             "catastrophic_reserve_collapse": False,
         }
     }
@@ -107,8 +112,9 @@ def test_hot_empirical_reserve_floor_sizes_for_total_loss_without_lp_protection(
         available_capital_usdt=1000.0,
     )
 
-    assert result["entry_amount_usdt"] > 0.0
-    assert result["risk_amount_usdt"] == result["entry_amount_usdt"]
-    assert result["tail_loss_fraction"] == 1.0
-    assert result["liquidity_protection_unverified"] is True
+    assert result["entry_amount_usdt"] == 0.0
+    assert result["risk_amount_usdt"] == 0.0
+    assert "LP_WITHDRAWAL_PROTECTION_UNVERIFIED" in result["blockers"]
+    assert plan["capital"]["liquidity_capacity_source"] == "EMPIRICAL_RESERVE_FLOOR"
+    assert plan["capital"]["observed_min_quote_reserve_usd"] == 10000.0
     assert result.get("paper_calibration_bootstrap") is not True

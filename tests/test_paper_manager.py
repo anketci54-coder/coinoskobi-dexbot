@@ -1,4 +1,6 @@
 from app.paper.manager import PaperManager
+from app.risk.price_integrity import PriceIntegrityGate
+from price_integrity_support import V2RPC, POOL, evidence
 
 
 class FakePrice:
@@ -28,6 +30,8 @@ class FakeDB:
 def make_position():
     return {
         "id": 1,
+        "pool": POOL,
+        "dex": "pancakeswap_v2",
         "token": "0x0000000000000000000000000000000000000001",
         "entry_price": 1.0,
         "current_price": 1.0,
@@ -52,6 +56,9 @@ def make_manager(price, position=None):
     manager = PaperManager.__new__(PaperManager)
     manager.db = FakeDB([position or make_position()])
     manager.price = FakePrice(price)
+    pos = manager.db.positions[0]
+    manager.price.get_observation = lambda _: evidence(price, base_token=pos["token"], pool=pos["pool"])
+    manager.price_integrity = PriceIntegrityGate(V2RPC(price, token=pos["token"], pool=pos["pool"]))
     manager.learning_feed = None
     manager.hybrid_exit_evidence = None
     manager._learning_replay_after_id = 0

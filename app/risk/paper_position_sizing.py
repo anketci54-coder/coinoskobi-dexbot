@@ -1155,6 +1155,10 @@ def calculate_paper_position_size(
         )
 
     lp_unverified = liquidity_capacity_source != "VERIFIED_LP_PROTECTION"
+    # Observed reserves remain shadow evidence, never withdrawal protection.
+    # This blocker also excludes the PAPER calibration bootstrap path.
+    if lp_unverified:
+        blockers.append("LP_WITHDRAWAL_PROTECTION_UNVERIFIED")
     observed_reserve = _positive(capital.get("observed_min_quote_reserve_usd"))
     empirical_exit_ready = (
         liquidity_capacity_source == "EMPIRICAL_RESERVE_FLOOR"
@@ -1167,10 +1171,7 @@ def calculate_paper_position_size(
         and opportunity.get("state") in {"HOT", "WARM"}
     )
     plan_blockers = plan.get("blockers") or []
-    if plan_blockers and not (
-        empirical_exit_ready
-        and set(plan_blockers) == {"LP_WITHDRAWAL_PROTECTION_UNVERIFIED"}
-    ):
+    if plan_blockers:
         blockers.append("PLAN_BLOCKED")
     if lp_unverified and not empirical_exit_ready:
         blockers.append("EMPIRICAL_EXIT_EVIDENCE_INVALID")

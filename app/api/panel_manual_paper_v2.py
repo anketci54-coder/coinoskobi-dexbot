@@ -10,6 +10,7 @@ from typing import Any
 
 from fastapi import HTTPException
 
+from app.risk.price_integrity import PriceIntegrityGate, observation
 from app.paper.manager import PaperManager
 from app.paper.control_mode import (
     get_control_mode,
@@ -94,6 +95,7 @@ def _cache_quotes(
                     token0 AS token,
                     NULL AS name,
                     dex,
+                    quote_token,
                     latest_price_usd AS price_usd,
                     latest_snapshot_at AS updated_at
                 FROM universe_pool_registry
@@ -117,13 +119,7 @@ def _cache_quotes(
             if pool:
                 row = connection.execute(
                     """
-                    SELECT
-                        pool,
-                        token,
-                        name,
-                        dex,
-                        price_usd,
-                        updated_at
+                    SELECT *
                     FROM gecko_pool_cache
                     WHERE lower(pool)=lower(?)
                     ORDER BY updated_at DESC
@@ -135,13 +131,7 @@ def _cache_quotes(
             if row is None and token:
                 row = connection.execute(
                     """
-                    SELECT
-                        pool,
-                        token,
-                        name,
-                        dex,
-                        price_usd,
-                        updated_at
+                    SELECT *
                     FROM gecko_pool_cache
                     WHERE lower(token)=lower(?)
                        OR lower(
@@ -202,6 +192,7 @@ def _ondemand_pool_quote(
             continue
 
         quote = {
+            **row,
             "pool": row.get("pool") or pool,
             "token": (
                 row.get("base_token")
@@ -219,6 +210,35 @@ def _ondemand_pool_quote(
         return quote, price, 0.0
 
     return None
+
+
+def _manual_price_evidence(quote, *, pool, token):
+    """Build strict BSC Pancake V2/USDT evidence without guessing identity."""
+    row = dict(quote or {})
+
+    updated_at = row.get("observed_at") or row.get("updated_at")
+    source = str(row.get("source") or "").strip().lower()
+
+    if not source:
+        quote_source = str(row.get("quote_source") or "").upper()
+        if quote_source in {"GECKO_POOL_CACHE", "GECKOTERMINAL_ON_DEMAND"}:
+            source = "geckoterminal"
+        elif quote_source == "UNIVERSE_POOL_REGISTRY":
+            source = "geckoterminal"
+
+    return {
+        "chain": "bsc",
+        "pool": row.get("pool") or pool,
+        "base_token": row.get("base_token") or row.get("token") or token,
+        "token": row.get("token") or token,
+        "quote_token": row.get("quote_token"),
+        "dex": row.get("dex"),
+        "source": source,
+        "observed_at": updated_at,
+        "price_usd": row.get("price_usd"),
+        "block_number": row.get("block_number"),
+        "block_hash": row.get("block_hash"),
+    }
 
 
 def _fresh_quote(
@@ -1051,6 +1071,21 @@ def _buy(
         "cost_model"
     ]
 
+    integrity = PriceIntegrityGate().evaluate(
+        {
+            "pool": pool,
+            "token": token,
+            "dex": quote.get("dex"),
+            "quote_token": quote.get("quote_token"),
+        },
+        _manual_price_evidence(
+            quote,
+            pool=pool,
+            token=token,
+        ))
+    if integrity["state"] != "VERIFIED_EXTREME":
+        raise HTTPException(status_code=409, detail=f"{integrity['state']}: {integrity['reason']}")
+
     connection = _connect(
         paper_db
     )
@@ -1101,6 +1136,7 @@ def _buy(
 
         context = {
             "source": "MANUAL_PANEL",
+            "price_observation": observation(quote),
             "manual_confirmed": True,
             "captured_at_entry": True,
             "reference_price": price,
@@ -1682,7 +1718,12 @@ def _preview_sell(
     }
 
 
-def _sell(*, paper_db: Path, cache_db: Path, payload: dict[str, Any]) -> dict[str, Any]:
+def _sell(
+    *,
+    paper_db: Path,
+    cache_db: Path,
+    payload: dict[str, Any],
+) -> dict[str, Any]:
     token = str(payload.get("token") or "").strip()
     pool = str(payload.get("pool") or "").strip()
     connection = _connect(paper_db)
@@ -1699,11 +1740,26 @@ def _sell(*, paper_db: Path, cache_db: Path, payload: dict[str, Any]) -> dict[st
             raise HTTPException(status_code=404, detail="Açık paper pozisyon bulunamadı")
 
         position = dict(row)
-        _, price, age = _fresh_quote(
+        quote, price, age = _fresh_quote(
             cache_db,
             pool=str(position.get("pool") or pool or ""),
             token=str(position.get("token") or token or ""),
         )
+        integrity = PriceIntegrityGate().evaluate(
+            {
+                **position,
+                "quote_token": quote.get("quote_token"),
+                "dex": quote.get("dex"),
+            },
+            _manual_price_evidence(
+                quote,
+                pool=str(position.get("pool") or pool or ""),
+                token=str(position.get("token") or token or ""),
+            ),
+        )
+        if integrity["state"] != "VERIFIED_EXTREME":
+            connection.rollback()
+            raise HTTPException(status_code=409, detail=f"{integrity['state']}: {integrity['reason']}")
         accounting = _sell_accounting(position, price)
         gross = accounting["gross"]
         net = accounting["net"]

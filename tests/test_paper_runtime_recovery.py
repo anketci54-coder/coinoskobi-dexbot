@@ -41,7 +41,7 @@ def plan(*, protected=0.0, state="HOT"):
 
 
 @pytest.mark.parametrize("state", ["HOT", "WARM"])
-def test_empirical_liquidity_sizes_for_total_loss_without_lp_protection(
+def test_empirical_liquidity_remains_shadow_only_without_lp_protection(
     calibrated,
     state,
 ):
@@ -56,10 +56,9 @@ def test_empirical_liquidity_sizes_for_total_loss_without_lp_protection(
         mathematical_plan=p
     )
 
-    assert r["entry_amount_usdt"] > 0.0
-    assert r["risk_amount_usdt"] == r["entry_amount_usdt"]
-    assert r["tail_loss_fraction"] == 1.0
-    assert r["liquidity_protection_unverified"] is True
+    assert r["entry_amount_usdt"] == 0.0
+    assert r["risk_amount_usdt"] == 0.0
+    assert "LP_WITHDRAWAL_PROTECTION_UNVERIFIED" in r["blockers"]
     assert r.get("paper_calibration_bootstrap") is not True
     assert p["live_eligible"] is False
     assert p["execution_authority"] is False
@@ -79,10 +78,9 @@ def test_dust_lp_protection_is_not_economic_capacity(calibrated):
         mathematical_plan=p
     )
 
-    assert r["entry_amount_usdt"] > 0.0
-    assert r["risk_amount_usdt"] == r["entry_amount_usdt"]
-    assert r["tail_loss_fraction"] == 1.0
-    assert r["liquidity_protection_unverified"] is True
+    assert r["entry_amount_usdt"] == 0.0
+    assert r["risk_amount_usdt"] == 0.0
+    assert "LP_WITHDRAWAL_PROTECTION_UNVERIFIED" in r["blockers"]
 
 
 def test_verified_lp_provenance_survives_nonpositive_edge(calibrated):
@@ -173,8 +171,8 @@ def test_large_kelly_plan_cannot_concentrate_account(calibrated):
 def test_missing_or_invalid_price_never_reaches_exit_logic(bad, caplog):
     m = PaperManager.__new__(PaperManager)
     m.price = type("Price", (), {"get_price": lambda _, token: bad})()
-    assert m._process_position({"id": 1, "token": "token"}) is None
-    assert "PAPER_PRICE_UNAVAILABLE" in caplog.text
+    assert m._process_position({"id": 1, "token": "token"})["state"] == "PRICE_UNVERIFIED"
+    assert "PAPER_PRICE_INTEGRITY" in caplog.text
 
 
 def test_broken_position_does_not_starve_other_exits():
@@ -195,8 +193,8 @@ def test_evicted_open_pool_refresh_uses_persisted_identity():
     e.manager = type("Manager", (), {"db": type("DB", (), {"open_positions": lambda _: [row]})()})()
     inserted = []
     e.cache = type("Cache", (), {
-        "update_pool_price": lambda *args: False,
-        "upsert_tracked_price": lambda _, *args: inserted.append(args),
+        "update_pool_price": lambda *args, **kwargs: False,
+        "upsert_tracked_price": lambda _, *args, **kwargs: inserted.append(args),
     })()
     def prices(_, identities):
         assert identities == [{"chain": "bsc", **row}]
@@ -224,7 +222,7 @@ def test_cache_lock_snapshot_reaches_manager_without_faking_freshness(monkeypatc
         def now(_):
             return now - timedelta(minutes=10) if delayed else now
     monkeypatch.setattr("app.pipeline.engine.datetime", ObservationClock)
-    def locked(*_):
+    def locked(*_, **kwargs):
         raise sqlite3.OperationalError("database is locked")
     fallback = SimpleNamespace(get_price=lambda _: 999)
     e.manager = SimpleNamespace(

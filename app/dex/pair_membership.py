@@ -23,8 +23,10 @@ PAIR_ABI = [
 ]
 
 
-def verify_pair_membership(pair, token, quote_token, client=None):
+def verify_pair_membership(pair, token, quote_token, client=None, block_identifier=None):
     client = client or w3
+
+    call_options = {} if block_identifier is None else {"block_identifier": block_identifier}
 
     try:
         pair = Web3.to_checksum_address(pair)
@@ -36,14 +38,14 @@ def verify_pair_membership(pair, token, quote_token, client=None):
             abi=FACTORY_ABI,
         )
 
-        canonical = factory.functions.getPair(token, quote).call()
+        canonical = factory.functions.getPair(token, quote).call(**call_options)
 
         if canonical.lower() != pair.lower():
             return {"state": "FACTORY_MISMATCH"}
 
         contract = client.eth.contract(address=pair, abi=PAIR_ABI)
-        token0 = contract.functions.token0().call()
-        token1 = contract.functions.token1().call()
+        token0 = contract.functions.token0().call(**call_options)
+        token1 = contract.functions.token1().call(**call_options)
 
         if {token0.lower(), token1.lower()} != {
             token.lower(),

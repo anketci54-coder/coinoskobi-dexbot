@@ -1490,7 +1490,17 @@ class PipelineEngine:
                     )
 
             try:
-                if self.cache.update_pool_price(pool, price, evidence=snapshot):
+                try:
+                    changed = self.cache.update_pool_price(
+                        pool,
+                        price,
+                        evidence=snapshot,
+                    )
+                except TypeError:
+                    # Backward-compatible cache/test adapters without
+                    # evidence keyword still receive the numeric update.
+                    changed = self.cache.update_pool_price(pool, price)
+                if changed:
                     refreshed += 1
                 else:
                     upsert = getattr(

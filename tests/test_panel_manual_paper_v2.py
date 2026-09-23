@@ -11,8 +11,21 @@ from app.scanner.gecko_scanner import GeckoScanner
 from app.paper.schema import ensure_paper_schema
 from app.risk.paper_position_sizing import paper_available_capital_usdt
 from app.config.contracts import USDT
+from app.risk.price_integrity import PriceIntegrityGate
+from tests.price_integrity_support import V2RPC
 TOKEN = "bsc_0x1111111111111111111111111111111111111111"
 POOL = "0x2222222222222222222222222222222222222222"
+
+
+def _verified_gate(price):
+    return PriceIntegrityGate(
+        V2RPC(
+            price=price,
+            token=TOKEN.removeprefix("bsc_"),
+            pool=POOL,
+        )
+    )
+
 
 
 def _paper_db(path):

@@ -1,7 +1,7 @@
 # COINOSKOBI — PLANLI YAPILACAKLAR
 
-Updated: 2026-09-20  
-Status: **ACTIVE**  
+Updated: 2026-09-20
+Status: **ACTIVE**
 Purpose: Coinoskobi Phase 0–15 mimarisini bozmadan devam eden bakım, geliştirme, Vezir, AI mühendislik, güvenlik, otomasyon ve optimizasyon çalışmalarının tek aktif takip belgesi.
 
 > Bu dosya yeni bir ROADMAP değildir.
@@ -93,7 +93,7 @@ Eski scriptler, duplicate yollar, gereksiz deney kodları ve superseded parçala
 
 # 5. PAPER RUNTIME RECOVERY CLOSURE
 
-**Owner:** mevcut Phase 3 / Phase 4 / Phase 12 sahiplikleri.  
+**Owner:** mevcut Phase 3 / Phase 4 / Phase 12 sahiplikleri.
 **Status:** CLOSED / VERIFIED — 2026-09-20.
 
 - [x] VPS current HEAD doğrulandı
@@ -121,7 +121,7 @@ Eski scriptler, duplicate yollar, gereksiz deney kodları ve superseded parçala
 - [x] LP withdrawal protection doğrulanmamış adayların gerçek NORMAL/VUR_KAC PAPER sermayesi alması engellendi
 - [x] follow-up snapshot source/liquidity/volume/buy/sell persistence alan eşlemesi düzeltildi
 
-**Kural:** Yeni gerçek PAPER işlemlerinde görülen kritik entry/exit/data incidentleri eski recovery işini yeniden açmaz.  
+**Kural:** Yeni gerçek PAPER işlemlerinde görülen kritik entry/exit/data incidentleri eski recovery işini yeniden açmaz.
 Her incident kendi owner Phase’inde **root cause → smallest fix → targeted test → deploy → tek runtime acceptance → close** sırasıyla çözülür.
 
 ---
@@ -1263,15 +1263,15 @@ Non-overlap contract:
 
 Checklist:
 - [x] 15H canonical ownership and non-overlap boundary opened
-- [ ] existing execution/simulation/provider/router implementation reference audit
-- [ ] choose smallest deterministic simulation backend while reusing canonical Phase 8 transport
-- [ ] explicit-block simulated BUY with received amount/revert/gas/slippage/fill evidence
-- [ ] lifecycle-requested simulated SELL with received quote/revert/gas/slippage/fill evidence
-- [ ] BUY→SELL round-trip provenance and UNKNOWN-preserving result contract
-- [ ] bind 15H output through existing Phase 15B adapter; do not duplicate 15A–15G
-- [ ] authority tests: no broadcast, no private key, no wallet/signing/live/order-create, no Risk Gate override
-- [ ] targeted tests + integration smoke + runtime acceptance
-- [ ] canonical docs/test evidence seal after acceptance
+- [x] existing execution/simulation/provider/router implementation reference audit
+- [x] choose smallest deterministic simulation backend while reusing canonical Phase 8 transport
+- [x] explicit-block simulated BUY with received amount/revert/gas/slippage/fill evidence
+- [x] lifecycle-requested simulated SELL with received quote/revert/gas/slippage/fill evidence
+- [x] BUY→SELL round-trip provenance and UNKNOWN-preserving result contract
+- [x] bind 15H output through existing Phase 15B adapter; do not duplicate 15A–15G
+- [x] authority tests: no broadcast, no private key, no wallet/signing/live/order-create, no Risk Gate override
+- [x] targeted tests + integration smoke + runtime acceptance
+- [x] canonical docs/test evidence seal after acceptance
 
 # CURRENT NEXT SAFE STEP
 

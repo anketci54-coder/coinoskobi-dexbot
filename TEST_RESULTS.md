@@ -564,3 +564,24 @@ Validation:
 - Runtime error counters: **0**
 - `git diff --check`: **PASS**
 - Result: **PASS / CLOSED_VERIFIED**
+
+
+## Phase 15H final acceptance — 2026-09-23T14:10:13.238251+00:00
+
+`tests/test_phase15h_paper_simulation.py`
+`tests/test_phase15h_paper_sell_runtime.py`
+
+Result: **19 passed, 1 warning**
+
+Authority audit:
+- signing=false
+- broadcast=false
+- read_only=true
+- BUY binding verified in pipeline
+- SELL binding verified in PaperManager
+
+Runtime:
+- coinoskobi-paper-runtime.service: active
+- coinoskobi-panel-api.service: active
+- paper_trades.db quick_check: ok
+- cache.db read-only query: PASS

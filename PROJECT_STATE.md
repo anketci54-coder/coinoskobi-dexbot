@@ -456,3 +456,19 @@ Evidence:
 
 Root cause recovery remained inside the existing Phase 0–15 architecture.
 No LIVE, wallet, signing or order-create authority was enabled.
+
+
+## Phase 15H acceptance seal — 2026-09-23T14:10:13.238251+00:00
+
+- canonical HEAD: `937e36b782c1afff40afbb73fc3be86e39c18251`
+- targeted Phase 15H tests: `19 passed`
+- BUY runtime binding: verified
+- SELL lifecycle binding: verified
+- simulation authority: read-only
+- signing: disabled
+- broadcast: disabled
+- paper runtime service: active
+- panel API service: active
+- paper DB quick_check: ok
+- cache DB: read-only access verified; full quick_check not used because active DB is ~11 GB
+- Phase 15H tracker items 1266–1274: complete

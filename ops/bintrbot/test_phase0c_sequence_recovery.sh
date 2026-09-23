@@ -36,8 +36,10 @@ if target_cls is None:
 class DummyWriter:
     def __init__(self):
         self.items = []
+        self.q = asyncio.Queue(maxsize=100)
     async def put(self, item):
         self.items.append(item)
+        await self.q.put(item)
 
 def state(*, synced=False, last_u=None, buffer=None, gaps=0):
     return SimpleNamespace(

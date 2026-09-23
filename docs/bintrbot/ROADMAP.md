@@ -257,18 +257,32 @@ Amaç: TRY-CORE için güvenilir temel piyasa datası oluşturmak.
 - MARKET_ID
 - aktif TRY marketleri
 - historical market identity
+- historical listing / delisting identity
 - base asset
 - quote asset
 - status
 - first observed
 - last observed
+- LISTED_AT
+- TRADING_STARTED_AT
+- DELIST_ANNOUNCED_AT
+- TRADING_ENDED_AT
+- DELISTED_AT
+- KNOWN_AT
+
+Bugünkü aktif market listesi historical universe yerine kullanılamaz.
+
+Delist edilmiş TRY marketleri mümkün olduğu ölçüde historical universe'e dahil edilir. Veri erişilemiyorsa kapsam eksikliği açıkça raporlanır; market sessizce evrenden çıkarılmaz.
 
 ### EXIT GATE 0A
 
 - Mevcut TRY marketlerinin %100'ü kayıtlı
+- Historical TRY market discovery tamamlanmış veya erişilemeyen kapsam açıkça belgelenmiş
+- Delist edilmiş marketler için survivorship-bias kontrolü yapılmış
 - Duplicate market identity = 0
 - Belirsiz eşleşmeler quarantine edilmiş
 - Market snapshot timestamp mevcut
+- Historical universe point-in-time kullanılabilir
 
 ## 0B — Historical 1m Klines
 
@@ -696,6 +710,28 @@ Kaynak uygunluğu ve maliyet önceden doğrulanır.
 ## 6C — Binance Global / Binance TR listing
 ## 6D — 1h / 6h / 24h / 7d / 30d / 90d davranışı
 
+Lifecycle araştırmasında özellikle yeni listing için:
+
+- ANNOUNCED_AT / KNOWN_AT
+- DEPOSIT_OPEN_AT
+- TRADING_STARTED_AT
+- FIRST_EXECUTABLE_PRICE
+- ilk 5s / 15s / 30s / 1m / 3m / 5m / 15m / 30m / 1h davranışı
+- ilk zirveye ulaşma süresi
+- peak return
+- first-pullback depth
+- peak-to-drawdown
+- volume acceleration
+- mümkünse spread / liquidity / slippage
+- Binance Global referansı
+- TRY market context
+
+incelenir.
+
+Grafikten sonradan seçilen ideal dip/tepe entry sayılmaz. Entry araştırması yalnızca o anda bilinebilen veriyle ve uygulanabilir fiyatla yapılır.
+
+Bu bölüm **BACKLOG / ENRICHMENT PATH** kapsamındadır; mevcut FAZ 0–3 ve CHECKPOINT A işini geciktirmez.
+
 ---
 
 # FAZ 7 — BINANCE TR EVENT INTELLIGENCE
@@ -715,7 +751,61 @@ Her event:
 
 taşır.
 
-Kanıt yoksa: **CAUSE_UNKNOWN**
+### Listing Event Study
+
+Amaç, yeni token/pair girişinde haberi gördükten sonra gerçekte uygulanabilir giriş davranışını ölçmektir.
+
+Ölçümler:
+
+- announcement → trading start gecikmesi
+- first executable price
+- +5s / +15s / +30s / +1m / +3m / +5m / +15m / +30m / +1h / +6h / +24h
+- maximum favorable excursion
+- maximum adverse excursion
+- first pump magnitude / time-to-peak
+- first pullback magnitude / time-to-pullback
+- second-leg continuation varsa büyüklük ve süre
+- volume / liquidity / spread / slippage davranışı
+- fee + latency + uygulanabilir execution
+- Binance Global ile lead/lag
+- TRY etkisinin ayrıştırılması
+
+Entry aileleri ancak TRAIN / VALIDATION üzerinde karşılaştırılır:
+
+- immediate entry
+- delayed entry
+- first pullback
+- continuation / breakout
+- volume-confirmed entry
+- no-trade
+
+FINAL_TEST entry seçmek için kullanılmaz.
+
+### Delisting Event Study
+
+Delist edilmiş marketler veri çöplüğü değildir; survivorship-bias düzeltmesi ve event-study datasıdır.
+
+Her delist için en az:
+
+- DELIST_ANNOUNCED_AT
+- KNOWN_AT
+- TRADING_ENDED_AT
+- announcement öncesi -24h / -6h / -1h
+- announcement sonrası +5m / +15m / +30m / +1h / +3h / +6h / +12h / +24h
+- mümkünse +3d / +7d
+- first pump / time-to-peak
+- subsequent dump / peak-to-trough
+- volume acceleration
+- liquidity withdrawal
+- abnormal return vs BTC/TRY ve genel TRY market
+
+ölçülür.
+
+"Sonradan baktığımız grafikte dipten alırdık" yaklaşımı yasaktır. Trading araştırması yalnızca event'in o anda bilinen KNOWN_AT bilgisiyle replay edilir.
+
+Listing/delisting olayında nedensellik kanıtlanamıyorsa: **CAUSE_UNKNOWN**
+
+Bu bölüm **BACKLOG / ENRICHMENT PATH** kapsamındadır; mevcut FAZ 0–3 ve CHECKPOINT A işini geciktirmez.
 
 ---
 
@@ -954,6 +1044,32 @@ Required kapsam stratejiye göre belirlenir.
 
 Kullanılmayan veri katmanının eksik olması ilgili stratejiyi gereksiz yere bloke etmez.
 
+### FAZ 0 PRE-CLOSE CLEANUP
+
+FAZ 0 kapanışından hemen önce kontrollü temizlik yapılır.
+
+Temizlik sırası:
+
+1. inventory
+2. reference / service / canonical-data dependency kontrolü
+3. yalnızca kullanılmadığı doğrulanan öğelerin silinmesi
+4. servis ve dataset integrity yeniden doğrulaması
+
+Temizlik adayı:
+
+- obsolete installer / test script
+- artık gerekmeyen temporary backup
+- cache / geçici çıktı
+- duplicate veya superseded non-canonical dosya
+
+Silinmeyecek:
+
+- canonical raw / bronze data
+- delisted market historical data
+- audit / evidence kayıtları
+- manifest / checksum / provenance
+- rollback için hâlâ gerekli son güvenli checkpoint
+
 ---
 
 # ŞU ANKİ DURUM
@@ -979,11 +1095,11 @@ Historical aggTrades hazırlanmıştır ancak kline backfill süresince durdurul
 
 Bu durum ilk yalnızca-kline baseline'ını otomatik olarak bloke etmez.
 
-Bilinen quality case:
+Historical universe discovery aktiftir. Bugünkü 308 aktif TRY marketi geçmiş evren olarak kabul edilmez; delist edilmiş TRY marketleri survivorship-bias kontrolü için ayrıca izlenir.
 
-**ALGO_TRY / 2023-03 → gap=1**
+Historical gap registry ve resmi bakım/outage evidence sınıflandırması FAZ 1 hazırlığı olarak sürmektedir. Gap'ler sessizce forward-fill edilmez.
 
-FAZ 1'de doğrulanacaktır.
+FAZ 0 kapanışında pre-close cleanup zorunludur; canonical historical data, delisted market data ve audit evidence temizlik kapsamında silinmez.
 
 ---
 
@@ -1027,7 +1143,7 @@ FAZ 1'de doğrulanacaktır.
 
 # SCOPE FREEZE
 
-Bu roadmap sürümünden sonra ilk baseline öncesinde yeni ana modül eklenmez.
+Bu roadmap sürümünden sonra ilk baseline öncesinde yeni ana modül veya yeni faz eklenmez.
 
 Aktif odak:
 
@@ -1037,9 +1153,19 @@ Aktif odak:
 - FAZ 3
 - CHECKPOINT A
 
-Yeni fikirler **BACKLOG** olarak kaydedilir.
+Yeni fikirler **BACKLOG** olarak kaydedilir ve yalnızca mevcut uygun fazın altına eklenir.
+
+Özellikle:
+
+- listing event study → FAZ 6 / FAZ 7
+- delisting reaction study → FAZ 7
+- wallet / on-chain / DEX genişletmeleri → FAZ 4 / FAZ 5
+
+şu an aktif geliştirme değildir.
 
 İlk baseline kanıtını geciktirmez.
+
+**CURRENT PRIORITY LOCK:** FAZ 0 kapanış blocker'ları çözülmeden FAZ 6–7 event-study uygulamasına başlanmaz.
 
 ---
 

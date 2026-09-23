@@ -17,6 +17,45 @@ TOKEN = "bsc_0x1111111111111111111111111111111111111111"
 POOL = "0x2222222222222222222222222222222222222222"
 
 
+def _gate_for_price(price):
+    return PriceIntegrityGate(
+        V2RPC(
+            price=price,
+            token=TOKEN.removeprefix("bsc_"),
+            pool=POOL,
+        )
+    )
+
+
+def _verify_manual_quote(*, pool, token, quote, price):
+    gate = _gate_for_price(price)
+    evidence = {
+        "chain": "bsc",
+        "pool": quote.get("pool") or pool,
+        "base_token": quote.get("base_token") or quote.get("token") or token,
+        "token": quote.get("token") or token,
+        "quote_token": quote.get("quote_token"),
+        "dex": quote.get("dex"),
+        "source": str(quote.get("source") or "geckoterminal").lower(),
+        "observed_at": quote.get("observed_at") or quote.get("updated_at"),
+        "price_usd": quote.get("price_usd"),
+        "block_number": quote.get("block_number"),
+        "block_hash": quote.get("block_hash"),
+    }
+    result = gate.evaluate(
+        {
+            "pool": pool,
+            "token": token,
+            "dex": quote.get("dex"),
+            "quote_token": quote.get("quote_token"),
+        },
+        evidence,
+    )
+    assert result["state"] in {"VERIFIED_NORMAL", "VERIFIED_EXTREME"}
+    return result
+
+
+
 def _verified_gate(price):
     return PriceIntegrityGate(
         V2RPC(

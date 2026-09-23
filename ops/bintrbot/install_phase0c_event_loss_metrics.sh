@@ -179,12 +179,24 @@ once(
 )
 
 once(
-'''              except Exception as e:
-                  print(
-'''.replace("              ", "            "),
+'''            except Exception as e:
+                print(
+                    "WS_ERROR",
+                    group_id,
+                    repr(e),
+                    flush=True,
+                )
+                await asyncio.sleep(3)
+''',
 '''            except Exception as e:
                 self.ws_disconnects += 1
                 print(
+                    "WS_ERROR",
+                    group_id,
+                    repr(e),
+                    flush=True,
+                )
+                await asyncio.sleep(3)
 ''',
 "ws_disconnect_metric",
 )

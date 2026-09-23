@@ -56,15 +56,17 @@ def _verify_manual_quote(*, pool, token, quote, price):
 
 
 
-def _verified_gate(price):
-    return PriceIntegrityGate(
+def _install_v2rpc(monkeypatch, price):
+    import app.risk.price_integrity as integrity
+    monkeypatch.setattr(
+        integrity,
+        "w3",
         V2RPC(
             price=price,
             token=TOKEN.removeprefix("bsc_"),
             pool=POOL,
-        )
+        ),
     )
-
 
 
 def _paper_db(path):
@@ -205,6 +207,7 @@ def _set_price(path, price):
 
 
 def test_manual_paper_buy_sell_round_trip_and_balance_conservation(tmp_path, monkeypatch):
+    _install_v2rpc(monkeypatch, 2.0)
     paper = tmp_path / "paper.db"
     cache = tmp_path / "cache.db"
     _paper_db(paper)
@@ -242,6 +245,7 @@ def test_manual_paper_buy_sell_round_trip_and_balance_conservation(tmp_path, mon
     db.close()
 
     _set_price(cache, 2.2)
+    _install_v2rpc(monkeypatch, 2.2)
     sold = _sell(
         paper_db=paper,
         cache_db=cache,
@@ -392,6 +396,7 @@ def test_manual_buy_uses_fresh_universe_price_when_gecko_is_stale(
     tmp_path,
 monkeypatch,
 ):
+    _install_v2rpc(monkeypatch, 2.5)
     paper = tmp_path / "paper.db"
     cache = tmp_path / "cache.db"
 
@@ -432,6 +437,7 @@ def test_manual_buy_prefers_newest_valid_quote_source(
     tmp_path,
 monkeypatch,
 ):
+    _install_v2rpc(monkeypatch, 3.0)
     paper = tmp_path / "paper.db"
     cache = tmp_path / "cache.db"
 
@@ -472,6 +478,7 @@ def test_manual_buy_uses_ondemand_pool_quote_when_all_cache_is_stale(
     tmp_path,
     monkeypatch,
 ):
+    _install_v2rpc(monkeypatch, 4.0)
     paper = tmp_path / "paper.db"
     cache = tmp_path / "cache.db"
 
@@ -553,6 +560,7 @@ def test_fresh_cache_does_not_make_ondemand_request(
     tmp_path,
     monkeypatch,
 ):
+    _install_v2rpc(monkeypatch, 2.0)
     paper = tmp_path / "paper.db"
     cache = tmp_path / "cache.db"
 
@@ -597,6 +605,7 @@ def test_manual_sell_preview_is_read_only_and_uses_fresh_price(
     tmp_path,
 monkeypatch,
 ):
+    _install_v2rpc(monkeypatch, 2.0)
     paper = tmp_path / "paper.db"
     cache = tmp_path / "cache.db"
 
@@ -621,6 +630,8 @@ monkeypatch,
         cache,
         2.2,
     )
+
+    _install_v2rpc(monkeypatch, 2.2)
 
     preview = _preview_sell(
         paper_db=paper,
@@ -764,6 +775,7 @@ def test_manual_buy_level_override_provenance(
     tmp_path,
 monkeypatch,
 ):
+    _install_v2rpc(monkeypatch, 2.0)
     paper = tmp_path / "paper.db"
     cache = tmp_path / "cache.db"
 

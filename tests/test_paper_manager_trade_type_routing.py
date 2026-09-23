@@ -2,6 +2,24 @@ import app.paper.manager as manager_module
 from app.paper.manager import PaperManager
 
 
+class DeterministicPriceIntegrity:
+    """Unit/E2E lifecycle fixture; price-integrity contract is tested separately."""
+    def __init__(self, price):
+        self.price = float(price)
+
+    def evaluate(self, position, evidence):
+        return {
+            "state": "VERIFIED_NORMAL",
+            "reason": "TEST_VERIFIED_PRICE",
+            "price": self.price,
+            "key": ("test", position.get("id")),
+            "observed_at": None,
+        }
+
+    def accept(self, result):
+        return None
+
+
 class FakeDB:
     def __init__(self, position):
         self.position = position
@@ -34,6 +52,7 @@ def _manager(position):
     manager = object.__new__(PaperManager)
     manager.db = FakeDB(position)
     manager.price = FakePrice()
+    manager.price_integrity = DeterministicPriceIntegrity(1.0)
     manager.learning_feed = None
     manager.hybrid_exit_evidence = None
     manager._learning_replay_after_id = 0

@@ -96,7 +96,13 @@ check(len(s.buffer) >= 1, "snapshot_internal_gap_retained")
 async def live_gap_case():
     s = state(synced=True, last_u=200)
     o = make_obj(s)
-    info = SimpleNamespace(api_symbol="TESTTRY")
+    info = SimpleNamespace(
+        api_symbol="TESTTRY",
+        symbol="TEST_TRY",
+        symbol_type=1,
+        base_asset="TEST",
+        quote_asset="TRY",
+    )
     payload = {"U": 202, "u": 202, "E": 1}
     await o.on_depth(info, payload)
     check(s.synced is False, "live_gap_unsynced")

@@ -1,3 +1,21 @@
+
+
+class DeterministicPriceIntegrity:
+    """Unit/E2E lifecycle fixture; price-integrity contract is tested separately."""
+    def __init__(self, price):
+        self.price = float(price)
+
+    def evaluate(self, position, evidence):
+        return {
+            "state": "VERIFIED_NORMAL",
+            "reason": "TEST_VERIFIED_PRICE",
+            "price": self.price,
+            "key": ("test", position.get("id")),
+            "observed_at": None,
+        }
+
+    def accept(self, result):
+        return None
 import asyncio
 import importlib
 
@@ -391,6 +409,7 @@ def test_true_composition_root_e2e(
     pipeline.manager.price = (
         StopHitPrice()
     )
+    pipeline.manager.price_integrity = DeterministicPriceIntegrity(0.80)
 
     pipeline.refresh_candidate_cache = (
         lambda: {

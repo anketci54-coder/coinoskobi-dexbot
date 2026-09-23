@@ -201,7 +201,14 @@ def _ondemand_pool_quote(
             "name": row.get("name"),
             "dex": row.get("dex"),
             "price_usd": price,
-            "updated_at": time.time(),
+            "updated_at": (
+                row.get("observed_at")
+                or datetime.now(timezone.utc).isoformat()
+            ),
+            "observed_at": (
+                row.get("observed_at")
+                or datetime.now(timezone.utc).isoformat()
+            ),
             "quote_source": (
                 "GECKOTERMINAL_ON_DEMAND"
             ),
@@ -1083,7 +1090,7 @@ def _buy(
             pool=pool,
             token=token,
         ))
-    if integrity["state"] != "VERIFIED_EXTREME":
+    if integrity["state"] not in {"VERIFIED_NORMAL", "VERIFIED_EXTREME"}:
         raise HTTPException(status_code=409, detail=f"{integrity['state']}: {integrity['reason']}")
 
     connection = _connect(
@@ -1757,7 +1764,7 @@ def _sell(
                 token=str(position.get("token") or token or ""),
             ),
         )
-        if integrity["state"] != "VERIFIED_EXTREME":
+        if integrity["state"] not in {"VERIFIED_NORMAL", "VERIFIED_EXTREME"}:
             connection.rollback()
             raise HTTPException(status_code=409, detail=f"{integrity['state']}: {integrity['reason']}")
         accounting = _sell_accounting(position, price)

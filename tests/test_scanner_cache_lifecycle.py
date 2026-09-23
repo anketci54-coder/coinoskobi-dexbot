@@ -396,7 +396,7 @@ def test_durable_counterfactual_prices_use_scan_then_bounded_fetch():
             current_price,
         ):
             self.observed.append(
-                (token, current_price)
+                (token, pool, current_price)
             )
 
             return {
@@ -428,6 +428,25 @@ def test_durable_counterfactual_prices_use_scan_then_bounded_fetch():
     assert stats["state"] == "READY"
     assert stats["pending"] == 30
     assert stats["observed"] == 30
+
+    observed_by_token = {
+        token: (pool, price)
+        for token, pool, price
+        in engine.counterfactual_store.observed
+    }
+
+    assert observed_by_token["0xdirect"] == (
+        "0xcurrentpool",
+        1.25,
+    )
+
+    for index in range(29):
+        token = f"0xfetch{index}"
+        expected_pool = f"0xpool{index:02d}"
+        assert observed_by_token[token] == (
+            expected_pool,
+            2.0,
+        )
     assert stats["direct"] == 1
     assert stats["fetched"] == 29
     assert stats["failed"] == 0
@@ -443,15 +462,7 @@ def test_durable_counterfactual_prices_use_scan_then_bounded_fetch():
         ],
     ]
 
-    assert (
-        "0xdirect",
-        1.25,
-    ) in engine.counterfactual_store.observed
 
-    assert (
-        "0xfetch28",
-        2.0,
-    ) in engine.counterfactual_store.observed
 
     assert stats["decision_authority"] is False
     assert stats["paper_authority"] is False

@@ -4438,6 +4438,7 @@ class PipelineEngine:
                     ):
                         result = observer(
                             token=token,
+                            pool=pool,
                             current_price=price,
                         )
 

@@ -1170,6 +1170,17 @@ class FastWatchRevisitJob:
         )
         if callable(observer):
             observed_row = dict(row)
+
+            # The scanner/provider row price is discovery provenance and may
+            # differ from the canonical price used by the runtime plan.
+            # Counterfactual/probe accounting must start from the same
+            # economic price that produced the decision.
+            canonical_price = (
+                (summary.get("market_context") or {}).get("price_usd")
+            )
+            if canonical_price is not None:
+                observed_row["price_usd"] = canonical_price
+
             observer(observed_row, summary)
 
         logger.info(

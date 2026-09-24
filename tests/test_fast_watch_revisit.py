@@ -969,14 +969,17 @@ def test_fast_watch_observer_preserves_provider_price_provenance(monkeypatch):
     assert stored_row["quote_token"] == QUOTE
     assert stored_row["dex"] == "pancakeswap_v2"
     assert stored_row["source"] == "gecko"
-    assert stored_row["price_usd"] == provider_price
     assert stored_row["observed_at"] == provider_observed_at
 
     assert (
         stored_summary["market_context"]["price_usd"]
         == planning_price
     )
-    assert (
-        stored_row["price_usd"]
-        != stored_summary["market_context"]["price_usd"]
-    )
+    assert stored_row["price_usd"] == planning_price
+    assert row["price_usd"] == provider_price
+
+    # Provider/scanner provenance remains untouched in the original row,
+    # while economic counterfactual/probe accounting must observe the
+    # canonical runtime planning price.
+    assert row["price_usd"] == provider_price
+    assert stored_row["price_usd"] == planning_price

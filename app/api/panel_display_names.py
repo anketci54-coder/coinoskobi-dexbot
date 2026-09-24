@@ -73,6 +73,12 @@ def enrich_universe_display_names(payload, cache_db):
         if quote_symbol not in ALLOWED_QUOTES:
             continue
 
+        # WBNB is valid as a quote asset (TOKEN/WBNB), but WBNB itself
+        # must never appear as the operator-facing base candidate.
+        base_symbol = str(meta.get("base_symbol") or "").strip().upper()
+        if base_symbol == "WBNB":
+            continue
+
         row["display_name"] = str(meta.get("display_name") or "").strip()
         row["base_symbol"] = str(meta.get("base_symbol") or "").strip() or None
         row["quote_symbol"] = quote_symbol

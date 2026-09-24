@@ -85,3 +85,83 @@ def test_universe_payload_missing_gecko_table_is_fail_soft(tmp_path):
     assert payload['visible_count'] == 1
     assert payload['rows'][0]['display_name'] is None
     assert payload['rows'][0]['token0'] == '0xtoken'
+
+
+def test_panel_display_names_excludes_wbnb_as_base_but_keeps_wbnb_as_quote(tmp_path):
+    import sqlite3
+
+    from app.api.panel_display_names import enrich_universe_display_names
+    from app.universe.display_metadata import TABLE
+
+    db = tmp_path / "panel_wbnb_filter.sqlite3"
+    con = sqlite3.connect(db)
+
+    con.execute(
+        f"""
+        CREATE TABLE {TABLE} (
+            pool TEXT PRIMARY KEY,
+            display_name TEXT,
+            base_symbol TEXT,
+            quote_symbol TEXT,
+            base_name TEXT,
+            quote_name TEXT,
+            base_token TEXT,
+            quote_token TEXT
+        )
+        """
+    )
+
+    con.executemany(
+        f"""
+        INSERT INTO {TABLE} (
+            pool,
+            display_name,
+            base_symbol,
+            quote_symbol,
+            base_name,
+            quote_name,
+            base_token,
+            quote_token
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        [
+            (
+                "0xpool_wbnb_base",
+                "WBNB / USDT",
+                "WBNB",
+                "USDT",
+                "Wrapped BNB",
+                "Tether USD",
+                "0xwbnb",
+                "0xusdt",
+            ),
+            (
+                "0xpool_token_wbnb",
+                "TEST / WBNB",
+                "TEST",
+                "WBNB",
+                "Test Token",
+                "Wrapped BNB",
+                "0xtest",
+                "0xwbnb",
+            ),
+        ],
+    )
+    con.commit()
+    con.close()
+
+    payload = {
+        "available": True,
+        "rows": [
+            {"pool": "0xpool_wbnb_base"},
+            {"pool": "0xpool_token_wbnb"},
+        ],
+    }
+
+    result = enrich_universe_display_names(payload, db)
+
+    assert len(result["rows"]) == 1
+    assert result["rows"][0]["pool"] == "0xpool_token_wbnb"
+    assert result["rows"][0]["base_symbol"] == "TEST"
+    assert result["rows"][0]["quote_symbol"] == "WBNB"

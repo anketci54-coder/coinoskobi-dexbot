@@ -1,5 +1,36 @@
 # COINOSKOBI CANONICAL PROJECT STATE
 
+<!-- CANONICAL_CURRENT_STATE_20260924 -->
+## CURRENT VERIFIED BASELINE — 2026-09-24
+
+Reference commit:
+
+`72c71a04632556c596493ba9fecb17a60e2ecbd2`
+
+Current verified local/runtime state:
+
+- PAPER runtime service: active
+- panel service: active
+- panel API: `127.0.0.1:8098`
+- panel universe: USDT-only
+- universe observation scheduler: USDT-only
+- hot-path quote set: USDT-only
+- PAPER entry admission: USDT-only
+- non-USDT PAPER candidates: fail closed as `SKIP / NON_USDT_QUOTE`
+
+Relevant commits now present on `main`:
+
+- `d56e812` — Align fast watch economic observation price with runtime plan
+- `a4bde15` — Hide WBNB base assets from panel universe
+- `5e725cd` — Restrict panel universe to USDT pairs
+- `06669c7` — Restrict paper entries to USDT pairs
+- `72c71a0` — Restrict universe runtime observation to USDT
+
+The USDT-only scope is an active operating policy, not a permanent architectural limitation.
+
+Older sections below may describe historical checkpoints. If an older statement conflicts with this dated baseline, treat it as historical unless a later verified checkpoint supersedes it.
+
+
 Updated: 2026-09-19
 
 ## WORKSTREAM 01 PAPER recovery closure — 2026-09-19

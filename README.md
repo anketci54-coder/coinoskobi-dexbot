@@ -1,5 +1,44 @@
 # Coinoskobi DexBot
 
+<!-- CANONICAL_CURRENT_STATE_20260924 -->
+## Current operational baseline — 2026-09-24
+
+Reference commit: `72c71a04632556c596493ba9fecb17a60e2ecbd2`.
+
+Current production-facing PAPER operation is narrower than the full architecture:
+
+- network: BSC
+- current DEX focus: PancakeSwap
+- active universe observation quote: USDT only
+- active hot-path quote: USDT only
+- PAPER entry admission: USDT pairs only
+- non-USDT PAPER candidates fail closed with `NON_USDT_QUOTE`
+- panel universe follows the same USDT-only operating policy
+
+This is an **active runtime policy**, not a permanent architectural ban on other quote assets.
+
+### Quick start / verification
+
+Current deployed environment uses Python 3.13.
+
+```text
+cd /root/projects/coinoskobi-dexbot
+./.venv/bin/python -m pytest -q
+systemctl is-active coinoskobi-paper-runtime.service
+systemctl is-active coinoskobi-panel.service
+```
+
+Runtime configuration is supplied from the project environment. Secrets must not be committed.
+
+Some simulation paths may require external tooling such as Anvil. Tool presence never grants LIVE, wallet, signing or order-create authority.
+
+Documentation ownership:
+- `README.md`: stable contract + quick start
+- `ROADMAP.md`: Phase 0–15 ownership/state
+- `PROJECT_STATE.md`: current verified checkpoint + historical seals
+- `planlı yapılacaklar.md`: active/next/backlog tracker
+
+
 Coinoskobi, BNB Chain / PancakeSwap odaklı; fırsat keşfi, DEX piyasa gözlemi, risk değerlendirmesi, paper işlem yaşam döngüsü ve operatör karar desteği sağlayan modüler bir sistemdir.
 
 Temel ilke:
@@ -49,7 +88,7 @@ Alt faz açmak normal bug-fix mekanizması değildir. Küçük düzeltme/refacto
 - Paper DB: `data/paper_trades.db`
 - Cache/universe DB: `data/cache/cache.db`
 - Paper service: `coinoskobi-paper-runtime.service`
-- Panel service: `coinoskobi-panel-api.service`
+- Panel service: `coinoskobi-panel.service`
 
 Yan/test/V2/V3 panel veya paralel runtime oluşturulmaz.
 

@@ -1,5 +1,65 @@
 # COINOSKOBI — PLANLI YAPILACAKLAR
 
+<!-- CANONICAL_CURRENT_STATE_20260924 -->
+## AKTİF ÇALIŞMA DÜZENİ — 2026-09-24
+
+Referans commit:
+
+`72c71a04632556c596493ba9fecb17a60e2ecbd2`
+
+Bu dosya aktif çalışma takipçisidir; README/ROADMAP içindeki canonical kuralların ikinci kopyası değildir.
+
+### ACTIVE NOW
+
+1. Canonical dokümantasyon senkronizasyonu
+   - çıktı: README, ROADMAP, PROJECT_STATE ve tracker arasında tutarlı durum
+   - kabul: güncel runtime kapsamı yanlış temsil edilmeyecek
+   - doğrulama: eski belge + yeni belge + mevcut kod bağımsız karşılaştırılacak
+
+2. Phase 15H belge/sözleşme tutarlılığı
+   - provider/broker/Anvil sınırı executable evidence ile karşılaştırılacak
+   - kanıt yetersizse belirsizlik açık bırakılacak
+
+### NEXT
+
+- gerçek PAPER entry/exit/data incidentlerini ölçülebilir kök nedenle kapat
+- kârlı hareketlerin neden kaçırıldığı ile zarar eden girişlerin neden kabul edildiğini runtime verisiyle karşılaştır
+- mevcut çalışan çekirdeği koru
+
+### CURRENT RUNTIME POLICY
+
+- BSC
+- PancakeSwap focus
+- observation: USDT-only
+- hot path: USDT-only
+- panel universe: USDT-only
+- PAPER entry: USDT-only
+- non-USDT candidate: `SKIP / NON_USDT_QUOTE`
+
+### BACKLOG / CONDITIONAL RESEARCH
+
+Agent frameworkleri, model altyapıları, Aider/LiteLLM/RAG/QLoRA/distillation ve benzeri maddeler listede kalabilir ancak aktif iş sayılmaz. Somut ihtiyaç ve kabul kriteri oluşmadan kurulum/entegrasyon kararı değildir.
+
+### WORK ITEM CONTRACT
+
+Aktif iş mümkün olduğunda şunları taşımalıdır:
+- mevcut durum
+- teslim edilecek çıktı
+- bağımlılık
+- kabul kriteri
+- doğrulama yöntemi
+
+### VEZİR DEĞİŞİKLİK SINIRI
+
+Aşağıdaki akış **hedeflenen kontrollü mühendislik politikasıdır; mevcut Vezir capability kanıtı değildir**:
+
+`PROPOSE -> TEST -> DIFF -> SECOND REVIEW (gerektiğinde) -> HUMAN APPROVAL -> APPLY`
+
+Sandbox/worktree değişikliği, production workspace değişikliği, commit, push ve deploy/restart ayrı yetki kapılarıdır. Bir aşamadaki onay, canonical politika açıkça belirtmedikçe sonraki aşamaların tümünü otomatik yetkilendirmez.
+
+Aşağıdaki eski tracker içeriği tarihsel plan, kapanmış iş veya backlog bilgisi içerebilir. Üstteki ACTIVE/NEXT sınıflandırmasıyla çelişen eski madde otomatik olarak aktif iş sayılmaz.
+
+
 Updated: 2026-09-20
 Status: **ACTIVE**
 Purpose: Coinoskobi Phase 0–15 mimarisini bozmadan devam eden bakım, geliştirme, Vezir, AI mühendislik, güvenlik, otomasyon ve optimizasyon çalışmalarının tek aktif takip belgesi.
@@ -73,9 +133,11 @@ Her yeni iş:
 
 ---
 
-# 4. AKTİF ANA HEDEFLER
+# 4. HISTORICAL / BACKLOG ANA HEDEFLER
 
-Coinoskobi’nin mevcut çalışma hattı dört büyük amacı birlikte yürütür:
+> Bu bölüm eski ayrıntılı çalışma hedeflerini korur. Güncel aktif çalışma hattı değildir; güncel yürütme sırası dosyanın en üstündeki **ACTIVE NOW / NEXT** bölümüdür.
+
+Tarihsel plan dört büyük amacı birlikte ele alıyordu:
 
 ### A. PAPER runtime’ı güvenilir şekilde kapatmak
 Mevcut PAPER recovery, sizing, manager, price refresh, exit ve accounting zinciri temiz biçimde doğrulanacak.
@@ -273,7 +335,7 @@ Astra veya benzeri güçlü model her işin varsayılanı olmayacak.
 
 # 9. CODEX + NVIDIA NIM
 
-Öncelikli deney.
+Backlog / conditional deney. Güncel ACTIVE/NEXT tamamlanmadan otomatik öncelik değildir.
 
 Mevcut Codex CLI korunacak.
 
@@ -1216,7 +1278,9 @@ Trade/risk/runtime sahipliği mevcut Phase’lerde kalır.
 
 ---
 
-# 36. UYGULAMA ÖNCELİK SIRASI
+# 36. HISTORICAL / BACKLOG ÖNCELİK LİSTESİ
+
+> Bu bölüm 2026-09-20 dönemindeki ayrıntılı backlog sırasını korur. Güncel yürütme sırası dosyanın en üstündeki **ACTIVE NOW / NEXT** bölümüdür; aşağıdaki açık kutular otomatik olarak aktif iş anlamına gelmez.
 
 1. [x] **PAPER recovery closure + 2026-09-20 kritik runtime düzeltmeleri**
 2. [ ] **Yeni gerçek PAPER işleminde kritik entry/exit/data incidenti çıkarsa onu önce kapat**
@@ -1264,18 +1328,20 @@ Non-overlap contract:
 Checklist:
 - [x] 15H canonical ownership and non-overlap boundary opened
 - [x] existing execution/simulation/provider/router implementation reference audit
-- [x] choose smallest deterministic simulation backend while reusing canonical Phase 8 transport
-- [x] explicit-block simulated BUY with received amount/revert/gas/slippage/fill evidence
-- [x] lifecycle-requested simulated SELL with received quote/revert/gas/slippage/fill evidence
-- [x] BUY→SELL round-trip provenance and UNKNOWN-preserving result contract
+- [x] choose smallest deterministic simulation backend while preserving Phase 8 provider/resilience ownership; current Anvil fork bootstrap uses configured RPC URL directly
+- [x] explicit-block simulated BUY with received amount/revert/gas/receipt evidence; unsupported/unmeasured slippage/fill remains UNKNOWN
+- [x] lifecycle-requested simulated SELL with received quote/revert/gas/receipt evidence; unsupported/unmeasured slippage/fill remains UNKNOWN
+- [x] BUY/SELL provenance and UNKNOWN-preserving result contract; stateful BUY→SELL continuity is not claimed unless directly proven by implementation evidence
 - [x] bind 15H output through existing Phase 15B adapter; do not duplicate 15A–15G
 - [x] authority tests: no broadcast, no private key, no wallet/signing/live/order-create, no Risk Gate override
 - [x] targeted tests + integration smoke + runtime acceptance
 - [x] canonical docs/test evidence seal after acceptance
 
-# CURRENT NEXT SAFE STEP
+# HISTORICAL NEXT SAFE STEP
 
-**Öncelik 1:** AUTO PAPER çalışırken ortaya çıkan gerçek kritik entry / exit / data incidentlerini hedefli biçimde kapat. Normal piyasa zararı tek başına bug/tuning gerekçesi değildir.
+> Bu bölüm eski continuation sırasını korur ve artık current instruction değildir. Güncel sıra dosyanın en üstündeki **ACTIVE NOW / NEXT** bölümüdür.
+
+**Tarihsel Öncelik 1:** AUTO PAPER çalışırken ortaya çıkan gerçek kritik entry / exit / data incidentlerini hedefli biçimde kapat. Normal piyasa zararı tek başına bug/tuning gerekçesi değildir.
 
 Aktif kritik incident yoksa:
 

@@ -81,6 +81,8 @@ from app.config.scanner import (
     RECENT_ANALYSIS_COOLDOWN_SECONDS,
 )
 
+from app.config.contracts import USDT
+
 from app.config.trading import (
     MAX_OPEN_PAPER_POSITIONS,
 )
@@ -2206,7 +2208,17 @@ class PipelineEngine:
 
         if decision == "PAPER_BUY":
 
-            if self.paper_db.has_open_position(
+            candidate_quote_token = str(
+                market_context.get("candidate_quote_token") or ""
+            ).strip().lower()
+
+            if candidate_quote_token != USDT.lower():
+                paper = {
+                    "action": "SKIP",
+                    "reason": "NON_USDT_QUOTE",
+                }
+
+            elif self.paper_db.has_open_position(
                 token_address
             ):
                 paper = {

@@ -51,6 +51,55 @@ Temel prensip:
     ├── EXECUTION
     └── CONTROL
 
+
+---
+
+## DATASET COLLECTION POLICY — AI TRAINING FIRST
+
+Amaç veri toplamayı gereksiz yere bloke etmek değil; ham veriyi mümkün olduğunca geniş toplarken kullanım bağlamını açıkça etiketlemektir.
+
+Tek fiziksel RAW / BRONZE veri gölü tutulur. Aynı Parquet veri farklı datasetler için gereksiz yere kopyalanmaz. Datasetler katalog / indeks / episode-mask üzerinden tanımlanır.
+
+### BRONZE — BROAD RAW SUPERSET
+
+- Kaynakta erişilebilen veri mümkün olduğunca korunur.
+- Binance TR venue üyeliği kesin olmayan marketler de toplanabilir.
+- Her partition SOURCE, SOURCE_SCOPE, VENUE_MEMBERSHIP_CLASS ve PROVENANCE taşır.
+- Belirsiz veri silinmez ve veri toplama hattını bloke etmez.
+- Kline erişilebilirliği tek başına Binance TR listing kanıtı sayılmaz.
+
+### SILVER — QUALITY + MEMBERSHIP VIEWS
+
+Aynı Bronze üstünde en az iki mantıksal görünüm bulunur:
+
+1. **BROAD_DISCOVERY**
+   - kaliteli raw veri
+   - venue verified + uncertain birlikte
+   - venue_membership_class model girdisi / araştırma etiketi olarak korunur
+   - Binance TR execution sonucu çıkarmak için tek başına kullanılamaz
+
+2. **BINANCE_TR_STRICT**
+   - yalnız doğrulanmış Binance TR market episode pencereleri
+   - VERIFIED_LISTING_START <= EVENT_TIME < VERIFIED_TRADING_END
+   - başlangıç veya bitiş sınırı bilinmiyorsa ilgili dönem fail-closed şekilde strict görünüm dışında kalır
+   - execution/backtest için varsayılan dataset budur
+
+3. **EVENT_LIFECYCLE**
+   - delist, rename, swap, redenomination, merger ve relist episode'ları
+   - transition boundary ve KNOWN_AT bilgileriyle ayrı tutulur
+   - ticker continuity otomatik asset continuity sayılmaz
+
+### GOLD / AI TRAINING PROFILES
+
+- **AI_BROAD_DISCOVERY**: pattern discovery ve representation learning; uncertain veri etiketli biçimde kullanılabilir.
+- **AI_BINANCE_TR_STRICT**: Binance TR karar/backtest modelleri; yalnız verified episode pencereleri.
+- **AI_EVENT_LIFECYCLE**: listing/delisting/transition araştırması; event-time ve known-time kurallı.
+
+Belirsiz venue membership **veri toplamayı veya FAZ 0'ı tek başına bloke etmez**. Belirsizlik kalite/evidence durumu olarak katalogda tutulur. Ancak strict Binance TR training/backtest datasetine giriş için gereken evidence şartları korunur.
+
+Raw endpointte görülen FIRST_KLINE / LAST_KLINE değerleri otomatik olarak Binance TR LISTED_AT / DELISTED_AT kabul edilmez.
+
+
 ---
 
 ## 1. VERİ ZAMANI — BITEMPORAL KURAL

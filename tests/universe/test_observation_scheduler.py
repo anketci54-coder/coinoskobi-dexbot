@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 
 import pytest
 
-from app.config.contracts import WBNB
+from app.config.contracts import USDT
 from app.universe.registry import UniverseRegistry
 from app.universe.scheduler import UniverseObservationScheduler
 
@@ -14,7 +14,7 @@ def address(value):
 def pool_row(value, *, dex="pancakeswap_v2", branch="EXISTING"):
     return {
         "chain": "bsc", "dex": dex, "pool": address(value),
-        "token0": address(100), "token1": WBNB,
+        "token0": address(100), "token1": USDT,
         "factory": address(300), "creation_block": value,
         "discovery_branch": branch,
     }

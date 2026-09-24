@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta, timezone
 
-from app.config.contracts import BASE_TOKENS
+from app.config.contracts import USDT
 from app.universe.display_metadata import persist_snapshot_display_metadata
 from app.universe.schema import DEX_PANCAKESWAP_V2, DEX_PANCAKESWAP_V3
 from app.universe.snapshot import DEXSCREENER_MAX_BATCH
@@ -13,9 +13,8 @@ DEFAULT_STATE_INTERVAL_SECONDS = {
 }
 DEFAULT_MISSING_RETRY_SECONDS = 60
 _UNIVERSE_DEXES = (DEX_PANCAKESWAP_V2, DEX_PANCAKESWAP_V3)
-_OBSERVATION_QUOTE_TOKENS = tuple(
-    sorted(str(value).strip().lower() for value in BASE_TOKENS)
-)
+# Runtime universe observation is intentionally USDT-only.
+_OBSERVATION_QUOTE_TOKENS = (USDT.strip().lower(),)
 
 
 def _quote_filter_sql():

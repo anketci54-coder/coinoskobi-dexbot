@@ -1,8 +1,8 @@
-from app.config.contracts import BASE_TOKENS
+from app.config.contracts import USDT
 from app.universe.schema import DEX_PANCAKESWAP_V2
 
 
-BASE_TOKEN_SET = frozenset(str(value).strip().lower() for value in BASE_TOKENS)
+BASE_TOKEN_SET = frozenset({USDT.strip().lower()})
 BOOTSTRAP_NATIVE_WSS_LIMIT = 16
 
 

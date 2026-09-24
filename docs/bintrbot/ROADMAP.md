@@ -80,8 +80,10 @@ Aynı Bronze üstünde en az iki mantıksal görünüm bulunur:
 
 2. **BINANCE_TR_STRICT**
    - yalnız doğrulanmış Binance TR market episode pencereleri
-   - VERIFIED_LISTING_START <= EVENT_TIME < VERIFIED_TRADING_END
-   - başlangıç veya bitiş sınırı bilinmiyorsa ilgili dönem fail-closed şekilde strict görünüm dışında kalır
+   - VERIFIED_MEMBERSHIP_FROM <= EVENT_TIME < VERIFIED_TRADING_END
+   - VERIFIED_MEMBERSHIP_FROM tercihen exact LISTING_START'tır; exact listing zamanı bulunamıyorsa Binance TR first-party kaydının marketin o anda aktif olduğunu açıkça kanıtladığı daha geç bir SAFE_LOWER_BOUND kullanılabilir
+   - SAFE_LOWER_BOUND hiçbir zaman gerçek listing zamanı diye yeniden etiketlenmez; yalnız kanıtlanan tarihten sonraki veriyi strict kullanım için açar
+   - başlangıç için hiçbir first-party membership kanıtı yoksa ilgili dönem fail-closed şekilde strict görünüm dışında kalır
    - execution/backtest için varsayılan dataset budur
 
 3. **EVENT_LIFECYCLE**
@@ -92,7 +94,7 @@ Aynı Bronze üstünde en az iki mantıksal görünüm bulunur:
 ### GOLD / AI TRAINING PROFILES
 
 - **AI_BROAD_DISCOVERY**: pattern discovery ve representation learning; uncertain veri etiketli biçimde kullanılabilir.
-- **AI_BINANCE_TR_STRICT**: Binance TR karar/backtest modelleri; yalnız verified episode pencereleri.
+- **AI_BINANCE_TR_STRICT**: Binance TR karar/backtest modelleri; yalnız verified episode pencereleri. Exact listing başlangıcı yoksa açıkça etiketlenmiş first-party SAFE_LOWER_BOUND kullanılabilir; bu sınır listing tarihi sayılmaz.
 - **AI_EVENT_LIFECYCLE**: listing/delisting/transition araştırması; event-time ve known-time kurallı.
 
 Belirsiz venue membership **veri toplamayı veya FAZ 0'ı tek başına bloke etmez**. Belirsizlik kalite/evidence durumu olarak katalogda tutulur. Ancak strict Binance TR training/backtest datasetine giriş için gereken evidence şartları korunur.

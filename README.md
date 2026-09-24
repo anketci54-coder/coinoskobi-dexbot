@@ -88,7 +88,7 @@ Alt faz açmak normal bug-fix mekanizması değildir. Küçük düzeltme/refacto
 - Paper DB: `data/paper_trades.db`
 - Cache/universe DB: `data/cache/cache.db`
 - Paper service: `coinoskobi-paper-runtime.service`
-- Panel service: `coinoskobi-panel-api.service`
+- Panel service: `coinoskobi-panel.service`
 
 Yan/test/V2/V3 panel veya paralel runtime oluşturulmaz.
 

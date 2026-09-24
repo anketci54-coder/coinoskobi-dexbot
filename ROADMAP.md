@@ -427,7 +427,7 @@ Canonical entegrasyon kuralı:
 Phase 15 kapanışı live/wallet/signing authority'yi otomatik açmaz.
 
 Durum: CLOSED — FINAL ROADMAP PHASE.
-Maintenance sahipliği: **15H OPEN — Execution-Grade Paper Simulation**. Bu, Phase 15'i veya Phase 0–15 mimarisini yeniden açmaz; kapalı roadmap altında kontrollü maintenance genişlemesidir.
+Maintenance sahipliği: **15H — 2026-09-23 acceptance kaydı mevcut; önceki OPEN / DESIGN+IMPLEMENTATION PENDING durumu superseded**. Bu acceptance, başlangıç tasarımındaki her capability/transport iddiasının eksiksiz doğrulandığı anlamına gelmez; ölçülmeyen veya güncel executable evidence ile doğrulanmayan alanlar UNKNOWN kalır. Bu durum Phase 15'i veya Phase 0–15 mimarisini yeniden açmaz.
 
 ---
 

@@ -274,6 +274,35 @@ Bugünkü aktif market listesi historical universe yerine kullanılamaz.
 
 Delist edilmiş TRY marketleri mümkün olduğu ölçüde historical universe'e dahil edilir. Veri erişilemiyorsa kapsam eksikliği açıkça raporlanır; market sessizce evrenden çıkarılmaz.
 
+### TOKEN / MARKET TRANSITION KANIT KURALI
+
+Rename, token swap, redenomination, merger, chain migration, contract migration, rebrand veya delist/relist gibi her lifecycle değişiminde yalnızca eski/yeni ticker tutulmaz.
+
+Her transition için mümkün olduğu ölçüde şu sorular cevaplanır:
+
+- **NEDEN?** Proje neden değişiklik yaptı? Rebrand, merger, chain migration, tokenomics değişimi, teknik migration, hukuki/operasyonel karar veya başka neden.
+- **NASIL?** Swap oranı, snapshot zamanı, eski/yeni contract veya chain, deposit/withdrawal/trading durumu, conversion yöntemi ve market kapanış/açılış zamanları.
+- **SONUÇ?** Aynı ekonomik asset mi, yeni asset mi, yalnız ticker mı değişti, supply/contract/chain değişti mi, eski market ne zaman bitti, yeni market ne zaman başladı ve fiyat serileri birleştirilebilir mi?
+
+Canonical alanlar:
+
+- TRANSITION_TYPE
+- REASON
+- MECHANISM
+- SWAP_RATIO
+- OLD_ASSET_ID / NEW_ASSET_ID
+- OLD_SYMBOL / NEW_SYMBOL
+- OLD_CONTRACT / NEW_CONTRACT
+- OLD_CHAIN / NEW_CHAIN
+- ANNOUNCED_AT / KNOWN_AT
+- TRADING_END_AT / TRADING_START_AT
+- ECONOMIC_CONTINUITY
+- PRICE_SERIES_CONTINUITY
+- SOURCE / EVIDENCE
+- CONFIDENCE
+
+Kanıt yetersizse alan uydurulmaz; **UNKNOWN / UNCERTAIN** bırakılır.
+
 ### EXIT GATE 0A
 
 - Mevcut TRY marketlerinin %100'ü kayıtlı

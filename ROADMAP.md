@@ -16,17 +16,11 @@ Current runtime policy is USDT-only for universe observation, hot-path candidate
 
 ### Phase 15H documentation reconciliation
 
-A 2026-09-23 Phase 15H acceptance seal exists, while older wording still says `OPEN / DESIGN+IMPLEMENTATION PENDING`.
+A 2026-09-23 Phase 15H acceptance seal exists. Any older `OPEN / DESIGN+IMPLEMENTATION PENDING` wording is historical and does not describe the current phase state.
 
-For current documentation purposes, treat the old OPEN wording as historical. The acceptance seal is the later state.
+The acceptance seal does **not** prove that every original design sentence was implemented literally. In particular, current `app/execution/paper_simulation.py` starts the local Anvil fork from a configured RPC URL; therefore documentation must not claim that the fork transport itself is routed through the Phase 8 broker. Phase 8 remains the owner of provider/resilience policy, while 15H owns the non-broadcast simulation sandbox/evidence boundary.
 
-However, the provider/Anvil transport wording must still be reconciled against executable evidence in:
-- `app/execution/paper_simulation.py`
-- canonical provider/broker implementation
-- relevant tests
-- acceptance evidence
-
-Do not strengthen the transport claim beyond what those artifacts prove.
+Likewise, 15H documentation must distinguish fields/contracts from evidence actually measured by the simulator. Unsupported or unmeasured execution properties remain `UNKNOWN`; an accepted phase does not convert them into measured facts.
 
 
 Bu dosya Coinoskobi'nin tek resmi mimari ve geliştirme sınıflandırmasıdır.
@@ -394,10 +388,10 @@ Amaç: gerçek fon, gerçek order, private key veya signing kullanmadan; explici
 15H sahipliği:
 - explicit block / state-snapshot tabanlı deterministic execution sandbox
 - canonical Pancake route üzerinde unsigned/synthetic PAPER BUY denemesi
-- simulated BUY sonucu: success/revert, received-token amount, execution price, gas/fee/slippage/fill evidence
+- simulated BUY sonucu: implementationın gerçekten ürettiği success/revert, received-token amount ve gas/receipt evidence; fee/slippage/fill gibi alanlar yalnız ölçülüyorsa FACT, aksi halde UNKNOWN
 - mevcut lifecycle tarafından talep edilen zamanda unsigned/synthetic PAPER SELL denemesi
-- simulated SELL sonucu: success/revert, received-quote amount, execution price, gas/fee/slippage/fill evidence
-- BUY→SELL round-trip execution evidence ve explicit block/timestamp provenance
+- simulated SELL sonucu: implementationın gerçekten ürettiği success/revert, received-quote amount ve gas/receipt evidence; fee/slippage/fill gibi alanlar yalnız ölçülüyorsa FACT, aksi halde UNKNOWN
+- BUY ve SELL simulation evidence/provenance; gerçek BUY→SELL state continuity yalnız implementation bunu aynı mutable fork state üzerinde kanıtlıyorsa FACT sayılır, aksi halde UNKNOWN
 - provider cevaplarından bağımsız olarak, simulation'ın gerçekten kanıtladığı execution sonucu; missing/unsupported sonuç UNKNOWN kalır
 
 15H sahip değildir ve devralmaz:
@@ -423,7 +417,7 @@ Amaç: gerçek fon, gerçek order, private key veya signing kullanmadan; explici
 - PAPER position OPEN/CLOSE kararı ve DB mutation 15H'nin görevi değildir
 
 Canonical entegrasyon kuralı:
-- Phase 8 canonical provider broker/RPC erişimi yeniden kullanılacak; ikinci provider/fork transport mimarisi kurulmayacak.
+- Phase 8 canonical provider/resilience ownership korunur. Current 15H implementation local Anvil forkunu configured RPC URL üzerinden başlatır; bu fork bootstrap yolu broker-routed olarak belgelenmez. Ayrı bir genel-purpose provider/resilience mimarisi 15H altında kurulmaz.
 - Phase 4/12 mevcut lifecycle/runtime, gerektiğinde 15H'den simulation evidence talep eder; 15H lifecycle sahibi olmaz.
 - Phase 3, 15H evidence'ını yalnız kendi mevcut risk/sellability kuralları içinde yorumlayabilir; 15H kendi başına SELLABILITY_OK veya trade permission vermez.
 - Phase 10 MEV evidence üretir; 15H MEV detector kopyalamaz.

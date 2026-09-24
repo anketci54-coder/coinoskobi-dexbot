@@ -26,22 +26,24 @@ URL = "https://api.binance.me/api/v1/klines"
 EVENTS = {
     "LUNA_TRY": {
         "market_resolution": "TWO_DISTINCT_MARKET_EPISODES",
-        "asset_resolution": "ASSET_IDENTITY_SPLIT_REQUIRED",
+        "asset_resolution": "LEGACY_LUNA_RENAMED_TO_LUNC_PLUS_NEW_LUNA_ASSET",
         "reason": (
-            "Legacy LUNA/TRY was delisted on 2022-05-13. Binance TR later documented "
-            "that legacy LUNA became LUNC under Terra Classic. New Terra LUNA/TRY "
-            "was listed on 2022-09-16. Same ticker text must not imply same asset identity."
+            "Before the May 2022 collapse, the original Terra asset traded as LUNA. "
+            "After the collapse/reorganization, that same legacy asset continued under the LUNC "
+            "(Terra Classic) ticker. A separate Terra 2.0 asset later used the LUNA ticker and "
+            "LUNA/TRY was listed again on 2022-09-16. Historical legacy-LUNA prices belong to "
+            "the LUNC lineage and must never be stitched onto the new-LUNA price series."
         ),
         "episodes": [
             {
                 "episode": 1,
-                "asset_role": "LEGACY_LUNA_NOW_LUNC",
+                "asset_role": "ORIGINAL_LUNA_LINEAGE_RENAMED_LUNC",
                 "trading_end_utc": "2022-05-13T00:40:00Z",
                 "official_url": "https://www.binance.tr/tr/blog/duyurular/8ab5ffdff77a4406be64a5719196d072",
             },
             {
                 "episode": 2,
-                "asset_role": "NEW_TERRA_LUNA",
+                "asset_role": "NEW_TERRA_2_LUNA_DISTINCT_ASSET",
                 "trading_start_utc": "2022-09-16T08:00:00Z",
                 "official_url": "https://www.binance.tr/tr/blog/Geli%C5%9Fmeler/19c3f38c0f9e4588897191c54866748b",
             },
@@ -184,7 +186,7 @@ async def main():
     hist["resolved_overlap_symbols"] = ["ACM_TRY", "LUNA_TRY"]
     hist["market_lifecycle_episode_resolution_required"] = False
     hist["market_lifecycle_resolution_file"] = str(OUT.relative_to(ROOT))
-    hist["luna_asset_identity_split_required"] = True
+    hist["luna_identity_rule"] = "PRE_COLLAPSE_LUNA_HISTORY_BELONGS_TO_LUNC_LINEAGE; NEW_TERRA_2_LUNA_IS_DISTINCT_ASSET"
     hist["acm_multi_episode_same_asset"] = True
     hist["survivorship_bias_resolved"] = False
     hist["status"] = "DISCOVERY_REQUIRED"

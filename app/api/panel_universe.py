@@ -13,9 +13,7 @@ MAX_TRANSITION_WINDOW = 5000
 # BSC quote assets allowed in the operator-facing COLD list.
 # Discovery remains full-universe; this is panel/read-model filtering only.
 COLD_QUOTE_TOKENS = {
-    "0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c",  # WBNB
     "0x55d398326f99059ff775485246999027b3197955",  # USDT
-    "0x8ac76a51cc950d9822d68b83fe1ad97b32cd580d",  # USDC
 }
 COLD_SCAN_MULTIPLIER = 5
 

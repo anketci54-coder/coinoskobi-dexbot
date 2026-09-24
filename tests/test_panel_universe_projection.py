@@ -78,7 +78,7 @@ def test_universe_panel_projection_is_real_and_read_only(tmp_path):
     assert payload["source"] == "UNIVERSE_CACHE_READ_ONLY"
     assert payload["counts"] == {"COLD": 1, "WARM": 1, "HOT": 1}
     assert payload["total_count"] == 3
-    # COLD operator list intentionally excludes non-WBNB/USDT/USDC pairs.
+    # COLD operator list intentionally permits USDT pairs only.
     assert payload["visible_count"] == 2
     assert payload["transition_scope"] == "RECENT_BOUNDED_SEISMIC_EVALUATIONS"
     assert payload["transition_sample_size"] == 4
@@ -143,3 +143,9 @@ def test_universe_panel_projection_fails_closed_when_db_missing(tmp_path):
     assert payload["visible_count"] == 0
     assert payload["rows"] == []
     assert payload["execution_authority"] is False
+
+def test_cold_quote_tokens_are_usdt_only():
+    from app.api.panel_universe import COLD_QUOTE_TOKENS
+    assert COLD_QUOTE_TOKENS == {
+        "0x55d398326f99059ff775485246999027b3197955"
+    }

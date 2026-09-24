@@ -6,14 +6,14 @@ from pathlib import Path
 from app.universe.display_metadata import TABLE
 
 
-ALLOWED_QUOTES = {"USDT", "USDC", "WBNB"}
+ALLOWED_QUOTES = {"USDT"}
 
 
 def enrich_universe_display_names(payload, cache_db):
     """Enrich and restrict radar rows to approved quote assets.
 
     Rows without durable pair metadata are omitted rather than guessing pair
-    orientation. Radar quote assets are USDT, USDC and WBNB only.
+    orientation. Operator-facing radar quote asset is USDT only.
     """
     if not isinstance(payload, dict) or not payload.get("available"):
         return payload

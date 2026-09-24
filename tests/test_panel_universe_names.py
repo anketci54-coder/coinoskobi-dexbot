@@ -87,7 +87,7 @@ def test_universe_payload_missing_gecko_table_is_fail_soft(tmp_path):
     assert payload['rows'][0]['token0'] == '0xtoken'
 
 
-def test_panel_display_names_excludes_wbnb_as_base_but_keeps_wbnb_as_quote(tmp_path):
+def test_panel_display_names_excludes_all_non_usdt_pairs(tmp_path):
     import sqlite3
 
     from app.api.panel_display_names import enrich_universe_display_names
@@ -161,7 +161,8 @@ def test_panel_display_names_excludes_wbnb_as_base_but_keeps_wbnb_as_quote(tmp_p
 
     result = enrich_universe_display_names(payload, db)
 
-    assert len(result["rows"]) == 1
-    assert result["rows"][0]["pool"] == "0xpool_token_wbnb"
-    assert result["rows"][0]["base_symbol"] == "TEST"
-    assert result["rows"][0]["quote_symbol"] == "WBNB"
+    assert result["rows"] == []
+
+def test_panel_is_usdt_only_contract():
+    from app.api.panel_display_names import ALLOWED_QUOTES
+    assert ALLOWED_QUOTES == {"USDT"}

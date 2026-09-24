@@ -1,5 +1,34 @@
 # COINOSKOBI DEXBOT — CANONICAL ROADMAP
 
+<!-- CANONICAL_CURRENT_STATE_20260924 -->
+## Canonical roadmap status note — 2026-09-24
+
+Reference commit: `72c71a04632556c596493ba9fecb17a60e2ecbd2`.
+
+Current runtime policy is USDT-only for universe observation, hot-path candidate routing, panel universe projection and PAPER entry admission. This is an operating policy, not a permanent architectural capability limit.
+
+### Phase-state interpretation
+
+- Architectural phase closure and later maintenance are separate.
+- Later fixes do not automatically reopen a CLOSED phase.
+- Historical acceptance records remain evidence; they are not fresh runtime verification.
+- Missing historical subphase details must not be invented.
+
+### Phase 15H documentation reconciliation
+
+A 2026-09-23 Phase 15H acceptance seal exists, while older wording still says `OPEN / DESIGN+IMPLEMENTATION PENDING`.
+
+For current documentation purposes, treat the old OPEN wording as historical. The acceptance seal is the later state.
+
+However, the provider/Anvil transport wording must still be reconciled against executable evidence in:
+- `app/execution/paper_simulation.py`
+- canonical provider/broker implementation
+- relevant tests
+- acceptance evidence
+
+Do not strengthen the transport claim beyond what those artifacts prove.
+
+
 Bu dosya Coinoskobi'nin tek resmi mimari ve geliştirme sınıflandırmasıdır.
 
 ## MİMARİ ANAYASA

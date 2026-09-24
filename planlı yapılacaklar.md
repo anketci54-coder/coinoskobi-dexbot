@@ -51,6 +51,8 @@ Aktif iş mümkün olduğunda şunları taşımalıdır:
 
 ### VEZİR DEĞİŞİKLİK SINIRI
 
+Aşağıdaki akış **hedeflenen kontrollü mühendislik politikasıdır; mevcut Vezir capability kanıtı değildir**:
+
 `PROPOSE -> TEST -> DIFF -> SECOND REVIEW (gerektiğinde) -> HUMAN APPROVAL -> APPLY`
 
 Sandbox/worktree değişikliği, production workspace değişikliği, commit, push ve deploy/restart ayrı yetki kapılarıdır. Bir aşamadaki onay, canonical politika açıkça belirtmedikçe sonraki aşamaların tümünü otomatik yetkilendirmez.
@@ -1274,7 +1276,9 @@ Trade/risk/runtime sahipliği mevcut Phase’lerde kalır.
 
 ---
 
-# 36. UYGULAMA ÖNCELİK SIRASI
+# 36. HISTORICAL / BACKLOG ÖNCELİK LİSTESİ
+
+> Bu bölüm 2026-09-20 dönemindeki ayrıntılı backlog sırasını korur. Güncel yürütme sırası dosyanın en üstündeki **ACTIVE NOW / NEXT** bölümüdür; aşağıdaki açık kutular otomatik olarak aktif iş anlamına gelmez.
 
 1. [x] **PAPER recovery closure + 2026-09-20 kritik runtime düzeltmeleri**
 2. [ ] **Yeni gerçek PAPER işleminde kritik entry/exit/data incidenti çıkarsa onu önce kapat**
@@ -1322,10 +1326,10 @@ Non-overlap contract:
 Checklist:
 - [x] 15H canonical ownership and non-overlap boundary opened
 - [x] existing execution/simulation/provider/router implementation reference audit
-- [x] choose smallest deterministic simulation backend while reusing canonical Phase 8 transport
-- [x] explicit-block simulated BUY with received amount/revert/gas/slippage/fill evidence
-- [x] lifecycle-requested simulated SELL with received quote/revert/gas/slippage/fill evidence
-- [x] BUY→SELL round-trip provenance and UNKNOWN-preserving result contract
+- [x] choose smallest deterministic simulation backend while preserving Phase 8 provider/resilience ownership; current Anvil fork bootstrap uses configured RPC URL directly
+- [x] explicit-block simulated BUY with received amount/revert/gas/receipt evidence; unsupported/unmeasured slippage/fill remains UNKNOWN
+- [x] lifecycle-requested simulated SELL with received quote/revert/gas/receipt evidence; unsupported/unmeasured slippage/fill remains UNKNOWN
+- [x] BUY/SELL provenance and UNKNOWN-preserving result contract; stateful BUY→SELL continuity is not claimed unless directly proven by implementation evidence
 - [x] bind 15H output through existing Phase 15B adapter; do not duplicate 15A–15G
 - [x] authority tests: no broadcast, no private key, no wallet/signing/live/order-create, no Risk Gate override
 - [x] targeted tests + integration smoke + runtime acceptance

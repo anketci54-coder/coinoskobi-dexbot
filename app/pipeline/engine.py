@@ -585,7 +585,14 @@ def _runtime_math_evidence(
     # Seed once from the real upstream series. The latest upstream
     # sample already belongs to this observation cycle, so do not
     # append current_price again in the same cycle.
-    if not history and upstream_observations:
+    if source_key == "PAIR_RUNTIME_ONCHAIN":
+        # The exit-feasibility producer already owns the bounded, block-aware
+        # runtime history. Resampling its last price loses intervening samples
+        # and invents zero returns on cached/same-block revisits. Consume the
+        # same snapshot as opportunity classification, including resets.
+        history[:] = upstream_observations
+
+    elif not history and upstream_observations:
         history.extend(upstream_observations)
 
     elif history and not durable_current_included and source_key != "PAIR_BLOCK_HISTORY":

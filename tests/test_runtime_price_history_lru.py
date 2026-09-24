@@ -40,7 +40,7 @@ def test_watched_pair_is_protected_from_ordinary_eviction():
     assert ("0xc", "0x3", "PAIR_ONCHAIN") in cache
 
 
-def test_runtime_math_history_grows_across_revisit():
+def test_runtime_math_history_uses_authoritative_snapshot_on_revisit():
     original = engine_module._RUNTIME_PRICE_HISTORY
     cache = RuntimePriceHistory(max_entries=2048)
     engine_module._RUNTIME_PRICE_HISTORY = cache
@@ -76,10 +76,9 @@ def test_runtime_math_history_grows_across_revisit():
             1.0,
         ]
         assert second["price_series"] == [
-            1.0,
-            1.0,
-            1.0,
-            1.0,
+            1.1,
+            1.1,
+            1.1,
             1.1,
         ]
     finally:

@@ -1703,6 +1703,15 @@ def build_trade_plan(
         .upper()
     )
 
+    if normalized_trade_type == "NORMAL":
+        returns = stats.get("log_returns") or []
+        latest_return = _number(returns[-1]) if returns else None
+        # Old cumulative gains are not current entry momentum. NORMAL does
+        # not enforce the VUR_KAC gate, so retain this directional veto here
+        # even when the full-horizon economic edge is still positive.
+        if latest_return is None or latest_return <= 0:
+            blockers.append("NORMAL_ACTIVE_MOMENTUM_NOT_POSITIVE")
+
     opportunity = (
         market_context.get(
             "opportunity"

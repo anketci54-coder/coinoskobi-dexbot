@@ -133,9 +133,11 @@ Her yeni iş:
 
 ---
 
-# 4. AKTİF ANA HEDEFLER
+# 4. HISTORICAL / BACKLOG ANA HEDEFLER
 
-Coinoskobi’nin mevcut çalışma hattı dört büyük amacı birlikte yürütür:
+> Bu bölüm eski ayrıntılı çalışma hedeflerini korur. Güncel aktif çalışma hattı değildir; güncel yürütme sırası dosyanın en üstündeki **ACTIVE NOW / NEXT** bölümüdür.
+
+Tarihsel plan dört büyük amacı birlikte ele alıyordu:
 
 ### A. PAPER runtime’ı güvenilir şekilde kapatmak
 Mevcut PAPER recovery, sizing, manager, price refresh, exit ve accounting zinciri temiz biçimde doğrulanacak.
@@ -333,7 +335,7 @@ Astra veya benzeri güçlü model her işin varsayılanı olmayacak.
 
 # 9. CODEX + NVIDIA NIM
 
-Öncelikli deney.
+Backlog / conditional deney. Güncel ACTIVE/NEXT tamamlanmadan otomatik öncelik değildir.
 
 Mevcut Codex CLI korunacak.
 
@@ -1335,9 +1337,11 @@ Checklist:
 - [x] targeted tests + integration smoke + runtime acceptance
 - [x] canonical docs/test evidence seal after acceptance
 
-# CURRENT NEXT SAFE STEP
+# HISTORICAL NEXT SAFE STEP
 
-**Öncelik 1:** AUTO PAPER çalışırken ortaya çıkan gerçek kritik entry / exit / data incidentlerini hedefli biçimde kapat. Normal piyasa zararı tek başına bug/tuning gerekçesi değildir.
+> Bu bölüm eski continuation sırasını korur ve artık current instruction değildir. Güncel sıra dosyanın en üstündeki **ACTIVE NOW / NEXT** bölümüdür.
+
+**Tarihsel Öncelik 1:** AUTO PAPER çalışırken ortaya çıkan gerçek kritik entry / exit / data incidentlerini hedefli biçimde kapat. Normal piyasa zararı tek başına bug/tuning gerekçesi değildir.
 
 Aktif kritik incident yoksa:
 

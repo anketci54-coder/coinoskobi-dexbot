@@ -1244,6 +1244,11 @@ def calculate_paper_position_size(
         value for value in (_positive(item) for item in price_evidence)
         if value is not None
     ] if isinstance(price_evidence, (list, tuple)) else []
+    # Some runtime plans carry the authoritative observed series without
+    # duplicating its latest value into entry.price.  Use that same series,
+    # rather than treating the observation as price-less.
+    if current_price is None and measured_prices:
+        current_price = measured_prices[-1]
     prior_prices = measured_prices[:-1]
     anchor_price = prior_prices[-1] if prior_prices else None
     observed_moves = [
@@ -1516,6 +1521,7 @@ def calculate_paper_position_size(
         "COST_UNCERTAINTY_UNOBSERVED",
         "LP_WITHDRAWAL_PROTECTION_UNVERIFIED",
         "NET_EDGE_NOT_POSITIVE",
+        "PLAN_BLOCKED",
     }
     hot_observation_bootstrap = (
         opportunity.get("state") == "HOT"
@@ -1530,6 +1536,12 @@ def calculate_paper_position_size(
         and current_price is not None
         and anchor_price is not None
         and observed_move > 0
+        and (
+            not plan_blockers
+            or set(plan_blockers).issubset({
+                "LP_WITHDRAWAL_PROTECTION_UNVERIFIED",
+            })
+        )
         and bool(blockers)
         and set(blockers).issubset(hot_observation_soft_blockers)
     )

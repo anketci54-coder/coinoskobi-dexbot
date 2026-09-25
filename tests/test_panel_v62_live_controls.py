@@ -1,6 +1,7 @@
 from pathlib import Path
 
-STATIC = Path("app/api/static")
+ROOT = Path(__file__).resolve().parents[1]
+STATIC = ROOT / "app" / "api" / "static"
 HTML = STATIC / "index.html"
 JS = STATIC / "dex-terminal.js"
 CSS = STATIC / "dex-terminal.css"

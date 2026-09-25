@@ -2345,31 +2345,16 @@ class PipelineEngine:
                         or {}
                     )
 
-                    runtime_price_series = list(
-                        exit_evidence.get(
-                            "runtime_spot_price_series_usd"
-                        )
-                        or []
+                    (
+                        price_series,
+                        plan_price_series_source,
+                    ) = UnifiedScoreEngine.select_price_series(
+                        exit_evidence
                     )
 
-                    block_price_series = list(
-                        exit_evidence.get(
-                            "spot_price_series_usd"
-                        )
-                        or []
-                    )
-
-                    if runtime_price_series:
-                        price_series = runtime_price_series
+                    if not price_series:
                         plan_price_series_source = (
-                            "PAIR_RUNTIME_ONCHAIN"
-                        )
-                    else:
-                        price_series = block_price_series
-                        plan_price_series_source = (
-                            "PAIR_BLOCK_HISTORY"
-                            if block_price_series
-                            else "TOKEN_CACHE"
+                            "TOKEN_CACHE"
                         )
 
                     # Never mix token-only cache pricing into a

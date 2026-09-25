@@ -1246,12 +1246,20 @@ def calculate_paper_position_size(
     ] if isinstance(price_evidence, (list, tuple)) else []
     prior_prices = measured_prices[:-1]
     anchor_price = prior_prices[-1] if prior_prices else None
-    observed_moves = [
+    # Entry timing must be anchored to evidence that existed before the
+    # current quote. Including the latest jump in the chase allowance makes
+    # the chase limit move upward with the price and defeats the guard.
+    historical_moves = [
         abs(math.log(current / previous))
-        for previous, current in zip(measured_prices, measured_prices[1:])
+        for previous, current in zip(prior_prices, prior_prices[1:])
         if previous > 0 and current > 0
     ]
-    observed_move = max(observed_moves, default=0.0)
+    observed_move = max(historical_moves, default=0.0)
+    latest_move = (
+        abs(math.log(current_price / anchor_price))
+        if current_price is not None and anchor_price is not None
+        else 0.0
+    )
     edge_move = _positive(effective_edge)
     entry_timing = {
         "entry_zone_low": None,
@@ -1511,7 +1519,6 @@ def calculate_paper_position_size(
         "COST_UNCERTAINTY_UNOBSERVED",
         "LP_WITHDRAWAL_PROTECTION_UNVERIFIED",
         "EMPIRICAL_RISK_DISTANCE_UNKNOWN",
-        "NET_EDGE_NOT_POSITIVE",
         "RETURN_RISK_UNOBSERVABLE",
     }
     hot_observation_bootstrap = (
@@ -1526,13 +1533,17 @@ def calculate_paper_position_size(
         and safe_quote_reserve is not None
         and current_price is not None
         and anchor_price is not None
-        and observed_move > 0
+        and latest_move > 0
+        and timing_ready
+        and vur_kac_ready
+        and effective_edge is not None
+        and effective_edge > 0
         and bool(blockers)
         and set(blockers).issubset(hot_observation_soft_blockers)
     )
 
     if hot_observation_bootstrap:
-        observation_fraction = min(1.0, observed_move)
+        observation_fraction = min(1.0, latest_move)
         observation_amount = max(
             0.0,
             min(
@@ -1594,7 +1605,9 @@ def calculate_paper_position_size(
                 ),
                 **entry_timing,
             }
-            result["immediate_entry_allowed"] = True
+            result["immediate_entry_allowed"] = (
+                timing_ready and vur_kac_ready
+            )
             return result
 
     if blockers:

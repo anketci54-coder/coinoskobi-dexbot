@@ -167,3 +167,40 @@ def test_wss_cannot_verify_itself_without_http():
     rpc.fail = True
     result = PriceIntegrityGate(rpc).evaluate(position(), evidence(source='pancakeswap_v2_sync', block_hash=HASH, block_number=123))
     assert result['state'] == 'PRICE_UNVERIFIED'
+
+
+@pytest.mark.parametrize("trade_type", ["NORMAL", "VUR_KAC"])
+def test_price_conflict_cannot_reach_any_paper_strategy_or_mutate_pnl(trade_type):
+    """A conflicting market price is observation-only: no close, PnL, or extrema mutation."""
+    rpc = V2RPC(1)
+    gate = PriceIntegrityGate(rpc)
+    pos = position()
+    pos["mathematical_plan_json"] = json.dumps({
+        "contract": "mathematical_trade_plan",
+        "trade_type": trade_type,
+    })
+    gate.accept(gate.evaluate(pos, evidence(1)))
+
+    rpc.price = Decimal("1")
+    before = copy.deepcopy(pos)
+    manager = PaperManager.__new__(PaperManager)
+    manager.price_integrity = gate
+    manager.price = SimpleNamespace(
+        get_observation=lambda _: evidence("1.100001")
+    )
+    manager._process_normal_math_position = (
+        lambda *args: pytest.fail("NORMAL strategy mutation reached")
+    )
+    manager._process_vur_kac_position = (
+        lambda *args: pytest.fail("VUR_KAC strategy mutation reached")
+    )
+    manager._process_legacy_position = (
+        lambda *args: pytest.fail("legacy strategy mutation reached")
+    )
+
+    result = manager._process_position(pos)
+
+    assert result["state"] == "PRICE_CONFLICT"
+    assert result["reason"] == "ONCHAIN_PRICE_DISAGREEMENT"
+    assert pos == before
+    assert gate.accepted

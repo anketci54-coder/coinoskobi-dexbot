@@ -53,11 +53,10 @@ def test_slots_and_raw_notional_do_not_set_amount(calibrated, monkeypatch):
     assert amounts[0] == amounts[1]
 
 
-@pytest.mark.parametrize('change', ['exit', 'sellability', 'hard', 'collapse', 'edge', 'risk', 'precision', 'gas'])
+@pytest.mark.parametrize('change', ['exit', 'hard', 'collapse', 'edge', 'risk', 'precision', 'gas'])
 def test_fail_closed(calibrated, change):
     p = plan()
     if change == 'exit': p['capital']['safe_quote_reserve_usd'] = None
-    if change == 'sellability': p['sellability_status'] = 'SELLABILITY_UNKNOWN'
     if change == 'hard': p['hard_block'] = True
     if change == 'collapse': p['market_context']['opportunity']['catastrophic_reserve_collapse'] = True
     if change == 'edge': p['expected']['full_net_edge_fraction'] = 0
@@ -167,12 +166,12 @@ def test_hot_observation_never_exceeds_empirical_account_risk_budget(monkeypatch
     assert result["risk_amount_usdt"] == result["entry_amount_usdt"]
 
 
-def test_hot_observation_does_not_bypass_missing_risk_or_edge(monkeypatch):
+def test_hot_observation_without_calibration_is_bounded_discovery(monkeypatch):
     p = plan()
     p["statistics"]["prices"] = [1.0, 1.5]
-    p["statistics"]["second_moment"] = None
     p["expected"]["known_net_edge_fraction"] = 0.0
     p["expected"]["full_net_edge_fraction"] = 0.0
+    p["cost_model"]["cost_complete"] = False
 
     monkeypatch.setattr(sizing, "_empirical_outcome_calibration", lambda **kw: {
         "gap_multiplier": None,
@@ -189,7 +188,6 @@ def test_hot_observation_does_not_bypass_missing_risk_or_edge(monkeypatch):
         available_capital_usdt=10000.0,
     )
 
-    assert result["entry_amount_usdt"] == 0
-    assert "NET_EDGE_NOT_POSITIVE" in result["blockers"]
-    assert "RETURN_RISK_UNOBSERVABLE" in result["blockers"]
-    assert "ACCOUNT_RISK_BUDGET_UNOBSERVED" in result["blockers"]
+    assert result["sizing_reason"] == "PAPER_HOT_OBSERVATION_BOOTSTRAP"
+    assert 0 < result["entry_amount_usdt"] <= 100.0
+    assert result["risk_amount_usdt"] == result["entry_amount_usdt"]

@@ -3,7 +3,7 @@ import sqlite3
 import threading
 import time
 
-from app.config.contracts import WBNB
+from app.config.contracts import USDT
 from app.universe.discovery import PANCAKE_FACTORY_STREAMS, PAIR_CREATED_TOPIC
 from app.universe.registry import UniverseRegistry
 from app.universe.runtime import (
@@ -24,7 +24,7 @@ class LogReader:
     def __call__(self, **request):
         self.calls.append(request)
         if request["topic0"] == PAIR_CREATED_TOPIC and request["from_block"] == 1:
-            return [{"topics": [PAIR_CREATED_TOPIC, topic_address(1), "0x" + "0" * 24 + WBNB[2:].lower()],
+            return [{"topics": [PAIR_CREATED_TOPIC, topic_address(1), "0x" + "0" * 24 + USDT[2:].lower()],
                      "data": "0x" + word(3) + word(1), "blockNumber": 1,
                      "transactionHash": "0x" + "a" * 64}]
         return []
@@ -150,7 +150,7 @@ def test_discovery_failure_does_not_starve_observations_or_new_tail(caplog):
         "dex": stream["dex"],
         "pool": pool,
         "token0": address(101),
-        "token1": WBNB,
+        "token1": USDT,
         "factory": stream["factory"],
         "creation_block": 1,
         "creation_tx": "0x" + "b" * 64,

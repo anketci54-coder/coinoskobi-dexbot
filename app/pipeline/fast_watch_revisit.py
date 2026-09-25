@@ -1018,9 +1018,14 @@ class FastWatchRevisitJob:
 
         return selected
 
-    def _analysis_pair(self, token):
+    def _analysis_pair(self, token, row=None):
         try:
-            result = pair_module.analyze(token)
+            if row and row.get("pool"):
+                result = pair_module.analyze_candidate(
+                    token, row["pool"], row.get("quote_token"), row.get("dex"),
+                )
+            else:
+                result = pair_module.analyze(token)
         except Exception:
             return None
 
@@ -1041,7 +1046,7 @@ class FastWatchRevisitJob:
         except Exception:
             return False
 
-        pair = self._analysis_pair(token)
+        pair = self._analysis_pair(token, row)
         if pair is None:
             return False
 

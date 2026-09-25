@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 
 import pytest
 
-from app.config.contracts import WBNB
+from app.config.contracts import USDT
 from app.universe.discovery import PAIR_CREATED_TOPIC
 from app.universe.registry import UniverseRegistry
 from app.universe.runtime import FullUniverseObservationRuntime
@@ -28,7 +28,7 @@ class LogReader:
                 "topics": [
                     PAIR_CREATED_TOPIC,
                     topic_address(1),
-                    "0x" + "0" * 24 + WBNB[2:].lower(),
+                    "0x" + "0" * 24 + USDT[2:].lower(),
                 ],
                 "data": "0x" + word(3) + word(1),
                 "blockNumber": 1,

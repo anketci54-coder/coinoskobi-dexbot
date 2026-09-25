@@ -679,13 +679,13 @@ def test_missing_fresh_snapshot_provider_fails_closed():
     assert pipeline.runs == []
 
 
-def test_local_evidence_refresh_uses_analysis_pair_and_cas(monkeypatch):
+def test_local_evidence_refresh_uses_verified_candidate_pair_and_cas(monkeypatch):
     class Cache:
         def __init__(self):
             self.replaced = []
 
         def get_versioned(self, namespace, cache_key, ttl_seconds):
-            assert cache_key.endswith(ANALYSIS_PAIR.lower())
+            assert cache_key.endswith(POOL.lower())
             return {
                 "payload": json.dumps({
                     "success": True,
@@ -727,12 +727,12 @@ def test_local_evidence_refresh_uses_analysis_pair_and_cas(monkeypatch):
     )
     monkeypatch.setattr(
         module.pair_module,
-        "analyze",
-        lambda token: {
+        "analyze_candidate",
+        lambda token, pool, quote, dex: {
             "success": True,
             "data": {
                 "exists": True,
-                "pair": ANALYSIS_PAIR,
+                "pair": POOL,
             },
         },
     )
@@ -741,6 +741,8 @@ def test_local_evidence_refresh_uses_analysis_pair_and_cas(monkeypatch):
     assert job._refresh_local_sellability_evidence({
         "token": TOKEN,
         "pool": POOL,
+        "quote_token": QUOTE,
+        "dex": "pancakeswap_v2",
     }) is True
 
     assert len(cache.replaced) == 1

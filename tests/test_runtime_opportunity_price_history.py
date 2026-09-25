@@ -97,6 +97,16 @@ def test_same_block_is_not_double_counted_but_next_block_is_observed():
     assert next_block == [1.0, 1.1]
 
 
+def test_delayed_block_cannot_rewind_history_or_manufacture_momentum():
+    _reset_runtime_history()
+    observe = exit_module._runtime_pair_price_series
+    observe(TOKEN, PAIR, [1.0], observation_block=100)
+    observe(TOKEN, PAIR, [1.1], observation_block=102)
+    assert observe(TOKEN, PAIR, [0.5], observation_block=101) == [1.0, 1.1]
+    assert observe(TOKEN, PAIR, [1.1], observation_block=102) == [1.0, 1.1]
+    assert observe(TOKEN, PAIR, [1.2], observation_block=103) == [1.0, 1.1, 1.2]
+
+
 def test_runtime_pair_history_overrides_stale_block_momentum_for_opportunity():
     result = _evaluate(
         runtime_prices=[1.0, 1.01, 1.02],

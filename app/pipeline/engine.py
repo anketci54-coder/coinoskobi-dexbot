@@ -7,6 +7,7 @@ import threading
 
 from app.analyzer.token import analyze as token_analyze
 from app.analyzer.pair import analyze as pair_analyze
+from app.analyzer.pair import analyze_candidate as candidate_pair_analyze
 from app.risk.bytecode import analyze as risk_analyze
 from app.risk.gate import RiskGate
 from app.risk.sellability import analyze as sellability_analyze
@@ -540,78 +541,17 @@ def _runtime_math_evidence(
         history_key,
         [],
     )
-    durable = []
-
-    # Hydrate only pair-block observations from the canonical market cache.
-    # Scanner history has explicit pair identity and provenance; stale rows
-    # and other source families cannot seed this return series.
-    if source_key == "PAIR_BLOCK_HISTORY":
-        now = datetime.now(timezone.utc)
-        for row in durable_pair_history or ():
-            if not isinstance(row, dict):
-                continue
-            if (str(row.get("pool") or "").strip().lower() != pool_key
-                    or str(row.get("token") or "").strip().lower() != token_key):
-                continue
-            try:
-                observed_at = datetime.fromisoformat(
-                    str(row.get("observed_at") or "").replace("Z", "+00:00")
-                )
-                if observed_at.tzinfo is None:
-                    continue
-                age = now - observed_at.astimezone(timezone.utc)
-            except (TypeError, ValueError):
-                continue
-            value = _runtime_positive_number(row.get("price_usd"))
-            if value is not None and timedelta(0) <= age <= timedelta(minutes=30):
-                durable.append((observed_at, value))
-        durable.sort(key=lambda item: item[0])
-        durable_prices = [value for _, value in durable[-64:]]
-        if not history:
-            history.extend(durable_prices)
-        elif (len(durable_prices) > len(history)
-              and durable_prices[:len(history)] == history):
-            history.extend(durable_prices[len(history):])
-        elif durable_prices and durable_prices[-1] != history[-1]:
-            history.append(durable_prices[-1])
-        if (history and current_price is not None
-                and math.isclose(history[-1], current_price, rel_tol=1e-12)):
-            durable_current_included = True
-        else:
-            durable_current_included = False
-    else:
-        durable_current_included = False
-
-    # Seed once from the real upstream series. The latest upstream
-    # sample already belongs to this observation cycle, so do not
-    # append current_price again in the same cycle.
-    if source_key == "PAIR_RUNTIME_ONCHAIN":
-        # The exit-feasibility producer already owns the bounded, block-aware
-        # runtime history. Resampling its last price loses intervening samples
-        # and invents zero returns on cached/same-block revisits. Consume the
-        # same snapshot as opportunity classification, including resets.
+    # Both pair sources are complete producer-owned snapshots. Provider/cache
+    # rows are not onchain block history, even when the pool identity matches.
+    # Replacing the snapshot also propagates resets and prevents stale plans.
+    if source_key in {"PAIR_RUNTIME_ONCHAIN", "PAIR_BLOCK_HISTORY"}:
         history[:] = upstream_observations
-
     elif not history and upstream_observations:
         history.extend(upstream_observations)
-
-    elif history and not durable_current_included and source_key != "PAIR_BLOCK_HISTORY":
-        # Keep one measured price per later runtime cycle. Prefer the
-        # same onchain/upstream source family when it is available;
-        # fall back to the cache price only when upstream is absent.
-        cycle_price = (
-            upstream_observations[-1]
-            if upstream_observations
-            else current_price
-        )
-
-        # Equal prices are intentionally retained across distinct
-        # runtime cycles because a zero return is a real observation.
+    else:
+        cycle_price = upstream_observations[-1] if upstream_observations else current_price
         if cycle_price is not None:
             history.append(cycle_price)
-    elif (current_price is not None and not durable_current_included
-          and source_key != "PAIR_BLOCK_HISTORY"):
-        history.append(current_price)
 
     if len(history) > 64:
         del history[:-64]
@@ -1970,7 +1910,15 @@ class PipelineEngine:
         token_result = token_analyze(token_address)
         self._raise_if_stopping()
 
-        pair_result = pair_analyze(token_address)
+        if market_context.get("candidate_pool"):
+            pair_result = candidate_pair_analyze(
+                token_address,
+                market_context["candidate_pool"],
+                market_context.get("candidate_quote_token"),
+                market_context.get("candidate_dex"),
+            )
+        else:
+            pair_result = pair_analyze(token_address)
         self._raise_if_stopping()
 
         risk_result = risk_analyze(token_address)
@@ -2382,16 +2330,6 @@ class PipelineEngine:
                             price
                         )
 
-                    durable_pair_history = []
-                    if plan_price_series_source == "PAIR_BLOCK_HISTORY":
-                        try:
-                            durable_pair_history = self.cache.history_for_pool(
-                                market_context.get("candidate_pool"),
-                                limit=64,
-                            )
-                        except Exception:
-                            durable_pair_history = []
-
                     runtime_math_evidence = (
                         _runtime_math_evidence(
                             token_address=token_address,
@@ -2419,7 +2357,6 @@ class PipelineEngine:
                             sellability_data=(
                                 sellability_data
                             ),
-                            durable_pair_history=durable_pair_history,
                         )
                     )
 

@@ -157,14 +157,19 @@ def _runtime_pair_price_series(
         # then append one latest pair price per later distinct runtime cycle.
         if not history:
             history.append(observations[-1])
-        elif block_id is None or block_id != last_block:
+        elif block_id is None or last_block is None or block_id > last_block:
             history.append(observations[-1])
 
         if len(history) > _RUNTIME_PAIR_PRICE_HISTORY_MAX_OBSERVATIONS:
             del history[:-_RUNTIME_PAIR_PRICE_HISTORY_MAX_OBSERVATIONS]
 
         _RUNTIME_PAIR_PRICE_HISTORY[key] = history
-        _RUNTIME_PAIR_PRICE_LAST_BLOCK[key] = block_id
+        # Delayed RPC completions must not rewind the deduplication watermark.
+        _RUNTIME_PAIR_PRICE_LAST_BLOCK[key] = (
+            max(last_block, block_id)
+            if last_block is not None and block_id is not None
+            else last_block if block_id is None else block_id
+        )
 
         while (
             len(_RUNTIME_PAIR_PRICE_HISTORY)
@@ -233,10 +238,6 @@ def analyze(token, pair):
             )
         )
 
-        wbnb = Web3.to_checksum_address(
-            WBNB
-        )
-
         contract = w3.eth.contract(
             address=pair_address,
             abi=PAIR_ABI,
@@ -250,16 +251,14 @@ def analyze(token, pair):
             contract.functions.token1().call()
         )
 
-        if {
-            token0.lower(),
-            token1.lower(),
-        } != {
-            token_address.lower(),
-            wbnb.lower(),
-        }:
-            raise ValueError(
-                "pair is not token/WBNB"
-            )
+        if token0.lower() == token_address.lower():
+            quote = token1
+        elif token1.lower() == token_address.lower():
+            quote = token0
+        else:
+            raise ValueError("token is not a member of pair")
+        if quote.lower() not in {WBNB.lower(), USDT.lower()} or quote == token_address:
+            raise ValueError("pair quote is not WBNB or USDT")
 
         token_contract = w3.eth.contract(
             address=token_address,
@@ -271,6 +270,12 @@ def analyze(token, pair):
             .decimals()
             .call()
         )
+        quote_decimals = (
+            18 if quote.lower() == WBNB.lower() else
+            w3.eth.contract(address=quote, abi=ERC20_ABI).functions.decimals().call()
+        )
+        if type(quote_decimals) is not int or not 0 <= quote_decimals <= 255 or not 0 <= decimals <= 255:
+            raise ValueError("invalid asset decimals")
 
         router = w3.eth.contract(
             address=Web3.to_checksum_address(
@@ -285,6 +290,9 @@ def analyze(token, pair):
         ) = _wbnb_usd(
             router
         )
+        # USDT=USD is the PAPER policy; WBNB conversion is still needed
+        # independently for gas costs, never for USDT reserves or prices.
+        quote_usd = 1.0 if quote.lower() == USDT.lower() else wbnb_usd
 
         latest_block = int(
             w3.eth.block_number
@@ -321,44 +329,44 @@ def analyze(token, pair):
                 == token_address.lower()
             ):
                 token_raw = reserve0
-                wbnb_raw = reserve1
+                quote_raw = reserve1
 
             else:
                 token_raw = reserve1
-                wbnb_raw = reserve0
+                quote_raw = reserve0
 
             token_reserve = (
                 int(token_raw)
                 / (10 ** decimals)
             )
 
-            wbnb_reserve = (
-                int(wbnb_raw)
-                / 1e18
+            quote_reserve = (
+                int(quote_raw)
+                / (10 ** quote_decimals)
             )
 
             if (
                 token_reserve <= 0
-                or wbnb_reserve <= 0
+                or quote_reserve <= 0
             ):
                 continue
 
-            token_price_wbnb = (
-                wbnb_reserve
+            token_price_quote = (
+                quote_reserve
                 / token_reserve
             )
 
             token_price_usd = (
-                token_price_wbnb
-                * wbnb_usd
-                if wbnb_usd is not None
+                token_price_quote
+                * quote_usd
+                if quote_usd is not None
                 else None
             )
 
             samples.append({
                 "block": block,
                 "token_reserve": token_reserve,
-                "wbnb_reserve": wbnb_reserve,
+                "quote_reserve": quote_reserve,
                 "token_price_usd": token_price_usd,
             })
 
@@ -367,13 +375,15 @@ def analyze(token, pair):
             if samples
             else None
         )
+        if current is None or current["block"] != latest_block:
+            raise ValueError("current block reserves unavailable")
 
         quote_reserve_usd = (
-            current["wbnb_reserve"]
-            * wbnb_usd
+            current["quote_reserve"]
+            * quote_usd
             if (
                 current
-                and wbnb_usd is not None
+                and quote_usd is not None
             )
             else None
         )
@@ -385,9 +395,9 @@ def analyze(token, pair):
         )
 
         observed_quote_reserves_usd = [
-            row["wbnb_reserve"] * wbnb_usd
+            row["quote_reserve"] * quote_usd
             for row in samples
-            if wbnb_usd is not None
+            if quote_usd is not None
         ]
 
         observed_min_quote_reserve_usd = (
@@ -413,7 +423,7 @@ def analyze(token, pair):
             )
 
         route_friction = None
-        route_quote_out_wbnb = None
+        route_quote_out = None
         implied_fee = {
             "state": "UNKNOWN",
             "fee_fraction": None,
@@ -427,38 +437,38 @@ def analyze(token, pair):
                     router.functions
                     .getAmountsOut(
                         one_token_raw,
-                        [token_address, wbnb],
+                        [token_address, quote],
                     )
                     .call()
                 )
 
-                route_quote_out_wbnb = (
-                    int(amounts[-1]) / 1e18
+                route_quote_out = (
+                    int(amounts[-1]) / (10 ** quote_decimals)
                 )
 
-                spot_out_wbnb = (
-                    current["wbnb_reserve"]
+                spot_out_quote = (
+                    current["quote_reserve"]
                     / current["token_reserve"]
                 )
 
-                if spot_out_wbnb > 0:
+                if spot_out_quote > 0:
                     route_friction = max(
                         0.0,
                         min(
                             1.0,
                             (
                                 1.0
-                                - route_quote_out_wbnb
-                                / spot_out_wbnb
+                                - route_quote_out
+                                / spot_out_quote
                             ),
                         ),
                     )
 
                 implied_fee = infer_constant_product_fee(
                     reserve_in=current["token_reserve"],
-                    reserve_out=current["wbnb_reserve"],
+                    reserve_out=current["quote_reserve"],
                     amount_in=1.0,
-                    amount_out=route_quote_out_wbnb,
+                    amount_out=route_quote_out,
                 )
 
             except Exception:
@@ -486,30 +496,30 @@ def analyze(token, pair):
 
         if (
             len(samples) >= 2
-            and samples[0]["wbnb_reserve"] > 0
+            and samples[0]["quote_reserve"] > 0
         ):
             reserve_change = (
-                samples[-1]["wbnb_reserve"]
-                / samples[0]["wbnb_reserve"]
+                samples[-1]["quote_reserve"]
+                / samples[0]["quote_reserve"]
                 - 1.0
             )
 
         if (
             len(samples) >= 2
-            and samples[-2]["wbnb_reserve"] > 0
+            and samples[-2]["quote_reserve"] > 0
         ):
             latest_reserve_change = (
-                samples[-1]["wbnb_reserve"]
-                / samples[-2]["wbnb_reserve"]
+                samples[-1]["quote_reserve"]
+                / samples[-2]["quote_reserve"]
                 - 1.0
             )
 
             reserve_collapse = classify_reserve_collapse(
                 previous_quote_reserve=(
-                    samples[-2]["wbnb_reserve"]
+                    samples[-2]["quote_reserve"]
                 ),
                 current_quote_reserve=(
-                    samples[-1]["wbnb_reserve"]
+                    samples[-1]["quote_reserve"]
                 ),
             )
 
@@ -521,6 +531,9 @@ def analyze(token, pair):
                 "pair": pair_address,
                 "pair_membership_ok": True,
                 "token_decimals": decimals,
+                "quote_token": quote,
+                "quote_decimals": quote_decimals,
+                "quote_usd_estimate": quote_usd,
                 "wbnb_usd_estimate": wbnb_usd,
                 "stable_quote_token": stable_quote,
                 "quote_reserve_usd": quote_reserve_usd,
@@ -555,8 +568,9 @@ def analyze(token, pair):
                 "runtime_spot_price_series_usd": runtime_price_series,
                 "runtime_price_observation_count": len(runtime_price_series),
                 "runtime_price_latest_block": latest_block,
+                "route_quote_one_token_quote": route_quote_out,
                 "route_quote_one_token_wbnb": (
-                    route_quote_out_wbnb
+                    route_quote_out if quote.lower() == WBNB.lower() else None
                 ),
                 "route_friction_fraction": route_friction,
                 "implied_v2_fee_fraction": (

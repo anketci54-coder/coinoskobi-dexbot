@@ -430,7 +430,7 @@ def test_runtime_math_history_separates_block_and_runtime_pair_sources():
         engine_module._RUNTIME_PRICE_HISTORY.clear()
 
 
-def test_runtime_math_history_hydrates_fresh_pair_rows_only():
+def test_runtime_math_history_never_relabels_provider_rows_as_block_history():
     from datetime import datetime, timedelta, timezone
     from app.pipeline import engine as engine_module
 
@@ -457,7 +457,7 @@ def test_runtime_math_history_hydrates_fresh_pair_rows_only():
         result = engine_module._runtime_math_evidence(
             **common, durable_pair_history=rows,
         )
-        assert result["price_series"] == [1.0, 1.1]
+        assert result["price_series"] == []
 
         newer = {"token": "0xtoken", "pool": "0xpool", "price_usd": 1.2,
                  "observed_at": now.isoformat()}
@@ -465,7 +465,7 @@ def test_runtime_math_history_hydrates_fresh_pair_rows_only():
             **{**common, "price": 1.2},
             durable_pair_history=rows + [newer],
         )
-        assert advanced["price_series"] == [1.0, 1.1, 1.2]
+        assert advanced["price_series"] == []
 
         repeated = engine_module._runtime_math_evidence(
             **{**common, "price": 1.2},
@@ -480,7 +480,7 @@ def test_runtime_math_history_hydrates_fresh_pair_rows_only():
         assert cache["price_series"] == [5.0]
         assert engine_module._RUNTIME_PRICE_HISTORY[
             ("0xtoken", "0xpool", "PAIR_BLOCK_HISTORY")
-        ] == [1.0, 1.1, 1.2]
+        ] == []
         assert engine_module._RUNTIME_PRICE_HISTORY[
             ("0xtoken", "0xpool", "TOKEN_CACHE")
         ] == [5.0]

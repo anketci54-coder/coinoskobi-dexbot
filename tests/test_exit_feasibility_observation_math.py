@@ -1,4 +1,5 @@
 import app.risk.exit_feasibility as module
+import pytest
 
 
 TOKEN = "0x1111111111111111111111111111111111111111"
@@ -118,3 +119,65 @@ def test_exit_feasibility_exposes_measured_reserve_floor_and_fee(
 
     assert data["trade_authority"] is False
     assert data["execution_authority"] is False
+
+
+@pytest.mark.parametrize("reverse", [False, True])
+@pytest.mark.parametrize("decimals", [(18, 6), (6, 18)])
+def test_usdt_exit_evidence_uses_pair_orientation_and_quote_decimals(monkeypatch, reverse, decimals):
+    token_decimals, quote_decimals = decimals
+    class Pair(PairFunctions):
+        def token0(self):
+            return Call(lambda: module.USDT if reverse else TOKEN)
+        def token1(self):
+            return Call(lambda: TOKEN if reverse else module.USDT)
+        def getReserves(self):
+            reserves = (1000 * 10**token_decimals, 2000 * 10**quote_decimals)
+            return Call(lambda **kw: (*(reserves[::-1] if reverse else reserves), 0))
+    class Asset:
+        def __init__(self, decimals):
+            self.value = decimals
+        def decimals(self):
+            return Call(lambda: self.value)
+    class Router:
+        def getAmountsOut(self, amount, path):
+            if path[0].lower() == module.WBNB.lower():
+                return Call(lambda: [amount, 600 * 10**18])
+            assert path[-1].lower() == module.USDT.lower()
+            return Call(lambda: [amount, int(2000 * .9975 / (1000 + .9975) * 10**quote_decimals)])
+    class StableEth(Eth):
+        def contract(self, address, abi):
+            functions = (Pair() if address.lower() == PAIR else
+                         Asset(token_decimals) if address.lower() == TOKEN else
+                         Asset(quote_decimals) if address.lower() == module.USDT.lower() else Router())
+            return Contract(functions)
+    monkeypatch.setattr(module, "w3", type("RPC", (), {"eth": StableEth()})())
+    monkeypatch.setattr(module, "RESERVE_HISTORY_BLOCK_OFFSETS", (10, 5, 0))
+    result = module.analyze(TOKEN, PAIR)
+    assert result["success"] is True, result["error"]
+    data = result["data"]
+    assert data["spot_price_series_usd"] == [2, 2, 2]
+    assert data["quote_reserve_usd"] == 2000
+    assert data["quote_token"].lower() == module.USDT.lower()
+    assert data["implied_v2_fee_fraction"] == pytest.approx(.0025, abs=1e-6)
+
+
+def test_missing_current_block_cannot_publish_old_price_as_fresh(monkeypatch):
+    class MissingLatest(PairFunctions):
+        def getReserves(self):
+            def read(**kw):
+                if kw.get("block_identifier") == 100:
+                    raise ConnectionError("latest unavailable")
+                return (1000 * 10**18, 20 * 10**18, 0)
+            return Call(read)
+    class MissingEth(Eth):
+        def contract(self, address, abi):
+            if address.lower() == PAIR:
+                return Contract(MissingLatest())
+            return super().contract(address, abi)
+    monkeypatch.setattr(module, "w3", type("RPC", (), {"eth": MissingEth()})())
+    monkeypatch.setattr(module, "RESERVE_HISTORY_BLOCK_OFFSETS", (10, 5, 0))
+    module._RUNTIME_PAIR_PRICE_HISTORY.clear()
+    result = module.analyze(TOKEN, PAIR)
+    assert result["data"]["evidence_complete"] is False
+    assert result["data"]["runtime_spot_price_series_usd"] == []
+    assert module._RUNTIME_PAIR_PRICE_HISTORY == {}

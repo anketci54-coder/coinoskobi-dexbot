@@ -1,4 +1,4 @@
-from app.config.contracts import USDT
+from app.config.contracts import USDT, WBNB
 from app.universe.schema import DEX_PANCAKESWAP_V2
 
 
@@ -23,6 +23,9 @@ class HotDeepPathRouter:
             return None
         token = token1 if token0_is_base else token0
         quote = token0 if token0_is_base else token1
+        # Preserve the quote-asset pair exclusion under USDT-only routing.
+        if token == WBNB.lower():
+            return None
         return {
             "chain": row["chain"], "dex": row["dex"],
             "pool": row["pool"], "token": token, "quote_token": quote,

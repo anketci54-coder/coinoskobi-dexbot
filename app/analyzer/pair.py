@@ -7,6 +7,7 @@ from app.cache.analyzer_cache import AnalyzerCache
 from app.config.contracts import PANCAKE_FACTORY, WBNB
 from app.config.scanner import PAIR_ANALYZER_CACHE_TTL_SECONDS
 from app.config.abis.factory_full import FACTORY_ABI
+from app.dex.pair_membership import verify_pair_membership
 
 
 _cache = AnalyzerCache()
@@ -17,6 +18,25 @@ factory = w3.eth.contract(
 )
 
 ZERO = "0x0000000000000000000000000000000000000000"
+
+
+def analyze_candidate(token, pool, quote_token, dex):
+    """Bind analysis to the discovered V2 pool, never a token's other pool."""
+    if str(dex or "").strip().lower().replace("-", "_") != "pancakeswap_v2":
+        proof = {"state": "UNSUPPORTED_DEX"}
+    else:
+        proof = verify_pair_membership(pool, token, quote_token)
+    verified = proof.get("state") == "VERIFIED"
+    return {
+        "success": verified,
+        "source": "pair",
+        "error": None if verified else proof.get("state"),
+        "data": {
+            "exists": True if verified else None,
+            "pair": proof.get("pair") if verified else None,
+            "quote_ok": True if verified else None,
+        },
+    }
 
 
 def analyze(token):

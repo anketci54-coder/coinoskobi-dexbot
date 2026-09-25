@@ -21,7 +21,7 @@ import importlib
 
 import app.paper.database as paper_database_module
 import app.pipeline.engine as pipeline_module
-from app.config.contracts import WBNB
+from app.config.contracts import USDT
 from app.dex.native_ingestion import SWAP_TOPIC
 from app.dex.transaction_origin import TransactionOriginResolver
 from app.paper.database import PaperDatabase
@@ -97,7 +97,7 @@ class CacheRows:
         return [{
             "pool": PAIR,
             "base_token": f"bsc_{TOKEN}",
-            "quote_token": f"bsc_{WBNB}",
+            "quote_token": f"bsc_{USDT}",
             "dex": "pancakeswap_v2",
             "liquidity": 100000,
             "volume_24h": 250000,
@@ -177,8 +177,8 @@ def _analysis_stubs(monkeypatch):
 
     monkeypatch.setattr(
         pipeline_module,
-        "pair_analyze",
-        lambda _: {
+        "candidate_pair_analyze",
+        lambda token, pool, quote, dex: {
             "success": True,
             "data": {
                 "exists": True,
@@ -210,6 +210,15 @@ def _analysis_stubs(monkeypatch):
                 "sell_tax": 0.0,
                 "quote_reserve_usd": 50000.0,
                 "lp_locked_fraction": 1.0,
+                "local_evidence": {
+                    "exit_feasibility": {
+                        "pair": PAIR,
+                        "spot_price_series_usd": [0.80, 0.88, 1.00],
+                        "runtime_spot_price_series_usd": [0.80, 0.88, 1.00],
+                        "quote_reserve_usd": 50000.0,
+                        "latest_reserve_change_fraction": 0.0,
+                    },
+                },
             },
         },
     )

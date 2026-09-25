@@ -1,5 +1,6 @@
 import sqlite3
 
+from app.config.contracts import USDT
 from app.api.panel_display_names import enrich_universe_display_names
 from app.universe.display_metadata import persist_snapshot_display_metadata
 
@@ -16,12 +17,12 @@ def test_persist_snapshot_display_metadata_and_overlay_panel(tmp_path):
                 "dex": "pancakeswap_v2",
                 "pool": "0x0000000000000000000000000000000000000001",
                 "base_token": "0x0000000000000000000000000000000000000002",
-                "quote_token": "0x0000000000000000000000000000000000000003",
+                "quote_token": USDT,
                 "base_symbol": "ALPHA",
-                "quote_symbol": "WBNB",
+                "quote_symbol": "USDT",
                 "base_name": "Alpha Token",
-                "quote_name": "Wrapped BNB",
-                "display_name": "ALPHA / WBNB",
+                "quote_name": "Tether USD",
+                "display_name": "ALPHA / USDT",
                 "source": "dexscreener",
                 "observed_at": "2026-08-28T12:00:00+00:00",
             }
@@ -44,7 +45,7 @@ def test_persist_snapshot_display_metadata_and_overlay_panel(tmp_path):
 
     result = enrich_universe_display_names(payload, path)
 
-    assert result["rows"][0]["display_name"] == "ALPHA / WBNB"
+    assert result["rows"][0]["display_name"] == "ALPHA / USDT"
     assert result["rows"][0]["token0"].endswith("0002")
     assert result["display_name_matches"] == 1
     assert result["display_name_source"] == "UNIVERSE_POOL_DISPLAY_METADATA_V1"

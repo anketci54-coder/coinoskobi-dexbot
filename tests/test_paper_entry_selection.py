@@ -90,6 +90,39 @@ def test_upstream_reset_does_not_reuse_stale_profitable_history(history):
     assert plan(observe([1.06]))["paper_eligible"] is False
 
 
+def test_block_fallback_uses_current_snapshot_not_provider_history(history):
+    from datetime import datetime, timezone
+    common = dict(token_address="0xtoken", pool="0xpool", price=1.1,
+        price_series_source="PAIR_BLOCK_HISTORY", exit_evidence={}, lp_evidence={},
+        market_context={}, sellability_data={})
+    row = dict(token="0xtoken", pool="0xpool", price_usd=100,
+               source="dexscreener", observed_at=datetime.now(timezone.utc).isoformat())
+    first = engine._runtime_math_evidence(**common,
+        upstream_price_series=[1, 1.1], durable_pair_history=[row])
+    assert first["price_series"] == [1, 1.1]
+    second = engine._runtime_math_evidence(**common, upstream_price_series=[1.1, .9])
+    assert second["price_series"] == [1.1, .9]
+
+
+@pytest.mark.parametrize("source", ["PAIR_RUNTIME_ONCHAIN", "PAIR_BLOCK_HISTORY"])
+def test_pair_snapshot_revisits_resets_and_pools_remain_isolated(history, source):
+    common = dict(token_address="0xtoken", pool="0xpool", price=100,
+        price_series_source=source, exit_evidence={}, lp_evidence={},
+        market_context={}, sellability_data={})
+
+    def snapshot(prices, **overrides):
+        return engine._runtime_math_evidence(
+            **{**common, **overrides}, upstream_price_series=prices)["price_series"]
+
+    assert snapshot([1, 1.04, 1.06]) == [1, 1.04, 1.06]
+    assert snapshot([100], price_series_source="TOKEN_CACHE") == [100]
+    assert snapshot([8, 7], pool="0xotherpool") == [8, 7]
+    assert snapshot([1, 1.04, 1.06]) == [1, 1.04, 1.06]
+    assert snapshot([]) == []
+    assert snapshot([1.06]) == [1.06]
+    assert plan(snapshot([1.06]))["paper_eligible"] is False
+
+
 @pytest.mark.parametrize("overrides", [
     {"sellability_status": "SELLABILITY_UNKNOWN"},
     {"sellability_status": "SELLABILITY_FAIL"},

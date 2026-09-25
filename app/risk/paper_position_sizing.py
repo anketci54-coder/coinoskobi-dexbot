@@ -1511,6 +1511,7 @@ def calculate_paper_position_size(
         "COST_UNCERTAINTY_UNOBSERVED",
         "LP_WITHDRAWAL_PROTECTION_UNVERIFIED",
         "NET_EDGE_NOT_POSITIVE",
+        "RETURN_RISK_UNOBSERVABLE",
     }
     hot_observation_bootstrap = (
         opportunity.get("state") == "HOT"

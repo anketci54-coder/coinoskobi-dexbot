@@ -1498,6 +1498,102 @@ def calculate_paper_position_size(
             )
             return result
 
+    # PAPER-only HOT observation bootstrap. When the opportunity is HOT but
+    # durable outcome calibration is not ready yet, size from current free
+    # capital and the actually observed pair move instead of a stale/tiny raw
+    # notional. Explicit hard blocks, sellability failures, plan failures and
+    # missing exit capacity remain blocked. This path never grants live-trade
+    # authority.
+    hot_observation_soft_blockers = {
+        "GAP_RISK_UNOBSERVED",
+        "ACCOUNT_RISK_BUDGET_UNOBSERVED",
+        "COST_UNCERTAINTY_UNOBSERVED",
+        "LP_WITHDRAWAL_PROTECTION_UNVERIFIED",
+        "NET_EDGE_NOT_POSITIVE",
+    }
+    hot_observation_bootstrap = (
+        opportunity.get("state") == "HOT"
+        and plan.get("paper_eligible") is True
+        and not plan.get("hard_block")
+        and plan.get("sellability_status") in {
+            "SELLABILITY_OK",
+            "SELLABILITY_UNKNOWN",
+        }
+        and available > 0
+        and safe_quote_reserve is not None
+        and current_price is not None
+        and anchor_price is not None
+        and observed_move > 0
+        and bool(blockers)
+        and set(blockers).issubset(hot_observation_soft_blockers)
+    )
+
+    if hot_observation_bootstrap:
+        observation_fraction = min(1.0, observed_move)
+        observation_amount = max(
+            0.0,
+            min(
+                available * observation_fraction,
+                available,
+                safe_quote_reserve,
+            ),
+        )
+
+        if (
+            observation_amount > 0.0
+            and accounting_quantum > 0.0
+            and observation_amount < accounting_quantum
+        ):
+            return blocked_amount([
+                "ENTRY_AMOUNT_BELOW_ACCOUNTING_PRECISION"
+            ])
+
+        if observation_amount > 0.0:
+            bound_plan = _bind_final_trade_plan(
+                plan,
+                observation_amount,
+                available,
+            )
+            result = {
+                "entry_amount_usdt": observation_amount,
+                "risk_amount_usdt": observation_amount,
+                "capital_before_usdt": available,
+                "capital_after_entry_usdt": max(
+                    0.0,
+                    available - observation_amount,
+                ),
+                "position_size_pct": (
+                    100.0 * observation_amount / available
+                    if available > 0
+                    else 0.0
+                ),
+                "sizing_reason": "PAPER_HOT_OBSERVATION_BOOTSTRAP",
+                "formula_authority": "DATA_DERIVED",
+                "magic_percentage_rule": False,
+                "sizing_model": "PAPER_HOT_OBSERVED_MOVE_V1",
+                "paper_hot_observation_bootstrap": True,
+                "observation_fraction": observation_fraction,
+                "capital_bound_usdt": available,
+                "blockers": [],
+                "bypassed_soft_blockers": sorted(blockers),
+                "raw_plan_amount_usdt": raw_amount,
+                "safe_quote_reserve_usd": safe_quote_reserve,
+                "known_net_edge_fraction": known_edge,
+                "full_net_edge_fraction": full_edge,
+                "effective_edge_fraction": effective_edge,
+                "canonical_token_amount": bound_plan["token_amount"],
+                "canonical_initial_sl": bound_plan["initial_sl"],
+                "canonical_initial_net_risk_usdt": (
+                    bound_plan["initial_net_risk_usdt"]
+                ),
+                "canonical_tp1_activation_price": (
+                    bound_plan["tp1_activation_price"]
+                ),
+                **entry_timing,
+            }
+            result["immediate_entry_allowed"] = True
+            return result
+
     if blockers:
         result = _zero_result(
             available=available,

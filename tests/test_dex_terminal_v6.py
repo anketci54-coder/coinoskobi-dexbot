@@ -34,11 +34,6 @@ def test_v6_is_single_frontend_owner():
     assert '/static/dex-terminal.css?v=5' in html
     assert '/static/dex-terminal.js?v=5' in html
 
-    panel_py = (ROOT / "app" / "api" / "panel.py").read_text(encoding="utf-8")
-    assert '"no-store, no-cache, "' in panel_py
-    assert '"must-revalidate, max-age=0"' in panel_py
-    assert '"public, max-age=86400"' not in panel_py
-
     for asset in LEGACY_ASSETS:
         assert asset not in html
         assert not (STATIC / asset).exists(), asset

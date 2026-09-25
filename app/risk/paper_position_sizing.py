@@ -1512,7 +1512,10 @@ def calculate_paper_position_size(
     # total notional loss, so the account-risk budget is also the notional cap.
     hot_observation_soft_blockers = {
         "GAP_RISK_UNOBSERVED",
+        "ACCOUNT_RISK_BUDGET_UNOBSERVED",
+        "COST_UNCERTAINTY_UNOBSERVED",
         "LP_WITHDRAWAL_PROTECTION_UNVERIFIED",
+        "NET_EDGE_NOT_POSITIVE",
     }
     hot_observation_bootstrap = (
         opportunity.get("state") == "HOT"
@@ -1533,14 +1536,23 @@ def calculate_paper_position_size(
 
     if hot_observation_bootstrap:
         observation_fraction = min(1.0, observed_move)
+        # HOT observation is deliberately allowed before durable edge/cost
+        # calibration exists, but it must remain a bounded discovery position.
+        # Prefer the empirical account-risk budget when it exists; otherwise
+        # cap the observation at one percent of currently available PAPER
+        # capital.  Never let the raw plan amount or slot count set this size.
+        observation_risk_cap = (
+            account_risk_budget
+            if account_risk_budget is not None
+            else available * 0.01
+        )
         observation_amount = max(
             0.0,
             min(
                 available * observation_fraction,
                 available,
                 safe_quote_reserve,
-                liquidity_edge_cap,
-                account_risk_budget,
+                observation_risk_cap,
             ),
         )
 

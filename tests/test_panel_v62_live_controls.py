@@ -83,3 +83,4 @@ def test_panel_static_assets_are_not_stale_cacheable():
     assert '"no-store, no-cache, "' in static_branch
     assert '"must-revalidate, max-age=0"' in static_branch
     assert '"public, max-age=86400"' not in static_branch
+

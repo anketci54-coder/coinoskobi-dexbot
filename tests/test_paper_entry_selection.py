@@ -146,6 +146,31 @@ def test_sellability_unknown_allowed_for_paper_observation(history):
     assert "SELLABILITY_NOT_OK" not in sized.get("blockers", [])
 
 
+def test_hot_observation_uses_latest_price_transition(history, monkeypatch):
+    monkeypatch.setattr(
+        "app.risk.paper_position_sizing._empirical_outcome_calibration",
+        lambda **_: dict(
+            gap_multiplier=None,
+            cost_uncertainty_fraction=None,
+            account_risk_budget_fraction=None,
+            gap_samples=0,
+            cost_samples=0,
+            account_risk_samples=0,
+        ),
+    )
+    p = plan(observe([1.0, 1.0, 1.06]))
+    p["expected"]["known_net_edge_fraction"] = 0.0
+    p["expected"]["full_net_edge_fraction"] = None
+    p["cost_model"]["cost_complete"] = False
+    sized = calculate_paper_position_size(
+        mathematical_plan=p,
+        available_capital_usdt=10000.0,
+    )
+    assert sized["entry_amount_usdt"] > 0.0
+    assert sized["sizing_reason"] == "PAPER_HOT_OBSERVATION_BOOTSTRAP"
+    assert sized["observation_fraction"] > 0.0
+
+
 def test_hot_observation_bootstrap_sizes_from_available_balance(history, monkeypatch):
     monkeypatch.setattr(
         "app.risk.paper_position_sizing._empirical_outcome_calibration",

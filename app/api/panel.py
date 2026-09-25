@@ -1410,11 +1410,16 @@ async def panel_no_cache(
     elif request.url.path.startswith(
         "/static/"
     ):
+        # Static filenames are not content-hashed. Never allow an older
+        # panel bundle to survive a deployment and render on first load.
         response.headers[
             "Cache-Control"
         ] = (
-            "public, max-age=86400"
+            "no-store, no-cache, "
+            "must-revalidate, max-age=0"
         )
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
 
     return response
 

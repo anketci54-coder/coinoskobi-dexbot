@@ -144,6 +144,8 @@ def test_hot_observation_never_exceeds_empirical_account_risk_budget(monkeypatch
     p["capital"]["entry_amount_usdt"] = 9000.0
     p["statistics"]["prices"] = [1.0, 1.5]
     p["capital"]["liquidity_capacity_source"] = "EMPIRICAL_RESERVE_FLOOR"
+    p["capital"]["reserve_observation_count"] = 4
+    p["capital"]["observed_min_quote_reserve_usd"] = 1000000.0
     p["blockers"] = ["LP_WITHDRAWAL_PROTECTION_UNVERIFIED"]
 
     monkeypatch.setattr(sizing, "_empirical_outcome_calibration", lambda **kw: {

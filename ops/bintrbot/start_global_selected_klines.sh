@@ -275,10 +275,13 @@ async def discover_universe(session):
 
     matched_bases = {x["base_asset"] for x in candidates.values()}
     unmatched = sorted(
-        {"tr_symbol": s, "base_asset": b}
-        for b, s in tr_by_base.items()
-        if b not in matched_bases
-    , key=lambda x: x["tr_symbol"])
+        [
+            {"tr_symbol": s, "base_asset": b}
+            for b, s in tr_by_base.items()
+            if b not in matched_bases
+        ],
+        key=lambda x: x["tr_symbol"],
+    )
 
     obj = {
         "schema_version": 1,

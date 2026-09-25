@@ -138,3 +138,58 @@ def test_measured_risk_reduces_bootstrap_size(tmp_path, field, value):
     p['statistics'][field] = value
     after = sizing.calculate_paper_position_size(mathematical_plan=p, db_path=tmp_path / 'missing.db')
     assert 0 < after['entry_amount_usdt'] < before['entry_amount_usdt']
+
+
+def test_hot_observation_never_exceeds_empirical_account_risk_budget(monkeypatch):
+    p = plan()
+    p["capital"]["entry_amount_usdt"] = 9000.0
+    p["statistics"]["prices"] = [1.0, 1.5]
+    p["capital"]["liquidity_capacity_source"] = "EMPIRICAL_RESERVE_FLOOR"
+    p["blockers"] = ["LP_WITHDRAWAL_PROTECTION_UNVERIFIED"]
+
+    monkeypatch.setattr(sizing, "_empirical_outcome_calibration", lambda **kw: {
+        "gap_multiplier": None,
+        "account_risk_budget_fraction": .01,
+        "cost_uncertainty_fraction": .01,
+        "reason": "EMPIRICAL_OUTCOME_CALIBRATION",
+        "gap_samples": 0,
+        "cost_samples": 1,
+        "account_risk_samples": 1,
+    })
+
+    result = sizing.calculate_paper_position_size(
+        mathematical_plan=p,
+        available_capital_usdt=10000.0,
+    )
+
+    assert result["sizing_reason"] == "PAPER_HOT_OBSERVATION_BOOTSTRAP"
+    assert 0 < result["entry_amount_usdt"] <= 100.0
+    assert result["risk_amount_usdt"] == result["entry_amount_usdt"]
+
+
+def test_hot_observation_does_not_bypass_missing_risk_or_edge(monkeypatch):
+    p = plan()
+    p["statistics"]["prices"] = [1.0, 1.5]
+    p["statistics"]["second_moment"] = None
+    p["expected"]["known_net_edge_fraction"] = 0.0
+    p["expected"]["full_net_edge_fraction"] = 0.0
+
+    monkeypatch.setattr(sizing, "_empirical_outcome_calibration", lambda **kw: {
+        "gap_multiplier": None,
+        "account_risk_budget_fraction": None,
+        "cost_uncertainty_fraction": None,
+        "reason": "INSUFFICIENT_HISTORY",
+        "gap_samples": 0,
+        "cost_samples": 0,
+        "account_risk_samples": 0,
+    })
+
+    result = sizing.calculate_paper_position_size(
+        mathematical_plan=p,
+        available_capital_usdt=10000.0,
+    )
+
+    assert result["entry_amount_usdt"] == 0
+    assert "NET_EDGE_NOT_POSITIVE" in result["blockers"]
+    assert "RETURN_RISK_UNOBSERVABLE" in result["blockers"]
+    assert "ACCOUNT_RISK_BUDGET_UNOBSERVED" in result["blockers"]

@@ -1,24 +1,25 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT=/root/bintrbot
-PY="$ROOT/.venv/bin/python"
-PIP="$ROOT/.venv/bin/pip"
+TR_ROOT=/root/bintrbot
+ROOT=/root/binbot/global
+PY="$TR_ROOT/.venv/bin/python"
+PIP="$TR_ROOT/.venv/bin/pip"
 TS="$(date -u +%Y%m%dT%H%M%SZ)"
 
 test -x "$PY" || { echo "MISSING_VENV=$PY"; exit 2; }
-test -f "$ROOT/data/meta/symbols.json" || { echo "MISSING_TR_META"; exit 2; }
+test -f "$TR_ROOT/data/meta/symbols.json" || { echo "MISSING_TR_META"; exit 2; }
 
-mkdir -p   "$ROOT/binglobal/app"   "$ROOT/binglobal/state"   "$ROOT/binglobal/data/bronze/klines_1m"   "$ROOT/binglobal/data/meta"   /etc/systemd/system/bintrbot-binglobal-klines.service.d
+mkdir -p   "$ROOT/app"   "$ROOT/state"   "$ROOT/data/bronze/klines_1m"   "$ROOT/data/meta"   /etc/systemd/system/binbot-global-klines.service.d
 
 "$PY" - <<'PY' || "$PIP" install -q aiohttp pyarrow
 import aiohttp, pyarrow
 print("GLOBAL_DEPS=OK")
 PY
 
-APP="$ROOT/binglobal/app/backfill_binglobal_selected_klines.py"
+APP="$ROOT/app/backfill_global_selected_klines.py"
 if [ -f "$APP" ]; then
-  cp -a "$APP" "$ROOT/binglobal/state/backfill_binglobal_selected_klines.py.pre_$TS.bak"
+  cp -a "$APP" "$ROOT/state/backfill_global_selected_klines.py.pre_$TS.bak"
 fi
 
 cat > "$APP" <<'PY'
@@ -37,11 +38,12 @@ import aiohttp
 import pyarrow as pa
 import pyarrow.parquet as pq
 
-ROOT = Path("/root/bintrbot")
-TR_META = ROOT / "data/meta/symbols.json"
-OUT = ROOT / "binglobal/data/bronze/klines_1m"
-META_OUT = ROOT / "binglobal/data/meta/selected_spot_usdt.json"
-STATE = ROOT / "binglobal/state/backfill_binglobal_selected_klines.json"
+ROOT = Path("/root/binbot/global")
+TR_ROOT = Path("/root/bintrbot")
+TR_META = TR_ROOT / "data/meta/symbols.json"
+OUT = ROOT / "data/bronze/klines_1m"
+META_OUT = ROOT / "data/meta/selected_spot_usdt.json"
+STATE = ROOT / "state/backfill_global_selected_klines.json"
 
 BASE = "https://data-api.binance.vision"
 EXCHANGE_INFO = BASE + "/api/v3/exchangeInfo"
@@ -457,16 +459,16 @@ async def main():
 asyncio.run(main())
 PY
 
-cat > /etc/systemd/system/bintrbot-binglobal-klines.service <<'UNIT'
+cat > /etc/systemd/system/binbot-global-klines.service <<'UNIT'
 [Unit]
-Description=BintrBot BINGLOBAL selected Spot USDT 1m historical kline backfill
+Description=BINBOT GLOBAL selected Spot USDT 1m historical kline backfill
 After=network-online.target bintrbot-collector.service
 Wants=network-online.target
 
 [Service]
 Type=simple
-WorkingDirectory=/root/bintrbot
-ExecStart=/root/bintrbot/.venv/bin/python /root/bintrbot/binglobal/app/backfill_binglobal_selected_klines.py
+WorkingDirectory=/root/binbot/global
+ExecStart=/root/bintrbot/.venv/bin/python /root/binbot/global/app/backfill_global_selected_klines.py
 Restart=no
 User=root
 Environment=PYTHONUNBUFFERED=1
@@ -478,15 +480,16 @@ CPUQuota=25%
 WantedBy=multi-user.target
 UNIT
 
-cat > "$ROOT/binglobal/app/binglobal_klines_guardian.py" <<'PY'
+cat > "$ROOT/app/global_klines_guardian.py" <<'PY'
 from __future__ import annotations
 import json, shutil, subprocess, time, os
 from pathlib import Path
 
-ROOT=Path("/root/bintrbot")
-OUT=ROOT/"binglobal/state/binglobal_klines_guardian.json"
-LIVE=ROOT/"data/quality/guardian.json"
-AGG=ROOT/"state/aggtrades_guardian.json"
+ROOT=Path("/root/binbot/global")
+TR_ROOT=Path("/root/bintrbot")
+OUT=ROOT/"state/global_klines_guardian.json"
+LIVE=TR_ROOT/"data/quality/guardian.json"
+AGG=TR_ROOT/"state/aggtrades_guardian.json"
 MIN_FREE=48*1024**3
 
 def load(p):
@@ -515,10 +518,10 @@ if live and (live.get("status")!="PASS" or live.get("data_fresh") is not True):
 if agg and agg.get("status") not in (None,"PASS"):
     reasons.append("TR_AGGTRADES_GUARDIAN_NOT_HEALTHY")
 
-glob_active=active("bintrbot-binglobal-klines.service")
+glob_active=active("binbot-global-klines.service")
 action="NONE"
 if reasons and glob_active:
-    subprocess.run(["systemctl","stop","bintrbot-binglobal-klines.service"],check=False)
+    subprocess.run(["systemctl","stop","binbot-global-klines.service"],check=False)
     action="GLOBAL_KLINES_STOPPED_FAIL_SAFE"
 
 atomic(OUT,{
@@ -529,52 +532,52 @@ atomic(OUT,{
     "action":action,
     "free_gib":round(free/1024**3,2),
     "tr_collector_active":active("bintrbot-collector.service"),
-    "global_klines_active_after_check":active("bintrbot-binglobal-klines.service"),
+    "global_klines_active_after_check":active("binbot-global-klines.service"),
 })
 print(json.dumps(json.loads(OUT.read_text()),ensure_ascii=False,indent=2))
 PY
 
-cat > /etc/systemd/system/bintrbot-binglobal-klines-guardian.service <<'UNIT'
+cat > /etc/systemd/system/binbot-global-klines-guardian.service <<'UNIT'
 [Unit]
-Description=BintrBot BINGLOBAL kline safety guardian
+Description=BINBOT GLOBAL kline safety guardian
 
 [Service]
 Type=oneshot
-WorkingDirectory=/root/bintrbot
-ExecStart=/root/bintrbot/.venv/bin/python /root/bintrbot/binglobal/app/binglobal_klines_guardian.py
+WorkingDirectory=/root/binbot/global
+ExecStart=/root/bintrbot/.venv/bin/python /root/binbot/global/app/global_klines_guardian.py
 User=root
 Nice=19
 IOSchedulingClass=idle
 UNIT
 
-cat > /etc/systemd/system/bintrbot-binglobal-klines-guardian.timer <<'UNIT'
+cat > /etc/systemd/system/binbot-global-klines-guardian.timer <<'UNIT'
 [Unit]
-Description=Check BintrBot BINGLOBAL kline safety every 5 minutes
+Description=Check BINBOT GLOBAL kline safety every 5 minutes
 
 [Timer]
 OnBootSec=2min
 OnUnitActiveSec=5min
 AccuracySec=30s
 Persistent=true
-Unit=bintrbot-binglobal-klines-guardian.service
+Unit=binbot-global-klines-guardian.service
 
 [Install]
 WantedBy=timers.target
 UNIT
 
-cat > "$ROOT/binglobal-status.sh" <<'SH'
+cat > "$ROOT/status.sh" <<'SH'
 #!/usr/bin/env bash
 set -u
-echo '========== BINGLOBAL KLINES =========='
-systemctl is-active bintrbot-binglobal-klines.service || true
+echo '========== BINBOT GLOBAL KLINES =========='
+systemctl is-active binbot-global-klines.service || true
 python3 - <<'PY'
 import json
 from pathlib import Path
 
 for f in [
- "/root/bintrbot/binglobal/data/meta/selected_spot_usdt.json",
- "/root/bintrbot/binglobal/state/backfill_binglobal_selected_klines.json",
- "/root/bintrbot/binglobal/state/binglobal_klines_guardian.json",
+ "/root/binbot/global/data/meta/selected_spot_usdt.json",
+ "/root/binbot/global/state/backfill_global_selected_klines.json",
+ "/root/binbot/global/state/global_klines_guardian.json",
 ]:
     p=Path(f)
     print("\n---",p.name,"---")
@@ -598,49 +601,49 @@ for f in [
         if running: print("CURRENT =",running[-1])
 PY
 echo
-echo '========== BINGLOBAL DATA =========='
-du -sh /root/bintrbot/binglobal/data 2>/dev/null || true
-find /root/bintrbot/binglobal/data/bronze/klines_1m -name '*.parquet' 2>/dev/null | wc -l
+echo '========== BINBOT GLOBAL DATA =========='
+du -sh /root/binbot/global/data 2>/dev/null || true
+find /root/binbot/global/data/bronze/klines_1m -name '*.parquet' 2>/dev/null | wc -l
 echo
-echo '========== TR SAFETY =========='
+echo '========== TR SAFETY / READ-ONLY DEPENDENCY =========='
 systemctl is-active bintrbot-collector.service || true
 systemctl is-active bintrbot-backfill-aggtrades.service || true
 echo
 echo '========== DISK =========='
 df -h /
 echo
-echo '========== RECENT BINGLOBAL LOG =========='
-journalctl -u bintrbot-binglobal-klines.service -n 25 --no-pager || true
+echo '========== RECENT BINBOT GLOBAL LOG =========='
+journalctl -u binbot-global-klines.service -n 25 --no-pager || true
 SH
-chmod +x "$ROOT/binglobal-status.sh"
+chmod +x "$ROOT/status.sh"
 
-"$PY" -m py_compile "$APP" "$ROOT/binglobal/app/binglobal_klines_guardian.py"
+"$PY" -m py_compile "$APP" "$ROOT/app/global_klines_guardian.py"
 
 systemctl daemon-reload
-systemctl enable --now bintrbot-binglobal-klines-guardian.timer
+systemctl enable --now binbot-global-klines-guardian.timer
 
 # Fail-safe preflight.
-"$PY" "$ROOT/binglobal/app/binglobal_klines_guardian.py"
+"$PY" "$ROOT/app/global_klines_guardian.py"
 GUARD="$("$PY" - <<'PY'
 import json
 from pathlib import Path
-p=Path("/root/bintrbot/binglobal/state/binglobal_klines_guardian.json")
+p=Path("/root/binbot/global/state/global_klines_guardian.json")
 x=json.loads(p.read_text()) if p.exists() else {}
 print(x.get("status","UNKNOWN"))
 PY
 )"
 if [ "$GUARD" != "PASS" ]; then
-  echo "BINGLOBAL_START_BLOCKED=$GUARD"
-  "$ROOT/binglobal-status.sh"
+  echo "BINBOT_GLOBAL_START_BLOCKED=$GUARD"
+  "$ROOT/status.sh"
   exit 3
 fi
 
-systemctl enable bintrbot-binglobal-klines.service >/dev/null 2>&1 || true
-systemctl start bintrbot-binglobal-klines.service
+systemctl enable binbot-global-klines.service >/dev/null 2>&1 || true
+systemctl start binbot-global-klines.service
 sleep 15
-"$PY" "$ROOT/binglobal/app/binglobal_klines_guardian.py"
+"$PY" "$ROOT/app/global_klines_guardian.py"
 
 echo
-"$ROOT/binglobal-status.sh"
+"$ROOT/status.sh"
 echo
-echo "BINGLOBAL_SELECTED_KLINES_START=PASS"
+echo "BINBOT_GLOBAL_SELECTED_KLINES_START=PASS"

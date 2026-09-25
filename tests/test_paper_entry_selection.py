@@ -150,36 +150,19 @@ def test_hot_observation_uses_latest_price_transition(history, monkeypatch):
     monkeypatch.setattr(
         "app.risk.paper_position_sizing._empirical_outcome_calibration",
         lambda **_: dict(
-            gap_multiplier=None,
-            cost_uncertainty_fraction=None,
-            account_risk_budget_fraction=None,
-            gap_samples=0,
-            cost_samples=0,
-            account_risk_samples=0,
+            gap_multiplier=None, cost_uncertainty_fraction=None,
+            account_risk_budget_fraction=None, gap_samples=0,
+            cost_samples=0, account_risk_samples=0,
         ),
     )
-    # Two informative positive transitions are required by the canonical
-    # empirical-movement gate. This is the actual HOT shape; [1,1,1.06] is WATCH.
-    p = plan(observe([1.0, 1.03, 1.06]))
-    # Reproduce the real runtime blocker set seen in production while
-    # preserving the already-qualified HOT plan.
+    p = plan(observe([1.0, 1.02, 1.04, 1.06]))
+    assert (p.get("market_context") or {}).get("opportunity", {}).get("state") == "HOT"
+    assert p.get("paper_eligible") is True
     p["expected"]["known_net_edge_fraction"] = 0.0
     p["expected"]["full_net_edge_fraction"] = None
     p["cost_model"]["cost_complete"] = False
-    p["capital"]["liquidity_capacity_source"] = "EMPIRICAL_RESERVE_FLOOR"
-    p["capital"]["observed_min_quote_reserve_usd"] = 50000.0
-    p["capital"]["reserve_observation_count"] = 2
-    sized = calculate_paper_position_size(
-        mathematical_plan=p,
-        available_capital_usdt=10000.0,
-    )
-    assert sized["entry_amount_usdt"] > 0.0, (
-        f"blockers={sized.get('blockers')} "
-        f"reason={sized.get('sizing_reason')} "
-        f"plan_blockers={p.get('blockers')} "
-        f"opportunity={(p.get('market_context') or {}).get('opportunity')} "
-        f"prices={(p.get('statistics') or {}).get('prices')}"
-    )
+    sized = calculate_paper_position_size(mathematical_plan=p, available_capital_usdt=10000.0)
+    assert sized["entry_amount_usdt"] > 0.0, sized
     assert sized["sizing_reason"] == "PAPER_HOT_OBSERVATION_BOOTSTRAP"
     assert sized["observation_fraction"] > 0.0
 

@@ -1505,14 +1505,14 @@ def calculate_paper_position_size(
     # notional. Explicit hard blocks, sellability failures, plan failures and
     # missing exit capacity remain blocked. This path never grants live-trade
     # authority.
+    # HOT is still a PAPER trade, not a license to bypass risk evidence.
+    # Observation mode may tolerate missing gap/LP history, but it must retain
+    # positive net edge, measurable return risk, empirical account-risk budget,
+    # and a usable stop-distance.  When LP protection is unverified we assume
+    # total notional loss, so the account-risk budget is also the notional cap.
     hot_observation_soft_blockers = {
         "GAP_RISK_UNOBSERVED",
-        "ACCOUNT_RISK_BUDGET_UNOBSERVED",
-        "COST_UNCERTAINTY_UNOBSERVED",
         "LP_WITHDRAWAL_PROTECTION_UNVERIFIED",
-        "EMPIRICAL_RISK_DISTANCE_UNKNOWN",
-        "NET_EDGE_NOT_POSITIVE",
-        "RETURN_RISK_UNOBSERVABLE",
     }
     hot_observation_bootstrap = (
         opportunity.get("state") == "HOT"
@@ -1539,6 +1539,8 @@ def calculate_paper_position_size(
                 available * observation_fraction,
                 available,
                 safe_quote_reserve,
+                liquidity_edge_cap,
+                account_risk_budget,
             ),
         )
 

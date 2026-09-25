@@ -1,6 +1,7 @@
 from pathlib import Path
 
-STATIC = Path("app/api/static")
+ROOT = Path(__file__).resolve().parents[1]
+STATIC = ROOT / "app" / "api" / "static"
 HTML = STATIC / "index.html"
 JS = STATIC / "dex-terminal.js"
 CSS = STATIC / "dex-terminal.css"
@@ -20,8 +21,8 @@ def test_single_canonical_frontend_assets():
 
     html = HTML.read_text(encoding="utf-8")
 
-    assert "/static/dex-terminal.js?v=4" in html
-    assert "/static/dex-terminal.css?v=2" in html
+    assert "/static/dex-terminal.js?v=5" in html
+    assert "/static/dex-terminal.css?v=5" in html
     assert "dex-terminal-v6.js" not in html
     assert "dex-terminal-v61.js" not in html
 
@@ -69,3 +70,17 @@ def test_news_and_calendar_features_are_preserved():
     assert "/api/calendar-brief-v3" in js
     assert "HABER" in js
     assert "EKONOMİK TAKVİM" in js
+
+
+def test_panel_static_assets_are_not_stale_cacheable():
+    panel_py = (ROOT / "app" / "api" / "panel.py").read_text(encoding="utf-8")
+
+    static_branch = panel_py.split(
+        'elif request.url.path.startswith(\n        "/static/"\n    ):',
+        1,
+    )[1].split("    return response", 1)[0]
+
+    assert '"no-store, no-cache, "' in static_branch
+    assert '"must-revalidate, max-age=0"' in static_branch
+    assert '"public, max-age=86400"' not in static_branch
+

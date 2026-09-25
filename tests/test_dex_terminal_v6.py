@@ -31,12 +31,19 @@ LEGACY_ASSETS = {
 def test_v6_is_single_frontend_owner():
     html = HTML.read_text(encoding="utf-8")
 
-    assert '/static/dex-terminal.css?v=2' in html
-    assert '/static/dex-terminal.js?v=4' in html
+    assert '/static/dex-terminal.css?v=5' in html
+    assert '/static/dex-terminal.js?v=5' in html
 
     for asset in LEGACY_ASSETS:
         assert asset not in html
         assert not (STATIC / asset).exists(), asset
+
+
+def test_v6_static_assets_use_current_cache_key():
+    html = HTML.read_text(encoding="utf-8")
+
+    assert '/static/dex-terminal.css?v=5' in html
+    assert '/static/dex-terminal.js?v=5' in html
 
 
 def test_v6_navigation_owns_real_distinct_pages():

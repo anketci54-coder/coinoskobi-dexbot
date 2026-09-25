@@ -124,7 +124,6 @@ def test_pair_snapshot_revisits_resets_and_pools_remain_isolated(history, source
 
 
 @pytest.mark.parametrize("overrides", [
-    {"sellability_status": "SELLABILITY_UNKNOWN"},
     {"sellability_status": "SELLABILITY_FAIL"},
     {"hard_block": True},
     {"quote_reserve_usd": 0},
@@ -135,6 +134,16 @@ def test_apparent_pump_cannot_bypass_safety(history, overrides):
     p = plan(observe([1, 1.04, 1.06]), **overrides)
     sized = calculate_paper_position_size(mathematical_plan=p)
     assert sized["entry_amount_usdt"] == 0
+
+
+def test_sellability_unknown_allowed_for_paper_observation(history):
+    p = plan(
+        observe([1, 1.04, 1.06]),
+        sellability_status="SELLABILITY_UNKNOWN",
+    )
+    sized = calculate_paper_position_size(mathematical_plan=p)
+    assert sized["entry_amount_usdt"] > 0
+    assert "SELLABILITY_NOT_OK" not in sized.get("blockers", [])
 
 
 @pytest.mark.parametrize("quote", [WBNB, None, "0xunknown"])

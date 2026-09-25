@@ -1135,7 +1135,11 @@ def calculate_paper_position_size(
         blockers.append("CATASTROPHIC_RESERVE_COLLAPSE")
     if plan.get("hard_block"):
         blockers.append("HARD_BLOCK")
-    if plan.get("sellability_status") not in (None, "SELLABILITY_OK"):
+    if plan.get("sellability_status") not in (
+        None,
+        "SELLABILITY_OK",
+        "SELLABILITY_UNKNOWN",
+    ):
         blockers.append("SELLABILITY_NOT_OK")
     if plan.get("paper_eligible") is False:
         blockers.append("PLAN_NOT_PAPER_ELIGIBLE")
@@ -1166,7 +1170,10 @@ def calculate_paper_position_size(
         and observed_reserve is not None
         and safe_quote_reserve is not None
         and safe_quote_reserve <= observed_reserve
-        and plan.get("sellability_status") == "SELLABILITY_OK"
+        and plan.get("sellability_status") in {
+            "SELLABILITY_OK",
+            "SELLABILITY_UNKNOWN",
+        }
         and plan.get("paper_eligible") is True
         and opportunity.get("state") in {"HOT", "WARM"}
     )
@@ -1263,7 +1270,10 @@ def calculate_paper_position_size(
         plan.get("paper_eligible") is True
         and not plan.get("blockers")
         and not plan.get("hard_block")
-        and plan.get("sellability_status") == "SELLABILITY_OK"
+        and plan.get("sellability_status") in {
+            "SELLABILITY_OK",
+            "SELLABILITY_UNKNOWN",
+        }
         and admission.get("mode") == "EARLY_EMPIRICAL"
         and admission.get("early_paper_admission") is True
         and admission.get("paper_only") is True

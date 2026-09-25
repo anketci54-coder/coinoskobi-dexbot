@@ -2690,10 +2690,10 @@ class PipelineEngine:
                         }
                     )
 
-                    if (
-                        sellability_status
-                        != "SELLABILITY_OK"
-                    ):
+                    if sellability_status not in {
+                        "SELLABILITY_OK",
+                        "SELLABILITY_UNKNOWN",
+                    }:
                         block_reason = (
                             "SELLABILITY_NOT_OK"
                         )

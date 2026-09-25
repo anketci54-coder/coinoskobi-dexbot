@@ -55,10 +55,13 @@ def paper_admission_decision(
     ):
         return "WATCH"
 
-    if (
-        status
-        == "SELLABILITY_OK"
-    ):
+    # PAPER-only empirical observation:
+    # UNKNOWN provider verdict must not veto a simulated trade.
+    # Explicit FAIL and hard-block remain fail-closed above.
+    if status in {
+        "SELLABILITY_OK",
+        "SELLABILITY_UNKNOWN",
+    }:
         return "PAPER_BUY"
 
     return "WATCH"

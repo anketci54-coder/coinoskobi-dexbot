@@ -2328,7 +2328,7 @@ def build_trade_plan(
         bool(vur_kac_entry.get("enforced"))
         and not vur_kac_entry.get("ready")
         and not hard_block
-        and sellability_status == "SELLABILITY_OK"
+        and sellability_status in {"SELLABILITY_OK", "SELLABILITY_UNKNOWN"}
         and count_ratio is not None and count_ratio >= 1.34
         and turnover is not None and 0 <= turnover <= 0.12
         and buys is not None and 0 <= buys <= 11

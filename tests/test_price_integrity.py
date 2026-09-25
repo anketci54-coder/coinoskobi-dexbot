@@ -171,17 +171,17 @@ def test_wss_cannot_verify_itself_without_http():
 
 @pytest.mark.parametrize("trade_type", ["NORMAL", "VUR_KAC"])
 def test_price_conflict_cannot_reach_any_paper_strategy_or_mutate_pnl(trade_type):
-    """A conflicting market price is observation-only: no close, PnL, or extrema mutation."""
+    """Conflicting primary/on-chain prices must stop before any strategy mutation."""
     rpc = V2RPC(1)
     gate = PriceIntegrityGate(rpc)
     pos = position()
-    pos["trade_type"] = trade_type
+    pos["mathematical_plan_json"] = json.dumps({
+        "contract": "mathematical_trade_plan",
+        "trade_type": trade_type,
+    })
 
-    # Establish an accepted baseline that agrees across both sources.
-    gate.accept(gate.evaluate(pos, evidence(1)))
-
-    # Keep the trusted on-chain source at 1.0 while the runtime observation
-    # jumps by >10%; this must be rejected before any strategy handler runs.
+    # The primary observation and the trusted on-chain source deliberately
+    # disagree by >10% in the same evaluation. That is the real conflict path.
     rpc.price = Decimal("1")
     before = copy.deepcopy(pos)
     manager = PaperManager.__new__(PaperManager)
@@ -204,5 +204,5 @@ def test_price_conflict_cannot_reach_any_paper_strategy_or_mutate_pnl(trade_type
     assert result["state"] == "PRICE_CONFLICT"
     assert result["reason"] == "ONCHAIN_PRICE_DISAGREEMENT"
     assert pos == before
-    assert gate.accepted
+    assert not gate.accepted
 

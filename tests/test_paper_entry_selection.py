@@ -164,7 +164,9 @@ def test_hot_observation_uses_latest_price_transition(history, monkeypatch):
     p["expected"]["known_net_edge_fraction"] = 0.0
     p["expected"]["full_net_edge_fraction"] = None
     p["cost_model"]["cost_complete"] = False
-    p["capital"]["liquidity_capacity_source"] = "UNKNOWN"
+    p["capital"]["liquidity_capacity_source"] = "EMPIRICAL_RESERVE_FLOOR"
+    p["capital"]["observed_min_quote_reserve_usd"] = 50000.0
+    p["capital"]["reserve_observation_count"] = 2
     sized = calculate_paper_position_size(
         mathematical_plan=p,
         available_capital_usdt=10000.0,

@@ -142,7 +142,10 @@ def test_measured_risk_reduces_bootstrap_size(tmp_path, field, value):
 def test_hot_observation_never_exceeds_empirical_account_risk_budget(monkeypatch):
     p = plan()
     p["capital"]["entry_amount_usdt"] = 9000.0
-    p["statistics"]["prices"] = [1.0, 1.5]
+    # Keep this fixture inside the existing chase limit.  This test isolates
+    # the risk-budget invariant; a 1.0 -> 1.5 jump is correctly rejected by
+    # ENTRY_ABOVE_CHASE_LIMIT before HOT sizing is reached.
+    p["statistics"]["prices"] = [1.0, 1.05]
     p["capital"]["liquidity_capacity_source"] = "EMPIRICAL_RESERVE_FLOOR"
     p["capital"]["reserve_observation_count"] = 4
     p["capital"]["observed_min_quote_reserve_usd"] = 1000000.0

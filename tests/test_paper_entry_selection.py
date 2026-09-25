@@ -171,7 +171,13 @@ def test_hot_observation_uses_latest_price_transition(history, monkeypatch):
         mathematical_plan=p,
         available_capital_usdt=10000.0,
     )
-    assert sized["entry_amount_usdt"] > 0.0
+    assert sized["entry_amount_usdt"] > 0.0, (
+        f"blockers={sized.get('blockers')} "
+        f"reason={sized.get('sizing_reason')} "
+        f"plan_blockers={p.get('blockers')} "
+        f"opportunity={(p.get('market_context') or {}).get('opportunity')} "
+        f"prices={(p.get('statistics') or {}).get('prices')}"
+    )
     assert sized["sizing_reason"] == "PAPER_HOT_OBSERVATION_BOOTSTRAP"
     assert sized["observation_fraction"] > 0.0
 

@@ -1240,14 +1240,15 @@ def calculate_paper_position_size(
     current_price = _positive(entry.get("price"))
     statistics = plan.get("statistics") if isinstance(plan.get("statistics"), dict) else {}
     price_evidence = statistics.get("prices") or []
-    prior_prices = [
-        value for value in (_positive(item) for item in price_evidence[:-1])
+    measured_prices = [
+        value for value in (_positive(item) for item in price_evidence)
         if value is not None
     ] if isinstance(price_evidence, (list, tuple)) else []
+    prior_prices = measured_prices[:-1]
     anchor_price = prior_prices[-1] if prior_prices else None
     observed_moves = [
         abs(math.log(current / previous))
-        for previous, current in zip(prior_prices, prior_prices[1:])
+        for previous, current in zip(measured_prices, measured_prices[1:])
         if previous > 0 and current > 0
     ]
     observed_move = max(observed_moves, default=0.0)

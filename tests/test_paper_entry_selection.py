@@ -159,9 +159,12 @@ def test_hot_observation_uses_latest_price_transition(history, monkeypatch):
         ),
     )
     p = plan(observe([1.0, 1.0, 1.06]))
+    # Reproduce the real runtime blocker set seen in production while
+    # preserving the already-qualified HOT plan.
     p["expected"]["known_net_edge_fraction"] = 0.0
     p["expected"]["full_net_edge_fraction"] = None
     p["cost_model"]["cost_complete"] = False
+    p["capital"]["liquidity_capacity_source"] = "UNKNOWN"
     sized = calculate_paper_position_size(
         mathematical_plan=p,
         available_capital_usdt=10000.0,

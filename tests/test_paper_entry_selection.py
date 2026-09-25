@@ -158,7 +158,9 @@ def test_hot_observation_uses_latest_price_transition(history, monkeypatch):
             account_risk_samples=0,
         ),
     )
-    p = plan(observe([1.0, 1.0, 1.06]))
+    # Two informative positive transitions are required by the canonical
+    # empirical-movement gate. This is the actual HOT shape; [1,1,1.06] is WATCH.
+    p = plan(observe([1.0, 1.03, 1.06]))
     # Reproduce the real runtime blocker set seen in production while
     # preserving the already-qualified HOT plan.
     p["expected"]["known_net_edge_fraction"] = 0.0

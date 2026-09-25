@@ -18,6 +18,13 @@
   const post = async (url,payload) => { const r=await fetch(url,{method:'POST',cache:'no-store',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)}); const d=await r.json().catch(()=>({})); if(!r.ok) throw new Error(d.detail||`${url} ${r.status}`); return d; };
   const stateBadge = value => { const s=String(value||'COLD').toUpperCase(); const k=['HOT','WARM','COLD'].includes(s)?s.toLowerCase():'cold'; return `<span class="state ${k}">${esc(s)}</span>`; };
   const formatTime = value => { if(!value) return '—'; const d=new Date(value); return Number.isNaN(d.getTime())?esc(value):d.toLocaleString('tr-TR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}); };
+  const closeLabel = value => {
+    const s=String(value||'').toUpperCase();
+    if(s==='MATHEMATICAL_VUR_KAC_EXIT') return 'VUR-KAÇ';
+    if(s==='NORMAL_STOP_LOSS') return 'NORMAL';
+    if(s==='MANUAL_PAPER_SELL') return 'MANUEL';
+    return s ? s.replaceAll('_',' ') : '—';
+  };
 
   const LEDGER_PAGE_SIZE = 200;
   const MAX_LEDGER_PAGES = 25;
@@ -185,7 +192,7 @@
   function closedRows(){ return (ledger?.rows||[]).filter(row=>String(row.status||'').toUpperCase()==='CLOSED'); }
   function renderHomeHistory(){
     const rows=closedRows().slice(0,5);
-    $('homeHistoryRows').innerHTML=rows.length?rows.map(row=>`<tr><td><b>${esc(row.symbol||short(row.token))}</b></td><td>${num(row.exit_price??row.current_price)}</td><td class="${cls(row.net_pnl_usdt??row.net_pnl)}">${money(row.net_pnl_usdt??row.net_pnl)}</td><td>${esc(row.close_reason||'—')}</td></tr>`).join(''):'<tr><td colspan="4" class="muted">Kapanmış işlem yok.</td></tr>';
+    $('homeHistoryRows').innerHTML=rows.length?rows.map(row=>`<tr><td><b>${esc(row.symbol||short(row.token))}</b></td><td>${num(row.exit_price??row.current_price)}</td><td class="${cls(row.net_pnl_usdt??row.net_pnl)}">${money(row.net_pnl_usdt??row.net_pnl)}</td><td>${esc(closeLabel(row.close_reason))}</td></tr>`).join(''):'<tr><td colspan="4" class="muted">Kapanmış işlem yok.</td></tr>';
   }
   function renderPositions(){
     const rows=dashboard?.positions||[];
@@ -310,7 +317,7 @@
     $('historyLosses').textContent=summary.losses;
     $('historyPnl').textContent=money(summary.realizedNet); $('historyPnl').className=cls(summary.realizedNet);
     $('historyMeta').textContent=`${summary.closedCount} kapanmış kayıt · ${ledger?.pages||1} sayfa`;
-    $('historyRows').innerHTML=rows.length?rows.map(row=>`<tr><td>${esc(row.id??'—')}</td><td><b>${esc(row.symbol||short(row.token))}</b></td><td>${num(row.entry_price)}</td><td>${num(row.exit_price??row.current_price)}</td><td class="${cls(row.net_pnl_usdt??row.net_pnl)}">${money(row.net_pnl_usdt??row.net_pnl)}</td><td class="${cls(row.roi_pct)}">${pct(row.roi_pct??(n(row.roi)!==null?n(row.roi)*100:null))}</td><td>${esc(row.close_reason||'—')}</td><td>${formatTime(row.closed_at??row.created_at)}</td></tr>`).join(''):'<tr><td colspan="8" class="muted">Kapanmış işlem yok.</td></tr>';
+    $('historyRows').innerHTML=rows.length?rows.map(row=>`<tr><td>${esc(row.id??'—')}</td><td><b>${esc(row.symbol||short(row.token))}</b></td><td>${money(row.entry_amount_usdt??row.amount_usdt)}</td><td>${num(row.entry_price)}</td><td>${num(row.exit_price??row.current_price)}</td><td class="${cls(row.net_pnl_usdt??row.net_pnl)}">${money(row.net_pnl_usdt??row.net_pnl)}</td><td class="${cls(row.roi_pct)}">${pct(row.roi_pct??(n(row.roi)!==null?n(row.roi)*100:null))}</td><td>${esc(closeLabel(row.close_reason))}</td><td>${formatTime(row.closed_at??row.created_at)}</td></tr>`).join(''):'<tr><td colspan="9" class="muted">Kapanmış işlem yok.</td></tr>';
   }
 
   function renderRadar(){

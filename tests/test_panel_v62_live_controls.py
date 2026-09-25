@@ -69,3 +69,16 @@ def test_news_and_calendar_features_are_preserved():
     assert "/api/calendar-brief-v3" in js
     assert "HABER" in js
     assert "EKONOMİK TAKVİM" in js
+
+
+def test_panel_static_assets_are_not_stale_cacheable():
+    panel_py = (ROOT / "app" / "api" / "panel.py").read_text(encoding="utf-8")
+
+    static_branch = panel_py.split(
+        'elif request.url.path.startswith(\n        "/static/"\n    ):',
+        1,
+    )[1].split("    return response", 1)[0]
+
+    assert '"no-store, no-cache, "' in static_branch
+    assert '"must-revalidate, max-age=0"' in static_branch
+    assert '"public, max-age=86400"' not in static_branch

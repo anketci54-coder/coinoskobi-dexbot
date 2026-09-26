@@ -90,7 +90,7 @@ def test_binds_phase15h_execution_without_unit_mismatch():
                 },
                 "received_token_raw": 2000,
                 "recipient_balance_delta_raw": 2000,
-                "execution_price_native_per_token": 0.0005,
+                "execution_price_usdt_per_token": 0.0005,
                 "gas_used": 120000,
                 "effective_gas_price": 1_000_000_000,
                 "execution_gas_cost_wei": 120_000_000_000_000,

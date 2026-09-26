@@ -99,9 +99,9 @@ def _run(call, *, delta=2_000_000, fee_on_transfer=False):
     with patch("app.execution.paper_simulation.AnvilForkBalanceDelta",
                return_value=simulated_delta):
         result = simulate_paper_buy(
-            token=TOKEN, amount_in_wei=10**18, block_number=12345,
+            token=TOKEN, pool=POOL, quote_token=USDT, amount_in_usdt_raw=10**18, block_number=12345,
             deadline=2_000_000_000,
-            web3=client, gas_price_wei=3, fee_on_transfer=fee_on_transfer,
+            web3=client, fee_on_transfer=fee_on_transfer,
         )
     return result, eth, call
 
@@ -113,17 +113,14 @@ def test_success_is_explicit_block_unsigned_and_provenanced():
         "number": 12345, "hash": "0x" + "ab" * 32, "chain_id": 56
     }
     assert result["received_token_raw"] == 2_000_000
-    assert result["router_returned_token_raw"] is None
     assert result["recipient_balance_delta_raw"] == 2_000_000
-    assert result["execution_price_native_per_token"] == 500_000_000_000
+    assert result["execution_price_usdt_per_token"] == 500_000_000_000
     assert result["gas_used"] == 123456
     assert result["effective_gas_price"] == 3
     assert result["execution_gas_cost_wei"] == 370368
-    assert result["gas_estimate"] is None
-    assert result["fee_native_estimate"] is None
     assert eth.blocks == [12345]
     assert call.calls == []
-    assert result["raw"]["transaction"]["value"] == 10**18
+    assert result["quote_token"].lower() == USDT.lower()
     for key in ("signing", "broadcast", "wallet_use", "paper_authority",
                 "live_authority", "execution_authority"):
         assert result[key] is False
@@ -145,7 +142,7 @@ def test_provider_or_block_identity_unavailable_stays_unknown():
         ConnectionError("unavailable")
     )
     result = simulate_paper_buy(
-        token=TOKEN, amount_in_wei=10**18, block_number=12345,
+        token=TOKEN, pool=POOL, quote_token=USDT, amount_in_usdt_raw=10**18, block_number=12345,
         deadline=2_000_000_000, web3=client,
     )
     assert result["status"] == "UNKNOWN"
@@ -163,12 +160,12 @@ def test_rpc_unavailable_after_block_read_stays_unknown():
 
 def test_invalid_or_unavailable_transaction_inputs_stay_unknown():
     result = simulate_paper_buy(
-        token=TOKEN, amount_in_wei=10**18, block_number=12345,
+        token=TOKEN, pool=POOL, quote_token=USDT, amount_in_usdt_raw=10**18, block_number=12345,
         deadline=2_000_000_000,
         web3=SimpleNamespace(eth=object()),
     )
     assert result["status"] == "UNKNOWN"
-    assert result["execution_price_native_per_token"] is None
+    assert result["execution_price_usdt_per_token"] is None
 
 
 def test_generated_synthetic_sender_does_not_need_historical_chain_funding():
@@ -182,7 +179,7 @@ def test_generated_synthetic_sender_does_not_need_historical_chain_funding():
                                "effectiveGasPrice": "0x3"},
                }):
         result = simulate_paper_buy(
-            token=TOKEN, amount_in_wei=10**18, block_number=12345,
+            token=TOKEN, pool=POOL, quote_token=USDT, amount_in_usdt_raw=10**18, block_number=12345,
             deadline=2_000_000_000, web3=client,
         )
     assert result["status"] == "SUCCESS"
@@ -192,7 +189,6 @@ def test_generated_synthetic_sender_does_not_need_historical_chain_funding():
 def test_missing_balance_delta_cannot_claim_standard_router_output():
     result, _eth, _call = _run(_Call([10**18, 2_000_000]), delta=None)
     assert result["status"] == "UNKNOWN"
-    assert result["router_returned_token_raw"] is None
     assert result["received_token_raw"] is None
 
 
@@ -202,7 +198,7 @@ def test_buy_without_successful_local_receipt_stays_unknown():
     with patch("app.execution.paper_simulation.AnvilForkBalanceDelta",
                return_value=lambda **_kwargs: {"delta": 2_000_000}):
         result = simulate_paper_buy(
-            token=TOKEN, amount_in_wei=10**18, block_number=12345,
+            token=TOKEN, pool=POOL, quote_token=USDT, amount_in_usdt_raw=10**18, block_number=12345,
             deadline=2_000_000_000, web3=client,
         )
     assert result["status"] == "UNKNOWN"
@@ -214,10 +210,9 @@ def test_fee_on_transfer_output_uses_recipient_delta_not_router_quote():
         _Call([]), delta=1_700_000, fee_on_transfer=True
     )
     assert result["status"] == "SUCCESS"
-    assert result["router_returned_token_raw"] is None
     assert result["received_token_raw"] == 1_700_000
     assert result["recipient_balance_delta_raw"] == 1_700_000
-    assert result["execution_price_native_per_token"] == 10**18 / 1_700_000
+    assert result["execution_price_usdt_per_token"] == 10**18 / 1_700_000
 
 
 def test_authority_fields_are_false_even_when_state_delta_is_proven():

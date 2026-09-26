@@ -74,7 +74,7 @@ def lifecycle(monkeypatch):
                     "route_friction_fraction": 0, "gas_price_wei": 0,
                     "wbnb_usd_estimate": 600}}}}
     monkeypatch.setattr(engine, "sellability_analyze", sellability)
-    monkeypatch.setattr(engine, "_runtime_phase15h_buy_evidence", lambda **k: {})
+    monkeypatch.setattr(engine, "_runtime_phase15h_buy_evidence", lambda **k: {"buy": {"status": "SUCCESS"}})
     monkeypatch.setattr("app.risk.paper_position_sizing._empirical_outcome_calibration", lambda **k: {
         "gap_multiplier": 1.0, "cost_uncertainty_fraction": 0.0,
         "account_risk_budget_fraction": .01, "gap_samples": 3,
@@ -157,7 +157,7 @@ def test_partial_sales_and_final_residual_reconcile_in_sqlite(lifecycle):
     manager = PaperManager.__new__(PaperManager)
     manager.db = db
     manager._observe_learning_outcome = lambda *a, **k: None
-    manager._runtime_phase15h_sell_evidence = lambda *a, **k: None
+    manager._runtime_phase15h_sell_evidence = lambda *a, **k: {"sell": {"status": "SUCCESS"}}
     manager._close_math(residual, final_price, 1.3, 1.06, plan, "NORMAL_STOP_LOSS")
     closed = dict(db.conn.execute("select * from paper_trades where id=?", (initial["id"],)).fetchone())
     assert closed["status"] == "CLOSED"

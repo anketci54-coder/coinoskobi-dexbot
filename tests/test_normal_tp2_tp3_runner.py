@@ -425,3 +425,46 @@ def test_normal_profit_protection_reason_has_expected_exit_price():
         pos,
         "NORMAL_PROFIT_PROTECTION_EXIT",
     ) == 1.0
+
+
+
+def test_normal_live_arm_preserves_initial_risk_baseline():
+    m = manager()
+    pos = _pre_tp1_position()
+    pos.update({
+        "sl_price": 0.90,
+        "risk_amount_usdt": None,
+        "math_state_json": json.dumps({}),
+    })
+
+    realistic_plan = plan()
+    realistic_plan["cost_model"] = {
+        "sell_retention_known": 0.99,
+        "sell_gas_usd": 1.0,
+    }
+
+    result = m._process_normal_math_position(
+        pos,
+        1.10,
+        1.10,
+        1.0,
+        realistic_plan,
+    )
+
+    risk_updates = [
+        values["risk_amount_usdt"]
+        for _, values in m.db.updates
+        if "risk_amount_usdt" in values
+    ]
+
+    assert risk_updates
+    assert abs(risk_updates[0] - 11.9) < 1e-9
+    assert result["data"]["action"] == "HOLD"
+
+    protection_updates = [
+        values
+        for _, values in m.db.updates
+        if values.get("sl_price") is not None
+    ]
+    assert protection_updates
+    assert protection_updates[-1]["sl_price"] > 1.0

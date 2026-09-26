@@ -357,3 +357,71 @@ def test_normal_pre_tp1_persisted_floor_survives_restart_and_closes_later():
     assert m.db.closed[0][1]["close_reason"] == (
         "NORMAL_PROFIT_PROTECTION_EXIT"
     )
+
+
+
+def test_normal_pre_tp1_floor_reason_survives_tp1_flag_until_stop_moves():
+    m = manager()
+    pos = _pre_tp1_position()
+    pos.update({
+        "tp1_done": 1,
+        "sl_price": 1.0,
+        "math_state_json": json.dumps({
+            "initial_net_risk_usdt": 20.0,
+            "normal_pre_tp1_break_even_price": 1.0,
+            "normal_pre_tp1_break_even_armed": True,
+            "normal_pre_tp1_break_even_armed_price": 1.05,
+        }),
+    })
+
+    result = m._process_normal_math_position(
+        pos,
+        0.99,
+        1.50,
+        0.90,
+        plan(),
+    )
+
+    assert result["data"]["reason"] == (
+        "NORMAL_PROFIT_PROTECTION_EXIT"
+    )
+
+
+def test_normal_runner_stop_is_not_mislabeled_as_break_even_floor():
+    m = manager()
+    pos = _pre_tp1_position()
+    pos.update({
+        "tp1_done": 1,
+        "tp2_done": 1,
+        "runner_active": 1,
+        "sl_price": 1.20,
+        "math_state_json": json.dumps({
+            "initial_net_risk_usdt": 20.0,
+            "normal_pre_tp1_break_even_price": 1.0,
+            "normal_pre_tp1_break_even_armed": True,
+            "normal_pre_tp1_break_even_armed_price": 1.05,
+        }),
+    })
+
+    result = m._process_normal_math_position(
+        pos,
+        1.19,
+        1.50,
+        0.90,
+        plan(),
+    )
+
+    assert result["data"]["reason"] == (
+        "NORMAL_STOP_LOSS"
+    )
+
+
+def test_normal_profit_protection_reason_has_expected_exit_price():
+    pos = {
+        "sl_price": 1.0,
+    }
+
+    assert PaperManager._expected_exit_price(
+        pos,
+        "NORMAL_PROFIT_PROTECTION_EXIT",
+    ) == 1.0

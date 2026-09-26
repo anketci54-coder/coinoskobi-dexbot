@@ -3509,7 +3509,11 @@ class PipelineEngine:
                                         sellability_data
                                     ),
                                     pair_membership_verifier=(
-                                        self.pair_membership_verifier
+                                        getattr(
+                                            self,
+                                            "pair_membership_verifier",
+                                            verify_pair_membership,
+                                        )
                                     ),
                                 )
                             )

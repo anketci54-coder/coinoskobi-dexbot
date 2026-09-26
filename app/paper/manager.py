@@ -161,6 +161,18 @@ class PaperManager:
             }
         }
 
+    @staticmethod
+    def _phase15h_sell_succeeded(evidence):
+        sell = (
+            (evidence or {}).get("sell")
+            if isinstance(evidence, dict)
+            else None
+        )
+        return (
+            isinstance(sell, dict)
+            and sell.get("status") == "SUCCESS"
+        )
+
     def _runtime_phase15h_sell_evidence(
         self,
         *,
@@ -1369,6 +1381,50 @@ class PaperManager:
 
         close_data["realized_pnl_usdt"] = float(net)
 
+        phase15h_execution = (
+            self._runtime_phase15h_sell_evidence(
+                pos=pos,
+                current_price=current,
+                stage=reason,
+                exit_fraction=1.0,
+                exit_notional_usdt=(
+                    float(
+                        pos.get(
+                            "token_amount"
+                        )
+                        or 0.0
+                    )
+                    * float(current)
+                ),
+            )
+        )
+
+        if not self._phase15h_sell_succeeded(
+            phase15h_execution
+        ):
+            return {
+                "success": True,
+                "source": "paper",
+                "data": {
+                    "action": "SKIP",
+                    "token": pos["token"],
+                    "entry_price": pos["entry_price"],
+                    "current_price": current,
+                    "roi": roi,
+                    "status": "OPEN",
+                    "opened_at": pos.get("created_at", ""),
+                    "closed_at": "",
+                    "reason": "PHASE15H_SELL_NOT_PROVEN",
+                    "account": "PAPER_10K_V2",
+                    "gross_pnl_usdt": gross,
+                    "net_pnl_usdt": net,
+                    "learning": None,
+                    "mathematical_exit": True,
+                    "trade_type": lifecycle_trade_type(pos),
+                    "phase15h_execution": phase15h_execution,
+                },
+            }
+
         closed = (
             self.db.close_position(
                 pos["id"],
@@ -1377,7 +1433,6 @@ class PaperManager:
         )
 
         learning = None
-        phase15h_execution = None
 
         if closed:
             outcome_position = dict(
@@ -1424,24 +1479,6 @@ class PaperManager:
                         False
                     ),
                 }
-
-            phase15h_execution = (
-                self._runtime_phase15h_sell_evidence(
-                    pos=pos,
-                    current_price=current,
-                    stage=reason,
-                    exit_fraction=1.0,
-                    exit_notional_usdt=(
-                        float(
-                            pos.get(
-                                "token_amount"
-                            )
-                            or 0.0
-                        )
-                        * float(current)
-                    ),
-                )
-            )
 
         return {
             "success": True,
@@ -1858,6 +1895,45 @@ class PaperManager:
                     )
                 )
 
+                phase15h_execution = None
+                if realization:
+                    phase15h_execution = (
+                        self._runtime_phase15h_sell_evidence(
+                            pos=pos,
+                            current_price=current,
+                            stage="NORMAL_TP1",
+                            exit_fraction=(
+                                realization.get(
+                                    "fraction"
+                                )
+                            ),
+                            exit_notional_usdt=(
+                                realization.get(
+                                    "gross_proceeds_usdt"
+                                )
+                            ),
+                        )
+                    )
+
+                    if not self._phase15h_sell_succeeded(
+                        phase15h_execution
+                    ):
+                        return {
+                            "success": True,
+                            "source": "paper",
+                            "data": {
+                                "action": "SKIP",
+                                "token": pos["token"],
+                                "entry_price": pos["entry_price"],
+                                "current_price": current,
+                                "status": "OPEN",
+                                "reason": "PHASE15H_SELL_NOT_PROVEN",
+                                "trade_type": "NORMAL",
+                                "mathematical_exit": True,
+                                "phase15h_execution": phase15h_execution,
+                            },
+                        }
+
                 if (
                     realization
                     and self.db.apply_partial_realization(
@@ -1878,24 +1954,6 @@ class PaperManager:
                             "lowest_price": lowest,
                             "sl_price": static_stop,
                         },
-                    )
-
-                    phase15h_execution = (
-                        self._runtime_phase15h_sell_evidence(
-                            pos=pos,
-                            current_price=current,
-                            stage="NORMAL_TP1",
-                            exit_fraction=(
-                                realization.get(
-                                    "fraction"
-                                )
-                            ),
-                            exit_notional_usdt=(
-                                realization.get(
-                                    "gross_proceeds_usdt"
-                                )
-                            ),
-                        )
                     )
 
                     return {
@@ -1995,6 +2053,45 @@ class PaperManager:
                     )
                 )
 
+                phase15h_execution = None
+                if realization:
+                    phase15h_execution = (
+                        self._runtime_phase15h_sell_evidence(
+                            pos=pos,
+                            current_price=current,
+                            stage="NORMAL_TP2",
+                            exit_fraction=(
+                                realization.get(
+                                    "fraction"
+                                )
+                            ),
+                            exit_notional_usdt=(
+                                realization.get(
+                                    "gross_proceeds_usdt"
+                                )
+                            ),
+                        )
+                    )
+
+                    if not self._phase15h_sell_succeeded(
+                        phase15h_execution
+                    ):
+                        return {
+                            "success": True,
+                            "source": "paper",
+                            "data": {
+                                "action": "SKIP",
+                                "token": pos["token"],
+                                "entry_price": pos["entry_price"],
+                                "current_price": current,
+                                "status": "OPEN",
+                                "reason": "PHASE15H_SELL_NOT_PROVEN",
+                                "trade_type": "NORMAL",
+                                "mathematical_exit": True,
+                                "phase15h_execution": phase15h_execution,
+                            },
+                        }
+
                 if (
                     realization
                     and self.db.apply_partial_realization(
@@ -2015,24 +2112,6 @@ class PaperManager:
                             "lowest_price": lowest,
                             "sl_price": static_stop,
                         },
-                    )
-
-                    phase15h_execution = (
-                        self._runtime_phase15h_sell_evidence(
-                            pos=pos,
-                            current_price=current,
-                            stage="NORMAL_TP2",
-                            exit_fraction=(
-                                realization.get(
-                                    "fraction"
-                                )
-                            ),
-                            exit_notional_usdt=(
-                                realization.get(
-                                    "gross_proceeds_usdt"
-                                )
-                            ),
-                        )
                     )
 
                     return {

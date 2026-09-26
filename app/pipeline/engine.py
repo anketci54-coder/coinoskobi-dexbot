@@ -102,61 +102,125 @@ def _paper_entry_timing_reason(sizing):
     return None
 
 
+def _phase15h_unknown_buy(*, trade_type, reason):
+    return {
+        "buy": {
+            "contract": "phase15h_transaction_simulation_v1",
+            "side": "BUY",
+            "status": "UNKNOWN",
+            "trade_type": trade_type,
+            "evidence_reason": reason,
+        }
+    }
+
+
+def _phase15h_buy_succeeded(evidence):
+    buy = (
+        (evidence or {}).get("buy")
+        if isinstance(evidence, dict)
+        else None
+    )
+    return isinstance(buy, dict) and buy.get("status") == "SUCCESS"
+
+
 def _runtime_phase15h_buy_evidence(
     *,
     token_address,
-    paper,
+    pool,
+    quote_token,
+    trade_type,
+    entry_amount_usdt,
     exit_evidence,
     sellability_data=None,
+    pair_membership_verifier=None,
 ):
-    """Run Phase 15H BUY only after a real PAPER position was opened."""
-    paper = dict(paper or {})
+    """Prove an isolated USDT->TOKEN BUY before durable PAPER insertion."""
     exit_evidence = dict(exit_evidence or {})
     sellability_data = dict(sellability_data or {})
-
-    trade_type = str(
-        paper.get("trade_type")
-        or "NORMAL"
-    ).upper()
-
-    if trade_type not in {
-        "NORMAL",
-        "VUR_KAC",
-    }:
+    trade_type = str(trade_type or "NORMAL").upper()
+    if trade_type not in {"NORMAL", "VUR_KAC"}:
         trade_type = "NORMAL"
 
-    if paper.get("action") != "PAPER_BUY":
-        return None
+    quote = str(
+        quote_token
+        or exit_evidence.get("quote_token")
+        or ""
+    ).strip()
+    if quote.lower() != USDT.lower():
+        return _phase15h_unknown_buy(
+            trade_type=trade_type,
+            reason="NON_USDT_ROUTE_REJECTED",
+        )
 
     try:
         block_number = int(
             exit_evidence.get("runtime_price_latest_block")
             or 0
         )
-        wbnb_usd = float(
-            exit_evidence.get("wbnb_usd_estimate")
-            or 0.0
-        )
-        entry_amount_usdt = float(
-            paper.get("entry_amount_usdt")
-            or 0.0
-        )
+        quote_decimals = exit_evidence.get("quote_decimals")
+        token_decimals = exit_evidence.get("token_decimals")
+        entry_amount_usdt = float(entry_amount_usdt or 0.0)
     except (TypeError, ValueError):
-        return None
+        return _phase15h_unknown_buy(
+            trade_type=trade_type,
+            reason="BUY_EVIDENCE_INVALID",
+        )
 
+    if block_number <= 0 or entry_amount_usdt <= 0:
+        return _phase15h_unknown_buy(
+            trade_type=trade_type,
+            reason="ENTRY_NOTIONAL_UNAVAILABLE",
+        )
     if (
-        block_number <= 0
-        or wbnb_usd <= 0
-        or entry_amount_usdt <= 0
+        type(quote_decimals) is not int
+        or not 0 <= quote_decimals <= 255
+        or type(token_decimals) is not int
+        or not 0 <= token_decimals <= 255
     ):
-        return None
+        return _phase15h_unknown_buy(
+            trade_type=trade_type,
+            reason="TOKEN_OR_QUOTE_DECIMALS_UNAVAILABLE",
+        )
 
-    amount_in_wei = int(
-        (entry_amount_usdt / wbnb_usd)
-        * (10 ** 18)
+    amount_in_usdt_raw = int(
+        round(entry_amount_usdt * (10 ** quote_decimals))
     )
-    if amount_in_wei <= 0:
-        return None
+    if amount_in_usdt_raw <= 0:
+        return _phase15h_unknown_buy(
+            trade_type=trade_type,
+            reason="ENTRY_NOTIONAL_UNAVAILABLE",
+        )
+
+    verifier = pair_membership_verifier or verify_pair_membership
+    try:
+        membership = verifier(
+            pool,
+            token_address,
+            USDT,
+            block_identifier=block_number,
+        )
+    except Exception:
+        return _phase15h_unknown_buy(
+            trade_type=trade_type,
+            reason="PAIR_MEMBERSHIP_EXCEPTION",
+        )
+    membership_state = str(
+        (membership or {}).get("state")
+        or "UNKNOWN"
+    ).upper()
+    if membership_state != "VERIFIED":
+        reason = {
+            "FACTORY_MISMATCH": "PAIR_FACTORY_MISMATCH",
+            "TOKEN_MISMATCH": "PAIR_TOKEN_MISMATCH",
+            "UNKNOWN": "PAIR_MEMBERSHIP_UNKNOWN",
+        }.get(
+            membership_state,
+            "PAIR_MEMBERSHIP_UNKNOWN",
+        )
+        return _phase15h_unknown_buy(
+            trade_type=trade_type,
+            reason=reason,
+        )
 
     try:
         buy_tax = float(
@@ -173,7 +237,9 @@ def _runtime_phase15h_buy_evidence(
     try:
         buy = simulate_paper_buy(
             token=token_address,
-            amount_in_wei=amount_in_wei,
+            pool=pool,
+            quote_token=USDT,
+            amount_in_usdt_raw=amount_in_usdt_raw,
             block_number=block_number,
             deadline=deadline,
             fee_on_transfer=(buy_tax > 0),
@@ -199,16 +265,13 @@ def _runtime_phase15h_buy_evidence(
             "PHASE15H_RUNTIME_BUY_FAILED token=%s",
             token_address,
         )
-        return {
-            "buy": {
-                "contract": "phase15h_transaction_simulation_v1",
-                "side": "BUY",
-                "status": "UNKNOWN",
-                "trade_type": trade_type,
-            }
-        }
+        return _phase15h_unknown_buy(
+            trade_type=trade_type,
+            reason="SIMULATION_EXCEPTION",
+        )
 
     return {"buy": buy}
+
 
 _strategy = StrategyEngine()
 _unified_score = UnifiedScoreEngine()
@@ -3383,6 +3446,101 @@ class PipelineEngine:
                             sort_keys=True,
                         )
 
+                        # PHASE15H_BUY_FAIL_CLOSED_V1
+                        # Cheap durable-state checks run before the fork.
+                        # The database repeats them atomically at insert time.
+                        pre_reject = None
+                        if (
+                            get_control_mode(
+                                PAPER_DB
+                            )
+                            == "MANUAL"
+                        ):
+                            pre_reject = (
+                                "CONTROL_MODE_MANUAL"
+                            )
+                        elif (
+                            self.paper_db
+                            .has_open_position(
+                                token_address
+                            )
+                        ):
+                            pre_reject = (
+                                "OPEN_POSITION_EXISTS"
+                            )
+                        elif (
+                            paper_available_capital_usdt(
+                                self.paper_db.conn,
+                                PAPER_CAPITAL_USDT,
+                            )
+                            + 1e-9
+                            < entry_amount_usdt
+                        ):
+                            pre_reject = (
+                                "PAPER_CAPITAL_INSUFFICIENT"
+                            )
+                        elif (
+                            len(
+                                self.paper_db.open_positions()
+                            )
+                            >= MAX_OPEN_PAPER_POSITIONS
+                        ):
+                            pre_reject = (
+                                "PAPER_POSITION_CAP_REACHED"
+                            )
+
+                        phase15h_buy_gate = None
+                        if pre_reject is None:
+                            phase15h_buy_gate = (
+                                _runtime_phase15h_buy_evidence(
+                                    token_address=token_address,
+                                    pool=market_context.get(
+                                        "candidate_pool"
+                                    ),
+                                    quote_token=market_context.get(
+                                        "candidate_quote_token"
+                                    ),
+                                    trade_type=selected_trade_type,
+                                    entry_amount_usdt=(
+                                        entry_amount_usdt
+                                    ),
+                                    exit_evidence=local_math_exit,
+                                    sellability_data=(
+                                        sellability_data
+                                    ),
+                                    pair_membership_verifier=(
+                                        self.pair_membership_verifier
+                                    ),
+                                )
+                            )
+
+                            if not _phase15h_buy_succeeded(
+                                phase15h_buy_gate
+                            ):
+                                pre_reject = (
+                                    "PHASE15H_BUY_NOT_PROVEN"
+                                )
+
+                        if phase15h_buy_gate is not None:
+                            opening_context[
+                                "phase15h_execution"
+                            ] = phase15h_buy_gate
+                            trade_row[
+                                "opening_context_json"
+                            ] = json.dumps(
+                                opening_context,
+                                sort_keys=True,
+                                separators=(",", ":"),
+                                default=str,
+                            )
+
+                        # Preserve locally computed gate evidence for
+                        # readmodels. Caller-injected evidence is never
+                        # admission authority.
+                        local_phase15h_buy_evidence = (
+                            phase15h_buy_gate
+                        )
+
                         bounded_insert = getattr(
                             self.paper_db,
 
@@ -3391,7 +3549,10 @@ class PipelineEngine:
                             None,
                         )
 
-                        if (
+                        if pre_reject is not None:
+                            inserted = False
+
+                        elif (
                             bounded_insert
                             is not None
                         ):
@@ -3412,7 +3573,10 @@ class PipelineEngine:
                             )
 
                         if not inserted:
-                            if (
+                            if pre_reject is not None:
+                                reason = pre_reject
+
+                            elif (
                                 get_control_mode(
                                     PAPER_DB
                                 )
@@ -3572,13 +3736,8 @@ class PipelineEngine:
             }
 
         if phase15h_execution is None:
-            phase15h_execution = (
-                _runtime_phase15h_buy_evidence(
-                    token_address=token_address,
-                    paper=paper,
-                    exit_evidence=local_math_exit,
-                    sellability_data=sellability_data,
-                )
+            phase15h_execution = locals().get(
+                "local_phase15h_buy_evidence"
             )
 
         tactical_truth = (

@@ -20,6 +20,7 @@ OTHER_POOL = "0x" + "33" * 20
 @pytest.mark.parametrize("membership", ["VERIFIED", "FACTORY_MISMATCH", "UNKNOWN"])
 def test_pipeline_uses_candidate_pool_not_token_wbnb_pool(monkeypatch, membership):
     pipeline = engine.PipelineEngine.__new__(engine.PipelineEngine)
+    pipeline.paper_db = SimpleNamespace(has_open_position=lambda _token: False)
     monkeypatch.setattr(engine, "token_analyze", lambda _: {
         "success": True, "data": {"name": "Token", "symbol": "T", "decimals": 18}})
     monkeypatch.setattr(engine, "pair_analyze", lambda _: {

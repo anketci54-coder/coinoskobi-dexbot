@@ -1,6 +1,7 @@
 from types import SimpleNamespace
 from unittest.mock import patch
 
+from app.config.contracts import USDT
 from app.execution.paper_simulation import (
     _UnknownEvidence,
     _wait_for_receipt,
@@ -11,6 +12,7 @@ from app.execution.paper_simulation import (
 
 TOKEN = "0x0000000000000000000000000000000000000002"
 SENDER = "0x0000000000000000000000000000000000000003"
+POOL = "0x0000000000000000000000000000000000000005"
 
 
 class _Call:
@@ -269,8 +271,14 @@ def _sell_run(*, delta=900, error=None, fee_on_transfer=False,
     with patch("app.execution.paper_simulation.AnvilForkBalanceDelta",
                return_value=lambda **_kwargs: (_raise(error) if error else details)):
         result = simulate_paper_sell(
-            token=TOKEN, block_number=12345, deadline=2_000_000_000,
-            web3=client, fee_on_transfer=fee_on_transfer,
+            token=TOKEN,
+            pool=POOL,
+            quote_token=USDT,
+            block_number=12345,
+            deadline=2_000_000_000,
+            seed_token_raw=10**18,
+            web3=client,
+            fee_on_transfer=fee_on_transfer,
         )
     return result
 
@@ -284,6 +292,7 @@ def test_sell_uses_receipt_and_actual_quote_balance_delta():
     assert result["side"] == "SELL"
     assert result["status"] == "SUCCESS"
     assert result["received_quote_raw"] == 900
+    assert result["quote_token"].lower() == USDT.lower()
     assert result["raw"]["balance_after"] - result["raw"]["balance_before"] == 900
     assert result["gas_used"] == 0x5208
     assert result["effective_gas_price"] == 1_000_000_000

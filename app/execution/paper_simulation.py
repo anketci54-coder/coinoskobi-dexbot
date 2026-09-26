@@ -9,7 +9,7 @@ from urllib.request import Request, urlopen
 
 from app.chains.bsc import w3 as canonical_bsc_web3
 from app.config.settings import RPC_URL, RPC_URL_SECONDARY, RPC_URL_TERTIARY, RPC_URL_QUATERNARY
-from app.config.contracts import PANCAKE_ROUTER, WBNB
+from app.config.contracts import PANCAKE_ROUTER, WBNB, USDT
 from web3 import Web3
 
 
@@ -140,12 +140,36 @@ class AnvilForkBalanceDelta:
             approval_receipt = None
             seed_receipt = None
             if operation == "sell":
-                if seed_transaction is None or deadline is None:
-                    raise _UnknownEvidence("sell seed transaction unavailable")
-                seed_receipt = _send_local_transaction(
-                    endpoint, recipient, seed_transaction, gas_price
+                if deadline is None:
+                    raise _UnknownEvidence("sell deadline unavailable")
+                quote_token = Web3.to_checksum_address(
+                    transaction.get("quote_token")
+                    or USDT
                 )
-                token_balance = _local_balance(endpoint, token, recipient)
+                if quote_token.lower() != USDT.lower():
+                    raise _UnknownEvidence("non-USDT sell route rejected")
+                pool = Web3.to_checksum_address(
+                    transaction.get("pool")
+                )
+                seed_token_raw = int(
+                    transaction.get("seed_token_raw")
+                    or 0
+                )
+                if seed_token_raw <= 0:
+                    raise _UnknownEvidence("sell token seed unavailable")
+
+                balance_slot = _seed_local_erc20_balance(
+                    endpoint=endpoint,
+                    token=Web3.to_checksum_address(token),
+                    source_account=pool,
+                    recipient=Web3.to_checksum_address(recipient),
+                    amount=seed_token_raw,
+                )
+                token_balance = _local_balance(
+                    endpoint,
+                    token,
+                    recipient,
+                )
                 if token_balance <= 0:
                     raise _UnknownEvidence("local fork token seed unavailable")
                 router = Web3.to_checksum_address(PANCAKE_ROUTER)
@@ -155,11 +179,15 @@ class AnvilForkBalanceDelta:
                 sell_data = _encode_data(
                     client, router, sell_abi, sell_name,
                     [token_balance, 0,
-                     [Web3.to_checksum_address(token), Web3.to_checksum_address(WBNB)],
+                     [Web3.to_checksum_address(token), quote_token],
                      Web3.to_checksum_address(recipient), int(deadline)],
                 )
                 transaction = {"to": router, "data": sell_data, "value": 0,
-                               "gas": 2_000_000}
+                               "gas": 2_000_000,
+                               "quote_token": quote_token,
+                               "pool": pool,
+                               "seed_token_raw": seed_token_raw,
+                               "seed_balance_slot": balance_slot}
                 allowance = _local_allowance(endpoint, token, recipient, router)
                 if allowance < token_balance:
                     approval_data = _encode_data(
@@ -176,15 +204,26 @@ class AnvilForkBalanceDelta:
                         {"to": token, "data": approval_data, "value": 0},
                         gas_price,
                     )
-                before = _local_balance(endpoint, WBNB, recipient, block_number)
+                before = _local_balance(
+                    endpoint,
+                    quote_token,
+                    recipient,
+                    block_number,
+                )
             else:
                 before = _local_balance(endpoint, token, recipient, block_number)
             execution_receipt = _send_local_transaction(
                 endpoint, recipient, transaction, gas_price
             )
             after = _local_balance(
-                endpoint, WBNB if operation == "sell" else token,
-                recipient, "latest",
+                endpoint,
+                (
+                    transaction.get("quote_token")
+                    if operation == "sell"
+                    else token
+                ),
+                recipient,
+                "latest",
             )
             delta = int(after) - int(before)
             _rpc(endpoint, "evm_revert", [snapshot])
@@ -291,6 +330,66 @@ def _local_allowance(endpoint, token, owner, spender):
         {"to": token, "data": _allowance_data(owner, spender)}, "latest",
     ])
     return int(result, 16)
+
+
+def _mapping_storage_key(account, slot):
+    return Web3.keccak(
+        bytes.fromhex(
+            str(account).lower().removeprefix("0x").rjust(64, "0")
+        )
+        + int(slot).to_bytes(32, "big")
+    ).hex()
+
+
+def _seed_local_erc20_balance(*, endpoint, token, source_account, recipient, amount):
+    source_balance = _local_balance(
+        endpoint,
+        token,
+        source_account,
+    )
+    if source_balance <= 0:
+        raise _UnknownEvidence("pool token balance unavailable")
+
+    matched_slot = None
+
+    for slot in range(64):
+        source_key = _mapping_storage_key(
+            source_account,
+            slot,
+        )
+        raw = _rpc(
+            endpoint,
+            "eth_getStorageAt",
+            [token, "0x" + source_key, "latest"],
+        )
+        if int(raw, 16) == int(source_balance):
+            matched_slot = slot
+            break
+
+    if matched_slot is None:
+        raise _UnknownEvidence("erc20 balance storage slot unavailable")
+
+    recipient_key = _mapping_storage_key(
+        recipient,
+        matched_slot,
+    )
+    value = "0x" + int(amount).to_bytes(32, "big").hex()
+
+    _rpc(
+        endpoint,
+        "anvil_setStorageAt",
+        [token, "0x" + recipient_key, value],
+    )
+
+    seeded = _local_balance(
+        endpoint,
+        token,
+        recipient,
+    )
+    if int(seeded) != int(amount):
+        raise _UnknownEvidence("erc20 local balance seed verification failed")
+
+    return int(matched_slot)
 
 
 def _encode_data(client, address, abi, function_name, args):
@@ -443,16 +542,23 @@ def simulate_paper_buy(
 
 
 def simulate_paper_sell(
-    *, token, block_number, deadline, web3=None, seed_amount_in_wei=10**15,
-    fee_on_transfer=False,
+    *, token, pool, quote_token, block_number, deadline, web3=None,
+    seed_token_raw, fee_on_transfer=False,
 ):
-    """Seed, approve if needed, and simulate a Pancake V2 SELL on local Anvil."""
+    """Simulate a Pancake V2 TOKEN/USDT SELL on a local Anvil fork.
+
+    The PAPER universe is USDT-only. Token inventory is seeded only inside the
+    disposable fork by locating the ERC20 balance mapping from the real pool
+    balance, then writing the disposable recipient balance. No WBNB route,
+    signing, broadcast, wallet, or PAPER-state mutation is used.
+    """
     client = web3 or canonical_bsc_web3
     result = {
         "contract": "phase15h_transaction_simulation_v1",
         "side": "SELL", "status": "UNKNOWN",
         "block": {"number": None, "hash": None, "chain_id": None},
-        "received_quote_raw": None, "quote_token": Web3.to_checksum_address(WBNB),
+        "received_quote_raw": None,
+        "quote_token": None,
         "recipient_balance_delta_raw": None,
         "gas_used": None, "effective_gas_price": None,
         "execution_gas_cost_wei": None,
@@ -466,35 +572,44 @@ def simulate_paper_sell(
     try:
         block_number = int(block_number)
         deadline = int(deadline)
-        seed_amount = int(seed_amount_in_wei)
-        if block_number < 0 or deadline <= 0 or seed_amount <= 0:
-            raise ValueError("invalid amount, block, or deadline")
+        seed_token_raw = int(seed_token_raw)
+        if block_number < 0 or deadline <= 0 or seed_token_raw <= 0:
+            raise ValueError("invalid token amount, block, or deadline")
         token_address = Web3.to_checksum_address(token)
-        wbnb_address = Web3.to_checksum_address(WBNB)
-        if token_address == wbnb_address:
-            raise ValueError("SELL token must differ from WBNB")
+        pool_address = Web3.to_checksum_address(pool)
+        quote_address = Web3.to_checksum_address(quote_token)
+        if quote_address.lower() != USDT.lower():
+            raise ValueError("SELL quote must be USDT")
+        if token_address.lower() == quote_address.lower():
+            raise ValueError("SELL token must differ from USDT")
         sender = Web3.to_checksum_address("0x" + secrets.token_hex(20))
         router_address = Web3.to_checksum_address(PANCAKE_ROUTER)
         block = client.eth.get_block(block_number)
         if block.get("hash") is None:
             raise ValueError("explicit block hash unavailable")
         chain_id = int(client.eth.chain_id)
-        result["block"] = {"number": block_number,
-                            "hash": Web3.to_hex(block["hash"]),
-                            "chain_id": chain_id}
-        seed_data = _encode_data(
-            client, router_address, ROUTER_BUY_ABI, "swapExactETHForTokens",
-            [0, [wbnb_address, token_address], sender, deadline],
-        )
-        seed_transaction = {"to": router_address, "data": seed_data,
-                            "value": seed_amount, "gas": 2_000_000}
-        # transaction is constructed with exact amount after local fork seeding.
+        result["block"] = {
+            "number": block_number,
+            "hash": Web3.to_hex(block["hash"]),
+            "chain_id": chain_id,
+        }
+        result["quote_token"] = quote_address
         outcome = AnvilForkBalanceDelta()(
             client=client,
-            transaction={"to": router_address, "data": "0x", "value": 0},
-            token=token_address, recipient=sender, block_number=block_number,
-            operation="sell", seed_transaction=seed_transaction,
-            fee_on_transfer=fee_on_transfer, deadline=deadline,
+            transaction={
+                "to": router_address,
+                "data": "0x",
+                "value": 0,
+                "quote_token": quote_address,
+                "pool": pool_address,
+                "seed_token_raw": seed_token_raw,
+            },
+            token=token_address,
+            recipient=sender,
+            block_number=block_number,
+            operation="sell",
+            fee_on_transfer=fee_on_transfer,
+            deadline=deadline,
         )
         details = outcome if isinstance(outcome, dict) else {"delta": outcome}
         _require_success_receipt(details)
@@ -526,7 +641,6 @@ def simulate_paper_sell(
         if isinstance(exc, _EVMRevert):
             result["raw"]["receipt"] = exc.receipt
     return result
-
 
 def _require_success_receipt(details):
     receipt = details.get("receipt")

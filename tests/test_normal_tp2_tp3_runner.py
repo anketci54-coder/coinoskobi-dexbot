@@ -83,6 +83,15 @@ def manager():
     m.db = FakeDB()
     m.learning_feed = None
     m.hybrid_exit_evidence = None
+    m._runtime_phase15h_sell_evidence = (
+        lambda **kwargs: {
+            "sell": {
+                "status": "SUCCESS",
+                "trade_type": "NORMAL",
+                "exit_stage": kwargs.get("stage"),
+            }
+        }
+    )
     return m
 
 

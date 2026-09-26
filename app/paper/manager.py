@@ -1656,65 +1656,6 @@ class PaperManager:
             or {}
         )
 
-        if not int(
-            pos.get(
-                "tp1_done"
-            )
-            or 0
-        ):
-            already_armed = bool(
-                state.get(
-                    "normal_pre_tp1_break_even_armed"
-                )
-            )
-
-            if not already_armed:
-                (
-                    protected_stop,
-                    break_even_price,
-                    break_even_armed,
-                ) = self._profit_protection_floor(
-                    pos=pos,
-                    plan=plan,
-                    highest=highest,
-                    current_stop=static_stop,
-                    activation_price=current,
-                )
-
-                state[
-                    "normal_pre_tp1_break_even_price"
-                ] = break_even_price
-
-                if break_even_armed:
-                    static_stop = float(
-                        protected_stop
-                        or static_stop
-                        or 0.0
-                    )
-
-                    state[
-                        "normal_pre_tp1_break_even_armed"
-                    ] = True
-                    state[
-                        "normal_pre_tp1_break_even_armed_price"
-                    ] = float(current)
-
-                    pos["sl_price"] = static_stop
-                    pos["math_state_json"] = json.dumps(
-                        state,
-                        sort_keys=True,
-                    )
-
-                    self.db.update_position(
-                        pos["id"],
-                        {
-                            "sl_price": static_stop,
-                            "math_state_json": (
-                                pos["math_state_json"]
-                            ),
-                        },
-                    )
-
         stored_initial_risk = state.get(
             "initial_net_risk_usdt"
         )
@@ -1807,6 +1748,65 @@ class PaperManager:
             initial_risk = float(
                 stored_initial_risk
             )
+
+        if not int(
+            pos.get(
+                "tp1_done"
+            )
+            or 0
+        ):
+            already_armed = bool(
+                state.get(
+                    "normal_pre_tp1_break_even_armed"
+                )
+            )
+
+            if not already_armed:
+                (
+                    protected_stop,
+                    break_even_price,
+                    break_even_armed,
+                ) = self._profit_protection_floor(
+                    pos=pos,
+                    plan=plan,
+                    highest=highest,
+                    current_stop=static_stop,
+                    activation_price=current,
+                )
+
+                state[
+                    "normal_pre_tp1_break_even_price"
+                ] = break_even_price
+
+                if break_even_armed:
+                    static_stop = float(
+                        protected_stop
+                        or static_stop
+                        or 0.0
+                    )
+
+                    state[
+                        "normal_pre_tp1_break_even_armed"
+                    ] = True
+                    state[
+                        "normal_pre_tp1_break_even_armed_price"
+                    ] = float(current)
+
+                    pos["sl_price"] = static_stop
+                    pos["math_state_json"] = json.dumps(
+                        state,
+                        sort_keys=True,
+                    )
+
+                    self.db.update_position(
+                        pos["id"],
+                        {
+                            "sl_price": static_stop,
+                            "math_state_json": (
+                                pos["math_state_json"]
+                            ),
+                        },
+                    )
 
         if not int(
             pos.get(

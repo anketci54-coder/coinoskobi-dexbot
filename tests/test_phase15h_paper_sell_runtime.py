@@ -332,3 +332,79 @@ def test_vur_kac_is_full_exit_only_and_binds_full_sell(monkeypatch):
     assert calls[0]["stage"] == "MATHEMATICAL_VUR_KAC_EXIT"
     assert calls[0]["exit_fraction"] == 1.0
     assert result["data"]["trade_type"] == "VUR_KAC"
+
+
+def test_full_close_stays_open_when_phase15h_sell_is_not_proven():
+    manager = _manager()
+    manager._runtime_phase15h_sell_evidence = lambda **_kwargs: {
+        "sell": {
+            "status": "REVERT",
+            "trade_type": "NORMAL",
+            "exit_stage": "NORMAL_STOP_LOSS",
+        }
+    }
+
+    result = manager._close_math(
+        _normal_position(),
+        0.40,
+        1.20,
+        0.40,
+        _plan(),
+        "NORMAL_STOP_LOSS",
+    )
+
+    assert result["data"]["action"] == "SKIP"
+    assert result["data"]["status"] == "OPEN"
+    assert result["data"]["reason"] == "PHASE15H_SELL_NOT_PROVEN"
+    assert result["data"]["phase15h_execution"]["sell"]["status"] == "REVERT"
+    assert manager.db.closed == []
+
+
+def test_tp1_realization_is_not_applied_when_phase15h_sell_is_not_proven():
+    manager = _manager()
+    manager._runtime_phase15h_sell_evidence = lambda **_kwargs: {
+        "sell": {
+            "status": "UNKNOWN",
+            "trade_type": "NORMAL",
+            "exit_stage": "NORMAL_TP1",
+        }
+    }
+
+    result = manager._process_normal_math_position(
+        _normal_position(),
+        2.0,
+        2.0,
+        1.0,
+        _plan(),
+    )
+
+    assert result["data"]["action"] == "SKIP"
+    assert result["data"]["status"] == "OPEN"
+    assert result["data"]["reason"] == "PHASE15H_SELL_NOT_PROVEN"
+    assert result["data"]["phase15h_execution"]["sell"]["status"] == "UNKNOWN"
+    assert manager.db.partial_calls == []
+
+
+def test_tp2_realization_is_not_applied_when_phase15h_sell_is_not_proven():
+    manager = _manager()
+    manager._runtime_phase15h_sell_evidence = lambda **_kwargs: {
+        "sell": {
+            "status": "REVERT",
+            "trade_type": "NORMAL",
+            "exit_stage": "NORMAL_TP2",
+        }
+    }
+
+    result = manager._process_normal_math_position(
+        _normal_position(tp1_done=1, tp2_done=0),
+        2.0,
+        2.0,
+        1.0,
+        _plan(),
+    )
+
+    assert result["data"]["action"] == "SKIP"
+    assert result["data"]["status"] == "OPEN"
+    assert result["data"]["reason"] == "PHASE15H_SELL_NOT_PROVEN"
+    assert result["data"]["phase15h_execution"]["sell"]["status"] == "REVERT"
+    assert manager.db.partial_calls == []

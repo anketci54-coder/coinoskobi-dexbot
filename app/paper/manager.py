@@ -466,6 +466,7 @@ class PaperManager:
         plan,
         highest,
         current_stop,
+        activation_price=None,
     ):
         position = (
             pos
@@ -554,8 +555,20 @@ class PaperManager:
             * sell_retention
         )
 
+        try:
+            activation_value = float(
+                highest_value
+                if activation_price is None
+                else activation_price
+            )
+        except (
+            TypeError,
+            ValueError,
+        ):
+            activation_value = 0.0
+
         armed = (
-            highest_value
+            activation_value
             >= break_even_price
         )
 
@@ -1541,6 +1554,12 @@ class PaperManager:
             or 0.0
         )
 
+        state = self._json_dict(
+            pos.get(
+                "math_state_json"
+            )
+        )
+
         if hard_exit:
             return self._close_math(
                 pos,
@@ -1555,13 +1574,28 @@ class PaperManager:
             static_stop > 0
             and current <= static_stop
         ):
+            protected = bool(
+                state.get(
+                    "normal_pre_tp1_break_even_armed"
+                )
+            ) and not int(
+                pos.get(
+                    "tp1_done"
+                )
+                or 0
+            )
+
             return self._close_math(
                 pos,
                 current,
                 highest,
                 lowest,
                 plan,
-                "NORMAL_STOP_LOSS",
+                (
+                    "NORMAL_PROFIT_PROTECTION_EXIT"
+                    if protected
+                    else "NORMAL_STOP_LOSS"
+                ),
             )
 
         tokens = float(
@@ -1600,11 +1634,64 @@ class PaperManager:
             or {}
         )
 
-        state = self._json_dict(
+        if not int(
             pos.get(
-                "math_state_json"
+                "tp1_done"
             )
-        )
+            or 0
+        ):
+            already_armed = bool(
+                state.get(
+                    "normal_pre_tp1_break_even_armed"
+                )
+            )
+
+            if not already_armed:
+                (
+                    protected_stop,
+                    break_even_price,
+                    break_even_armed,
+                ) = self._profit_protection_floor(
+                    pos=pos,
+                    plan=plan,
+                    highest=highest,
+                    current_stop=static_stop,
+                    activation_price=current,
+                )
+
+                state[
+                    "normal_pre_tp1_break_even_price"
+                ] = break_even_price
+
+                if break_even_armed:
+                    static_stop = float(
+                        protected_stop
+                        or static_stop
+                        or 0.0
+                    )
+
+                    state[
+                        "normal_pre_tp1_break_even_armed"
+                    ] = True
+                    state[
+                        "normal_pre_tp1_break_even_armed_price"
+                    ] = float(current)
+
+                    pos["sl_price"] = static_stop
+                    pos["math_state_json"] = json.dumps(
+                        state,
+                        sort_keys=True,
+                    )
+
+                    self.db.update_position(
+                        pos["id"],
+                        {
+                            "sl_price": static_stop,
+                            "math_state_json": (
+                                pos["math_state_json"]
+                            ),
+                        },
+                    )
 
         stored_initial_risk = state.get(
             "initial_net_risk_usdt"

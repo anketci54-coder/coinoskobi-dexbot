@@ -338,7 +338,7 @@ def _mapping_storage_key(account, slot):
             str(account).lower().removeprefix("0x").rjust(64, "0")
         )
         + int(slot).to_bytes(32, "big")
-    ).hex()
+    ).hex().removeprefix("0x")
 
 
 def _seed_local_erc20_balance(*, endpoint, token, source_account, recipient, amount):

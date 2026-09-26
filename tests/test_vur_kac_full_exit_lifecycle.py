@@ -69,6 +69,15 @@ def _manager():
     manager.db = FakePaperDatabase()
     manager.learning_feed = None
     manager.hybrid_exit_evidence = None
+    manager._runtime_phase15h_sell_evidence = (
+        lambda **kwargs: {
+            "sell": {
+                "status": "SUCCESS",
+                "trade_type": "VUR_KAC",
+                "exit_stage": kwargs.get("stage"),
+            }
+        }
+    )
     return manager
 
 

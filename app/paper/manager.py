@@ -415,6 +415,7 @@ class PaperManager:
             "DYNAMIC_PROFIT_PROTECTION",
             "SEVERE_MARKET_DETERIORATION",
             "PERSISTED_STOP_LOSS",
+            "NORMAL_PROFIT_PROTECTION_EXIT",
             "MATHEMATICAL_TREND_FLOOR",
             "HARD_SAFETY_EXIT",
         }:
@@ -1574,15 +1575,36 @@ class PaperManager:
             static_stop > 0
             and current <= static_stop
         ):
-            protected = bool(
-                state.get(
-                    "normal_pre_tp1_break_even_armed"
+            protected_floor = state.get(
+                "normal_pre_tp1_break_even_price"
+            )
+
+            try:
+                protected_floor = float(
+                    protected_floor
                 )
-            ) and not int(
-                pos.get(
-                    "tp1_done"
+            except (
+                TypeError,
+                ValueError,
+            ):
+                protected_floor = 0.0
+
+            protected = (
+                bool(
+                    state.get(
+                        "normal_pre_tp1_break_even_armed"
+                    )
                 )
-                or 0
+                and protected_floor > 0
+                and abs(
+                    static_stop
+                    - protected_floor
+                ) <= max(
+                    1e-12,
+                    abs(
+                        protected_floor
+                    ) * 1e-12,
+                )
             )
 
             return self._close_math(

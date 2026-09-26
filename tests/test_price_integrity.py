@@ -206,3 +206,38 @@ def test_price_conflict_cannot_reach_any_paper_strategy_or_mutate_pnl(trade_type
     assert pos == before
     assert not gate.accepted
 
+
+
+
+def test_fresh_http_evidence_can_span_full_freshness_window():
+    rpc = V2RPC(1)
+    observed = (
+        datetime.now(timezone.utc)
+        - timedelta(seconds=20)
+    ).isoformat()
+
+    result = PriceIntegrityGate(rpc).evaluate(
+        position(),
+        evidence(observed_at=observed),
+    )
+
+    assert result["state"] == "VERIFIED_EXTREME"
+    assert result["reason"] == "PAPER_USDT_USD_V1"
+
+
+def test_http_evidence_older_than_freshness_window_still_fails_closed():
+    rpc = V2RPC(1)
+    observed = (
+        datetime.now(timezone.utc)
+        - timedelta(seconds=31)
+    ).isoformat()
+
+    result = PriceIntegrityGate(rpc).evaluate(
+        position(),
+        evidence(observed_at=observed),
+    )
+
+    assert result == {
+        "state": "PRICE_UNVERIFIED",
+        "reason": "INVALID_PROVENANCE_OR_PRICE",
+    }

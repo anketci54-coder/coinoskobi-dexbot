@@ -1541,6 +1541,12 @@ class PaperManager:
             or 0.0
         )
 
+        state = self._json_dict(
+            pos.get(
+                "math_state_json"
+            )
+        )
+
         if hard_exit:
             return self._close_math(
                 pos,
@@ -1555,13 +1561,31 @@ class PaperManager:
             static_stop > 0
             and current <= static_stop
         ):
+            pre_tp1_profit_protected = (
+                not int(
+                    pos.get(
+                        "tp1_done"
+                    )
+                    or 0
+                )
+                and bool(
+                    state.get(
+                        "normal_pre_tp1_break_even_armed"
+                    )
+                )
+            )
+
             return self._close_math(
                 pos,
                 current,
                 highest,
                 lowest,
                 plan,
-                "NORMAL_STOP_LOSS",
+                (
+                    "NORMAL_PROFIT_PROTECTION_EXIT"
+                    if pre_tp1_profit_protected
+                    else "NORMAL_STOP_LOSS"
+                ),
             )
 
         tokens = float(
@@ -1600,11 +1624,66 @@ class PaperManager:
             or {}
         )
 
-        state = self._json_dict(
+        if not int(
             pos.get(
-                "math_state_json"
+                "tp1_done"
             )
-        )
+            or 0
+        ):
+            (
+                protected_stop,
+                break_even_price,
+                break_even_armed,
+            ) = self._profit_protection_floor(
+                pos=pos,
+                plan=plan,
+                highest=highest,
+                current_stop=static_stop,
+            )
+
+            state[
+                "normal_pre_tp1_break_even_price"
+            ] = break_even_price
+            state[
+                "normal_pre_tp1_break_even_armed"
+            ] = bool(
+                break_even_armed
+            )
+
+            if break_even_armed:
+                static_stop = float(
+                    protected_stop
+                    or static_stop
+                    or 0.0
+                )
+                pos["sl_price"] = static_stop
+                pos["math_state_json"] = json.dumps(
+                    state,
+                    sort_keys=True,
+                )
+
+                self.db.update_position(
+                    pos["id"],
+                    {
+                        "sl_price": static_stop,
+                        "math_state_json": (
+                            pos["math_state_json"]
+                        ),
+                    },
+                )
+
+                if (
+                    static_stop > 0
+                    and current <= static_stop
+                ):
+                    return self._close_math(
+                        pos,
+                        current,
+                        highest,
+                        lowest,
+                        plan,
+                        "NORMAL_PROFIT_PROTECTION_EXIT",
+                    )
 
         stored_initial_risk = state.get(
             "initial_net_risk_usdt"

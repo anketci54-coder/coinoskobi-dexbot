@@ -16,7 +16,7 @@ from web3 import Web3
 EXTREME_RATIO = Decimal('2.0')
 MAX_DIVERGENCE = Decimal('1.10')
 MAX_AGE_SECONDS = 30
-MAX_SKEW_SECONDS = 10
+MAX_SKEW_SECONDS = MAX_AGE_SECONDS
 SOURCES = {'geckoterminal', 'dexscreener', 'pancakeswap_v2_sync'}
 
 

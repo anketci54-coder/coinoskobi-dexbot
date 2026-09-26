@@ -50,11 +50,12 @@ def _phase15h_side(payload, side):
     if side == "BUY":
         evidence.update({
             "received_token_raw": _integer(data.get("received_token_raw")),
+            "quote_token": data.get("quote_token"),
             "recipient_balance_delta_raw": _integer(
                 data.get("recipient_balance_delta_raw")
             ),
-            "execution_price_native_per_token": _number(
-                data.get("execution_price_native_per_token")
+            "execution_price_usdt_per_token": _number(
+                data.get("execution_price_usdt_per_token")
             ),
         })
     else:

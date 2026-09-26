@@ -240,3 +240,104 @@ def test_tp1_activation_price_is_not_full_exit():
         and result["data"]["reason"]
         == "NORMAL_TAKE_PROFIT"
     )
+
+
+def test_normal_pre_tp1_break_even_floor_arms_before_tp1_is_feasible():
+    m = manager()
+
+    pos = position(
+        tp1_done=0,
+        tp2_done=0,
+        runner_active=0,
+    )
+    pos.update({
+        "token_amount": 100.0,
+        "remaining_cost_basis_usdt": 100.0,
+        "realized_pnl_usdt": 0.0,
+        "realized_proceeds_usdt": 0.0,
+        "realized_gross_proceeds_usdt": 0.0,
+        "sl_price": 0.50,
+        "math_state_json": json.dumps({
+            "initial_net_risk_usdt": 20.0,
+        }),
+    })
+
+    result = m._process_normal_math_position(
+        pos,
+        1.05,
+        1.05,
+        1.0,
+        plan(),
+    )
+
+    assert result["data"]["action"] == "HOLD"
+    assert m.db.partial_calls == []
+
+    protection_updates = [
+        values
+        for _, values in m.db.updates
+        if (
+            values.get("sl_price") == 1.0
+            and "math_state_json" in values
+        )
+    ]
+    assert protection_updates
+
+    state = json.loads(
+        protection_updates[0]["math_state_json"]
+    )
+    assert (
+        state[
+            "normal_pre_tp1_break_even_armed"
+        ]
+        is True
+    )
+    assert (
+        state[
+            "normal_pre_tp1_break_even_price"
+        ]
+        == 1.0
+    )
+
+
+def test_normal_pre_tp1_break_even_floor_exit_has_profit_protection_reason():
+    m = manager()
+
+    pos = position(
+        tp1_done=0,
+        tp2_done=0,
+        runner_active=0,
+    )
+    pos.update({
+        "token_amount": 100.0,
+        "remaining_cost_basis_usdt": 100.0,
+        "realized_pnl_usdt": 0.0,
+        "realized_proceeds_usdt": 0.0,
+        "realized_gross_proceeds_usdt": 0.0,
+        "sl_price": 1.0,
+        "highest_price": 1.05,
+        "math_state_json": json.dumps({
+            "initial_net_risk_usdt": 20.0,
+            "normal_pre_tp1_break_even_price": 1.0,
+            "normal_pre_tp1_break_even_armed": True,
+        }),
+    })
+
+    result = m._process_normal_math_position(
+        pos,
+        0.99,
+        1.05,
+        0.99,
+        plan(),
+    )
+
+    assert result["data"]["action"] == "CLOSE"
+    assert (
+        result["data"]["reason"]
+        == "NORMAL_PROFIT_PROTECTION_EXIT"
+    )
+    assert len(m.db.closed) == 1
+    assert (
+        m.db.closed[0][1]["close_reason"]
+        == "NORMAL_PROFIT_PROTECTION_EXIT"
+    )

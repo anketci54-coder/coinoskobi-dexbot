@@ -1,6 +1,7 @@
 import json
 import logging
 import math
+from decimal import Decimal
 
 from app.risk.price_integrity import PriceIntegrityGate
 
@@ -21,6 +22,7 @@ from app.paper.trade_routing import (
 from app.execution.paper_simulation import (
     simulate_paper_sell,
 )
+from app.config.contracts import USDT
 from app.risk.exit_feasibility import (
     analyze as analyze_exit_feasibility,
 )
@@ -233,6 +235,19 @@ class PaperManager:
             or {}
         )
 
+        quote_token = str(
+            context.get("quote_token")
+            or ""
+        ).lower()
+
+        if quote_token != USDT.lower():
+            return self._phase15h_unknown_sell(
+                pos=position,
+                stage=stage,
+                exit_fraction=fraction,
+                reason="NON_USDT_ROUTE_REJECTED",
+            )
+
         try:
             block_number = int(
                 context.get(
@@ -240,11 +255,10 @@ class PaperManager:
                 )
                 or 0
             )
-            wbnb_usd = float(
+            token_decimals = int(
                 context.get(
-                    "wbnb_usd_estimate"
+                    "token_decimals"
                 )
-                or 0.0
             )
 
             if exit_notional_usdt is None:
@@ -265,17 +279,34 @@ class PaperManager:
                 notional_usdt = float(
                     exit_notional_usdt
                 )
-        except (TypeError, ValueError):
+
+            seed_token_raw = int(
+                Decimal(
+                    str(
+                        position.get(
+                            "token_amount"
+                        )
+                        or 0
+                    )
+                )
+                * Decimal(str(fraction))
+                * (Decimal(10) ** token_decimals)
+            )
+        except (
+            TypeError,
+            ValueError,
+            ArithmeticError,
+        ):
             block_number = 0
-            wbnb_usd = 0.0
+            token_decimals = -1
             notional_usdt = 0.0
+            seed_token_raw = 0
 
         if (
             block_number <= 0
-            or not math.isfinite(
-                wbnb_usd
-            )
-            or wbnb_usd <= 0
+            or token_decimals < 0
+            or token_decimals > 255
+            or seed_token_raw <= 0
             or not math.isfinite(
                 notional_usdt
             )
@@ -291,22 +322,6 @@ class PaperManager:
                 stage=stage,
                 exit_fraction=fraction,
                 reason="SELL_EXECUTION_CONTEXT_UNAVAILABLE",
-            )
-
-        seed_amount_in_wei = int(
-            (
-                notional_usdt
-                / wbnb_usd
-            )
-            * (10 ** 18)
-        )
-
-        if seed_amount_in_wei <= 0:
-            return self._phase15h_unknown_sell(
-                pos=position,
-                stage=stage,
-                exit_fraction=fraction,
-                reason="SELL_SEED_AMOUNT_ZERO",
             )
 
         try:
@@ -328,11 +343,11 @@ class PaperManager:
         try:
             sell = simulate_paper_sell(
                 token=token,
+                pool=pool,
+                quote_token=USDT,
                 block_number=block_number,
                 deadline=deadline,
-                seed_amount_in_wei=(
-                    seed_amount_in_wei
-                ),
+                seed_token_raw=seed_token_raw,
                 fee_on_transfer=(
                     sell_tax > 0
                 ),

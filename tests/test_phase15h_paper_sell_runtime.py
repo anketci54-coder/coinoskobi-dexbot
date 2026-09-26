@@ -1,6 +1,7 @@
 import json
 
 import app.paper.manager as manager_module
+from app.config.contracts import USDT
 from app.paper.manager import PaperManager
 
 
@@ -133,7 +134,8 @@ def test_phase15h_sell_evidence_preserves_trade_type_stage_and_notional(
             "success": True,
             "data": {
                 "runtime_price_latest_block": 123456,
-                "wbnb_usd_estimate": 600.0,
+                "quote_token": USDT,
+                "token_decimals": 18,
             },
         },
     )
@@ -180,7 +182,9 @@ def test_phase15h_sell_evidence_preserves_trade_type_stage_and_notional(
     assert sell["paper_exit_fraction"] == 0.25
     assert sell["paper_exit_notional_usdt"] == 60.0
     assert calls[0]["block_number"] == 123456
-    assert calls[0]["seed_amount_in_wei"] == 10 ** 17
+    assert calls[0]["quote_token"].lower() == USDT.lower()
+    assert calls[0]["pool"].lower() == _normal_position()["pool"].lower()
+    assert calls[0]["seed_token_raw"] == 25 * 10 ** 18
     assert calls[0]["fee_on_transfer"] is True
     assert "PHASE15H_RUNTIME_SELL" in caplog.text
     assert "trade_type=NORMAL" in caplog.text

@@ -399,6 +399,20 @@
   });
   $('vezirInput')?.addEventListener('keydown',e=>{if(e.key==='Enter')askVezir();});
 
+  let resumeRefreshTimer=null;
+  const refreshOnResume=()=>{
+    if(document.hidden) return;
+    if(resumeRefreshTimer) clearTimeout(resumeRefreshTimer);
+    resumeRefreshTimer=setTimeout(()=>{
+      resumeRefreshTimer=null;
+      loadAll();
+    },100);
+  };
+
+  document.addEventListener('visibilitychange',refreshOnResume);
+  window.addEventListener('focus',refreshOnResume);
+  window.addEventListener('pageshow',refreshOnResume);
+
   loadAll();
   setInterval(()=>{ if(!document.hidden) loadAll(); },30000);
 })();
@@ -1905,16 +1919,6 @@
         tone(node,openPnl);
       }
 
-      const summary=dash?.summary || {};
-      const start=num(summary.starting_capital);
-      const realized=num(summary.realized_net);
-
-      if(start!==null && realized!==null){
-        const equity=document.getElementById('metricEquity');
-        if(equity){
-          equity.textContent=money(start + realized + openPnl);
-        }
-      }
     }
   }
 

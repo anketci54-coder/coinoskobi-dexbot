@@ -206,7 +206,7 @@ def test_phase15h_engine_projects_runtime_classification(
         is False
     )
 
-def test_phase15h_runtime_buy_runs_only_after_paper_open(monkeypatch, caplog):
+def test_phase15h_runtime_buy_uses_usdt_admission_facts(monkeypatch, caplog):
     calls = []
     caplog.set_level("INFO", logger="app.pipeline.engine")
 
@@ -231,43 +231,54 @@ def test_phase15h_runtime_buy_runs_only_after_paper_open(monkeypatch, caplog):
         fake_buy,
     )
 
+    verifier_calls = []
+    def verifier(pool, token, quote, **kwargs):
+        verifier_calls.append((pool, token, quote, kwargs))
+        return {"state": "VERIFIED"}
+
     evidence = engine_module._runtime_phase15h_buy_evidence(
         token_address="0x0000000000000000000000000000000000000002",
-        paper={
-            "action": "PAPER_BUY",
-            "trade_type": "VUR_KAC",
-            "entry_amount_usdt": 600.0,
-        },
+        pool="0x0000000000000000000000000000000000000005",
+        quote_token=engine_module.USDT,
+        trade_type="VUR_KAC",
+        entry_amount_usdt=600.0,
         exit_evidence={
             "runtime_price_latest_block": 123456,
-            "wbnb_usd_estimate": 600.0,
+            "quote_decimals": 18,
+            "token_decimals": 18,
         },
         sellability_data={"buy_tax": 1.0},
+        pair_membership_verifier=verifier,
     )
 
     assert evidence["buy"]["status"] == "SUCCESS"
     assert evidence["buy"]["trade_type"] == "VUR_KAC"
     assert len(calls) == 1
-    assert calls[0]["amount_in_wei"] == 10 ** 18
+    assert calls[0]["amount_in_usdt_raw"] == 600 * 10 ** 18
+    assert calls[0]["quote_token"].lower() == engine_module.USDT.lower()
     assert calls[0]["block_number"] == 123456
     assert calls[0]["fee_on_transfer"] is True
+    assert verifier_calls[0][3]["block_identifier"] == 123456
     assert "PHASE15H_RUNTIME_BUY" in caplog.text
     assert "trade_type=VUR_KAC" in caplog.text
     assert "status=SUCCESS" in caplog.text
     assert "block=123456" in caplog.text
 
-    skipped = engine_module._runtime_phase15h_buy_evidence(
+    rejected = engine_module._runtime_phase15h_buy_evidence(
         token_address="0x0000000000000000000000000000000000000002",
-        paper={
-            "action": "WATCH",
-            "entry_amount_usdt": 600.0,
-        },
+        pool="0x0000000000000000000000000000000000000005",
+        quote_token="0x" + "33" * 20,
+        trade_type="NORMAL",
+        entry_amount_usdt=600.0,
         exit_evidence={
             "runtime_price_latest_block": 123456,
-            "wbnb_usd_estimate": 600.0,
+            "quote_decimals": 18,
+            "token_decimals": 18,
         },
+        pair_membership_verifier=verifier,
     )
 
-    assert skipped is None
+    assert rejected["buy"]["status"] == "UNKNOWN"
+    assert rejected["buy"]["evidence_reason"] == "NON_USDT_ROUTE_REJECTED"
     assert len(calls) == 1
 

@@ -1,11 +1,13 @@
 """Unsigned, read-only transaction simulations for paper evidence."""
 
 import json
+import math
 import secrets
 import socket
 import subprocess
 import time
 from urllib.request import Request, urlopen
+from decimal import Decimal, localcontext
 
 from app.chains.bsc import w3 as canonical_bsc_web3
 from app.config.settings import RPC_URL, RPC_URL_SECONDARY, RPC_URL_TERTIARY, RPC_URL_QUATERNARY
@@ -56,6 +58,14 @@ ERC20_ALLOWANCE_ABI = [{
     ],
     "name": "allowance",
     "outputs": [{"name": "", "type": "uint256"}],
+    "stateMutability": "view",
+    "type": "function",
+}]
+
+ERC20_DECIMALS_ABI = [{
+    "inputs": [],
+    "name": "decimals",
+    "outputs": [{"name": "", "type": "uint8"}],
     "stateMutability": "view",
     "type": "function",
 }]
@@ -483,6 +493,45 @@ class _EVMRevert(RuntimeError):
         self.receipt = receipt
 
 
+def _add_execution_price_telemetry(result, *, client, token, quote_token,
+                                 amount_in, received_token_raw):
+    """Normalize optional telemetry without changing transaction evidence."""
+    try:
+        block = result["block"]
+        decimals = []
+        for asset in (quote_token, token):
+            value = client.eth.contract(
+                address=asset, abi=ERC20_DECIMALS_ABI,
+            ).functions.decimals().call(block_identifier=block["hash"])
+            if type(value) is not int or not 0 <= value <= 255:
+                raise ValueError("invalid ERC20 decimals")
+            decimals.append(value)
+        # Contract calls resolve a hash to a number; reject a reorg or an
+        # inconsistent provider read before attributing decimals to this block.
+        if _hex(client.eth.get_block(block["number"])["hash"]) != block["hash"]:
+            raise ValueError("execution price decimals block changed")
+        quote_decimals, token_decimals = decimals
+        with localcontext() as context:
+            context.prec = 100
+            price = float(
+                (Decimal(amount_in) / (Decimal(10) ** quote_decimals))
+                / (Decimal(received_token_raw) / (Decimal(10) ** token_decimals))
+            )
+        if not math.isfinite(price) or price <= 0:
+            raise ValueError("execution price is not a finite positive value")
+        result["execution_price_usdt_per_token"] = price
+        result["raw"]["execution_price_normalization"] = {
+            "quote_decimals": quote_decimals,
+            "token_decimals": token_decimals,
+            "block": dict(block),
+        }
+    except Exception as exc:
+        result["raw"]["errors"].append({
+            "stage": "execution_price_telemetry", "type": type(exc).__name__,
+            "message": "verified execution price normalization unavailable",
+        })
+
+
 def simulate_paper_buy(
     *, token, pool, quote_token, amount_in_usdt_raw, block_number,
     deadline, web3=None, fee_on_transfer=False,
@@ -499,6 +548,7 @@ def simulate_paper_buy(
         "side": "BUY",
         "status": "UNKNOWN",
         "block": {"number": None, "hash": None, "chain_id": None},
+        "amount_in_usdt_raw": None,
         "received_token_raw": None,
         "quote_token": None,
         "recipient_balance_delta_raw": None,
@@ -509,7 +559,8 @@ def simulate_paper_buy(
         "slippage_pct": None,
         "fill_status": "UNKNOWN",
         "raw": {"transaction": None, "receipt": None, "seed_receipt": None,
-                "approval_receipt": None, "errors": []},
+                "approval_receipt": None, "execution_price_normalization": None,
+                "errors": []},
         "read_only": True, "signing": False, "broadcast": False,
         "wallet_use": False, "paper_authority": False,
         "live_authority": False, "execution_authority": False,
@@ -541,6 +592,7 @@ def simulate_paper_buy(
             "chain_id": chain_id,
         }
         result["quote_token"] = quote_address
+        result["amount_in_usdt_raw"] = amount_in
 
         outcome = AnvilForkBalanceDelta()(
             client=client,
@@ -575,9 +627,12 @@ def simulate_paper_buy(
         })
         result["recipient_balance_delta_raw"] = delta
         result["received_token_raw"] = delta
-        result["execution_price_usdt_per_token"] = amount_in / delta
         result["fill_status"] = "SIMULATED_RECIPIENT_DELTA"
         result["status"] = "SUCCESS"
+        _add_execution_price_telemetry(
+            result, client=client, token=token_address, quote_token=quote_address,
+            amount_in=amount_in, received_token_raw=delta,
+        )
     except Exception as exc:
         message = str(exc).lower()
         is_revert = isinstance(exc, _EVMRevert) or any(marker in message for marker in (

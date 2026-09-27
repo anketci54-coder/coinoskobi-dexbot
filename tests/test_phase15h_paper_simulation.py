@@ -1,6 +1,8 @@
 from types import SimpleNamespace
 from unittest.mock import patch
 
+import pytest
+
 from app.config.contracts import USDT
 from app.execution.paper_simulation import (
     _UnknownEvidence,
@@ -62,15 +64,36 @@ class _Functions:
 class _Eth:
     chain_id = 56
 
-    def __init__(self, call):
+    def __init__(self, call, *, token_decimals=18, quote_decimals=18,
+                 decimals_error=None, changed_block_hash=False):
         self._call = call
         self.blocks = []
+        self.token_decimals = token_decimals
+        self.quote_decimals = quote_decimals
+        self.decimals_error = decimals_error
+        self.changed_block_hash = changed_block_hash
+        self.decimals_calls = []
 
     def get_block(self, number):
         self.blocks.append(number)
+        if self.changed_block_hash and len(self.blocks) > 1:
+            return {"hash": bytes.fromhex("cd" * 32)}
         return {"hash": bytes.fromhex("ab" * 32)}
 
     def contract(self, **_kwargs):
+        if _kwargs["abi"][0]["name"] == "decimals":
+            address = _kwargs["address"].lower()
+
+            def call(*, block_identifier):
+                self.decimals_calls.append((address, block_identifier))
+                if self.decimals_error:
+                    raise self.decimals_error
+                return (self.quote_decimals if address == USDT.lower()
+                        else self.token_decimals)
+
+            return SimpleNamespace(functions=SimpleNamespace(
+                decimals=lambda: SimpleNamespace(call=call)
+            ))
         if _kwargs["abi"][0]["name"] == "balanceOf":
             return SimpleNamespace(functions=SimpleNamespace(
                 balanceOf=lambda _recipient: _Balance()
@@ -81,13 +104,14 @@ class _Eth:
         return 10**30
 
 
-def _client(call):
-    eth = _Eth(call)
+def _client(call, **kwargs):
+    eth = _Eth(call, **kwargs)
     return SimpleNamespace(eth=eth), eth
 
 
-def _run(call, *, delta=2_000_000, fee_on_transfer=False):
-    client, eth = _client(call)
+def _run(call, *, delta=2_000_000, fee_on_transfer=False,
+         amount_in_usdt_raw=10**18, **client_kwargs):
+    client, eth = _client(call, **client_kwargs)
     def simulated_delta(**_kwargs):
         if call.error:
             raise call.error
@@ -99,7 +123,8 @@ def _run(call, *, delta=2_000_000, fee_on_transfer=False):
     with patch("app.execution.paper_simulation.AnvilForkBalanceDelta",
                return_value=simulated_delta):
         result = simulate_paper_buy(
-            token=TOKEN, pool=POOL, quote_token=USDT, amount_in_usdt_raw=10**18, block_number=12345,
+            token=TOKEN, pool=POOL, quote_token=USDT,
+            amount_in_usdt_raw=amount_in_usdt_raw, block_number=12345,
             deadline=2_000_000_000,
             web3=client, fee_on_transfer=fee_on_transfer,
         )
@@ -118,12 +143,75 @@ def test_success_is_explicit_block_unsigned_and_provenanced():
     assert result["gas_used"] == 123456
     assert result["effective_gas_price"] == 3
     assert result["execution_gas_cost_wei"] == 370368
-    assert eth.blocks == [12345]
+    assert eth.blocks == [12345, 12345]
     assert call.calls == []
     assert result["quote_token"].lower() == USDT.lower()
     for key in ("signing", "broadcast", "wallet_use", "paper_authority",
                 "live_authority", "execution_authority"):
         assert result[key] is False
+
+
+@pytest.mark.parametrize("token_decimals", [0, 4, 9, 18])
+@pytest.mark.parametrize("quote_decimals", [6, 18])
+def test_execution_price_normalizes_verified_token_and_quote_decimals(
+    token_decimals, quote_decimals,
+):
+    # A 10 USDT input buys two whole tokens regardless of raw denominations.
+    quote_raw = 10 * 10**quote_decimals
+    token_raw = 2 * 10**token_decimals
+    result, eth, _call = _run(
+        _Call([]), delta=token_raw, amount_in_usdt_raw=quote_raw,
+        token_decimals=token_decimals, quote_decimals=quote_decimals,
+    )
+    assert result["status"] == "SUCCESS"
+    assert result["execution_price_usdt_per_token"] == pytest.approx(5.0)
+    assert result["amount_in_usdt_raw"] == quote_raw
+    assert result["received_token_raw"] == token_raw
+    normalization = result["raw"]["execution_price_normalization"]
+    assert normalization == {
+        "quote_decimals": quote_decimals,
+        "token_decimals": token_decimals,
+        "block": result["block"],
+    }
+    assert sorted(eth.decimals_calls) == sorted([
+        (USDT.lower(), result["block"]["hash"]),
+        (TOKEN.lower(), result["block"]["hash"]),
+    ])
+
+
+@pytest.mark.parametrize("asset", ["token", "quote"])
+@pytest.mark.parametrize("decimals", [None, "9", True, -1, 256])
+def test_invalid_decimals_only_disable_price_telemetry(asset, decimals):
+    result, _eth, _call = _run(
+        _Call([]), **{f"{asset}_decimals": decimals},
+    )
+    assert result["status"] == "SUCCESS"
+    assert result["fill_status"] == "SIMULATED_RECIPIENT_DELTA"
+    assert result["received_token_raw"] == 2_000_000
+    assert result["execution_price_usdt_per_token"] is None
+    assert result["raw"]["execution_price_normalization"] is None
+    assert result["raw"]["errors"][-1]["stage"] == "execution_price_telemetry"
+    for key in ("signing", "broadcast", "wallet_use", "paper_authority",
+                "live_authority", "execution_authority"):
+        assert result[key] is False
+
+
+@pytest.mark.parametrize("error", [ConnectionError("provider unavailable"),
+                                 RuntimeError("execution reverted")])
+def test_missing_decimals_do_not_reclassify_successful_buy(error):
+    result, _eth, _call = _run(_Call([]), decimals_error=error)
+    assert result["status"] == "SUCCESS"
+    assert result["execution_price_usdt_per_token"] is None
+    assert result["raw"]["receipt"]["status"] == "0x1"
+    assert result["raw"]["errors"][-1]["stage"] == "execution_price_telemetry"
+
+
+def test_retracted_decimals_block_only_disables_price_telemetry():
+    result, _eth, _call = _run(_Call([]), changed_block_hash=True)
+    assert result["status"] == "SUCCESS"
+    assert result["execution_price_usdt_per_token"] is None
+    assert result["raw"]["execution_price_normalization"] is None
+    assert result["block"]["hash"] == "0x" + "ab" * 32
 
 
 def test_revert_at_known_block_is_reported_without_execution():

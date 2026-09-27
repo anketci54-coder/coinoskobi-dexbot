@@ -69,6 +69,7 @@ def test_fail_closed(calibrated, change):
 def historical_db(path, capital):
     import json
     import sqlite3
+    from tests.paper_calibration_fixtures import stamp_current_model
     db = sqlite3.connect(path)
     db.execute('''CREATE TABLE paper_trades (
         id INTEGER, created_at TEXT, closed_at TEXT, status TEXT,
@@ -78,6 +79,7 @@ def historical_db(path, capital):
         1, '2026-09-20T00:00:00+00:00', '2026-09-20T01:00:00+00:00',
         'CLOSED', 1., capital / 10, -capital / 100, -capital / 90,
         json.dumps({'capital': {'available_usdt': capital}, 'entry': {'band_low': .95}}), '{}'))
+    stamp_current_model(db)
     db.commit()
     db.close()
 
@@ -139,22 +141,26 @@ def test_measured_risk_reduces_bootstrap_size(tmp_path, field, value):
     assert 0 < after['entry_amount_usdt'] < before['entry_amount_usdt']
 
 
-def test_hot_observation_never_exceeds_empirical_account_risk_budget(monkeypatch):
+@pytest.mark.parametrize("protected", [True, False])
+def test_hot_observation_never_exceeds_empirical_account_risk_budget(monkeypatch, protected):
     p = plan()
     p["capital"]["entry_amount_usdt"] = 9000.0
     # Keep this fixture inside the existing chase limit.  This test isolates
     # the risk-budget invariant; a 1.0 -> 1.5 jump is correctly rejected by
     # ENTRY_ABOVE_CHASE_LIMIT before HOT sizing is reached.
     p["statistics"]["prices"] = [1.0, 1.05]
-    p["capital"]["liquidity_capacity_source"] = "EMPIRICAL_RESERVE_FLOOR"
+    p["capital"]["liquidity_capacity_source"] = (
+        "VERIFIED_LP_PROTECTION" if protected else "EMPIRICAL_RESERVE_FLOOR"
+    )
     p["capital"]["reserve_observation_count"] = 4
     p["capital"]["observed_min_quote_reserve_usd"] = 1000000.0
-    p["blockers"] = ["LP_WITHDRAWAL_PROTECTION_UNVERIFIED"]
+    p["blockers"] = [] if protected else ["LP_WITHDRAWAL_PROTECTION_UNVERIFIED"]
+    p["cost_model"]["cost_complete"] = False
 
     monkeypatch.setattr(sizing, "_empirical_outcome_calibration", lambda **kw: {
         "gap_multiplier": None,
         "account_risk_budget_fraction": .01,
-        "cost_uncertainty_fraction": .01,
+        "cost_uncertainty_fraction": None,
         "reason": "EMPIRICAL_OUTCOME_CALIBRATION",
         "gap_samples": 0,
         "cost_samples": 1,
@@ -166,6 +172,10 @@ def test_hot_observation_never_exceeds_empirical_account_risk_budget(monkeypatch
         available_capital_usdt=10000.0,
     )
 
+    if not protected:
+        assert result["entry_amount_usdt"] == result["risk_amount_usdt"] == 0
+        assert "LP_WITHDRAWAL_PROTECTION_UNVERIFIED" in result["blockers"]
+        return
     assert result["sizing_reason"] == "PAPER_HOT_OBSERVATION_BOOTSTRAP"
     assert 0 < result["entry_amount_usdt"] <= 100.0
     assert result["risk_amount_usdt"] == result["entry_amount_usdt"]

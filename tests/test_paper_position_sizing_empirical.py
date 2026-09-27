@@ -6,6 +6,7 @@ from app.risk.paper_position_sizing import (
     calculate_paper_position_size,
 )
 from app.pipeline.engine import _paper_entry_timing_reason
+from tests.paper_calibration_fixtures import stamp_current_model
 
 
 def _stamp_outcome_fingerprints(db):
@@ -72,6 +73,8 @@ def _stamp_outcome_fingerprints(db):
                 """,
                 (index, rowid),
             )
+
+        stamp_current_model(db, table)
 
 
 def _plan(
@@ -262,10 +265,14 @@ def _timing_plan(*, price, history, edge=0.1, trade_type="NORMAL", gate=None):
     return plan
 
 
-def test_price_above_derived_chase_limit_is_blocked():
+def test_price_above_derived_chase_limit_is_blocked(tmp_path):
     plan = _timing_plan(price=3.0, history=[1.0, 1.1])
-    result = calculate_paper_position_size(mathematical_plan=plan)
-    assert result["chase_limit"] == pytest.approx(1.1 * 1.1)
+    result = calculate_paper_position_size(
+        mathematical_plan=plan, db_path=str(tmp_path / "missing.db"),
+    )
+    # The latest observed move participates in the envelope; net edge caps
+    # its log distance at 0.1 for this larger jump.
+    assert result["chase_limit"] == pytest.approx(1.1 * math.exp(0.1))
     assert result["chase_limit"] < 3.0
     assert result["entry_amount_usdt"] == 0.0
     assert result["immediate_entry_allowed"] is False
@@ -281,11 +288,17 @@ def test_price_inside_derived_zone_is_timing_eligible():
     assert _paper_entry_timing_reason(result) is None
 
 
-def test_price_below_entry_zone_with_positive_size_is_watch_only():
-    plan = _timing_plan(price=0.95, history=[0.99, 1.0])
+def test_price_below_entry_zone_with_positive_size_is_watch_only(tmp_path):
+    # A small dip expands the observed envelope to include the latest tick.
+    # This drop exceeds the positive edge budget and remains outside it.
+    plan = _timing_plan(price=0.8, history=[0.99, 1.0])
     plan["capital"]["liquidity_capacity_source"] = "VERIFIED_LP_PROTECTION"
     plan["market_context"] = {"opportunity": {"state": "HOT"}}
-    result = calculate_paper_position_size(mathematical_plan=plan)
+    result = calculate_paper_position_size(
+        mathematical_plan=plan, db_path=str(tmp_path / "missing.db"),
+    )
+    assert result["entry_zone_low"] == pytest.approx(math.exp(-0.1))
+    assert plan["entry"]["price"] < result["entry_zone_low"]
     assert result["entry_amount_usdt"] > 0
     assert result["immediate_entry_allowed"] is False
     assert _paper_entry_timing_reason(result) == "ENTRY_TIMING_NOT_READY"

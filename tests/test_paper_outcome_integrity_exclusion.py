@@ -5,6 +5,7 @@ import sqlite3
 import pytest
 
 from app.risk import paper_position_sizing as sizing
+from tests.paper_calibration_fixtures import stamp_current_model
 
 
 def _build_db(path):
@@ -98,6 +99,7 @@ def _build_db(path):
         ),
     )
 
+    stamp_current_model(db)
     db.commit()
     return db
 

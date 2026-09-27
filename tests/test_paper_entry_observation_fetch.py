@@ -62,6 +62,8 @@ def test_buy_success_fetches_and_persists_exact_pool_envelope(entry, provider, c
     assert len(provider.calls) == 1
     stored = entry.db.open_positions()[0]
     opening = json.loads(stored["opening_context_json"])
+    assert opening["admission_provenance"]["contract"] == "corrected_paper_v1"
+    assert opening["admission_provenance"]["price_integrity"]["state"] == "VERIFIED_EXTREME"
     observed = opening["price_observation"]
     assert observed == provider.reader.get_observation(stored)
     assert observed["observed_at"] == provider.observed_at

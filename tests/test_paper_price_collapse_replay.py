@@ -13,13 +13,12 @@ from decimal import Decimal
 
 import pytest
 
-from app.config.contracts import WBNB
+import app.paper.manager as manager_module
+from app.config.contracts import USDT, WBNB
 from app.paper.cache_price import CachePrice
 from app.paper.database import PaperDatabase
 from app.paper.manager import PaperManager
-from app.paper.schema import (
-    OBSERVATIONS_SCHEMA, PAPER_TRADES_SCHEMA, REALIZATIONS_SCHEMA,
-)
+from app.paper.schema import ensure_paper_schema
 from app.risk.price_integrity import PriceIntegrityGate
 from price_integrity_support import HASH, POOL, TOKEN, V2RPC, evidence
 
@@ -45,8 +44,7 @@ def replay(request, monkeypatch):
     incident = request.param
     conn = sqlite3.connect(':memory:')
     conn.row_factory = sqlite3.Row
-    for schema in (PAPER_TRADES_SCHEMA, OBSERVATIONS_SCHEMA, REALIZATIONS_SCHEMA):
-        conn.execute(schema)
+    ensure_paper_schema(conn)
     db = object.__new__(PaperDatabase)  # Do not initialize the production singleton.
     db.conn = conn
     db._db_lock = threading.RLock()
@@ -149,7 +147,9 @@ def test_unverified_collapse_never_mutates_paper(replay, monkeypatch, warm, fail
 @pytest.mark.parametrize('reverse', [False, True], ids=['token0', 'token1'])
 @pytest.mark.parametrize('decimals', [(18, 6), (6, 18), (9, 8)])
 @pytest.mark.parametrize('source', ['dexscreener', 'pancakeswap_v2_sync'])
-def test_independently_verified_collapse_closes_only_residual(replay, reverse, decimals, source):
+def test_independently_verified_collapse_closes_only_residual(
+    replay, monkeypatch, reverse, decimals, source,
+):
     incident, manager = replay
     pos = manager.db.open_positions()[0]
     rpc = V2RPC(incident['peak'], reverse=reverse,
@@ -160,11 +160,45 @@ def test_independently_verified_collapse_closes_only_residual(replay, reverse, d
     gate.accept(baseline)
     rpc.price = Decimal(str(incident['collapse']))
     publish(manager, incident, source=source, block_number=123, block_hash=HASH)
+    # Keep the runtime SELL binder and fail-closed gate real. Successful
+    # contract simulation is separate evidence from a verified price tick.
+    monkeypatch.delattr(manager, '_runtime_phase15h_sell_evidence')
+    monkeypatch.setattr(manager_module, 'analyze_exit_feasibility', lambda token, pool: {
+        'success': True,
+        'data': {'quote_token': USDT, 'token_decimals': decimals[0],
+                 'runtime_price_latest_block': 123},
+    })
+    sell_calls = []
+
+    def simulate_sell(**kwargs):
+        sell_calls.append(kwargs)
+        assert kwargs['token'] == TOKEN
+        assert kwargs['pool'] == POOL
+        assert kwargs['quote_token'] == USDT
+        received = int(Decimal(kwargs['seed_token_raw']) * rpc.price
+                       * Decimal(10) ** (decimals[1] - decimals[0]))
+        assert received > 0
+        return {
+            'contract': 'phase15h_transaction_simulation_v1',
+            'side': 'SELL', 'status': 'SUCCESS',
+            'block': {'number': kwargs['block_number'], 'hash': HASH, 'chain_id': 56},
+            'received_quote_raw': received, 'recipient_balance_delta_raw': received,
+            'gas_used': 111000, 'fill_status': 'SIMULATED_RECIPIENT_DELTA',
+        }
+
+    monkeypatch.setattr(manager_module, 'simulate_paper_sell', simulate_sell)
     tp1_before = [tuple(r) for r in manager.db.conn.execute('SELECT * FROM paper_realizations')]
     result = manager._process_position(pos)
     assert result['data']['action'] == 'CLOSE'
+    assert len(sell_calls) == 1
+    sell = result['data']['phase15h_execution']['sell']
+    assert sell['status'] == 'SUCCESS'
+    assert sell['paper_position_id'] == pos['id']
+    assert sell['exit_stage'] == 'NORMAL_STOP_LOSS'
+    assert sell['paper_exit_fraction'] == 1.0
     row = dict(manager.db.conn.execute('SELECT * FROM paper_trades').fetchone())
     assert row['status'] == 'CLOSED'
+    assert json.loads(row['closing_execution_json']) == result['data']['phase15h_execution']
     assert row['close_reason'] == 'NORMAL_STOP_LOSS'
     assert row['current_price'] == row['exit_price'] == row['lowest_price'] == incident['collapse']
     assert row['highest_price'] == incident['peak']
@@ -184,3 +218,27 @@ def test_independently_verified_collapse_closes_only_residual(replay, reverse, d
     quantum = Decimal(10) ** (decimals[0] - decimals[1] - 24)
     expected_chain_price = (Decimal(str(incident['collapse'])) // quantum) * quantum
     assert accepted['chain_price'] == expected_chain_price
+
+
+@pytest.mark.parametrize('sell_status', [None, 'UNKNOWN', 'REVERT'])
+def test_verified_collapse_without_successful_sell_preserves_open_accounting(
+    replay, monkeypatch, sell_status,
+):
+    incident, manager = replay
+    pos = manager.db.open_positions()[0]
+    manager.price_integrity = PriceIntegrityGate(V2RPC(incident['collapse']))
+    publish(manager, incident)
+    proof = None if sell_status is None else {'sell': {'status': sell_status}}
+    monkeypatch.setattr(manager, '_runtime_phase15h_sell_evidence', lambda **kw: proof)
+    before = dict(manager.db.conn.execute('SELECT * FROM paper_trades').fetchone())
+    tp1_before = [tuple(r) for r in manager.db.conn.execute('SELECT * FROM paper_realizations')]
+
+    result = manager._process_position(pos)
+
+    assert result['data']['action'] == 'SKIP'
+    assert result['data']['reason'] == 'PHASE15H_SELL_NOT_PROVEN'
+    assert result['data']['status'] == 'OPEN'
+    assert dict(manager.db.conn.execute('SELECT * FROM paper_trades').fetchone()) == before
+    assert [tuple(r) for r in manager.db.conn.execute('SELECT * FROM paper_realizations')] == tp1_before
+    # Price observation is permitted; economic closure requires SELL proof.
+    assert manager.db.price_observations(pos['id']) == [incident['peak'], incident['collapse']]

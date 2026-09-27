@@ -1,8 +1,14 @@
 import json
+import sqlite3
+import threading
+
+import pytest
 
 import app.paper.manager as manager_module
 from app.config.contracts import USDT
 from app.paper.manager import PaperManager
+from app.paper.database import PaperDatabase
+from app.paper.schema import ensure_paper_schema
 
 
 class FakeDB:
@@ -42,6 +48,44 @@ class FakeDB:
     def close_position(self, position_id, values):
         self.closed.append((position_id, dict(values)))
         return True
+
+
+@pytest.mark.parametrize("tp1_done,stage,action", [(0, "TP1", "PARTIAL_TP1"), (1, "TP2", "PARTIAL_TP2")])
+def test_partial_and_final_sell_proofs_survive_database_reopen(tmp_path, tp1_done, stage, action):
+    path = tmp_path / "paper.db"
+    db = object.__new__(PaperDatabase)
+    db.conn = sqlite3.connect(path)
+    db.conn.row_factory = sqlite3.Row
+    db._db_lock = threading.RLock()
+    ensure_paper_schema(db.conn)
+    position = _normal_position(tp1_done=tp1_done)
+    position.update(status="OPEN", initial_token_amount=100.0)
+    db.insert(position)
+    manager = _manager()
+    manager.db = db
+    manager._observe_learning_outcome = lambda *a: None
+
+    def proof(**kwargs):
+        from tests.paper_calibration_fixtures import execution
+        result = execution("SELL", position["id"], stage=kwargs["stage"], fraction=kwargs["exit_fraction"])
+        result["sell"].update(token=position["token"], pool=position["pool"])
+        return result
+
+    manager._runtime_phase15h_sell_evidence = proof
+    result = manager._process_normal_math_position(position, 2.0, 2.0, 1.0, _plan())
+    assert result["data"]["action"] == action
+    expected_partial = result["data"]["phase15h_execution"]
+    remaining = db.open_positions()[0]
+    closed = manager._close_math(remaining, .4, 2., .4, _plan(), "NORMAL_STOP_LOSS")
+    assert closed["data"]["action"] == "CLOSE"
+    db.conn.close()
+    with sqlite3.connect(path) as reopened:
+        partial = reopened.execute("SELECT stage, execution_evidence_json FROM paper_realizations").fetchone()
+        assert partial[0] == stage
+        assert json.loads(partial[1]) == expected_partial
+        row = reopened.execute("SELECT status, closing_execution_json FROM paper_trades").fetchone()
+        assert row[0] == "CLOSED"
+        assert json.loads(row[1]) == closed["data"]["phase15h_execution"]
 
 
 def _manager():

@@ -1,4 +1,4 @@
-PAPER_SCHEMA_VERSION = 5
+PAPER_SCHEMA_VERSION = 6
 
 
 PAPER_TRADES_SCHEMA = """
@@ -42,6 +42,8 @@ CREATE TABLE IF NOT EXISTS paper_trades (
     dex TEXT,
 
     opening_context_json TEXT,
+    paper_run_id INTEGER REFERENCES paper_runs(id),
+    closing_execution_json TEXT,
 
     paper_account_version TEXT,
     trade_policy TEXT,
@@ -118,6 +120,7 @@ CREATE TABLE IF NOT EXISTS paper_realizations (
     sold_cost_basis_usdt REAL NOT NULL,
 
     realized_pnl_usdt REAL NOT NULL,
+    execution_evidence_json TEXT,
 
     FOREIGN KEY(position_id)
     REFERENCES paper_trades(id)
@@ -298,6 +301,12 @@ MATHEMATICAL_COLUMNS = {
 }
 
 
+PROVENANCE_COLUMNS = {
+    "paper_run_id": "INTEGER REFERENCES paper_runs(id)",
+    "closing_execution_json": "TEXT",
+}
+
+
 REQUIRED_COLUMNS = {
     "id",
     "created_at",
@@ -342,6 +351,7 @@ REQUIRED_COLUMNS = {
     *V3_COLUMNS.keys(),
     *POLICY_COLUMNS.keys(),
     *MATHEMATICAL_COLUMNS.keys(),
+    *PROVENANCE_COLUMNS.keys(),
 }
 
 
@@ -562,9 +572,17 @@ def ensure_paper_schema(
             MATHEMATICAL_COLUMNS,
         )
 
+        # Nullable, forward-only evidence. Never manufacture historical proof.
+        _add_columns(conn, PROVENANCE_COLUMNS)
+
         conn.execute(
             REALIZATIONS_SCHEMA
         )
+
+        if "execution_evidence_json" not in {
+            row[1] for row in conn.execute("PRAGMA table_info(paper_realizations)")
+        }:
+            conn.execute("ALTER TABLE paper_realizations ADD COLUMN execution_evidence_json TEXT")
 
         conn.execute(
             OBSERVATIONS_SCHEMA

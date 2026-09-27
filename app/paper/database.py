@@ -1,3 +1,4 @@
+import json
 import os
 import sqlite3
 import threading
@@ -22,6 +23,7 @@ from app.paper.control_mode import (
 
 from app.risk.paper_position_sizing import (
     PAPER_CAPITAL_USDT,
+    _active_paper_run,
     paper_available_capital_usdt,
 )
 
@@ -163,6 +165,11 @@ class PaperDatabase:
                 ).isoformat()
             )
 
+        # Bind attribution inside the same lock/transaction as the insertion.
+        # Callers cannot assign an entry to an older (or invented) run.
+        run = _active_paper_run(self.conn)
+        trade["paper_run_id"] = run["id"] if run else None
+
         cols = ",".join(
             trade.keys()
         )
@@ -187,11 +194,13 @@ class PaperDatabase:
         trade,
     ):
         with self._db_lock:
-            self._insert_unlocked(
-                trade
-            )
-
-            self.conn.commit()
+            try:
+                self.conn.execute("BEGIN IMMEDIATE")
+                self._insert_unlocked(trade)
+                self.conn.commit()
+            except Exception:
+                self.conn.rollback()
+                raise
 
     def insert_if_no_open_position(
         self,
@@ -860,9 +869,10 @@ class PaperDatabase:
                         gross_proceeds_usdt,
                         net_proceeds_usdt,
                         sold_cost_basis_usdt,
-                        realized_pnl_usdt
+                        realized_pnl_usdt,
+                        execution_evidence_json
                     )
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         int(
@@ -877,6 +887,8 @@ class PaperDatabase:
                         supplied_net,
                         expected_sold_basis,
                         expected_pnl,
+                        json.dumps(realization["phase15h_execution"], sort_keys=True)
+                        if realization.get("phase15h_execution") else None,
                     ),
                 )
 

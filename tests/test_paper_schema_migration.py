@@ -42,6 +42,33 @@ CREATE TABLE paper_trades (
 """
 
 
+def test_v5_upgrade_preserves_economics_and_leaves_new_proof_null(tmp_path):
+    db = sqlite3.connect(tmp_path / "v5.db")
+    ensure_paper_schema(db)
+    db.execute("ALTER TABLE paper_trades DROP COLUMN paper_run_id")
+    db.execute("ALTER TABLE paper_trades DROP COLUMN closing_execution_json")
+    db.execute("ALTER TABLE paper_realizations DROP COLUMN execution_evidence_json")
+    db.execute("PRAGMA user_version=5")
+    db.execute("""INSERT INTO paper_trades (id, status, trade_type, trade_policy, control_mode,
+        entry_amount_usdt, net_pnl_usdt, opening_context_json)
+        VALUES (1, 'CLOSED', 'NORMAL', 'NORMAL', 'AUTO', 100, -22, '{"legacy":true}')""")
+    db.execute("""INSERT INTO paper_realizations (position_id, stage, observed_at, price,
+        token_amount, close_fraction, gross_proceeds_usdt, net_proceeds_usdt,
+        sold_cost_basis_usdt, realized_pnl_usdt)
+        VALUES (1, 'TP1', '2026-09-20T00:00:00+00:00', 1, 10, .1, 10, 9, 10, -1)""")
+    db.commit()
+    trade_columns = ','.join(row[1] for row in db.execute("PRAGMA table_info(paper_trades)"))
+    partial_columns = ','.join(row[1] for row in db.execute("PRAGMA table_info(paper_realizations)"))
+    before_trade = db.execute(f"SELECT {trade_columns} FROM paper_trades").fetchall()
+    before_partial = db.execute(f"SELECT {partial_columns} FROM paper_realizations").fetchall()
+    ensure_paper_schema(db)
+    assert db.execute(f"SELECT {trade_columns} FROM paper_trades").fetchall() == before_trade
+    assert db.execute(f"SELECT {partial_columns} FROM paper_realizations").fetchall() == before_partial
+    assert db.execute("SELECT paper_run_id, closing_execution_json FROM paper_trades").fetchone() == (None, None)
+    assert db.execute("SELECT execution_evidence_json FROM paper_realizations").fetchone() == (None,)
+    db.close()
+
+
 def _v1(path):
     db = sqlite3.connect(path)
 

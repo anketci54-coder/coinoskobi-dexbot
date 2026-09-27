@@ -33,6 +33,7 @@ from app.paper.database import (
     PaperDatabase,
 )
 from app.paper.cache_price import CachePrice
+from app.paper.calibration_provenance import CURRENT_PAPER_MODEL
 from app.paper.manager import PaperManager
 from app.paper.control_mode import get_control_mode
 
@@ -250,6 +251,8 @@ def _runtime_phase15h_buy_evidence(
         )
         buy = dict(buy or {})
         buy["trade_type"] = trade_type
+        buy["token"] = token_address
+        buy["pool"] = pool
         block = dict(buy.get("block") or {})
         logger.info(
             (
@@ -3639,6 +3642,11 @@ class PipelineEngine:
                                 }
                             if entry_integrity["state"] in {"VERIFIED_NORMAL", "VERIFIED_EXTREME"}:
                                 opening_context["price_observation"] = entry_observation
+                                opening_context["admission_provenance"] = {
+                                    "contract": CURRENT_PAPER_MODEL,
+                                    "verified_at": datetime.now(timezone.utc).isoformat(),
+                                    "price_integrity": entry_integrity,
+                                }
                             else:
                                 pre_reject = "ENTRY_PRICE_NOT_PROVEN"
                                 logger.warning(

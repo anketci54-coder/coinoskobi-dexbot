@@ -1,6 +1,7 @@
 import json
 import math
 import sqlite3
+from tests.paper_calibration_fixtures import stamp_current_model
 
 from app.risk.paper_position_sizing import (
     calculate_paper_position_size,
@@ -83,6 +84,7 @@ def test_catastrophic_exit_overrides_stale_current_price(tmp_path):
         ),
     )
 
+    stamp_current_model(db)
     db.commit()
     db.close()
 

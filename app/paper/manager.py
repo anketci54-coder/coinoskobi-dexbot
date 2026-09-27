@@ -385,6 +385,8 @@ class PaperManager:
 
         sell = dict(sell or {})
         sell.update({
+            "token": token,
+            "pool": pool,
             "paper_position_id": (
                 position.get("id")
             ),
@@ -1427,6 +1429,10 @@ class PaperManager:
                 },
             }
 
+        close_data["closing_execution_json"] = json.dumps(
+            phase15h_execution, sort_keys=True,
+        )
+
         closed = (
             self.db.close_position(
                 pos["id"],
@@ -1942,7 +1948,7 @@ class PaperManager:
                         pos["id"],
                         stage="TP1",
                         price=current,
-                        realization=realization,
+                        realization={**realization, "phase15h_execution": phase15h_execution},
                         math_state_json=json.dumps(
                             state,
                             sort_keys=True,
@@ -2100,7 +2106,7 @@ class PaperManager:
                         pos["id"],
                         stage="TP2",
                         price=current,
-                        realization=realization,
+                        realization={**realization, "phase15h_execution": phase15h_execution},
                         math_state_json=json.dumps(
                             state,
                             sort_keys=True,

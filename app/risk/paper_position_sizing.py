@@ -6,6 +6,7 @@ import statistics
 from datetime import datetime
 from pathlib import Path
 
+from app.paper.calibration_provenance import current_model_outcome
 from app.strategy.mathematical_trade_plan import (
     buy_token_amount,
     initial_net_risk_usdt,
@@ -407,6 +408,7 @@ def _calibration_empty(reason):
         "cost_samples": 0,
         "account_risk_samples": 0,
         "excluded_samples": 0,
+        "unproven_samples": 0,
     }
 
 
@@ -458,6 +460,8 @@ def _closed_outcome_rows(db, table_name):
         "net_pnl",
         "gross_pnl_usdt",
         "net_pnl_usdt",
+        "token", "pool", "opening_context_json", "closing_execution_json",
+        "paper_run_id", "tp1_done", "tp2_done",
     )
 
     expressions = {
@@ -479,7 +483,14 @@ def _closed_outcome_rows(db, table_name):
             {expressions['exit_price']} AS exit_price,
             {expressions['net_pnl']} AS net_pnl,
             {expressions['gross_pnl_usdt']} AS gross_pnl_usdt,
-            {expressions['net_pnl_usdt']} AS net_pnl_usdt
+            {expressions['net_pnl_usdt']} AS net_pnl_usdt,
+            {expressions['token']} AS token,
+            {expressions['pool']} AS pool,
+            {expressions['opening_context_json']} AS opening_context_json,
+            {expressions['closing_execution_json']} AS closing_execution_json,
+            {expressions['paper_run_id']} AS paper_run_id,
+            {expressions['tp1_done']} AS tp1_done,
+            {expressions['tp2_done']} AS tp2_done
         FROM {table_name}
         WHERE UPPER(COALESCE(status, ''))='CLOSED'
           AND mathematical_plan_json IS NOT NULL
@@ -692,6 +703,7 @@ def _empirical_outcome_calibration(
         return _calibration_empty("OUTCOME_DB_MISSING")
 
     excluded_samples = 0
+    db = None
 
     try:
         db = sqlite3.connect(
@@ -699,6 +711,8 @@ def _empirical_outcome_calibration(
             uri=True,
         )
         db.row_factory = sqlite3.Row
+        # Run boundary and its outcome/proof rows must share a read snapshot.
+        db.execute("BEGIN")
 
         active_exists = db.execute(
             """
@@ -709,7 +723,6 @@ def _empirical_outcome_calibration(
         ).fetchone()
 
         if active_exists is None:
-            db.close()
             return _calibration_empty("PAPER_TRADES_MISSING")
 
         active_columns = _table_columns(db, "paper_trades")
@@ -722,10 +735,11 @@ def _empirical_outcome_calibration(
         }
 
         if not minimum.issubset(active_columns):
-            db.close()
             return _calibration_empty("OUTCOME_COLUMNS_INCOMPLETE")
 
+        active_run = _active_paper_run(db)
         rows = []
+        unproven_samples = 0
         for table_name in (
             "paper_trades_archive",
             "paper_trades",
@@ -742,18 +756,25 @@ def _empirical_outcome_calibration(
                     excluded_samples += 1
                     continue
 
+                if not current_model_outcome(db, row, active_run):
+                    unproven_samples += 1
+                    continue
                 rows.append(row)
 
-        db.close()
-
     except OutcomeExclusionRegistryError as exc:
-        db.close()
         return _calibration_empty(
             str(exc)
         )
 
     except sqlite3.Error:
         return _calibration_empty("OUTCOME_DB_READ_FAILED")
+
+    except RuntimeError:
+        return _calibration_empty("PAPER_ACTIVE_RUN_CARDINALITY_INVALID")
+
+    finally:
+        if db is not None:
+            db.close()
 
     gap_ratios = []
     cost_residuals = []
@@ -883,6 +904,7 @@ def _empirical_outcome_calibration(
         "cost_samples": len(positive_costs),
         "account_risk_samples": len(account_losses),
         "excluded_samples": excluded_samples,
+        "unproven_samples": unproven_samples,
     }
 
 
@@ -1153,6 +1175,7 @@ def calculate_paper_position_size(
         "OUTCOME_EXCLUSION_REGISTRY_INVALID",
         "OUTCOME_FINGERPRINT_INVALID",
         "OUTCOME_CAPITAL_PROVENANCE_INVALID",
+        "PAPER_ACTIVE_RUN_CARDINALITY_INVALID",
     }:
         blockers.append(
             calibration_reason
@@ -1511,20 +1534,17 @@ def calculate_paper_position_size(
     # missing exit capacity remain blocked. This path never grants live-trade
     # authority.
     # HOT is still a PAPER trade, not a license to bypass risk evidence.
-    # Observation mode may tolerate missing gap/LP history, but it must retain
-    # positive net edge, measurable return risk, empirical account-risk budget,
-    # and a usable stop-distance.  When LP protection is unverified we assume
-    # total notional loss, so the account-risk budget is also the notional cap.
+    # Missing calibration may use the bounded observation policy below.
+    # Verified LP withdrawal protection is required on every sizing path.
     hot_observation_soft_blockers = {
         "GAP_RISK_UNOBSERVED",
         "ACCOUNT_RISK_BUDGET_UNOBSERVED",
         "COST_UNCERTAINTY_UNOBSERVED",
-        "LP_WITHDRAWAL_PROTECTION_UNVERIFIED",
         "NET_EDGE_NOT_POSITIVE",
-        "PLAN_BLOCKED",
     }
     hot_observation_bootstrap = (
         opportunity.get("state") == "HOT"
+        and not lp_unverified
         and plan.get("paper_eligible") is True
         and not plan.get("hard_block")
         and plan.get("sellability_status") in {
@@ -1536,12 +1556,7 @@ def calculate_paper_position_size(
         and current_price is not None
         and anchor_price is not None
         and observed_move > 0
-        and (
-            not plan_blockers
-            or set(plan_blockers).issubset({
-                "LP_WITHDRAWAL_PROTECTION_UNVERIFIED",
-            })
-        )
+        and not plan_blockers
         and bool(blockers)
         and set(blockers).issubset(hot_observation_soft_blockers)
     )

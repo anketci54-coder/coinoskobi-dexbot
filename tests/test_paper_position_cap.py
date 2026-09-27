@@ -2,6 +2,7 @@ import sqlite3
 import threading
 
 from app.paper.database import PaperDatabase
+from app.paper.schema import ensure_paper_schema
 from app.risk.paper_position_sizing import (
     paper_available_capital_usdt,
 )
@@ -15,20 +16,7 @@ def make_db():
     )
     db.conn.row_factory = sqlite3.Row
     db._db_lock = threading.RLock()
-    db.conn.execute("""
-        CREATE TABLE paper_trades(
-            id INTEGER PRIMARY KEY,
-            token TEXT,
-            status TEXT,
-            created_at TEXT,
-            paper_account_version TEXT,
-            entry_amount_usdt REAL,
-            remaining_cost_basis_usdt REAL,
-            realized_pnl_usdt REAL,
-            net_pnl_usdt REAL,
-            net_pnl REAL
-        )
-    """)
+    ensure_paper_schema(db.conn)
     return db
 
 

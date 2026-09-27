@@ -1,33 +1,33 @@
+import sqlite3
+from datetime import datetime, timezone
+
 from app.paper.database import PaperDatabase
+from app.paper.schema import ensure_paper_schema
 
 
-class Connection:
-    def __init__(self):
-        self.sql = None
-        self.values = None
-
-    def execute(self, sql, values):
-        self.sql = sql
-        self.values = values
+def _database():
+    db = object.__new__(PaperDatabase)
+    db.conn = sqlite3.connect(":memory:")
+    ensure_paper_schema(db.conn)
+    return db
 
 
 def test_insert_assigns_real_created_at_when_missing():
-    db = object.__new__(PaperDatabase)
-    db.conn = Connection()
+    db = _database()
+    before = datetime.now(timezone.utc)
 
     db._insert_unlocked({
         "token": "0xtoken",
         "status": "OPEN",
     })
 
-    assert "created_at" in db.conn.sql
-    assert db.conn.values[-1]
-    assert "+00:00" in db.conn.values[-1]
+    created = db.conn.execute("SELECT created_at FROM paper_trades").fetchone()[0]
+    assert before <= datetime.fromisoformat(created) <= datetime.now(timezone.utc)
+    db.conn.close()
 
 
 def test_insert_preserves_explicit_created_at():
-    db = object.__new__(PaperDatabase)
-    db.conn = Connection()
+    db = _database()
 
     timestamp = "2026-08-14T00:00:00+00:00"
 
@@ -37,4 +37,5 @@ def test_insert_preserves_explicit_created_at():
         "created_at": timestamp,
     })
 
-    assert db.conn.values[-1] == timestamp
+    assert db.conn.execute("SELECT created_at FROM paper_trades").fetchone()[0] == timestamp
+    db.conn.close()

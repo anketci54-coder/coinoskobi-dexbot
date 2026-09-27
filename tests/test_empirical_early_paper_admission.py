@@ -1,3 +1,5 @@
+import math
+
 import pytest
 
 from app.risk.paper_position_sizing import calculate_paper_position_size
@@ -85,7 +87,14 @@ def test_sizing_rechecks_safety(calibrated, mutation, blocker):
 def test_early_lane_cannot_bypass_chase_limit(calibrated):
     plan = _plan(_quality(), entry_price=1.05, price_series=[1, 1.02, 1.05])
     assert plan["paper_eligible"] is True
+    # The current move is part of the envelope, so a chase breach requires
+    # the observed move to exceed the plan's remaining net edge.
+    plan["expected"].update(
+        known_net_edge_fraction=0.01, full_net_edge_fraction=0.01,
+    )
     result = calculate_paper_position_size(mathematical_plan=plan)
+    assert result["chase_limit"] == pytest.approx(1.02 * math.exp(0.01))
+    assert plan["entry"]["price"] > result["chase_limit"]
     assert result["entry_amount_usdt"] == 0
     assert "ENTRY_ABOVE_CHASE_LIMIT" in result["blockers"]
 

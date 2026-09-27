@@ -136,6 +136,18 @@ class Runner:
         self.running = True
         self.services_started = False
         self.last_service_error = None
+        self._stop_lock = threading.Lock()
+        self._stop_propagated = False
+
+    def _handle_signal(self, *_):
+        # Python can interrupt the main thread while it owns a provider or
+        # logging lock. Only assign a flag here; propagate outside the handler.
+        self.running = False
+
+    def _watch_shutdown(self):
+        while self.running:
+            time.sleep(0.05)
+        self.stop()
 
     def _bind_serialized_pipeline_positions(self):
         positions = getattr(
@@ -330,6 +342,14 @@ class Runner:
         }
 
     def stop(self, *_):
+        self.running = False
+        with self._stop_lock:
+            if self._stop_propagated:
+                return
+            self._stop_propagated = True
+            self._propagate_stop()
+
+    def _propagate_stop(self):
         log.info(
             "Shutdown requested..."
         )
@@ -347,22 +367,23 @@ class Runner:
             None,
         )
 
-        if callable(pipeline_stop):
-            pipeline_stop()
-        else:
+        if not callable(pipeline_stop):
             work_scheduler = getattr(
                 self.pipeline,
                 "work_scheduler",
                 None,
             )
-            request_stop = getattr(
+            pipeline_stop = getattr(
                 work_scheduler,
                 "request_stop",
                 None,
             )
 
-            if callable(request_stop):
-                request_stop()
+        if callable(pipeline_stop):
+            try:
+                pipeline_stop()
+            except Exception:
+                log.exception("Pipeline stop request failed")
 
         for service in self.services:
             service_request_stop = getattr(
@@ -478,15 +499,21 @@ class Runner:
     def run(self):
         signal.signal(
             signal.SIGINT,
-            self.stop,
+            self._handle_signal,
         )
 
         signal.signal(
             signal.SIGTERM,
-            self.stop,
+            self._handle_signal,
         )
 
         log.info("Runner started")
+        shutdown_watcher = threading.Thread(
+            target=self._watch_shutdown,
+            name="coinoskobi-shutdown",
+            daemon=True,
+        )
+        shutdown_watcher.start()
 
         try:
             self._start_services()
@@ -498,6 +525,8 @@ class Runner:
                 self.sleep_func(1)
 
         finally:
+            self.stop()
+            shutdown_watcher.join()
             # Finish any in-flight fast revisit before shutting down service
             # dependencies, so a committed paper decision cannot lose its
             # durable observer/promotion bookkeeping during SIGTERM.

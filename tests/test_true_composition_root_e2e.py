@@ -18,6 +18,8 @@ class DeterministicPriceIntegrity:
         return None
 import asyncio
 import importlib
+import json
+from datetime import datetime, timezone
 
 import app.paper.database as paper_database_module
 import app.pipeline.engine as pipeline_module
@@ -344,6 +346,11 @@ def test_true_composition_root_e2e(
     module = importlib.import_module(
         "main"
     )
+    # All default relative stores belong to this fixture, never host history.
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "data" / "cache").mkdir(parents=True)
+    monkeypatch.setattr(module, "UNIVERSE_SHADOW_ENABLED", False)
+    monkeypatch.setattr("app.core.runner.build_application_auxiliary_services", lambda **kw: [])
 
     monkeypatch.setattr(
         module,
@@ -373,9 +380,11 @@ def test_true_composition_root_e2e(
         "DB",
         db_path,
     )
+    monkeypatch.setattr(pipeline_module, "PAPER_DB", db_path)
+    monkeypatch.setattr("app.learning.watch_probe_sweeper.PAPER_DB", db_path)
 
-    PaperDatabase._instance = None
-    PaperDatabase._initialized = False
+    monkeypatch.setattr(PaperDatabase, "_instance", None)
+    monkeypatch.setattr(PaperDatabase, "_initialized", False)
 
     _analysis_stubs(
         monkeypatch
@@ -419,6 +428,34 @@ def test_true_composition_root_e2e(
         StopHitPrice()
     )
     pipeline.manager.price_integrity = DeterministicPriceIntegrity(0.80)
+
+    # Deterministic external evidence keeps the real lifecycle gates and
+    # ledger mutations in scope. Their rejection paths have dedicated tests.
+    from tests.paper_calibration_fixtures import execution, opening
+
+    def buy_proof(**kwargs):
+        result = execution("BUY")
+        result["buy"].update(token=TOKEN, pool=PAIR, trade_type=kwargs["trade_type"])
+        return result
+
+    def sell_proof(**kwargs):
+        result = execution("SELL", kwargs["pos"]["id"],
+                           stage=kwargs["stage"], fraction=kwargs["exit_fraction"])
+        result["sell"].update(token=TOKEN, pool=PAIR)
+        return result
+
+    def price_observation(*args, **kwargs):
+        return {**opening()["price_observation"], "token": TOKEN, "pool": PAIR,
+                "observed_at": datetime.now(timezone.utc).isoformat()}
+
+    monkeypatch.setattr(pipeline_module, "_runtime_phase15h_buy_evidence", buy_proof)
+    monkeypatch.setattr(pipeline_module, "admission_check", lambda row: {
+        "state": "VERIFIED_EXTREME", "price": row["entry_price"],
+    })
+    monkeypatch.setattr(pipeline, "_paper_price_observation", price_observation)
+    monkeypatch.setattr(pipeline.manager, "price_observation_reader", price_observation)
+    monkeypatch.setattr(pipeline.manager, "_runtime_phase15h_sell_evidence", sell_proof)
+    monkeypatch.setattr(pipeline, "refresh_open_position_prices", lambda: {"state": "TEST_PRICE_READY"})
 
     pipeline.refresh_candidate_cache = (
         lambda: {
@@ -609,6 +646,8 @@ def test_true_composition_root_e2e(
     assert position[
         "opening_context_json"
     ]
+    assert json.loads(position["opening_context_json"])["phase15h_execution"]["buy"]["status"] == "SUCCESS"
+    assert json.loads(position["closing_execution_json"])["sell"]["status"] == "SUCCESS"
 
     assert (
         position[

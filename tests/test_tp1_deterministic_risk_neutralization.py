@@ -102,8 +102,14 @@ def _position():
     }
 
 
-def test_normal_tp1_neutralizes_initial_risk():
+def test_normal_tp1_neutralizes_initial_risk(monkeypatch):
     manager = _manager()
+    # This fixture isolates TP1 arithmetic. Supply the execution evidence
+    # required by the separately tested PHASE15H fail-closed gate.
+    from tests.paper_calibration_fixtures import execution
+    monkeypatch.setattr(manager, "_runtime_phase15h_sell_evidence", lambda **kw: execution(
+        "SELL", kw["pos"]["id"], stage=kw["stage"], fraction=kw["exit_fraction"],
+    ))
 
     result = (
         manager

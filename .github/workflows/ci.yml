@@ -107,4 +107,4 @@ jobs:
       - name: Install dependencies
         run: python -m pip install -r requirements.txt
       - name: Full regression
-        run: python -m pytest -q
+        run: python -m pytest -q --maxfail=2 --tb=short

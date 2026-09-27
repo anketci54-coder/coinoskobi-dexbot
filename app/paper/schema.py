@@ -1,4 +1,4 @@
-PAPER_SCHEMA_VERSION = 6
+PAPER_SCHEMA_VERSION = 7
 
 
 PAPER_TRADES_SCHEMA = """
@@ -94,6 +94,19 @@ CREATE TABLE IF NOT EXISTS paper_runs (
     start_candidate_id INTEGER NOT NULL,
     status TEXT NOT NULL,
     metadata_json TEXT NOT NULL
+)
+"""
+
+
+PAPER_POSITION_QUARANTINES_SCHEMA = """
+CREATE TABLE IF NOT EXISTS paper_position_quarantines (
+    position_id INTEGER PRIMARY KEY,
+    quarantined_at TEXT NOT NULL,
+    previous_status TEXT NOT NULL,
+    reason TEXT NOT NULL,
+    previous_run_id INTEGER,
+    metadata_json TEXT NOT NULL,
+    FOREIGN KEY(position_id) REFERENCES paper_trades(id)
 )
 """
 
@@ -512,6 +525,10 @@ def ensure_paper_schema(
 
         conn.execute(
             PAPER_RUNS_SCHEMA
+        )
+
+        conn.execute(
+            PAPER_POSITION_QUARANTINES_SCHEMA
         )
 
         if (

@@ -1512,6 +1512,8 @@ def recent_signals(
                 f"{token} kapandı · "
                 f"{row.get('close_reason') or 'CLOSED'}"
             )
+        elif status == "QUARANTINED":
+            message = f"{token} legacy PAPER karantinaya alındı"
         else:
             message = f"{token} paper pozisyonu açık"
 
@@ -1557,7 +1559,7 @@ def status() -> dict[str, Any]:
         for row in rows
         if str(
             row.get("status") or "OPEN"
-        ).upper() != "CLOSED"
+        ).upper() == "OPEN"
     )
 
     closed_count = sum(
@@ -1621,7 +1623,7 @@ def api_status() -> dict[str, Any]:
         for row in rows
         if str(
             row.get("status") or "OPEN"
-        ).upper() != "CLOSED"
+        ).upper() == "OPEN"
     )
 
     closed_count = sum(
@@ -2027,7 +2029,7 @@ def api_dashboard() -> dict[str, Any]:
         for row in rows
         if str(
             row.get("status") or "OPEN"
-        ).upper() != "CLOSED"
+        ).upper() == "OPEN"
     ]
 
     closed_positions = [

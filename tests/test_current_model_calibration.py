@@ -3,6 +3,7 @@ import sqlite3
 
 import pytest
 
+from app.paper.calibration_provenance import current_model_open_position
 from app.paper.schema import ensure_paper_schema
 from app.risk.paper_position_sizing import _empirical_outcome_calibration
 from tests.paper_calibration_fixtures import opening, execution, stamp_current_model
@@ -143,4 +144,40 @@ def test_active_run_excludes_older_and_unattributed_outcomes(tmp_path):
     db.execute("UPDATE paper_trades SET paper_run_id=?", (run["id"],))
     db.commit()
     assert _empirical_outcome_calibration(path)["ready"] is True
+    db.close()
+
+def test_current_model_open_position_requires_corrected_admission_and_buy_proof(tmp_path):
+    path = tmp_path / "paper.db"
+    db = sqlite3.connect(path)
+    db.row_factory = sqlite3.Row
+    ensure_paper_schema(db)
+    db.execute(
+        """INSERT INTO paper_trades (
+            token, pool, status, entry_price, opening_context_json
+        ) VALUES (?, ?, 'OPEN', 1, ?)""",
+        (
+            "0x" + "12" * 20,
+            "0x" + "34" * 20,
+            json.dumps(opening(1.0)),
+        ),
+    )
+    row = db.execute(
+        """SELECT id AS position_id, token, pool, entry_price,
+                  opening_context_json, paper_run_id
+           FROM paper_trades"""
+    ).fetchone()
+    assert current_model_open_position(row) is True
+    context = json.loads(row["opening_context_json"])
+    context["phase15h_execution"]["buy"]["status"] = "UNKNOWN"
+    db.execute(
+        "UPDATE paper_trades SET opening_context_json=?",
+        (json.dumps(context),),
+    )
+    db.commit()
+    row = db.execute(
+        """SELECT id AS position_id, token, pool, entry_price,
+                  opening_context_json, paper_run_id
+           FROM paper_trades"""
+    ).fetchone()
+    assert current_model_open_position(row) is False
     db.close()

@@ -49,6 +49,36 @@ def _execution(evidence, side, row):
     )
 
 
+def current_model_open_position(row):
+    """Return True only for an OPEN position admitted by the corrected model."""
+    try:
+        if not row["token"] or not row["pool"] or not _positive(row["entry_price"]):
+            return False
+        context = _object(row["opening_context_json"])
+        admission = _object(context.get("admission_provenance"))
+        integrity = _object(admission.get("price_integrity"))
+        observation = _object(context.get("price_observation"))
+        if (admission.get("contract") != CURRENT_PAPER_MODEL
+                or integrity.get("state") not in {"VERIFIED_NORMAL", "VERIFIED_EXTREME"}
+                or _address(observation.get("pool")) != _address(row["pool"])
+                or _address(observation.get("base_token") or observation.get("token")) != _address(row["token"])
+                or _address(observation.get("quote_token")) != USDT.lower()
+                or observation.get("chain") != "bsc"
+                or str(observation.get("dex", "")).replace("-", "_").lower() != "pancakeswap_v2"
+                or observation.get("source") not in {"geckoterminal", "dexscreener", "pancakeswap_v2_sync"}):
+            return False
+        verified = datetime.fromisoformat(admission["verified_at"])
+        observed = datetime.fromisoformat(observation["observed_at"])
+        if (verified.utcoffset() is None or observed.utcoffset() is None
+                or not 0 <= (verified - observed).total_seconds() <= 30
+                or float(integrity["price"]) != float(row["entry_price"])
+                or float(observation["price_usd"]) != float(row["entry_price"])):
+            return False
+        return _execution(context.get("phase15h_execution"), "BUY", row)
+    except (KeyError, IndexError, TypeError, ValueError, OverflowError):
+        return False
+
+
 def current_model_outcome(db, row, active_run):
     """Require the corrected admission contract and durable USDT execution.
 
@@ -65,33 +95,9 @@ def _current_model_outcome(db, row, active_run):
     if active_run and (row["paper_run_id"] != active_run["id"]
                        or row["position_id"] <= active_run["start_trade_id"]):
         return False
-    if not row["token"] or not row["pool"] or not _positive(row["entry_price"]):
+    if not current_model_open_position(row):
         return False
-    context = _object(row["opening_context_json"])
-    admission = _object(context.get("admission_provenance"))
-    integrity = _object(admission.get("price_integrity"))
-    observation = _object(context.get("price_observation"))
-    if (admission.get("contract") != CURRENT_PAPER_MODEL
-            or integrity.get("state") not in {"VERIFIED_NORMAL", "VERIFIED_EXTREME"}
-            or _address(observation.get("pool")) != _address(row["pool"])
-            or _address(observation.get("base_token") or observation.get("token")) != _address(row["token"])
-            or _address(observation.get("quote_token")) != USDT.lower()
-            or observation.get("chain") != "bsc"
-            or str(observation.get("dex", "")).replace("-", "_").lower() != "pancakeswap_v2"
-            or observation.get("source") not in {"geckoterminal", "dexscreener", "pancakeswap_v2_sync"}):
-        return False
-    try:
-        verified = datetime.fromisoformat(admission["verified_at"])
-        observed = datetime.fromisoformat(observation["observed_at"])
-        if (verified.utcoffset() is None or observed.utcoffset() is None
-                or not 0 <= (verified - observed).total_seconds() <= 30
-                or float(integrity["price"]) != float(row["entry_price"])
-                or float(observation["price_usd"]) != float(row["entry_price"])):
-            return False
-    except (KeyError, TypeError, ValueError, OverflowError):
-        return False
-    if not (_execution(context.get("phase15h_execution"), "BUY", row)
-            and _execution(row["closing_execution_json"], "SELL", row)):
+    if not _execution(row["closing_execution_json"], "SELL", row):
         return False
     closing = _object(_object(row["closing_execution_json"]).get("sell"))
     if closing.get("paper_exit_fraction") != 1.0 or not closing.get("exit_stage"):

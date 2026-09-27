@@ -10,6 +10,9 @@ from app.analyzer.pair import analyze as pair_analyze
 from app.analyzer.pair import analyze_candidate as candidate_pair_analyze
 from app.risk.bytecode import analyze as risk_analyze
 from app.risk.gate import RiskGate
+from app.risk.price_integrity import (
+    address, admission_check, context, observation, observation_is_fresh,
+)
 from app.risk.sellability import analyze as sellability_analyze
 from app.risk.traps import TrapRiskAnalyzer
 from app.risk.mev import MEVExposureAnalyzer
@@ -983,7 +986,8 @@ class PipelineEngine:
         self.manager = PaperManager(
             learning_feed=(
                 self.learning_outcome_feed
-            )
+            ),
+            price_observation_reader=self._paper_price_observation,
         )
 
         self.candidate_queue = CandidateAdmissionQueue(
@@ -1294,6 +1298,43 @@ class PipelineEngine:
                 return identity
 
         return None
+
+    def _paper_price_observation(self, position):
+        """Read exact-pool evidence at use time, refreshing expired snapshots."""
+        raw = context(position).get("raw_signals") or {}
+        pool = address(position.get("pool") or raw.get("pool"))
+        if pool is None:
+            return {}
+
+        try:
+            cached = next(
+                (observation(row) for row in self.cache.all()
+                 if address(row.get("pool")) == pool),
+                {},
+            )
+        except sqlite3.Error:
+            cached = {}
+        if observation_is_fresh(cached):
+            return cached
+
+        # A pass-level copy may have expired behind another position's SELL.
+        # Fetch only this pool; never substitute a token-only numeric price or
+        # rejuvenate an old observation with the time of this read.
+        snapshot_reader = getattr(getattr(self, "scanner", None), "pool_snapshots", None)
+        if not callable(snapshot_reader):
+            return cached
+        snapshots = snapshot_reader([
+            {"chain": "bsc", "pool": pool,
+             "dex": position.get("dex") or raw.get("dex"),
+             "token": position.get("token")},
+        ], persist_followups=False)
+        if not isinstance(snapshots, list):
+            return {}
+        return next(
+            (observation(row) for row in snapshots
+             if isinstance(row, dict) and address(row.get("pool")) == pool),
+            {},
+        )
 
     def refresh_open_position_prices(self, max_positions=30):
         positions = self.manager.db.open_positions()
@@ -3112,13 +3153,6 @@ class PipelineEngine:
                             "execution_authority": False,
                         }
 
-                        from app.risk.price_integrity import observation
-                        opening_context["price_observation"] = next(
-                            (observation(row) for row in self.cache.all()
-                             if str(row.get("pool", "")).lower()
-                             == str(market_context.get("candidate_pool", "")).lower()),
-                            {},
-                        )
                         opening_context_json = (
                             json.dumps(
                                 opening_context,
@@ -3523,6 +3557,34 @@ class PipelineEngine:
                             ):
                                 pre_reject = (
                                     "PHASE15H_BUY_NOT_PROVEN"
+                                )
+
+                        # BUY execution proof and price provenance are both
+                        # required. Read and verify after the slow simulation,
+                        # against the exact entry price already used for sizing.
+                        if pre_reject is None:
+                            try:
+                                entry_observation = self._paper_price_observation(trade_row)
+                                entry_integrity = admission_check({
+                                    **trade_row,
+                                    "opening_context_json": {
+                                        **opening_context,
+                                        "price_observation": entry_observation,
+                                    },
+                                })
+                            except Exception:
+                                entry_integrity = {
+                                    "state": "PRICE_UNVERIFIED",
+                                    "reason": "OBSERVATION_UNAVAILABLE",
+                                }
+                            if entry_integrity["state"] in {"VERIFIED_NORMAL", "VERIFIED_EXTREME"}:
+                                opening_context["price_observation"] = entry_observation
+                            else:
+                                pre_reject = "ENTRY_PRICE_NOT_PROVEN"
+                                logger.warning(
+                                    "PAPER_ENTRY_PRICE_INTEGRITY token=%s pool=%s state=%s reason=%s",
+                                    token_address, trade_row.get("pool"),
+                                    entry_integrity["state"], entry_integrity.get("reason"),
                                 )
 
                         if phase15h_buy_gate is not None:

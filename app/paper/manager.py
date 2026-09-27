@@ -55,9 +55,11 @@ class PaperManager:
         self,
         learning_feed=None,
         hybrid_exit_evidence=None,
+        price_observation_reader=None,
     ):
         self.db = PaperDatabase()
         self.price = CachePrice()
+        self.price_observation_reader = price_observation_reader
 
         self.learning_feed = (
             learning_feed
@@ -3145,7 +3147,10 @@ class PaperManager:
         gate = getattr(self, "price_integrity", None)
         if gate is None:
             gate = self.price_integrity = PriceIntegrityGate()
-        reader = getattr(self.price, "get_observation", None)
+        reader = (
+            getattr(self, "price_observation_reader", None)
+            or getattr(self.price, "get_observation", None)
+        )
         try:
             evidence = reader(pos) if callable(reader) else None
             checked = gate.evaluate(pos, evidence)

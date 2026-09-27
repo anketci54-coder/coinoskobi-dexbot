@@ -41,6 +41,14 @@ def timestamp(value):
         return None
 
 
+def observation_is_fresh(evidence):
+    """Use the provider observation time, never a cache/write timestamp."""
+    observed = timestamp((evidence or {}).get('observed_at'))
+    return observed is not None and 0 <= (
+        datetime.now(timezone.utc) - observed
+    ).total_seconds() <= MAX_AGE_SECONDS
+
+
 def context(position):
     value = position.get('opening_context_json') or {}
     try:
@@ -57,6 +65,8 @@ def observation(row):
         try:
             evidence = json.loads(raw)
         except (TypeError, ValueError):
+            return {}
+        if not isinstance(evidence, dict):
             return {}
         if (number(evidence.get('price_usd')) != number(row.get('price_usd'))
                 or address(evidence.get('pool')) != address(row.get('pool'))):
@@ -132,6 +142,10 @@ class PriceIntegrityGate:
             if max(price, chain_price) > min(price, chain_price) * MAX_DIVERGENCE:
                 return verdict('PRICE_CONFLICT', 'ONCHAIN_PRICE_DISAGREEMENT')
             result.update(proof)
+        # RPC verification can consume the remaining observation lifetime.
+        # Both admission and runtime must reject before accepting or mutating.
+        if not observation_is_fresh(evidence):
+            return verdict('PRICE_UNVERIFIED', 'INVALID_PROVENANCE_OR_PRICE')
         return verdict('VERIFIED_EXTREME' if extreme else 'VERIFIED_NORMAL',
                        'PAPER_USDT_USD_V1', **{k: v for k, v in result.items() if k not in {'state', 'reason'}})
 
@@ -179,6 +193,8 @@ class PriceIntegrityGate:
 
 def admission_check(trade):
     evidence = context(trade).get('price_observation') or {}
-    if number(evidence.get('price_usd')) != number(trade.get('entry_price')):
+    entry_price = number(trade.get('entry_price'))
+    if (not isinstance(evidence, dict) or entry_price is None
+            or number(evidence.get('price_usd')) != entry_price):
         return verdict('PRICE_UNVERIFIED', 'ENTRY_EVIDENCE_MISSING')
     return PriceIntegrityGate().evaluate(trade, evidence)

@@ -1,5 +1,6 @@
 """Candidate identity must survive discovery, revisit and admission."""
 from types import SimpleNamespace
+from decimal import Decimal
 import sqlite3
 import threading
 
@@ -11,6 +12,8 @@ from app.pipeline import engine
 from app.pipeline.fast_watch_revisit import FastWatchRevisitJob
 from app.paper.database import PaperDatabase
 from app.paper.schema import ensure_paper_schema
+from app.risk import price_integrity
+from price_integrity_support import V2RPC, evidence
 
 TOKEN = "0x" + "11" * 20
 POOL = "0x" + "22" * 20
@@ -56,6 +59,14 @@ def lifecycle(monkeypatch):
     pipeline._hybrid_exit_runtime_evidence = lambda *a, **k: {}
     pipeline.price = SimpleNamespace(get_price=lambda _: pytest.fail("Pair price must own entry"))
     state = {"prices": [1.0], "risk": {}, "sellable": True}
+    rpc = V2RPC()
+    monkeypatch.setattr(price_integrity, "w3", rpc)
+
+    def price_rows():
+        rpc.price = Decimal(str(state["prices"][-1]))
+        return [evidence(state["prices"][-1])]
+
+    pipeline.cache.all = price_rows
     monkeypatch.setattr(engine, "token_analyze", lambda _: {
         "success": True, "data": {"name": "Token", "symbol": "T", "decimals": 18}})
     monkeypatch.setattr(pair, "verify_pair_membership", lambda *a, **k: {

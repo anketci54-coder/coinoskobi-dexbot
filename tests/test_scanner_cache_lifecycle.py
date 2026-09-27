@@ -167,14 +167,13 @@ def test_movement_only_candidate_is_retained_for_real_price_refresh():
                 "dex": "pancakeswap_v2",
             }]
 
-        def pool_prices(self, pools):
+        def pool_snapshots(self, pools, *, persist_followups):
+            assert persist_followups is False
             self.price_calls.append(
                 list(pools)
             )
 
-            return {
-                "0xwatchpool": 1.25,
-            }
+            return [{"pool": "0xwatchpool", "price_usd": 1.25}]
 
     class ObservationCache:
         def __init__(self):
@@ -197,7 +196,10 @@ def test_movement_only_candidate_is_retained_for_real_price_refresh():
             self,
             pool,
             price,
+            *,
+            evidence,
         ):
+            assert evidence == {"pool": pool, "price_usd": price}
             self.updated.append(
                 (pool, price)
             )

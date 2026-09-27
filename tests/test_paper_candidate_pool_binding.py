@@ -67,6 +67,7 @@ def lifecycle(monkeypatch):
         return [evidence(state["prices"][-1])]
 
     pipeline.cache.all = price_rows
+    pipeline.scanner = SimpleNamespace(pool_snapshots=lambda *a, **kw: price_rows())
     monkeypatch.setattr(engine, "token_analyze", lambda _: {
         "success": True, "data": {"name": "Token", "symbol": "T", "decimals": 18}})
     monkeypatch.setattr(pair, "verify_pair_membership", lambda *a, **k: {

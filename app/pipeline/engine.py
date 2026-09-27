@@ -18,6 +18,7 @@ from app.risk.traps import TrapRiskAnalyzer
 from app.risk.mev import MEVExposureAnalyzer
 from app.risk.paper_position_sizing import (
     PAPER_CAPITAL_USDT,
+    _bind_final_trade_plan,
     calculate_paper_position_size,
     paper_available_capital_usdt,
 )
@@ -1299,23 +1300,25 @@ class PipelineEngine:
 
         return None
 
-    def _paper_price_observation(self, position):
-        """Read exact-pool evidence at use time, refreshing expired snapshots."""
+    def _paper_price_observation(self, position, *, force_refresh=False):
+        """Read exact-pool evidence; entry admission always requests a new fetch."""
         raw = context(position).get("raw_signals") or {}
         pool = address(position.get("pool") or raw.get("pool"))
         if pool is None:
             return {}
 
-        try:
-            cached = next(
-                (observation(row) for row in self.cache.all()
-                 if address(row.get("pool")) == pool),
-                {},
-            )
-        except sqlite3.Error:
-            cached = {}
-        if observation_is_fresh(cached):
-            return cached
+        cached = {}
+        if not force_refresh:
+            try:
+                cached = next(
+                    (observation(row) for row in self.cache.all()
+                     if address(row.get("pool")) == pool),
+                    {},
+                )
+            except sqlite3.Error:
+                pass
+            if observation_is_fresh(cached):
+                return cached
 
         # A pass-level copy may have expired behind another position's SELL.
         # Fetch only this pool; never substitute a token-only numeric price or
@@ -1334,6 +1337,40 @@ class PipelineEngine:
             (observation(row) for row in snapshots
              if isinstance(row, dict) and address(row.get("pool")) == pool),
             {},
+        )
+
+    @staticmethod
+    def _bind_paper_admission_price(trade, opening, plan, sizing, price):
+        """Bind fill accounting to the proof without changing the sized USDT spend."""
+        # Retain the entry timing limits established by the sizing gate.
+        low = sizing.get("entry_zone_low")
+        chase = sizing.get("chase_limit")
+        if ((low is not None and price < float(low))
+                or (chase is not None and price > float(chase))):
+            raise ValueError("admission price outside approved entry range")
+
+        plan["entry"]["price"] = price
+        bound = _bind_final_trade_plan(
+            plan, trade["entry_amount_usdt"], trade["capital_before_usdt"],
+        )
+        if (bound["token_amount"] <= 0 or bound["initial_net_risk_usdt"] is None
+                or bound["tp1_activation_price"] is None):
+            raise ValueError("admission inventory unavailable")
+        for key in ("entry_price", "current_price", "highest_price", "lowest_price"):
+            trade[key] = price
+        trade["token_amount"] = trade["initial_token_amount"] = bound["token_amount"]
+        trade["tp_price"] = bound["tp1_activation_price"]
+        trade["risk_amount_usdt"] = max(
+            bound["initial_net_risk_usdt"], float(sizing.get("risk_amount_usdt") or 0),
+        )
+        math_state = json.loads(trade["math_state_json"])
+        math_state.update(initial_net_risk_usdt=bound["initial_net_risk_usdt"],
+                          sizing_tail_risk_usdt=trade["risk_amount_usdt"])
+        trade["math_state_json"] = json.dumps(math_state, sort_keys=True)
+        trade["mathematical_plan_json"] = json.dumps(plan, sort_keys=True, default=str)
+        opening["exit_baseline"] = build_exit_baseline(
+            entry_price=price, take_profit_price=trade["tp_price"],
+            stop_loss_price=trade["sl_price"],
         )
 
     def refresh_open_position_prices(self, max_positions=30):
@@ -3560,18 +3597,41 @@ class PipelineEngine:
                                 )
 
                         # BUY execution proof and price provenance are both
-                        # required. Read and verify after the slow simulation,
-                        # against the exact entry price already used for sizing.
+                        # required. Always fetch after the slow BUY simulation;
+                        # the earlier reserve/sizing price is not an observation
+                        # of this provider response and need not equal it.
                         if pre_reject is None:
                             try:
-                                entry_observation = self._paper_price_observation(trade_row)
+                                entry_observation = self._paper_price_observation(
+                                    trade_row, force_refresh=True,
+                                )
                                 entry_integrity = admission_check({
                                     **trade_row,
+                                    "entry_price": float(entry_observation.get("price_usd") or 0),
                                     "opening_context_json": {
                                         **opening_context,
                                         "price_observation": entry_observation,
                                     },
                                 })
+                                if entry_integrity["state"] in {"VERIFIED_NORMAL", "VERIFIED_EXTREME"}:
+                                    verified_price = float(entry_integrity["price"])
+                                    self._bind_paper_admission_price(
+                                        trade_row, opening_context, mathematical_plan,
+                                        sizing, verified_price,
+                                    )
+                                    price = trade_row["entry_price"]
+                                    token_amount = trade_row["token_amount"]
+                                    tp1_activation = trade_row["tp_price"]
+                                    writer = getattr(self.cache, "upsert_tracked_price", None)
+                                    if callable(writer):
+                                        writer(trade_row["pool"], token_address, verified_price,
+                                               evidence=entry_observation)
+                                    # A cache lock must not extend the observation lifetime.
+                                    if not observation_is_fresh(entry_observation):
+                                        entry_integrity = {
+                                            "state": "PRICE_UNVERIFIED",
+                                            "reason": "INVALID_PROVENANCE_OR_PRICE",
+                                        }
                             except Exception:
                                 entry_integrity = {
                                     "state": "PRICE_UNVERIFIED",
@@ -3730,7 +3790,7 @@ class PipelineEngine:
                                 ),
 
                                 "risk_amount_usdt": (
-                                    sizing[
+                                    trade_row[
                                         "risk_amount_usdt"
                                     ]
                                 ),
@@ -4762,9 +4822,9 @@ class PipelineEngine:
         ]
 
         if watch_pools:
-            pool_prices = getattr(
+            pool_snapshots = getattr(
                 self.scanner,
-                "pool_prices",
+                "pool_snapshots",
                 None,
             )
 
@@ -4775,7 +4835,7 @@ class PipelineEngine:
             )
 
             if (
-                pool_prices is not None
+                pool_snapshots is not None
                 and update_pool_price is not None
             ):
                 watch_identities = [
@@ -4791,21 +4851,24 @@ class PipelineEngine:
                 ]
 
                 try:
-                    watched_prices = (
-                        pool_prices(
-                            watch_identities
+                    watched_snapshots = (
+                        pool_snapshots(
+                            watch_identities,
+                            persist_followups=False,
                         )
                         if watch_identities
-                        else {}
+                        else []
                     )
 
-                    for (
-                        watched_pool,
-                        watched_price,
-                    ) in watched_prices.items():
+                    requested_pools = {item["pool"] for item in watch_identities}
+                    for snapshot in watched_snapshots:
+                        watched_pool = str(snapshot.get("pool") or "").lower()
+                        if watched_pool not in requested_pools:
+                            continue
                         update_pool_price(
                             watched_pool,
-                            watched_price,
+                            snapshot["price_usd"],
+                            evidence=snapshot,
                         )
 
                 except Exception as exc:

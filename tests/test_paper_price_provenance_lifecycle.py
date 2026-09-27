@@ -72,7 +72,7 @@ def reject_evidence(rows, defect):
 
 @pytest.mark.parametrize("defect", [
     "missing", "stale", "missing_time", "future", "malformed", "nonobject",
-    "numeric_envelope", "price_difference", "pool", "token", "quote",
+    "numeric_envelope", "pool", "token", "quote",
     "source", "chain", "dex",
 ])
 def test_buy_success_cannot_insert_without_matching_entry_provenance(entry, defect):
@@ -94,6 +94,15 @@ def test_verified_exact_entry_is_persisted_after_buy_success(entry):
     assert opening["price_observation"] == integrity.observation(entry.rows[0])
     assert opening["price_observation"]["price_usd"] == stored["entry_price"] == 1.06
     assert ("getReserves", POOL) in entry.rpc.calls  # Real admission verification.
+
+
+def test_stored_entry_price_must_still_equal_observation(entry):
+    assert entry.job._process(entry.candidate)["data"]["paper"]["action"] == "PAPER_BUY"
+    stored = entry.db.open_positions()[0]
+    stored["entry_price"] *= 1.01
+    assert integrity.admission_check(stored) == {
+        "state": "PRICE_UNVERIFIED", "reason": "ENTRY_EVIDENCE_MISSING",
+    }
 
 
 def test_entry_reads_evidence_published_during_buy_instead_of_earlier_copy(entry, monkeypatch):

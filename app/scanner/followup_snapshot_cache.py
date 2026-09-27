@@ -1,7 +1,10 @@
+import json
 import sqlite3
 import time
 from datetime import datetime, timezone
 from pathlib import Path
+
+from app.risk.price_integrity import observation
 
 
 CACHE_DB = Path("data/cache/cache.db")
@@ -110,6 +113,10 @@ def persist_registered_followup_snapshots(
                 "ALTER TABLE gecko_pool_cache "
                 "ADD COLUMN sells24 INTEGER"
             )
+
+        for column in ("price_evidence_json", "observed_at"):
+            if column not in cache_columns:
+                db.execute(f"ALTER TABLE gecko_pool_cache ADD COLUMN {column} TEXT")
 
         history_exists = db.execute(
             """
@@ -237,6 +244,8 @@ def persist_registered_followup_snapshots(
                     sells24=COALESCE(?, sells24),
                     fdv=COALESCE(?, fdv),
                     price_usd=COALESCE(?, price_usd),
+                    price_evidence_json=?,
+                    observed_at=?,
                     created_at=COALESCE(?, created_at),
                     updated_at=datetime('now')
                 WHERE lower(pool)=lower(?)
@@ -252,6 +261,8 @@ def persist_registered_followup_snapshots(
                     sells_24h,
                     fdv,
                     row.get("price_usd"),
+                    json.dumps(observation(row)),
+                    row.get("observed_at"),
                     created_at,
                     pool,
                 ),

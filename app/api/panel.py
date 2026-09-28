@@ -1622,7 +1622,7 @@ def health_payload() -> dict[str, Any]:
             "coinoskobi-paper-runtime.service"
         ),
         "panel_api": service_state(
-            "coinoskobi-panel-api.service"
+            "coinoskobi-panel.service"
         ),
         "disk_usage_pct": (
             disk.used / disk.total * 100.0

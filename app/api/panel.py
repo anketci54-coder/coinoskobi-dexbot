@@ -21,6 +21,7 @@ from app.api.panel_operations import answer_vezir_query, build_operations_payloa
 from app.api.vezir_ai import route_vezir_question
 from app.api.panel_provider_health import provider_health_snapshot
 from app.config.settings import RPC_URL, RPC_URL_SECONDARY
+from app.risk.reserve_collapse import classify_reserve_collapse
 
 
 BASE_DIR = Path(__file__).resolve().parents[2]
@@ -443,7 +444,7 @@ def extract_entry_evidence(
 
 
 def paper_rows(
-    limit: int = 100,
+    limit: int | None = 100,
     *,
     active_only: bool = False,
     before_id: int | None = None,
@@ -467,7 +468,10 @@ def paper_rows(
         where_clause += " AND id < ?"
         params.append(int(before_id))
 
-    params.append(limit)
+    limit_clause = ""
+    if limit is not None:
+        limit_clause = " LIMIT ?"
+        params.append(int(limit))
 
     rows = query(
         f"""
@@ -515,7 +519,7 @@ def paper_rows(
         FROM paper_trades
         {where_clause}
         ORDER BY id DESC
-        LIMIT ?
+        {limit_clause}
         """,
         tuple(params),
     )
@@ -547,6 +551,168 @@ def paper_rows(
     return result
 
 
+def _dashboard_open_valuation_states(
+    open_positions: list[dict[str, Any]],
+) -> dict[int, dict[str, Any]]:
+    """
+    Conservative panel-only valuation guard.
+
+    Historical PAPER rows remain untouched. When current scanner liquidity
+    proves a catastrophic quote-reserve collapse relative to the durable
+    entry plan, the row stays visible but its stored mark-to-market PnL is not
+    trusted for dashboard equity.
+    """
+    ids = [
+        int(row["id"])
+        for row in open_positions
+        if row.get("id") is not None
+    ]
+    if not ids:
+        return {}
+
+    placeholders = ",".join("?" for _ in ids)
+    rows = query(
+        f"""
+        SELECT
+            id,
+            pool,
+            mathematical_plan_json
+        FROM paper_trades
+        WHERE id IN ({placeholders})
+        """,
+        tuple(ids),
+    )
+    pools = sorted({
+        str(row.get("pool") or "").lower()
+        for row in rows
+        if row.get("pool")
+    })
+    latest_by_pool: dict[str, dict[str, Any]] = {}
+
+    if pools and CACHE_DB.exists():
+        connection = None
+        try:
+            connection = sqlite3.connect(
+                f"file:{CACHE_DB}?mode=ro",
+                uri=True,
+                timeout=2,
+            )
+            connection.row_factory = sqlite3.Row
+            placeholders = ",".join("?" for _ in pools)
+            observed = connection.execute(
+                f"""
+                SELECT
+                    pool,
+                    liquidity_usd,
+                    price_usd,
+                    observed_at
+                FROM market_observation_history
+                WHERE lower(pool) IN ({placeholders})
+                ORDER BY id DESC
+                """,
+                tuple(pools),
+            ).fetchall()
+            for raw in observed:
+                item = dict(raw)
+                pool = str(
+                    item.get("pool") or ""
+                ).lower()
+                if pool and pool not in latest_by_pool:
+                    latest_by_pool[pool] = item
+        except Exception:
+            latest_by_pool = {}
+        finally:
+            if connection is not None:
+                connection.close()
+
+    cache_by_pool = runtime_cache_snapshot().get(
+        "by_pool",
+        {},
+    )
+
+    states: dict[int, dict[str, Any]] = {}
+
+    for row in rows:
+        position_id = int(row["id"])
+        state = {
+            "state": "VALUED",
+            "reason": None,
+            "entry_quote_reserve_usd": None,
+            "current_quote_reserve_usd": None,
+        }
+
+        plan = parse_json_object(
+            row.get("mathematical_plan_json")
+        )
+        capital = (
+            plan.get("capital")
+            if isinstance(plan.get("capital"), dict)
+            else {}
+        )
+
+        entry_quote_reserve = None
+        for key in (
+            "observed_min_quote_reserve_usd",
+            "safe_quote_reserve_usd",
+            "verified_quote_reserve_usd",
+        ):
+            try:
+                candidate = float(capital.get(key))
+            except (TypeError, ValueError):
+                continue
+            if candidate > 0:
+                entry_quote_reserve = candidate
+                break
+
+        pool = str(row.get("pool") or "").lower()
+        cache_row = (
+            latest_by_pool.get(pool)
+            or cache_by_pool.get(pool)
+            or {}
+        )
+
+        current_quote_reserve = None
+        try:
+            liquidity_value = (
+                cache_row.get("liquidity_usd")
+                if cache_row.get("liquidity_usd") is not None
+                else cache_row.get("liquidity")
+            )
+            liquidity = float(liquidity_value)
+            if liquidity >= 0:
+                current_quote_reserve = liquidity / 2.0
+        except (TypeError, ValueError):
+            pass
+
+        state["entry_quote_reserve_usd"] = (
+            entry_quote_reserve
+        )
+        state["current_quote_reserve_usd"] = (
+            current_quote_reserve
+        )
+
+        if (
+            entry_quote_reserve is not None
+            and current_quote_reserve is not None
+        ):
+            collapse = classify_reserve_collapse(
+                previous_quote_reserve=entry_quote_reserve,
+                current_quote_reserve=current_quote_reserve,
+            )
+            if collapse.get(
+                "catastrophic_reserve_collapse"
+            ):
+                state.update({
+                    "state": "UNVERIFIED",
+                    "reason": (
+                        "CATASTROPHIC_RESERVE_COLLAPSE"
+                    ),
+                    "reserve_collapse": collapse,
+                })
+
+        states[position_id] = state
+
+    return states
 
 
 def performance_payload(
@@ -2018,7 +2184,10 @@ def api_position_evidence(
 
 @app.get("/api/dashboard")
 def api_dashboard() -> dict[str, Any]:
-    rows = paper_rows(active_only=True)
+    rows = paper_rows(
+        limit=None,
+        active_only=True,
+    )
     performance = performance_payload(active_only=True)
     intelligence = intelligence_payload()
     health = health_payload()
@@ -2040,9 +2209,36 @@ def api_dashboard() -> dict[str, Any]:
         ).upper() == "CLOSED"
     ]
 
+    valuation_states = (
+        _dashboard_open_valuation_states(
+            open_positions
+        )
+    )
+    for row in open_positions:
+        valuation = valuation_states.get(
+            int(row.get("id") or 0),
+            {"state": "VALUED", "reason": None},
+        )
+        row["valuation_state"] = valuation.get(
+            "state"
+        )
+        row["valuation_reason"] = valuation.get(
+            "reason"
+        )
+
+    valued_open_positions = [
+        row
+        for row in open_positions
+        if row.get("valuation_state") != "UNVERIFIED"
+    ]
+
     open_investment = sum(
         number(row.get("entry_amount_usdt"))
         for row in open_positions
+    )
+    valued_open_investment = sum(
+        number(row.get("entry_amount_usdt"))
+        for row in valued_open_positions
     )
 
     open_pnl = sum(
@@ -2051,7 +2247,7 @@ def api_dashboard() -> dict[str, Any]:
             if row.get("net_pnl_usdt") is not None
             else row.get("net_pnl")
         )
-        for row in open_positions
+        for row in valued_open_positions
     )
 
     open_risk = sum(
@@ -2145,8 +2341,8 @@ def api_dashboard() -> dict[str, Any]:
     )
 
     open_roi_pct = (
-        open_pnl / open_investment * 100.0
-        if open_investment > 0
+        open_pnl / valued_open_investment * 100.0
+        if valued_open_investment > 0
         else None
     )
 
@@ -2190,8 +2386,24 @@ def api_dashboard() -> dict[str, Any]:
             "realized_net": realized_net,
             "open_pnl": open_pnl,
             "open_count": len(open_positions),
+            "valued_open_count": len(
+                valued_open_positions
+            ),
+            "unvalued_open_count": (
+                len(open_positions)
+                - len(valued_open_positions)
+            ),
+            "equity_state": (
+                "PARTIAL_UNVERIFIED_OPEN_VALUATION"
+                if len(valued_open_positions)
+                != len(open_positions)
+                else "COMPLETE"
+            ),
             "closed_count": len(closed_positions),
             "open_investment": open_investment,
+            "valued_open_investment": (
+                valued_open_investment
+            ),
             "open_risk": open_risk,
             "risk_used_pct": risk_used_pct,
             "open_roi_pct": open_roi_pct,

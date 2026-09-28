@@ -2165,7 +2165,7 @@ class PaperManager:
                 )
             )
 
-            history = list(
+            plan_history = list(
                 (
                     plan.get(
                         "statistics"
@@ -2177,9 +2177,34 @@ class PaperManager:
                 or []
             )
 
-            history.extend(
-                post_entry_history
-            )
+            # Once the runner has enough post-entry evidence, do not let
+            # pre-entry volatility keep the trailing floor artificially wide.
+            # Fall back to the original combined history only during the
+            # earliest runner observations.
+            if len(post_entry_history) >= 2:
+                history = list(
+                    post_entry_history
+                )
+                runner_history_source = (
+                    "POST_ENTRY_ONLY"
+                )
+            else:
+                history = list(
+                    plan_history
+                )
+                history.extend(
+                    post_entry_history
+                )
+                runner_history_source = (
+                    "PLAN_PLUS_POST_ENTRY_FALLBACK"
+                )
+
+            state[
+                "tp3_runner_history_source"
+            ] = runner_history_source
+            state[
+                "tp3_runner_history_samples"
+            ] = len(history)
 
             fallback_distance = (
                 plan.get(

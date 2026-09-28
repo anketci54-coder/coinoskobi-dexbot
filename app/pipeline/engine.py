@@ -1220,6 +1220,7 @@ class PipelineEngine:
         *,
         scanner_rows=None,
     ):
+        self._raise_if_stopping()
         pool_key = str(
             pool or ""
         ).strip().lower()
@@ -1281,6 +1282,7 @@ class PipelineEngine:
             if identity is not None:
                 return identity
 
+        self._raise_if_stopping()
         history_for_pool = getattr(
             cache,
             "history_for_pool",
@@ -4528,6 +4530,7 @@ class PipelineEngine:
         pending = pending_reader(
             max_entries=30,
         )
+        self._raise_if_stopping()
 
         if not pending:
             return {
@@ -4601,6 +4604,7 @@ class PipelineEngine:
             )
 
             for token in tokens:
+                self._raise_if_stopping()
                 kwargs = {}
 
                 if observed_at is not None:
@@ -4660,6 +4664,8 @@ class PipelineEngine:
 
                 failed += unresolved
 
+                self._raise_if_stopping()
+
                 if not identities:
                     continue
 
@@ -4700,6 +4706,7 @@ class PipelineEngine:
                         pool,
                         [],
                     ):
+                        self._raise_if_stopping()
                         result = observer(
                             token=token,
                             pool=pool,
@@ -4786,6 +4793,7 @@ class PipelineEngine:
         return status
 
     def refresh_candidate_cache(self):
+        self._raise_if_stopping()
         scanner = getattr(
             self,
             "scanner",
@@ -4813,6 +4821,7 @@ class PipelineEngine:
             return result
 
         for row in rows:
+            self._raise_if_stopping()
             self.cache.replace(row)
 
         self.last_counterfactual_refresh = (
@@ -4820,6 +4829,7 @@ class PipelineEngine:
                 rows
             )
         )
+        self._raise_if_stopping()
 
         # A scanner discovery feed may rotate a promising pool out
         # before mathematical admission has accumulated enough real
@@ -4906,6 +4916,7 @@ class PipelineEngine:
                         ),
                     )
 
+        self._raise_if_stopping()
         self.last_cache_pruned = 0
         prune = getattr(
             self.cache,

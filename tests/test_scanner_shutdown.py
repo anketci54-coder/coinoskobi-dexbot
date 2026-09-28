@@ -234,3 +234,29 @@ def test_scanner_drains_durable_observation_without_global_status_after_stop():
     result = engine.run_cycle()
     assert result["state"] == "STOPPED"
     assert writes == ["observe", "record", "probe"]
+
+
+def test_refresh_stops_between_history_reads_without_fetching_or_pruning():
+    from app.pipeline.engine import PipelineEngine
+    from app.pipeline.work_scheduler import WorkScheduler
+
+    engine = PipelineEngine.__new__(PipelineEngine)
+    engine.work_scheduler = WorkScheduler(max_workers=1)
+    reads, fetched, pruned = [], [], []
+
+    def history(pool, **kwargs):
+        reads.append(pool)
+        engine.work_scheduler.request_stop()
+        return [{"pool": pool, "dex": "pancakeswap_v2"}]
+
+    engine.cache = SimpleNamespace(all=lambda: [], history_for_pool=history,
+                                   prune_except=lambda *a, **kw: pruned.append(1))
+    engine.scanner = SimpleNamespace(scan=lambda: [],
+                                     pool_prices=lambda pools: fetched.append(pools) or {})
+    engine.counterfactual_store = SimpleNamespace(
+        pending_pool_snapshot=lambda **kw: {f"token{i}": f"pool{i}" for i in range(30)},
+        observe_durable=lambda **kw: {},
+    )
+    assert engine.run_cycle()["state"] == "STOPPED"
+    assert len(reads) == 1
+    assert not fetched and not pruned

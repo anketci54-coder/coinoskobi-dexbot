@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import sqlite3
 from collections import Counter
+
+from app.config.scanner import MIN_LIQUIDITY_USD
 from pathlib import Path
 from typing import Any
 
@@ -225,17 +227,33 @@ def universe_panel_payload(
             index="idx_universe_snapshot_at",
         )
 
-        # Pull only a tiny recent window per state. On the production universe
-        # DB this explicitly walks the existing latest_snapshot_at index instead
-        # of sorting millions of rows. HOT -> WARM -> COLD batch order preserves
-        # operator priority without creating a new DB index or write migration.
+        counts = {
+            str(row["market_state"]): int(row["n"])
+            for row in connection.execute(
+                """
+                SELECT market_state, COUNT(*) AS n
+                FROM universe_pool_registry
+                WHERE market_state IN ('COLD','WARM','HOT')
+                GROUP BY market_state
+                """
+            ).fetchall()
+        }
+
+        # HOT/WARM is the operator's actionable radar and must be complete.
+        # COLD remains bounded so the panel never walks the multi-million-row
+        # cold universe just to render a screen.
         candidates = []
         for state in ("HOT", "WARM", "COLD"):
-            state_limit = (
-                bounded_limit * COLD_SCAN_MULTIPLIER
-                if state == "COLD"
-                else bounded_limit
-            )
+            if state in {"HOT", "WARM"}:
+                state_limit = max(
+                    1,
+                    int(counts.get(state, 0)),
+                )
+            else:
+                state_limit = (
+                    bounded_limit
+                    * COLD_SCAN_MULTIPLIER
+                )
             candidates.extend(
                 _recent_registry_candidates(
                     connection,
@@ -250,18 +268,6 @@ def universe_panel_payload(
             connection,
             rows,
         )
-
-        counts = {
-            str(row["market_state"]): int(row["n"])
-            for row in connection.execute(
-                """
-                SELECT market_state, COUNT(*) AS n
-                FROM universe_pool_registry
-                WHERE market_state IN ('COLD','WARM','HOT')
-                GROUP BY market_state
-                """
-            ).fetchall()
-        }
 
         # Transition display is operational context, not a training aggregate.
         # Keep it explicitly bounded to the most recent seismic evaluations so
@@ -322,15 +328,16 @@ def universe_panel_payload(
                 "seismic": seismic,
             })
 
-        state_priority = {
-            "HOT": 0,
-            "WARM": 1,
-            "COLD": 2,
-        }
-
         def row_rank(item):
             state = str(item.get("state") or "").upper()
             seismic = item.get("seismic") or {}
+
+            try:
+                change_5m = float(
+                    item.get("change_5m_pct")
+                )
+            except (TypeError, ValueError):
+                change_5m = float("-inf")
 
             try:
                 liquidity_ratio = float(
@@ -346,21 +353,43 @@ def universe_panel_payload(
             except (TypeError, ValueError):
                 liquidity_usd = 0.0
 
-            if state == "COLD":
+            if state in {"HOT", "WARM"}:
+                liquid_rank = (
+                    0
+                    if liquidity_usd
+                    >= float(MIN_LIQUIDITY_USD)
+                    else 1
+                )
                 return (
-                    state_priority[state],
-                    -liquidity_ratio,
+                    0,
+                    liquid_rank,
+                    -change_5m,
                     -liquidity_usd,
                 )
 
             return (
-                state_priority.get(state, 9),
-                0.0,
+                1,
+                0,
+                -liquidity_ratio,
                 -liquidity_usd,
             )
 
         result_rows.sort(key=row_rank)
-        result_rows = result_rows[:bounded_limit]
+
+        active_rows = [
+            row
+            for row in result_rows
+            if str(row.get("state") or "").upper()
+            in {"HOT", "WARM"}
+        ]
+        cold_rows = [
+            row
+            for row in result_rows
+            if str(row.get("state") or "").upper()
+            == "COLD"
+        ][:bounded_limit]
+
+        result_rows = active_rows + cold_rows
 
     except sqlite3.Error as exc:
         return _unavailable(type(exc).__name__)

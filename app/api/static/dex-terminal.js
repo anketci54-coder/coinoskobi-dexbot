@@ -338,13 +338,23 @@
     $('historyLosses').textContent=summary.losses;
     $('historyPnl').textContent=money(summary.realizedNet); $('historyPnl').className=cls(summary.realizedNet);
     $('historyMeta').textContent=`${summary.closedCount} kapanmış kayıt · ${ledger?.pages||1} sayfa`;
-    $('historyRows').innerHTML=rows.length?rows.map(row=>`<tr><td>${esc(row.id??'—')}</td><td><b>${esc(row.symbol||short(row.token))}</b></td><td>${num(row.entry_price)}</td><td>${num(row.exit_price??row.current_price)}</td><td class="${cls(row.net_pnl_usdt??row.net_pnl)}">${money(row.net_pnl_usdt??row.net_pnl)}</td><td class="${cls(row.roi_pct)}">${pct(row.roi_pct??(n(row.roi)!==null?n(row.roi)*100:null))}</td><td>${esc(row.close_reason||'—')}</td><td>${formatTime(row.closed_at??row.created_at)}</td></tr>`).join(''):'<tr><td colspan="8" class="muted">Kapanmış işlem yok.</td></tr>';
+    $('historyRows').innerHTML=rows.length?rows.map(row=>`<tr><td>${esc(row.id??'—')}</td><td><b>${esc(row.symbol||short(row.token))}</b></td><td>${num(row.entry_price)}</td><td>${num(row.exit_price??row.current_price)}</td><td>${money(row.entry_amount_usdt)}</td><td class="${cls(row.net_pnl_usdt??row.net_pnl)}">${money(row.net_pnl_usdt??row.net_pnl)}</td><td class="${cls(row.roi_pct)}">${pct(row.roi_pct??(n(row.roi)!==null?n(row.roi)*100:null))}</td><td>${esc(row.close_reason||'—')}</td><td>${formatTime(row.closed_at??row.created_at)}</td></tr>`).join(''):'<tr><td colspan="9" class="muted">Kapanmış işlem yok.</td></tr>';
   }
 
   function renderRadar(){
-    const counts=universe?.counts||{}; $('radarHot').textContent=counts.HOT??'—'; $('radarWarm').textContent=counts.WARM??'—'; $('radarCold').textContent=counts.COLD??'—'; $('radarVisible').textContent=universe?.visible_count??'—'; $('radarSource').textContent=universe?.source||'—';
-    const all=Array.isArray(universe?.rows)?universe.rows:[]; const filtered=radarFilter==='ALL'?all:all.filter(r=>String(r.state||'').toUpperCase()===radarFilter); $('radarRows').innerHTML=radarRows(filtered);
-    const home=all.slice(0,6); $('homeRadarRows').innerHTML=home.length?home.map(row=>{ const seismic=row.seismic||{}; return `<tr><td>${stateBadge(row.state)}</td><td><div class="token-cell"><b>${esc(candidateName(row))}</b><small>${esc(short(row.pool))}</small></div></td><td>${esc(plainMarketRead(row))}</td><td>${esc(row.txns_5m ?? '—')}</td><td>${money(row.volume_24h_usd)}</td><td class="${cls(row.change_5m_pct)}">${pct(row.change_5m_pct)}</td><td>${money(row.liquidity_usd)}</td></tr>`; }).join(''):'<tr><td colspan="7" class="muted">Güncel DEX radar kaydı yok.</td></tr>'; $('homeRadarCount').textContent=`${home.length} görünür`;
+    const counts=universe?.counts||{};
+    const allRows=Array.isArray(universe?.rows)?universe.rows:[];
+    const active=allRows.filter(r=>['HOT','WARM'].includes(String(r.state||'').toUpperCase()));
+    $('radarHot').textContent=counts.HOT??'—';
+    $('radarWarm').textContent=counts.WARM??'—';
+    $('radarCold').textContent=counts.COLD??'—';
+    $('radarVisible').textContent=active.length;
+    $('radarSource').textContent=universe?.source||'—';
+    const filtered=radarFilter==='ALL'?active:allRows.filter(r=>String(r.state||'').toUpperCase()===radarFilter);
+    $('radarRows').innerHTML=radarRows(filtered);
+    const home=active.slice(0,6);
+    $('homeRadarRows').innerHTML=home.length?home.map(row=>{ const seismic=row.seismic||{}; return `<tr><td>${stateBadge(row.state)}</td><td><div class="token-cell"><b>${esc(candidateName(row))}</b><small>${esc(short(row.pool))}</small></div></td><td>${esc(plainMarketRead(row))}</td><td>${esc(row.txns_5m ?? '—')}</td><td>${money(row.volume_24h_usd)}</td><td class="${cls(row.change_5m_pct)}">${pct(row.change_5m_pct)}</td><td>${money(row.liquidity_usd)}</td></tr>`; }).join(''):'<tr><td colspan="7" class="muted">Güncel DEX radar kaydı yok.</td></tr>';
+    $('homeRadarCount').textContent=`${active.length} HOT/WARM · ilk ${home.length} gösteriliyor`;
   }
 
   function candidateReason(row){ const source=String(row?.discovery_source||row?.source||'').toUpperCase(); if(source==='TRANSACTION_FROM_ONLY')return 'BSC işlem akışında gönderen cüzdan olarak gözlendi.'; if(source.includes('ARKHAM'))return 'Harici on-chain istihbarat kaynağında gözlendi.'; if(source==='REGISTRY')return 'Canonical aday kayıt defterinde aktif.'; return source?`${source.replaceAll('_',' ')} kaynağından aday.`:'Aday kaynağı henüz ayrıntılandırılmadı.'; }

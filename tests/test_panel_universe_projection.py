@@ -88,9 +88,12 @@ def test_universe_panel_projection_is_real_and_read_only(tmp_path):
         "WARM_TO_HOT": 1,
         "HOT_TO_COLD": 1,
     }
-    assert [row["state"] for row in payload["rows"]] == ["HOT", "WARM"]
+    assert [row["state"] for row in payload["rows"]] == ["WARM", "HOT"]
 
-    hot = payload["rows"][0]
+    hot = next(
+        row for row in payload["rows"]
+        if row["state"] == "HOT"
+    )
     assert hot["seismic"]["score"] == 9.0
     assert hot["seismic"]["volume_z"] == 12.0
     assert hot["seismic"]["txns_z"] == 8.1
@@ -106,7 +109,7 @@ def test_universe_panel_projection_is_real_and_read_only(tmp_path):
     assert payload["execution_authority"] is False
 
 
-def test_universe_panel_limit_preserves_hot_then_warm_priority(tmp_path):
+def test_universe_panel_limit_preserves_all_active_and_ranks_by_change(tmp_path):
     path = tmp_path / "cache.db"
     _seed(path)
 
@@ -114,8 +117,8 @@ def test_universe_panel_limit_preserves_hot_then_warm_priority(tmp_path):
 
     assert payload["available"] is True
     assert payload["visible_count"] == 2
-    assert [row["state"] for row in payload["rows"]] == ["HOT", "WARM"]
-    assert payload["rows"][0]["seismic"]["reason"] == "hot acceleration"
+    assert [row["state"] for row in payload["rows"]] == ["WARM", "HOT"]
+    assert payload["rows"][0]["change_5m_pct"] == 1.3
 
 
 def test_universe_panel_transition_summary_is_bounded(tmp_path):

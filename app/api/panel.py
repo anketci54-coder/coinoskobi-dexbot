@@ -507,6 +507,7 @@ def paper_rows(
             opening_context_json,
             paper_account_version,
             trade_policy,
+            trade_type,
             cost_model_complete,
             entry_amount_usdt,
             risk_amount_usdt,

@@ -75,52 +75,66 @@ def enrich_universe_display_names(payload, cache_db):
         ).strip().lower()
         meta = metadata.get(pool)
 
-        if meta:
-            quote_symbol = str(
-                meta.get("quote_symbol") or ""
-            ).strip().upper()
-            base_symbol = str(
-                meta.get("base_symbol") or ""
-            ).strip().upper()
+        if not meta:
+            continue
 
-            row["display_name"] = str(
-                meta.get("display_name") or ""
-            ).strip() or row.get("display_name")
-            row["base_symbol"] = (
-                base_symbol or None
-            )
-            row["quote_symbol"] = (
-                quote_symbol or None
-            )
-            row["base_name"] = str(
-                meta.get("base_name") or ""
-            ).strip() or None
-            row["quote_name"] = str(
-                meta.get("quote_name") or ""
-            ).strip() or None
-            row["base_token"] = (
-                meta.get("base_token")
-                or row.get("base_token")
-            )
-            row["quote_token"] = (
-                meta.get("quote_token")
-                or row.get("quote_token")
-            )
-            row["paper_quote_eligible"] = bool(
-                quote_symbol in ALLOWED_QUOTES
-                and base_symbol != "WBNB"
-            )
-            metadata_matches += 1
-        else:
-            row["paper_quote_eligible"] = False
+        quote_symbol = str(
+            meta.get("quote_symbol") or ""
+        ).strip().upper()
+        base_symbol = str(
+            meta.get("base_symbol") or ""
+        ).strip().upper()
+        chain = str(
+            row.get("chain") or ""
+        ).strip().lower()
+        dex = str(
+            row.get("dex") or ""
+        ).strip().lower()
 
+        if chain != "bsc":
+            continue
+        if dex not in {
+            "pancakeswap_v2",
+            "pancakeswap_v3",
+        }:
+            continue
+        if quote_symbol != "USDT":
+            continue
+        if base_symbol in {
+            "",
+            "USDT",
+            "WBNB",
+        }:
+            continue
+
+        row["display_name"] = str(
+            meta.get("display_name") or ""
+        ).strip() or row.get("display_name")
+        row["base_symbol"] = base_symbol
+        row["quote_symbol"] = quote_symbol
+        row["base_name"] = str(
+            meta.get("base_name") or ""
+        ).strip() or None
+        row["quote_name"] = str(
+            meta.get("quote_name") or ""
+        ).strip() or None
+        row["base_token"] = (
+            meta.get("base_token")
+            or row.get("base_token")
+        )
+        row["quote_token"] = (
+            meta.get("quote_token")
+            or row.get("quote_token")
+        )
+        row["paper_quote_eligible"] = True
+        metadata_matches += 1
         enriched.append(row)
 
     payload["rows"] = enriched
     payload["display_name_source"] = "UNIVERSE_POOL_DISPLAY_METADATA_V1"
     payload["display_name_matches"] = metadata_matches
     payload["allowed_quote_symbols"] = sorted(ALLOWED_QUOTES)
-    payload["stable_quote_filtered"] = False
+    payload["stable_quote_filtered"] = True
     return payload
 
 

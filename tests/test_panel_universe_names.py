@@ -87,7 +87,7 @@ def test_universe_payload_missing_gecko_table_is_fail_soft(tmp_path):
     assert payload['rows'][0]['token0'] == '0xtoken'
 
 
-def test_panel_display_names_preserves_non_usdt_rows_as_display_only(tmp_path):
+def test_panel_display_names_excludes_non_usdt_pairs(tmp_path):
     import sqlite3
 
     from app.api.panel_display_names import enrich_universe_display_names
@@ -161,10 +161,8 @@ def test_panel_display_names_preserves_non_usdt_rows_as_display_only(tmp_path):
 
     result = enrich_universe_display_names(payload, db)
 
-    assert len(result["rows"]) == 2
-    assert result["rows"][0]["paper_quote_eligible"] is False
-    assert result["rows"][1]["paper_quote_eligible"] is False
-    assert result["stable_quote_filtered"] is False
+    assert result["rows"] == []
+    assert result["stable_quote_filtered"] is True
 
 def test_panel_is_usdt_only_contract():
     from app.api.panel_display_names import ALLOWED_QUOTES

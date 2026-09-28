@@ -348,9 +348,9 @@
     $('radarHot').textContent=counts.HOT??'—';
     $('radarWarm').textContent=counts.WARM??'—';
     $('radarCold').textContent=counts.COLD??'—';
-    $('radarVisible').textContent=active.length;
+    $('radarVisible').textContent=allRows.length;
     $('radarSource').textContent=universe?.source||'—';
-    const filtered=radarFilter==='ALL'?active:allRows.filter(r=>String(r.state||'').toUpperCase()===radarFilter);
+    const filtered=radarFilter==='ALL'?allRows:allRows.filter(r=>String(r.state||'').toUpperCase()===radarFilter);
     $('radarRows').innerHTML=radarRows(filtered);
     const home=active.slice(0,6);
     $('homeRadarRows').innerHTML=home.length?home.map(row=>{ const seismic=row.seismic||{}; return `<tr><td>${stateBadge(row.state)}</td><td><div class="token-cell"><b>${esc(candidateName(row))}</b><small>${esc(short(row.pool))}</small></div></td><td>${esc(plainMarketRead(row))}</td><td>${esc(row.txns_5m ?? '—')}</td><td>${money(row.volume_24h_usd)}</td><td class="${cls(row.change_5m_pct)}">${pct(row.change_5m_pct)}</td><td>${money(row.liquidity_usd)}</td></tr>`; }).join(''):'<tr><td colspan="7" class="muted">Güncel DEX radar kaydı yok.</td></tr>';

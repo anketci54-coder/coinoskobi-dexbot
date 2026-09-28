@@ -11,9 +11,9 @@ def test_history_shows_invested_amount_and_net_gain_loss():
     assert "row.net_pnl_usdt" in js
 
 
-def test_radar_all_filter_is_hot_warm_only():
+def test_radar_all_filter_includes_moving_cold_warm_hot():
     js = Path("app/api/static/dex-terminal.js").read_text()
 
     assert "['HOT','WARM'].includes" in js
-    assert "radarFilter==='ALL'?active" in js
+    assert "radarFilter==='ALL'?allRows" in js
     assert "HOT/WARM" in js

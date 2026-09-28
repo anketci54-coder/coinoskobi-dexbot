@@ -107,6 +107,28 @@ def enrich_universe_display_names(payload, cache_db):
         }:
             continue
 
+        state = str(
+            row.get("state") or ""
+        ).upper()
+        if state == "COLD":
+            try:
+                change_5m = float(
+                    row.get("change_5m_pct") or 0.0
+                )
+            except (TypeError, ValueError):
+                change_5m = 0.0
+            try:
+                txns_5m = int(
+                    row.get("txns_5m") or 0
+                )
+            except (TypeError, ValueError):
+                txns_5m = 0
+            if (
+                change_5m == 0.0
+                and txns_5m <= 0
+            ):
+                continue
+
         row["display_name"] = str(
             meta.get("display_name") or ""
         ).strip() or row.get("display_name")

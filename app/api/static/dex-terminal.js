@@ -165,22 +165,27 @@
 
   function renderDashboard(){
     const s=dashboard?.summary||{};
+    const unvalued=Number(s.unvalued_open_count||0);
     $('metricEquity').textContent=money(s.equity);
     $('metricDailyPnl').textContent=money(s.daily_pnl); $('metricDailyPnl').className=cls(s.daily_pnl);
     $('metricDailyMeta').textContent=s.local_date||'—';
     $('metricRealizedPnl').textContent=money(s.realized_net); $('metricRealizedPnl').className=cls(s.realized_net);
     $('metricRealizedPct').textContent=pct(s.total_pnl && s.starting_capital ? s.total_pnl/s.starting_capital*100 : null);
-    $('metricOpenCount').textContent=s.open_count??'—'; $('metricExposure').textContent=money(s.open_investment);
+    $('metricOpenCount').textContent=s.open_count??'—'; $('metricExposure').textContent=unvalued?money(s.open_investment)+' · '+unvalued+' değerlenemedi':money(s.open_investment);
     $('metricRisk').textContent=pct(s.risk_used_pct); $('metricRiskAmount').textContent=money(s.open_risk);
-    $('positionsCount').textContent=s.open_count??'—'; $('positionsInvestment').textContent=money(s.open_investment); $('positionsPnl').textContent=money(s.open_pnl); $('positionsPnl').className=cls(s.open_pnl); $('positionsRisk').textContent=pct(s.risk_used_pct);
-    const health=dashboard?.health||{}; $('topSystemState').textContent=health.status==='ok'?'PANEL + PAPER VERİSİ AKTİF':'PANEL DURUMU KISITLI';
+    $('positionsCount').textContent=s.open_count??'—'; $('positionsInvestment').textContent=money(s.open_investment); $('positionsPnl').textContent=unvalued?money(s.open_pnl)+' · '+unvalued+' hariç':money(s.open_pnl); $('positionsPnl').className=cls(s.open_pnl); $('positionsRisk').textContent=pct(s.risk_used_pct);
+    const health=dashboard?.health||{}; $('topSystemState').textContent=health.status==='ok'?(unvalued?'PANEL AKTİF · '+unvalued+' POZİSYON DEĞERLEME DIŞI':'PANEL + PAPER VERİSİ AKTİF'):'PANEL DURUMU KISITLI';
     const generated=dashboard?.generated_at||new Date().toISOString(); $('topUpdatedAt').textContent=formatTime(generated); $('footerUpdatedAt').textContent=`Son güncelleme ${formatTime(generated)}`;
     renderHomePositions(); renderHomeHistory(); renderPositions(); renderHistory(); renderVezirOps();
   }
 
   function renderHomePositions(){
     const rows=(dashboard?.positions||[]).slice(0,5);
-    $('homePositionRows').innerHTML=rows.length?rows.map(row=>`<tr><td><b>${esc(row.symbol||short(row.token))}</b></td><td>${num(row.entry_price)}</td><td>${num(row.current_price??row.entry_price)}</td><td>${money(row.entry_amount_usdt)}</td><td class="${cls(row.net_pnl_usdt??row.net_pnl)}">${money(row.net_pnl_usdt??row.net_pnl)}</td></tr>`).join(''):'<tr><td colspan="5" class="muted">Açık paper pozisyon yok.</td></tr>';
+    $('homePositionRows').innerHTML=rows.length?rows.map(row=>{
+      const unverified=String(row.valuation_state||'').toUpperCase()==='UNVERIFIED';
+      const pnl=row.net_pnl_usdt??row.net_pnl;
+      return `<tr><td><b>${esc(row.symbol||short(row.token))}</b></td><td>${num(row.entry_price)}</td><td>${unverified?'—':num(row.current_price??row.entry_price)}</td><td>${money(row.entry_amount_usdt)}</td><td class="${unverified?'':cls(pnl)}">${unverified?'DEĞERLENEMEDİ':money(pnl)}</td></tr>`;
+    }).join(''):'<tr><td colspan="5" class="muted">Açık paper pozisyon yok.</td></tr>';
   }
   function closedRows(){ return (ledger?.rows||[]).filter(row=>String(row.status||'').toUpperCase()==='CLOSED'); }
   function renderHomeHistory(){
@@ -221,6 +226,9 @@
 
           const runner=
             Number(row.runner_active||0)===1;
+
+          const valuationUnverified=
+            String(row.valuation_state||'').toUpperCase()==='UNVERIFIED';
 
           const tp1State=isVurKac
             ? '—'
@@ -264,10 +272,14 @@
 
             <td>${num(row.entry_price)}</td>
 
-            <td>${num(
-              row.current_price ??
-              row.entry_price
-            )}</td>
+            <td>${
+              valuationUnverified
+                ? '—'
+                : num(
+                    row.current_price ??
+                    row.entry_price
+                  )
+            }</td>
 
             <td>${num(row.sl_price)}</td>
 
@@ -277,18 +289,34 @@
 
             <td>${esc(tp3State)}</td>
 
-            <td class="${cls(
-              row.net_pnl_usdt ??
-              row.net_pnl
-            )}">
-              ${money(
-                row.net_pnl_usdt ??
-                row.net_pnl
-              )}
+            <td class="${
+              valuationUnverified
+                ? ''
+                : cls(
+                    row.net_pnl_usdt ??
+                    row.net_pnl
+                  )
+            }">
+              ${
+                valuationUnverified
+                  ? 'DEĞERLENEMEDİ'
+                  : money(
+                      row.net_pnl_usdt ??
+                      row.net_pnl
+                    )
+              }
             </td>
 
-            <td class="${cls(row.roi_pct)}">
-              ${pct(row.roi_pct)}
+            <td class="${
+              valuationUnverified
+                ? ''
+                : cls(row.roi_pct)
+            }">
+              ${
+                valuationUnverified
+                  ? '—'
+                  : pct(row.roi_pct)
+              }
             </td>
 
             <td>

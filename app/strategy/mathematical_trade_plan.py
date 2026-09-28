@@ -2551,6 +2551,35 @@ def build_trade_plan(
 
         "cost_model": costs,
 
+        "execution_economics": {
+            "reserve_samples": (
+                list(
+                    exit_data.get(
+                        "reserve_samples"
+                    )
+                    or []
+                )
+            ),
+            "reserve_observation_count": (
+                reserve_observation_count
+            ),
+            "implied_v2_fee_fraction": (
+                costs.get(
+                    "implied_v2_fee_fraction"
+                )
+            ),
+            "implied_v2_fee_state": (
+                costs.get(
+                    "implied_v2_fee_state"
+                )
+            ),
+            "mev_policy": (
+                "BOUNDED_MINOUT_HEADROOM"
+            ),
+            "point_estimate_required": False,
+            "authority": False,
+        },
+
         "expected": {
             "gross_horizon_log_edge": (
                 gross_log_edge

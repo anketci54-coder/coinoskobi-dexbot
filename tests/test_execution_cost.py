@@ -165,3 +165,69 @@ def test_engine_has_no_authority():
     assert result["live_authority"] is False
     assert result["wallet_authority"] is False
     assert result["execution_authority"] is False
+
+
+def test_bounded_mev_reserve_becomes_cost_when_trade_size_known():
+    context = base_costs()
+    context["mev_loss_envelope"] = {
+        "state": "BOUNDED",
+        "decision_reserve_usd": 5.0,
+    }
+
+    result = engine().evaluate(context)
+
+    assert result["cost_complete"] is True
+    assert result["components_pct"]["mev_cost_pct"] == 0.5
+    assert result["mev_adverse_selection_reserve_usd"] == 5.0
+    assert result["mev_cost_source"] == "DIRECT_MEV_ENVELOPE"
+
+
+def test_mev_analyzer_bound_precedes_expected_loss_for_decision_reserve():
+    context = base_costs()
+    context["mev_result"] = {
+        "loss_envelope": {
+            "state": "BOUNDED",
+            "decision_reserve_usd": 7.0,
+        },
+        "expected_loss": {
+            "state": "READY",
+            "expected_mev_loss_usd": 1.0,
+        },
+    }
+
+    result = engine().evaluate(context)
+
+    assert round(
+        result["components_pct"]["mev_cost_pct"],
+        12,
+    ) == 0.7
+    assert result["mev_expected_loss_usd"] == 1.0
+    assert result["mev_adverse_selection_reserve_usd"] == 7.0
+    assert result["mev_cost_source"] == "MEV_ANALYZER_BOUND"
+
+
+def test_direct_mev_percent_precedes_bounded_reserve_for_legacy_compatibility():
+    context = base_costs()
+    context["mev_cost_pct"] = 0.4
+    context["mev_adverse_selection_reserve_usd"] = 50.0
+
+    result = engine().evaluate(context)
+
+    assert result["components_pct"]["mev_cost_pct"] == 0.4
+    assert result["mev_cost_source"] == "DIRECT_PERCENT"
+    assert result["mev_adverse_selection_reserve_usd"] == 50.0
+
+
+def test_bounded_mev_reserve_without_trade_size_stays_fail_closed():
+    result = engine().evaluate({
+        "buy_tax_pct": 1,
+        "sell_tax_pct": 1,
+        "swap_fee_pct": 0.25,
+        "slippage_pct": 0.5,
+        "gas_cost_usd": 1,
+        "mev_adverse_selection_reserve_usd": 5.0,
+    })
+
+    assert result["cost_complete"] is False
+    assert "trade_size_usd_for_mev_bound" in result["unknown_components"]
+    assert result["components_pct"]["mev_cost_pct"] is None

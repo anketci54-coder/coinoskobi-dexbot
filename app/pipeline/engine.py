@@ -16,6 +16,9 @@ from app.risk.price_integrity import (
 from app.risk.sellability import analyze as sellability_analyze
 from app.risk.traps import TrapRiskAnalyzer
 from app.risk.mev import MEVExposureAnalyzer
+from app.risk.execution_envelope import (
+    derive_buy_execution_economics,
+)
 from app.risk.paper_position_sizing import (
     PAPER_CAPITAL_USDT,
     _bind_final_trade_plan,
@@ -2205,6 +2208,9 @@ class PipelineEngine:
                 risk=risk,
             )
         )
+        execution_context[
+            "mev_result"
+        ] = mev_risk
 
         execution_cost = (
             _execution_cost.evaluate(
@@ -3614,6 +3620,39 @@ class PipelineEngine:
                                 pre_reject = (
                                     "PHASE15H_BUY_NOT_PROVEN"
                                 )
+                            else:
+                                buy_execution_economics = (
+                                    derive_buy_execution_economics(
+                                        buy_evidence=(
+                                            phase15h_buy_gate
+                                        ),
+                                        exit_evidence=(
+                                            local_math_exit
+                                        ),
+                                        entry_amount_usdt=(
+                                            entry_amount_usdt
+                                        ),
+                                        known_edge_fraction=(
+                                            (
+                                                mathematical_plan.get(
+                                                    "expected"
+                                                )
+                                                or {}
+                                            ).get(
+                                                "known_net_edge_fraction"
+                                            )
+                                        ),
+                                    )
+                                )
+                                opening_context[
+                                    "execution_economics_v4"
+                                ] = {
+                                    "buy": (
+                                        buy_execution_economics
+                                    ),
+                                    "authority": False,
+                                    "admission_enforced": False,
+                                }
 
                         # BUY execution proof and price provenance are both
                         # required. Always fetch after the slow BUY simulation;

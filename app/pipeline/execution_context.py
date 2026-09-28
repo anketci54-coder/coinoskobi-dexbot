@@ -69,6 +69,31 @@ def build_execution_context(
             )
         ),
 
+        "slippage_tolerance_pct": _number(
+            market_context.get(
+                "slippage_tolerance_pct"
+            )
+        ),
+
+        "baseline_executable_output_usd": _number(
+            market_context.get(
+                "baseline_executable_output_usd"
+            )
+        ),
+
+        "route_visibility": (
+            str(
+                market_context.get(
+                    "route_visibility"
+                )
+            ).upper()
+            if market_context.get(
+                "route_visibility"
+            )
+            is not None
+            else None
+        ),
+
         "mev_cost_pct": _number(
             market_context.get(
                 "mev_cost_pct"

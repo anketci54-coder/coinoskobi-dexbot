@@ -31,6 +31,130 @@ def _number(value):
     return value
 
 
+def mev_loss_envelope(
+    *,
+    baseline_executable_output_usd,
+    slippage_tolerance_pct,
+    route_visibility="UNKNOWN",
+):
+    """
+    Conservative victim-side sandwich/adverse-selection bound.
+
+    The baseline executable output must already include deterministic route
+    economics (AMM fee/impact and any transfer behavior proven by simulation).
+    The explicit transaction slippage tolerance is then the remaining minOut
+    headroom an ordering adversary could consume without forcing the victim
+    transaction to fail.
+
+    This is an upper-bound reserve, not an attack probability or expected loss.
+    Protected/private routing changes exposure labeling only; it does not make
+    the economic upper bound zero.
+    """
+    baseline = _number(
+        baseline_executable_output_usd
+    )
+    tolerance_pct = _number(
+        slippage_tolerance_pct
+    )
+    visibility = str(
+        route_visibility
+        or "UNKNOWN"
+    ).strip().upper()
+
+    if visibility not in {
+        "PUBLIC",
+        "PROTECTED",
+        "PRIVATE",
+        "UNKNOWN",
+    }:
+        visibility = "UNKNOWN"
+
+    if (
+        baseline is None
+        or baseline <= 0
+        or tolerance_pct is None
+        or tolerance_pct < 0
+        or tolerance_pct >= 100
+    ):
+        missing = []
+        if baseline is None or baseline <= 0:
+            missing.append(
+                "BASELINE_EXECUTABLE_OUTPUT_USD"
+            )
+        if (
+            tolerance_pct is None
+            or tolerance_pct < 0
+            or tolerance_pct >= 100
+        ):
+            missing.append(
+                "SLIPPAGE_TOLERANCE_PCT"
+            )
+
+        return {
+            "state": "UNBOUNDED",
+            "baseline_executable_output_usd": (
+                baseline
+                if baseline is not None
+                and baseline > 0
+                else None
+            ),
+            "slippage_tolerance_pct": (
+                tolerance_pct
+                if tolerance_pct is not None
+                and 0 <= tolerance_pct < 100
+                else None
+            ),
+            "loss_upper_bound_usd": None,
+            "decision_reserve_usd": None,
+            "route_visibility": visibility,
+            "exposure_class": (
+                "PROTECTED_ROUTE"
+                if visibility in {
+                    "PROTECTED",
+                    "PRIVATE",
+                }
+                else "PUBLIC_OR_UNKNOWN_ROUTE"
+            ),
+            "missing_evidence": missing,
+            "double_count_guard": (
+                "BASELINE_ALREADY_INCLUDES_DETERMINISTIC_ROUTE_ECONOMICS"
+            ),
+            "decision_authority": False,
+            "trade_authority": False,
+        }
+
+    tolerance_fraction = (
+        tolerance_pct / 100.0
+    )
+    upper_bound = (
+        baseline
+        * tolerance_fraction
+    )
+
+    return {
+        "state": "BOUNDED",
+        "baseline_executable_output_usd": baseline,
+        "slippage_tolerance_pct": tolerance_pct,
+        "loss_upper_bound_usd": upper_bound,
+        "decision_reserve_usd": upper_bound,
+        "route_visibility": visibility,
+        "exposure_class": (
+            "PROTECTED_ROUTE"
+            if visibility in {
+                "PROTECTED",
+                "PRIVATE",
+            }
+            else "PUBLIC_OR_UNKNOWN_ROUTE"
+        ),
+        "missing_evidence": [],
+        "double_count_guard": (
+            "BASELINE_ALREADY_INCLUDES_DETERMINISTIC_ROUTE_ECONOMICS"
+        ),
+        "decision_authority": False,
+        "trade_authority": False,
+    }
+
+
 def expected_mev_loss(
     attack_probability,
     conditional_loss_usd,
@@ -307,6 +431,25 @@ class MEVExposureAnalyzer:
             ),
         )
 
+        loss_envelope = mev_loss_envelope(
+            baseline_executable_output_usd=(
+                context.get(
+                    "baseline_executable_output_usd"
+                )
+            ),
+            slippage_tolerance_pct=(
+                context.get(
+                    "slippage_tolerance_pct"
+                )
+            ),
+            route_visibility=(
+                context.get(
+                    "route_visibility"
+                )
+                or "UNKNOWN"
+            ),
+        )
+
         return {
             "status": status,
             "severity": severity,
@@ -317,6 +460,7 @@ class MEVExposureAnalyzer:
                 trade_liquidity_pct
             ),
             "expected_loss": expected_loss,
+            "loss_envelope": loss_envelope,
 
             # Constitutional authority boundary.
             "hard_block": False,

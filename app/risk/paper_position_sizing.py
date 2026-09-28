@@ -7,6 +7,10 @@ from datetime import datetime
 from pathlib import Path
 
 from app.paper.calibration_provenance import current_model_outcome
+from app.risk.execution_envelope import (
+    build_minout_envelope,
+    empirical_quote_drift,
+)
 from app.strategy.mathematical_trade_plan import (
     buy_token_amount,
     initial_net_risk_usdt,
@@ -51,6 +55,249 @@ def _positive(value):
     if value is None or value <= 0:
         return None
     return value
+
+
+def _execution_envelope_shadow(
+    plan,
+    amount_usdt,
+):
+    """
+    Read-only sizing shadow for the future canonical execution envelope.
+
+    This has no authority. It reports whether the tentative BUY size can be
+    supported by recent exact-size V2 quote drift without inventing a fixed
+    slippage percentage.
+    """
+    plan = (
+        plan
+        if isinstance(plan, dict)
+        else {}
+    )
+    execution = (
+        plan.get(
+            "execution_economics"
+        )
+        if isinstance(
+            plan.get(
+                "execution_economics"
+            ),
+            dict,
+        )
+        else {}
+    )
+    costs = (
+        plan.get("cost_model")
+        if isinstance(
+            plan.get("cost_model"),
+            dict,
+        )
+        else {}
+    )
+    expected = (
+        plan.get("expected")
+        if isinstance(
+            plan.get("expected"),
+            dict,
+        )
+        else {}
+    )
+    entry = (
+        plan.get("entry")
+        if isinstance(
+            plan.get("entry"),
+            dict,
+        )
+        else {}
+    )
+
+    amount = _positive(
+        amount_usdt
+    )
+    fee = _number(
+        execution.get(
+            "implied_v2_fee_fraction"
+        )
+    )
+    fee_state = str(
+        execution.get(
+            "implied_v2_fee_state"
+        )
+        or "UNKNOWN"
+    ).upper()
+    reserve_samples = execution.get(
+        "reserve_samples"
+    )
+    entry_price = _positive(
+        entry.get("price")
+    )
+    buy_tax = _number(
+        costs.get(
+            "buy_tax_fraction"
+        )
+    )
+    known_edge = _number(
+        expected.get(
+            "known_net_edge_fraction"
+        )
+    )
+
+    base = {
+        "state": "UNKNOWN",
+        "reason": None,
+        "tentative_amount_usdt": amount,
+        "sample_count": 0,
+        "exact_size_current_quote_out": None,
+        "worst_adverse_quote_drift_fraction": None,
+        "slippage_tolerance_fraction": None,
+        "slippage_tolerance_pct": None,
+        "min_out_fraction": None,
+        "baseline_executable_output_usd": None,
+        "adverse_execution_reserve_usd": None,
+        "edge_budget_fraction": (
+            max(0.0, known_edge)
+            if known_edge is not None
+            else None
+        ),
+        "would_block": True,
+        "authority": False,
+    }
+
+    if amount is None:
+        base["reason"] = (
+            "TENTATIVE_AMOUNT_UNAVAILABLE"
+        )
+        return base
+
+    if (
+        fee_state != "READY"
+        or fee is None
+        or not 0.0 <= fee < 1.0
+    ):
+        base["reason"] = (
+            "VERIFIED_V2_FEE_UNAVAILABLE"
+        )
+        return base
+
+    if not isinstance(
+        reserve_samples,
+        (list, tuple),
+    ):
+        base["reason"] = (
+            "RESERVE_SAMPLES_UNAVAILABLE"
+        )
+        return base
+
+    drift = empirical_quote_drift(
+        reserve_samples=reserve_samples,
+        amount_in=amount,
+        fee_fraction=fee,
+        side="BUY",
+    )
+    base["sample_count"] = int(
+        drift.get(
+            "sample_count"
+        )
+        or 0
+    )
+    base[
+        "exact_size_current_quote_out"
+    ] = drift.get(
+        "current_quote_out"
+    )
+    base[
+        "worst_adverse_quote_drift_fraction"
+    ] = drift.get(
+        "worst_adverse_drift_fraction"
+    )
+
+    if drift.get("state") != "READY":
+        base["reason"] = (
+            drift.get("reason")
+            or "QUOTE_DRIFT_UNAVAILABLE"
+        )
+        return base
+
+    if entry_price is None:
+        base["reason"] = (
+            "ENTRY_PRICE_UNAVAILABLE"
+        )
+        return base
+
+    if (
+        buy_tax is None
+        or not 0.0 <= buy_tax < 1.0
+    ):
+        base["reason"] = (
+            "BUY_TRANSFER_RETENTION_UNAVAILABLE"
+        )
+        return base
+
+    current_quote_out = _positive(
+        drift.get(
+            "current_quote_out"
+        )
+    )
+    if current_quote_out is None:
+        base["reason"] = (
+            "CURRENT_EXECUTABLE_QUOTE_UNAVAILABLE"
+        )
+        return base
+
+    baseline_output_usd = (
+        current_quote_out
+        * entry_price
+        * (1.0 - buy_tax)
+    )
+
+    envelope = build_minout_envelope(
+        baseline_executable_output_usd=(
+            baseline_output_usd
+        ),
+        quote_drift_fraction=(
+            drift.get(
+                "worst_adverse_drift_fraction"
+            )
+        ),
+        edge_budget_fraction=(
+            max(0.0, known_edge)
+            if known_edge is not None
+            else None
+        ),
+    )
+
+    base.update({
+        "state": envelope.get("state"),
+        "reason": envelope.get("reason"),
+        "slippage_tolerance_fraction": (
+            envelope.get(
+                "slippage_tolerance_fraction"
+            )
+        ),
+        "slippage_tolerance_pct": (
+            envelope.get(
+                "slippage_tolerance_pct"
+            )
+        ),
+        "min_out_fraction": (
+            envelope.get(
+                "min_out_fraction"
+            )
+        ),
+        "baseline_executable_output_usd": (
+            baseline_output_usd
+        ),
+        "adverse_execution_reserve_usd": (
+            envelope.get(
+                "adverse_execution_reserve_usd"
+            )
+        ),
+        "would_block": (
+            envelope.get("state")
+            != "BOUNDED"
+        ),
+    })
+
+    return base
 
 
 def _accounting_quantum(balance):
@@ -1548,6 +1795,12 @@ def calculate_paper_position_size(
                 "canonical_tp1_activation_price": (
                     bound_plan["tp1_activation_price"]
                 ),
+                "execution_envelope_shadow": (
+                    _execution_envelope_shadow(
+                        plan,
+                        bootstrap_amount,
+                    )
+                ),
                 "kelly_diagnostic_only": True,
                 **entry_timing,
             }
@@ -1715,6 +1968,12 @@ def calculate_paper_position_size(
         ),
         "canonical_tp1_activation_price": (
             bound_plan["tp1_activation_price"]
+        ),
+        "execution_envelope_shadow": (
+            _execution_envelope_shadow(
+                plan,
+                amount,
+            )
         ),
     }
     result["immediate_entry_allowed"] = (

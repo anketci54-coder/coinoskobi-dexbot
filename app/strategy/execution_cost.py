@@ -16,6 +16,62 @@ def _number(value):
     return value
 
 
+def _nested_mev_reserve_usd(context):
+    direct = _number(
+        context.get(
+            "mev_adverse_selection_reserve_usd"
+        )
+    )
+    if direct is not None:
+        return direct, "DIRECT_BOUND_RESERVE"
+
+    envelope = context.get(
+        "mev_loss_envelope"
+    )
+    if isinstance(envelope, dict):
+        if str(
+            envelope.get("state")
+            or ""
+        ).upper() == "BOUNDED":
+            reserve = _number(
+                envelope.get(
+                    "decision_reserve_usd"
+                )
+            )
+            if reserve is not None:
+                return (
+                    reserve,
+                    "DIRECT_MEV_ENVELOPE",
+                )
+
+    mev_result = context.get(
+        "mev_result"
+    )
+    if isinstance(mev_result, dict):
+        envelope = mev_result.get(
+            "loss_envelope"
+        )
+        if (
+            isinstance(envelope, dict)
+            and str(
+                envelope.get("state")
+                or ""
+            ).upper() == "BOUNDED"
+        ):
+            reserve = _number(
+                envelope.get(
+                    "decision_reserve_usd"
+                )
+            )
+            if reserve is not None:
+                return (
+                    reserve,
+                    "MEV_ANALYZER_BOUND",
+                )
+
+    return None, None
+
+
 def _nested_expected_mev_loss_usd(context):
     direct = _number(
         context.get(
@@ -141,6 +197,12 @@ class ExecutionCostEngine:
             )
         )
 
+        mev_reserve_usd, mev_reserve_source = (
+            _nested_mev_reserve_usd(
+                context
+            )
+        )
+
         expected_mev_loss_usd, mev_loss_source = (
             _nested_expected_mev_loss_usd(
                 context
@@ -153,6 +215,21 @@ class ExecutionCostEngine:
             if direct_mev_cost_pct is not None
             else None
         )
+
+        if (
+            mev_cost_pct is None
+            and mev_reserve_usd is not None
+            and trade_size_usd is not None
+            and trade_size_usd > 0
+        ):
+            mev_cost_pct = (
+                mev_reserve_usd
+                / trade_size_usd
+                * 100.0
+            )
+            mev_cost_source = (
+                mev_reserve_source
+            )
 
         if (
             mev_cost_pct is None
@@ -189,6 +266,24 @@ class ExecutionCostEngine:
 
         if (
             direct_mev_cost_pct is None
+            and mev_reserve_usd is not None
+            and (
+                trade_size_usd is None
+                or trade_size_usd <= 0
+            )
+        ):
+            if "mev_cost_pct" in unknown_components:
+                unknown_components.remove(
+                    "mev_cost_pct"
+                )
+
+            unknown_components.append(
+                "trade_size_usd_for_mev_bound"
+            )
+
+        elif (
+            direct_mev_cost_pct is None
+            and mev_reserve_usd is None
             and expected_mev_loss_usd is not None
             and (
                 trade_size_usd is None
@@ -309,6 +404,10 @@ class ExecutionCostEngine:
             "mev_expected_loss_usd"
         ] = expected_mev_loss_usd is not None
 
+        coverage[
+            "mev_adverse_selection_reserve_usd"
+        ] = mev_reserve_usd is not None
+
         known_count = sum(
             bool(value)
             for (
@@ -319,6 +418,7 @@ class ExecutionCostEngine:
             not in {
                 "expected_gross_edge_pct",
                 "mev_expected_loss_usd",
+                "mev_adverse_selection_reserve_usd",
             }
         )
 
@@ -348,6 +448,14 @@ class ExecutionCostEngine:
 
             "mev_expected_loss_usd": (
                 expected_mev_loss_usd
+            ),
+
+            "mev_adverse_selection_reserve_usd": (
+                mev_reserve_usd
+            ),
+
+            "mev_reserve_source": (
+                mev_reserve_source
             ),
 
             "mev_cost_source": (

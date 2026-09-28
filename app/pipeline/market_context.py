@@ -302,6 +302,36 @@ def build_market_context(
         ),
     }
 
+    slippage_tolerance = _positive_number(
+        row.get(
+            "slippage_tolerance_pct"
+        )
+    )
+    if slippage_tolerance is not None:
+        context[
+            "slippage_tolerance_pct"
+        ] = slippage_tolerance
+
+    baseline_output = _positive_number(
+        row.get(
+            "baseline_executable_output_usd"
+        )
+    )
+    if baseline_output is not None:
+        context[
+            "baseline_executable_output_usd"
+        ] = baseline_output
+
+    route_visibility = row.get(
+        "route_visibility"
+    )
+    if route_visibility is not None:
+        context[
+            "route_visibility"
+        ] = str(
+            route_visibility
+        ).upper()
+
     # Preserve the historical no-runtime contract exactly. Tests and callers
     # that explicitly inject a news store can still request news evidence.
     if news_store is not None:

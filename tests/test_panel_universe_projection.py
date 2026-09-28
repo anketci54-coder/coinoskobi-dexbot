@@ -1,6 +1,9 @@
 import sqlite3
+from datetime import datetime, timezone
 
 from app.api.panel_universe import universe_panel_payload
+
+NOW = datetime(2026, 8, 27, 8, 0, 0, tzinfo=timezone.utc)
 
 
 def _seed(path):
@@ -72,7 +75,7 @@ def test_universe_panel_projection_is_real_and_read_only(tmp_path):
     path = tmp_path / "cache.db"
     _seed(path)
 
-    payload = universe_panel_payload(path)
+    payload = universe_panel_payload(path, now=NOW)
 
     assert payload["available"] is True
     assert payload["source"] == "UNIVERSE_CACHE_READ_ONLY"
@@ -113,7 +116,7 @@ def test_universe_panel_limit_preserves_all_active_and_ranks_by_change(tmp_path)
     path = tmp_path / "cache.db"
     _seed(path)
 
-    payload = universe_panel_payload(path, limit=2)
+    payload = universe_panel_payload(path, limit=2, now=NOW)
 
     assert payload["available"] is True
     assert payload["visible_count"] == 2
@@ -125,7 +128,7 @@ def test_universe_panel_transition_summary_is_bounded(tmp_path):
     path = tmp_path / "cache.db"
     _seed(path)
 
-    payload = universe_panel_payload(path, transition_limit=2)
+    payload = universe_panel_payload(path, transition_limit=2, now=NOW)
 
     assert payload["transition_scope"] == "RECENT_BOUNDED_SEISMIC_EVALUATIONS"
     assert payload["transition_sample_size"] == 2

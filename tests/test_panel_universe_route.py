@@ -1,4 +1,5 @@
 import sqlite3
+from datetime import datetime, timezone
 
 import app.api.panel as panel_module
 from app.api import api_universe_panel
@@ -6,8 +7,11 @@ from app.api import api_universe_panel
 
 def _seed_universe(path):
     db = sqlite3.connect(path)
+    now_iso = datetime.now(
+        timezone.utc
+    ).isoformat()
     db.executescript(
-        """
+        f"""
         CREATE TABLE universe_pool_registry(
             chain TEXT,
             dex TEXT,
@@ -42,13 +46,13 @@ def _seed_universe(path):
         INSERT INTO universe_pool_registry VALUES(
             'bsc','pancakeswap_v2','0xpool','0xt0','0xt1','WARM',
             12000,34000,0.002,9,1.5,
-            '2026-08-27T09:00:00Z','2026-08-27T08:59:00Z'
+            '{now_iso}','{now_iso}'
         );
         INSERT INTO universe_seismic_evaluation_v1(
             chain,dex,pool,observed_at,previous_state,next_state,score,
             price_z,volume_z,txns_z,liquidity_ratio,evidence_count,reason
         ) VALUES(
-            'bsc','pancakeswap_v2','0xpool','2026-08-27T09:00:00Z',
+            'bsc','pancakeswap_v2','0xpool','{now_iso}',
             'COLD','WARM',6.0,3.1,7.0,5.2,0.91,3,'warm ignition'
         );
         """

@@ -3,8 +3,6 @@ from datetime import datetime, timezone
 
 from app.api.panel_universe import universe_panel_payload
 
-NOW = datetime(2026, 9, 28, 8, 0, 0, tzinfo=timezone.utc)
-
 
 def _seed(path):
     db = sqlite3.connect(path)
@@ -41,41 +39,38 @@ def _seed(path):
             evidence_count INTEGER,
             reason TEXT
         );
+        INSERT INTO universe_pool_registry VALUES(
+            'bsc','pancakeswap_v2','0xhot','0xa','0xb','HOT',
+            10000,5000,1,10,5,
+            '2026-09-28T08:00:00+00:00',
+            '2026-09-28T08:00:00+00:00'
+        );
         """
-    )
-    rows = []
-    for i in range(3):
-        rows.append((
-            "bsc","pancakeswap_v2",f"0xh{i}",
-            "0xa","0xb","HOT",10000,5000,1,10,
-            float(10-i),"2026-09-28T08:00:00Z","2026-09-28T07:59:00Z"
-        ))
-    for i in range(45):
-        rows.append((
-            "bsc","pancakeswap_v2",f"0xw{i}",
-            "0xa","0xb","WARM",10000,5000,1,10,
-            float(100-i),"2026-09-28T08:00:00Z","2026-09-28T07:59:00Z"
-        ))
-    db.executemany(
-        "INSERT INTO universe_pool_registry VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
-        rows,
     )
     db.commit()
     db.close()
 
 
-def test_all_hot_warm_are_visible_and_sorted_by_5m_change(tmp_path):
+def test_hot_snapshot_expires_after_state_interval_plus_retry(tmp_path):
     path = tmp_path / "cache.db"
     _seed(path)
 
-    payload = universe_panel_payload(path, limit=2, now=NOW)
-    active = [
-        row for row in payload["rows"]
-        if row["state"] in {"HOT", "WARM"}
-    ]
+    fresh = universe_panel_payload(
+        path,
+        now=datetime(
+            2026, 9, 28, 8, 1, 15,
+            tzinfo=timezone.utc,
+        ),
+    )
+    stale = universe_panel_payload(
+        path,
+        now=datetime(
+            2026, 9, 28, 8, 1, 16,
+            tzinfo=timezone.utc,
+        ),
+    )
 
-    assert len(active) == 48
-    assert {row["state"] for row in active} == {"HOT", "WARM"}
-    changes = [row["change_5m_pct"] for row in active]
-    assert changes == sorted(changes, reverse=True)
-    assert active[0]["change_5m_pct"] == 100.0
+    assert fresh["counts"]["HOT"] == 1
+    assert len(fresh["rows"]) == 1
+    assert stale["counts"]["HOT"] == 0
+    assert stale["rows"] == []

@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import sqlite3
 from collections import Counter
+from datetime import datetime, timezone
 
 from app.config.scanner import MIN_LIQUIDITY_USD
 from app.universe.display_metadata import TABLE as DISPLAY_METADATA_TABLE
+from app.universe.scheduler import DEFAULT_MISSING_RETRY_SECONDS, DEFAULT_STATE_INTERVAL_SECONDS
 from pathlib import Path
 from typing import Any
 
@@ -284,11 +286,67 @@ def _gecko_display_names(
     }
 
 
+def _snapshot_is_fresh(
+    row: dict[str, Any],
+    *,
+    now: datetime,
+) -> bool:
+    state = str(
+        row.get("market_state")
+        or row.get("state")
+        or ""
+    ).upper()
+    if state not in DEFAULT_STATE_INTERVAL_SECONDS:
+        return False
+
+    raw = str(
+        row.get("latest_snapshot_at")
+        or row.get("snapshot_at")
+        or ""
+    ).strip()
+    if not raw:
+        return False
+
+    try:
+        observed = datetime.fromisoformat(
+            raw.replace("Z", "+00:00")
+        )
+    except ValueError:
+        return False
+
+    if observed.tzinfo is None:
+        observed = observed.replace(
+            tzinfo=timezone.utc
+        )
+    observed = observed.astimezone(
+        timezone.utc
+    )
+
+    budget_seconds = (
+        int(
+            DEFAULT_STATE_INTERVAL_SECONDS[
+                state
+            ]
+        )
+        + int(
+            DEFAULT_MISSING_RETRY_SECONDS
+        )
+    )
+    age_seconds = (
+        now - observed
+    ).total_seconds()
+    return (
+        age_seconds >= 0
+        and age_seconds <= budget_seconds
+    )
+
+
 def universe_panel_payload(
     cache_db: str | Path,
     *,
     limit: int = 40,
     transition_limit: int = DEFAULT_TRANSITION_WINDOW,
+    now: datetime | None = None,
 ) -> dict[str, Any]:
     """Read-only projection for the premium operations terminal.
 
@@ -297,6 +355,17 @@ def universe_panel_payload(
     """
 
     path = Path(cache_db)
+    if now is None:
+        now = datetime.now(timezone.utc)
+    elif now.tzinfo is None:
+        now = now.replace(
+            tzinfo=timezone.utc
+        )
+    else:
+        now = now.astimezone(
+            timezone.utc
+        )
+
     bounded_limit = max(1, min(int(limit), 100))
     bounded_transition_limit = max(
         1,
@@ -388,6 +457,11 @@ def universe_panel_payload(
             row = dict(raw)
             state = str(row.get("market_state") or "").upper()
             if state not in ALLOWED_STATES:
+                continue
+            if not _snapshot_is_fresh(
+                row,
+                now=now,
+            ):
                 continue
 
             pool_key = str(
@@ -498,6 +572,20 @@ def universe_panel_payload(
         ]
 
         result_rows = active_rows + cold_rows
+        counts = {
+            state: sum(
+                1
+                for row in result_rows
+                if str(
+                    row.get("state") or ""
+                ).upper() == state
+            )
+            for state in (
+                "COLD",
+                "WARM",
+                "HOT",
+            )
+        }
 
     except sqlite3.Error as exc:
         return _unavailable(type(exc).__name__)

@@ -1,6 +1,9 @@
 import sqlite3
+from datetime import datetime, timezone
 
 from app.api.panel_universe import universe_panel_payload
+
+NOW = datetime(2026, 8, 28, 9, 0, 0, tzinfo=timezone.utc)
 
 
 def _seed(path, *, with_gecko):
@@ -65,7 +68,7 @@ def test_universe_payload_adds_bounded_gecko_display_name(tmp_path):
     path = tmp_path / 'cache.db'
     _seed(path, with_gecko=True)
 
-    payload = universe_panel_payload(path)
+    payload = universe_panel_payload(path, now=NOW)
 
     assert payload['available'] is True
     assert payload['visible_count'] == 1
@@ -79,7 +82,7 @@ def test_universe_payload_missing_gecko_table_is_fail_soft(tmp_path):
     path = tmp_path / 'cache.db'
     _seed(path, with_gecko=False)
 
-    payload = universe_panel_payload(path)
+    payload = universe_panel_payload(path, now=NOW)
 
     assert payload['available'] is True
     assert payload['visible_count'] == 1

@@ -8,7 +8,8 @@ import requests
 from web3 import Web3
 
 from app.analyzer import pair as pair_module
-from app.config.scanner import FAST_WATCH_REVISIT_SECONDS
+from app.config.scanner import FAST_WATCH_REVISIT_SECONDS, MIN_LIQUIDITY_USD
+from app.config.contracts import USDT
 from app.config.strategy import SELLABILITY_CACHE_TTL_SECONDS
 from app.pipeline.market_context import build_market_context
 from app.risk import sellability as sellability_module
@@ -47,6 +48,7 @@ FAST_WATCH_PROVIDER_BATCH_SIZE = 30
 # decision/live/wallet/execution authority and does not relax any gate.
 FAST_DISCOVERY_MAX_CANDIDATES = 8
 FAST_HOT_UNIVERSE_MAX_CANDIDATES = 8
+FAST_COLD_MOVEMENT_MAX_CANDIDATES = 8
 FAST_WARM_UNIVERSE_MAX_CANDIDATES = 8
 FAST_READY_SELLABILITY_MAX_CANDIDATES = 8
 FAST_DISCOVERY_ROW_BUDGET = 64
@@ -566,6 +568,155 @@ class FastWatchRevisitJob:
             if (
                 len(selected)
                 >= FAST_HOT_UNIVERSE_MAX_CANDIDATES
+            ):
+                break
+
+        retry_after = (
+            now
+            + FAST_DISCOVERY_RETRY_SECONDS
+        )
+
+        for identity in selected:
+            self._discovery_retry_after[
+                identity[:2]
+            ] = retry_after
+
+        return selected
+
+
+    def _cold_movement_universe_identities(self):
+        """
+        Return a bounded set of fresh moving COLD TOKEN/USDT V2 pools.
+
+        COLD movement is observation-only. It earns faster re-evaluation,
+        never direct PAPER authority. The canonical pipeline must still prove
+        flow continuation, risk, sellability and VUR_KAC entry readiness.
+        """
+        now = time.monotonic()
+        self._discovery_retry_after = {
+            identity: retry_after
+            for identity, retry_after
+            in self._discovery_retry_after.items()
+            if retry_after > now
+        }
+
+        connection = None
+        usdt = self._canonical(USDT)
+        rows = []
+
+        try:
+            connection = sqlite3.connect(
+                f"file:{DEFAULT_DB}?mode=ro",
+                uri=True,
+                timeout=0.1,
+            )
+            connection.row_factory = sqlite3.Row
+
+            query = """
+                SELECT *
+                FROM universe_pool_registry
+                WHERE chain='bsc'
+                  AND dex=?
+                  AND market_state='COLD'
+                  AND {token_column}=?
+                  AND COALESCE(latest_liquidity_usd,0) >= ?
+                  AND COALESCE(latest_change_5m,0) > 0
+                  AND COALESCE(latest_txns_5m,0) > 0
+                  AND latest_snapshot_at IS NOT NULL
+                  AND (
+                      unixepoch('now')
+                      - unixepoch(latest_snapshot_at)
+                  ) BETWEEN 0 AND 300
+                ORDER BY latest_change_5m DESC,
+                         latest_liquidity_usd DESC,
+                         latest_snapshot_at DESC
+                LIMIT ?
+            """
+
+            for token_column in ("token0", "token1"):
+                rows.extend(
+                    connection.execute(
+                        query.format(
+                            token_column=token_column
+                        ),
+                        (
+                            DEX_PANCAKESWAP_V2,
+                            usdt,
+                            float(MIN_LIQUIDITY_USD),
+                            FAST_DISCOVERY_ROW_BUDGET,
+                        ),
+                    ).fetchall()
+                )
+        except Exception:
+            logger.exception(
+                "Fast moving COLD universe candidate query failed"
+            )
+            return []
+        finally:
+            if connection is not None:
+                connection.close()
+
+        rows = sorted(
+            rows,
+            key=lambda row: (
+                float(row["latest_change_5m"] or 0.0),
+                float(row["latest_liquidity_usd"] or 0.0),
+                str(row["latest_snapshot_at"] or ""),
+            ),
+            reverse=True,
+        )
+
+        selected = []
+        seen = set()
+
+        for raw in rows:
+            item = HotDeepPathRouter._candidate(
+                dict(raw)
+            )
+            if item is None:
+                continue
+
+            token = self._canonical(
+                item.get("token")
+            )
+            pool = self._canonical(
+                item.get("pool")
+            )
+            identity = (token, pool)
+
+            if (
+                not token
+                or not pool
+                or token == usdt
+                or identity in seen
+            ):
+                continue
+
+            seen.add(identity)
+
+            if (
+                self._discovery_retry_after.get(
+                    identity,
+                    0.0,
+                )
+                > now
+            ):
+                continue
+
+            if self._has_canonical_trade_history_block(
+                token
+            ):
+                continue
+
+            selected.append((
+                token,
+                pool,
+                DEX_PANCAKESWAP_V2,
+            ))
+
+            if (
+                len(selected)
+                >= FAST_COLD_MOVEMENT_MAX_CANDIDATES
             ):
                 break
 
@@ -1203,6 +1354,9 @@ class FastWatchRevisitJob:
         hot_universe_identities = (
             self._hot_universe_identities()
         )
+        cold_movement_identities = (
+            self._cold_movement_universe_identities()
+        )
         warm_universe_identities = (
             self._warm_universe_identities()
         )
@@ -1229,6 +1383,7 @@ class FastWatchRevisitJob:
                 ]
             )
             + list(hot_universe_identities)
+            + list(cold_movement_identities)
             + list(warm_universe_identities)
             + list(discovery_identities)
             + list(movement_watch_identities)

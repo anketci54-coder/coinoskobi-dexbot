@@ -1390,25 +1390,48 @@ def calculate_paper_position_size(
     if paper_calibration_bootstrap:
         risk_retention = math.exp(-risk_log_distance)
         stop_loss_fraction = 1.0 - risk_retention
-        base_risk_notional = capital_notional
+
+        # PAPER bootstrap still lacks empirical gap calibration, but a proven
+        # sell route + verified LP protection means a tighter measured stop
+        # must not mechanically shrink notional toward zero. Bind exploration
+        # capital to the currently measured positive edge, then express actual
+        # risk as the larger of stop loss and observed tail loss.
+        bootstrap_tail_loss_fraction = max(
+            stop_loss_fraction,
+            measured_tail or stop_loss_fraction,
+        )
+        edge_supported_notional = (
+            available
+            * min(1.0, effective_edge)
+        )
         bootstrap_risk_budget = (
-            base_risk_notional * stop_loss_fraction
+            edge_supported_notional
+            * bootstrap_tail_loss_fraction
         )
 
-        # Gap risk is unobserved during bootstrap. Fail closed by assuming
-        # the calibration position can lose its entire notional before the
-        # next trustworthy observation. Therefore notional cannot exceed
-        # the plan-derived stop-risk budget.
-        bootstrap_tail_loss_fraction = 1.0
+        if account_risk_budget is not None:
+            bootstrap_risk_budget = min(
+                bootstrap_risk_budget,
+                account_risk_budget,
+            )
+
+        risk_bound_notional = (
+            bootstrap_risk_budget
+            / bootstrap_tail_loss_fraction
+            if bootstrap_tail_loss_fraction > 0
+            else 0.0
+        )
+
         bootstrap_amount = max(
             0.0,
             min(
                 capital_notional,
                 available,
                 liquidity_edge_cap,
-                safe_quote_reserve * math.exp(-risk_log_distance),
-                bootstrap_risk_budget,
-                account_risk_budget if account_risk_budget is not None else bootstrap_risk_budget,
+                safe_quote_reserve
+                * math.exp(-risk_log_distance),
+                edge_supported_notional,
+                risk_bound_notional,
             ),
         )
 
@@ -1472,7 +1495,7 @@ def calculate_paper_position_size(
                 "formula_authority": "DATA_DERIVED",
                 "magic_percentage_rule": False,
                 "sizing_model": (
-                    "PAPER_CALIBRATION_BOOTSTRAP_V2"
+                    "PAPER_CALIBRATION_BOOTSTRAP_V3_EDGE_RISK"
                 ),
                 "paper_calibration_bootstrap": True,
                 "liquidity_protection_unverified": empirical_liquidity_bootstrap,
@@ -1491,6 +1514,12 @@ def calculate_paper_position_size(
                 ),
                 "stop_risk_budget_usdt": (
                     bootstrap_risk_budget
+                ),
+                "edge_supported_notional_usdt": (
+                    edge_supported_notional
+                ),
+                "risk_bound_notional_usdt": (
+                    risk_bound_notional
                 ),
                 "known_net_edge_fraction": known_edge,
                 "full_net_edge_fraction": full_edge,

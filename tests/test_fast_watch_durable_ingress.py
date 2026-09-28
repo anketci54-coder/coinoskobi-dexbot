@@ -71,7 +71,7 @@ def test_durable_ingress_denial_records_fresh_decision(
     )
     job = FastWatchRevisitJob(pipeline)
     monkeypatch.setattr(job, "_refresh_local_sellability_evidence", forbidden)
-    for name in ("_hot_universe_identities", "_warm_universe_identities",
+    for name in ("_hot_universe_identities", "_cold_movement_universe_identities", "_warm_universe_identities",
                  "_unseen_universe_identities"):
         monkeypatch.setattr(job, name, lambda: [])
     try:

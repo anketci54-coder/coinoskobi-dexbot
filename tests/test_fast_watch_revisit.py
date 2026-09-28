@@ -207,6 +207,7 @@ def test_fast_watch_selects_only_active_momentum_reasons(monkeypatch):
 
     job = FastWatchRevisitJob(pipeline, max_candidates=30)
     monkeypatch.setattr(job, "_hot_universe_identities", lambda: [])
+    monkeypatch.setattr(job, "_cold_movement_universe_identities", lambda: [])
     monkeypatch.setattr(job, "_warm_universe_identities", lambda: [])
     monkeypatch.setattr(job, "_unseen_universe_identities", lambda: [])
     result = job._run_cycle_sync()
@@ -254,6 +255,7 @@ def test_hot_ready_sellability_unknown_is_revisited(monkeypatch):
 
     job = FastWatchRevisitJob(pipeline, max_candidates=30)
     monkeypatch.setattr(job, "_hot_universe_identities", lambda: [])
+    monkeypatch.setattr(job, "_cold_movement_universe_identities", lambda: [])
     monkeypatch.setattr(job, "_warm_universe_identities", lambda: [])
     monkeypatch.setattr(job, "_unseen_universe_identities", lambda: [])
 
@@ -297,6 +299,7 @@ def test_hot_timing_watch_reaches_fresh_canonical_evaluation(monkeypatch, reason
     monkeypatch.setattr(FastWatchRevisitJob, "_refresh_local_sellability_evidence", lambda self, row: False)
     job = FastWatchRevisitJob(pipeline)
     monkeypatch.setattr(job, "_hot_universe_identities", lambda: [])
+    monkeypatch.setattr(job, "_cold_movement_universe_identities", lambda: [])
     monkeypatch.setattr(job, "_warm_universe_identities", lambda: [])
     monkeypatch.setattr(job, "_unseen_universe_identities", lambda: [])
 
@@ -324,6 +327,7 @@ def test_hot_timing_retry_preserves_canonical_guards(monkeypatch, guard):
     _patch_normalization(monkeypatch)
     job = FastWatchRevisitJob(pipeline)
     monkeypatch.setattr(job, "_hot_universe_identities", lambda: [])
+    monkeypatch.setattr(job, "_cold_movement_universe_identities", lambda: [])
     monkeypatch.setattr(job, "_warm_universe_identities", lambda: [])
     monkeypatch.setattr(job, "_unseen_universe_identities", lambda: [])
 

@@ -456,6 +456,11 @@ def test_fast_cycle_prioritizes_hot_universe_before_discovery_and_watch(
     )
     monkeypatch.setattr(
         job,
+        "_cold_movement_universe_identities",
+        lambda: [],
+    )
+    monkeypatch.setattr(
+        job,
         "_warm_universe_identities",
         lambda: [warm],
     )
@@ -517,3 +522,82 @@ def test_fast_cycle_prioritizes_hot_universe_before_discovery_and_watch(
     assert result["selected"] == 4
     assert result["processed"] == 4
     assert result["failed"] == 0
+
+def test_moving_cold_lane_selects_only_fresh_liquid_usdt(tmp_path, monkeypatch):
+    from datetime import datetime, timezone, timedelta
+
+    db_path = tmp_path / "cold.db"
+    db = sqlite3.connect(db_path)
+    db.execute(
+        """
+        CREATE TABLE universe_pool_registry(
+            chain TEXT,
+            dex TEXT,
+            pool TEXT,
+            token0 TEXT,
+            token1 TEXT,
+            creation_block INTEGER,
+            market_state TEXT,
+            latest_snapshot_at TEXT,
+            latest_price_usd REAL,
+            latest_liquidity_usd REAL,
+            latest_volume_24h REAL,
+            latest_txns_5m INTEGER,
+            latest_change_5m REAL,
+            latest_snapshot_source TEXT
+        )
+        """
+    )
+
+    now = datetime.now(timezone.utc)
+    usdt = str(module.USDT).lower()
+    good_token = address(21001)
+    good_pool = address(21002)
+
+    rows = [
+        (
+            "bsc", module.DEX_PANCAKESWAP_V2, good_pool,
+            usdt, good_token, 1, "COLD", now.isoformat(),
+            1.0, module.MIN_LIQUIDITY_USD + 1000, 1000, 5, 7.5, "test",
+        ),
+        (
+            "bsc", module.DEX_PANCAKESWAP_V2, address(21004),
+            usdt, address(21003), 2, "COLD", now.isoformat(),
+            1.0, module.MIN_LIQUIDITY_USD - 1, 1000, 5, 20.0, "test",
+        ),
+        (
+            "bsc", module.DEX_PANCAKESWAP_V2, address(21006),
+            usdt, address(21005), 3, "COLD", now.isoformat(),
+            1.0, module.MIN_LIQUIDITY_USD + 1000, 1000, 0, 20.0, "test",
+        ),
+        (
+            "bsc", module.DEX_PANCAKESWAP_V2, address(21008),
+            usdt, address(21007), 4, "COLD",
+            (now - timedelta(minutes=10)).isoformat(),
+            1.0, module.MIN_LIQUIDITY_USD + 1000, 1000, 5, 20.0, "test",
+        ),
+        (
+            "bsc", module.DEX_PANCAKESWAP_V2, address(21010),
+            address(21009), address(21011), 5, "COLD", now.isoformat(),
+            1.0, module.MIN_LIQUIDITY_USD + 1000, 1000, 5, 50.0, "test",
+        ),
+    ]
+    db.executemany(
+        "INSERT INTO universe_pool_registry VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        rows,
+    )
+    db.commit()
+    db.close()
+
+    monkeypatch.setattr(module, "DEFAULT_DB", db_path)
+
+    job = FastWatchRevisitJob(Pipeline())
+    selected = job._cold_movement_universe_identities()
+
+    assert selected == [
+        (
+            good_token.lower(),
+            good_pool.lower(),
+            module.DEX_PANCAKESWAP_V2,
+        )
+    ]

@@ -358,9 +358,6 @@ class Runner:
         self.scheduler.request_stop()
         self._paper_runtime_stop.set()
 
-        if self.fast_watch_revisit is not None:
-            self.fast_watch_revisit.request_stop()
-
         pipeline_stop = getattr(
             self.pipeline,
             "request_stop",
@@ -384,6 +381,9 @@ class Runner:
                 pipeline_stop()
             except Exception:
                 log.exception("Pipeline stop request failed")
+
+        if self.fast_watch_revisit is not None:
+            self.fast_watch_revisit.request_stop()
 
         for service in self.services:
             service_request_stop = getattr(

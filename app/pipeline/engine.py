@@ -1967,14 +1967,25 @@ class PipelineEngine:
         if callable(open_positions):
             self.refresh_open_position_prices()
 
+        if self._shutdown_requested():
+            return []
+
         previous_evidence = getattr(
             self.manager,
             "hybrid_exit_evidence",
             None,
         )
+        previous_shutdown_requested = getattr(
+            self.manager,
+            "shutdown_requested",
+            None,
+        )
 
         self.manager.hybrid_exit_evidence = (
             self._hybrid_exit_runtime_evidence
+        )
+        self.manager.shutdown_requested = (
+            self._shutdown_requested
         )
 
         try:
@@ -1982,6 +1993,9 @@ class PipelineEngine:
         finally:
             self.manager.hybrid_exit_evidence = (
                 previous_evidence
+            )
+            self.manager.shutdown_requested = (
+                previous_shutdown_requested
             )
 
     def _raise_if_stopping(self):
@@ -4937,6 +4951,26 @@ class PipelineEngine:
         return result
 
     def request_stop(self):
+        # Propagate cancellation to the scheduler/provider first. Other
+        # component callbacks may block while draining their own work.
+        self.work_scheduler.request_stop()
+
+        from app.chains.bsc import w3
+
+        provider = getattr(
+            w3,
+            "provider",
+            None,
+        )
+        provider_request_stop = getattr(
+            provider,
+            "request_stop",
+            None,
+        )
+
+        if callable(provider_request_stop):
+            provider_request_stop()
+
         scanner = getattr(
             self,
             "scanner",
@@ -4964,24 +4998,6 @@ class PipelineEngine:
 
         if callable(native_request_stop):
             native_request_stop()
-
-        self.work_scheduler.request_stop()
-
-        from app.chains.bsc import w3
-
-        provider = getattr(
-            w3,
-            "provider",
-            None,
-        )
-        request_stop = getattr(
-            provider,
-            "request_stop",
-            None,
-        )
-
-        if callable(request_stop):
-            request_stop()
 
         return True
 

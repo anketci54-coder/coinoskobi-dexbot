@@ -3124,8 +3124,21 @@ class PaperManager:
         )
 
         results = []
+        shutdown_requested = getattr(
+            self,
+            "shutdown_requested",
+            None,
+        )
 
         for pos in positions:
+            # Never interrupt a position lifecycle after it starts: it may be
+            # committing durable PAPER state. Stop only before the next one.
+            if (
+                callable(shutdown_requested)
+                and shutdown_requested()
+            ):
+                break
+
             try:
                 result = self._process_position(pos)
             except Exception:

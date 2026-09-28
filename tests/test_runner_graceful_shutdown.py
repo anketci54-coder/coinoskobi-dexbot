@@ -73,3 +73,117 @@ def test_stop_is_idempotent_and_service_stop_survives_pipeline_error():
     runner.stop()
     assert calls == ["pipeline", "service"]
     assert runner._paper_runtime_stop.is_set()
+
+def test_signal_handler_sets_stop_state_immediately():
+    runner = Runner(auxiliary_service_factory=lambda: [])
+    assert runner.running is True
+    runner._handle_signal()
+    assert runner.running is False
+
+
+def test_pipeline_stop_propagates_before_unrelated_fast_watch_callback():
+    pipeline_stopped = threading.Event()
+    fast_watch_entered = threading.Event()
+    release_fast_watch = threading.Event()
+
+    class FastWatch:
+        def request_stop(self):
+            fast_watch_entered.set()
+            assert release_fast_watch.wait(2)
+
+    runner = Runner(auxiliary_service_factory=lambda: [])
+    runner.pipeline = SimpleNamespace(request_stop=pipeline_stopped.set)
+    runner.fast_watch_revisit = FastWatch()
+
+    thread = threading.Thread(target=runner.stop)
+    thread.start()
+    assert pipeline_stopped.wait(0.5)
+    assert fast_watch_entered.wait(0.5)
+    release_fast_watch.set()
+    thread.join(2)
+    assert not thread.is_alive()
+
+
+def test_pipeline_request_stop_reaches_scheduler_and_provider_first(monkeypatch):
+    from app.pipeline.engine import PipelineEngine
+    import app.chains.bsc as bsc
+
+    calls = []
+
+    class Stopper:
+        def __init__(self, name):
+            self.name = name
+
+        def request_stop(self):
+            calls.append(self.name)
+            return True
+
+    engine = PipelineEngine.__new__(PipelineEngine)
+    engine.work_scheduler = Stopper("scheduler")
+    engine.scanner = Stopper("scanner")
+    engine.native_market_flow = Stopper("native")
+    monkeypatch.setattr(
+        bsc,
+        "w3",
+        SimpleNamespace(provider=Stopper("provider")),
+    )
+
+    assert engine.request_stop() is True
+    assert calls == ["scheduler", "provider", "scanner", "native"]
+
+
+def test_paper_batch_stops_between_positions_and_preserves_started_lifecycle():
+    from app.paper.manager import PaperManager
+
+    stopped = threading.Event()
+    started = []
+    committed = []
+
+    manager = PaperManager.__new__(PaperManager)
+    manager.replay_closed_outcomes = lambda: None
+    manager.db = SimpleNamespace(
+        open_positions=lambda: [
+            {"id": 1},
+            {"id": 2},
+            {"id": 3},
+        ]
+    )
+    manager.shutdown_requested = stopped.is_set
+
+    def process_position(pos):
+        started.append(pos["id"])
+        committed.append(pos["id"])
+        stopped.set()
+        return {"position_id": pos["id"], "state": "COMMITTED"}
+
+    manager._process_position = process_position
+
+    result = manager.process()
+
+    assert started == [1]
+    assert committed == [1]
+    assert result == [{"position_id": 1, "state": "COMMITTED"}]
+
+
+def test_process_positions_does_not_start_manager_after_refresh_requests_stop():
+    from app.pipeline.engine import PipelineEngine
+    from app.pipeline.work_scheduler import WorkScheduler
+
+    engine = PipelineEngine.__new__(PipelineEngine)
+    engine.work_scheduler = WorkScheduler(max_workers=1)
+    called = []
+    engine.manager = SimpleNamespace(
+        db=SimpleNamespace(open_positions=lambda: [{"id": 1}]),
+        process=lambda: called.append("manager"),
+        hybrid_exit_evidence=None,
+    )
+    engine._hybrid_exit_runtime_evidence = lambda *args, **kwargs: None
+
+    def refresh():
+        engine.work_scheduler.request_stop()
+        return {"state": "REFRESHED"}
+
+    engine.refresh_open_position_prices = refresh
+
+    assert engine.process_positions() == []
+    assert called == []

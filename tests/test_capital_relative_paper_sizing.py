@@ -133,21 +133,30 @@ def test_lp_warning_cannot_be_bypassed_by_empirical_exit(calibrated):
 
 
 @pytest.mark.parametrize('field,value', [('second_moment', .4), ('tail_risk_fraction', .8)])
-def test_measured_risk_reduces_bootstrap_size(tmp_path, field, value):
+def test_measured_risk_changes_v3_bootstrap(tmp_path, field, value):
     p = plan()
-    before = sizing.calculate_paper_position_size(mathematical_plan=copy.deepcopy(p), db_path=tmp_path / 'missing.db')
+    before = sizing.calculate_paper_position_size(
+        mathematical_plan=copy.deepcopy(p),
+        db_path=tmp_path / 'missing.db',
+    )
     p['statistics'][field] = value
-    after = sizing.calculate_paper_position_size(mathematical_plan=p, db_path=tmp_path / 'missing.db')
-    assert 0 < after['entry_amount_usdt'] < before['entry_amount_usdt']
+    after = sizing.calculate_paper_position_size(
+        mathematical_plan=p,
+        db_path=tmp_path / 'missing.db',
+    )
+    if field == 'second_moment':
+        assert 0 < after['entry_amount_usdt'] < before['entry_amount_usdt']
+    else:
+        assert after['entry_amount_usdt'] == pytest.approx(
+            before['entry_amount_usdt']
+        )
+        assert after['risk_amount_usdt'] > before['risk_amount_usdt']
 
 
 @pytest.mark.parametrize("protected", [True, False])
-def test_hot_observation_never_exceeds_empirical_account_risk_budget(monkeypatch, protected):
+def test_removed_hot_v1_cannot_bypass_v3_evidence(monkeypatch, protected):
     p = plan()
     p["capital"]["entry_amount_usdt"] = 9000.0
-    # Keep this fixture inside the existing chase limit.  This test isolates
-    # the risk-budget invariant; a 1.0 -> 1.5 jump is correctly rejected by
-    # ENTRY_ABOVE_CHASE_LIMIT before HOT sizing is reached.
     p["statistics"]["prices"] = [1.0, 1.05]
     p["capital"]["liquidity_capacity_source"] = (
         "VERIFIED_LP_PROTECTION" if protected else "EMPIRICAL_RESERVE_FLOOR"
@@ -172,16 +181,15 @@ def test_hot_observation_never_exceeds_empirical_account_risk_budget(monkeypatch
         available_capital_usdt=10000.0,
     )
 
-    if not protected:
-        assert result["entry_amount_usdt"] == result["risk_amount_usdt"] == 0
+    assert result["entry_amount_usdt"] == 0.0
+    assert result["sizing_model"] == "EMPIRICAL_GAP_EXIT_CAPACITY_V3_EDGE_RISK"
+    if protected:
+        assert "COST_UNCERTAINTY_UNOBSERVED" in result["blockers"]
+        assert "GAP_RISK_UNOBSERVED" in result["blockers"]
+    else:
         assert "LP_WITHDRAWAL_PROTECTION_UNVERIFIED" in result["blockers"]
-        return
-    assert result["sizing_reason"] == "PAPER_HOT_OBSERVATION_BOOTSTRAP"
-    assert 0 < result["entry_amount_usdt"] <= 100.0
-    assert result["risk_amount_usdt"] == result["entry_amount_usdt"]
 
-
-def test_hot_observation_without_calibration_is_bounded_discovery(monkeypatch):
+def test_hot_without_v3_evidence_remains_blocked(monkeypatch):
     p = plan()
     p["statistics"]["prices"] = [1.0, 1.5]
     p["expected"]["known_net_edge_fraction"] = 0.0
@@ -203,6 +211,7 @@ def test_hot_observation_without_calibration_is_bounded_discovery(monkeypatch):
         available_capital_usdt=10000.0,
     )
 
-    assert result["sizing_reason"] == "PAPER_HOT_OBSERVATION_BOOTSTRAP"
-    assert 0 < result["entry_amount_usdt"] <= 100.0
-    assert result["risk_amount_usdt"] == result["entry_amount_usdt"]
+    assert result["entry_amount_usdt"] == 0.0
+    assert result["sizing_model"] == "EMPIRICAL_GAP_EXIT_CAPACITY_V3_EDGE_RISK"
+    assert "GAP_RISK_UNOBSERVED" in result["blockers"]
+    assert "NET_EDGE_NOT_POSITIVE" in result["blockers"]

@@ -146,7 +146,7 @@ def test_sellability_unknown_allowed_for_paper_observation(history):
     assert "SELLABILITY_NOT_OK" not in sized.get("blockers", [])
 
 
-def test_hot_observation_uses_latest_price_transition(history, monkeypatch):
+def test_hot_without_edge_cost_evidence_stays_blocked(history, monkeypatch):
     monkeypatch.setattr(
         "app.risk.paper_position_sizing._empirical_outcome_calibration",
         lambda **_: dict(
@@ -161,13 +161,16 @@ def test_hot_observation_uses_latest_price_transition(history, monkeypatch):
     p["expected"]["known_net_edge_fraction"] = 0.0
     p["expected"]["full_net_edge_fraction"] = None
     p["cost_model"]["cost_complete"] = False
-    sized = calculate_paper_position_size(mathematical_plan=p, available_capital_usdt=10000.0)
-    assert sized["entry_amount_usdt"] > 0.0, sized
-    assert sized["sizing_reason"] == "PAPER_HOT_OBSERVATION_BOOTSTRAP"
-    assert sized["observation_fraction"] > 0.0
+    sized = calculate_paper_position_size(
+        mathematical_plan=p,
+        available_capital_usdt=10000.0,
+    )
+    assert sized["entry_amount_usdt"] == 0.0
+    assert sized["sizing_model"] == "EMPIRICAL_GAP_EXIT_CAPACITY_V3_EDGE_RISK"
+    assert "COST_UNCERTAINTY_UNOBSERVED" in sized["blockers"]
 
 
-def test_hot_observation_bootstrap_sizes_from_available_balance(history, monkeypatch):
+def test_removed_hot_v1_does_not_size_from_balance_only(history, monkeypatch):
     monkeypatch.setattr(
         "app.risk.paper_position_sizing._empirical_outcome_calibration",
         lambda **_: dict(
@@ -187,12 +190,10 @@ def test_hot_observation_bootstrap_sizes_from_available_balance(history, monkeyp
         mathematical_plan=p,
         available_capital_usdt=5000.0,
     )
-    assert sized["entry_amount_usdt"] > 1.0
-    assert sized["entry_amount_usdt"] <= 5000.0
+    assert sized["entry_amount_usdt"] == 0.0
     assert sized["capital_before_usdt"] == 5000.0
-    assert sized["sizing_reason"] == "PAPER_HOT_OBSERVATION_BOOTSTRAP"
-    assert sized["paper_hot_observation_bootstrap"] is True
-    assert sized["immediate_entry_allowed"] is True
+    assert sized["sizing_model"] == "EMPIRICAL_GAP_EXIT_CAPACITY_V3_EDGE_RISK"
+    assert sized["immediate_entry_allowed"] is False
 
 
 @pytest.mark.parametrize("quote", [WBNB, None, "0xunknown"])

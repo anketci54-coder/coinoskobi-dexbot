@@ -10,10 +10,11 @@ ALLOWED_QUOTES = {"USDT"}
 
 
 def enrich_universe_display_names(payload, cache_db):
-    """Enrich and restrict radar rows to approved quote assets.
+    """Enrich radar rows without narrowing the discovery universe.
 
-    Rows without durable pair metadata are omitted rather than guessing pair
-    orientation. Operator-facing radar quote asset is USDT only.
+    Durable metadata is used when available. PAPER quote eligibility remains
+    USDT-only and is exposed as a row flag; it does not hide HOT/WARM rows
+    from the read-only radar.
     """
     if not isinstance(payload, dict) or not payload.get("available"):
         return payload
@@ -29,7 +30,7 @@ def enrich_universe_display_names(payload, cache_db):
     ))
     if not pools:
         payload["rows"] = []
-        payload["stable_quote_filtered"] = True
+        payload["stable_quote_filtered"] = False
         return payload
 
     connection = None
@@ -62,37 +63,64 @@ def enrich_universe_display_names(payload, cache_db):
         if str(item["pool"] or "").strip()
     }
 
-    filtered = []
+    enriched = []
+    metadata_matches = 0
+
     for row in rows:
         if not isinstance(row, dict):
             continue
-        meta = metadata.get(str(row.get("pool") or "").strip().lower())
-        if not meta:
-            continue
-        quote_symbol = str(meta.get("quote_symbol") or "").strip().upper()
-        if quote_symbol not in ALLOWED_QUOTES:
-            continue
 
-        # WBNB is valid as a quote asset (TOKEN/WBNB), but WBNB itself
-        # must never appear as the operator-facing base candidate.
-        base_symbol = str(meta.get("base_symbol") or "").strip().upper()
-        if base_symbol == "WBNB":
-            continue
+        pool = str(
+            row.get("pool") or ""
+        ).strip().lower()
+        meta = metadata.get(pool)
 
-        row["display_name"] = str(meta.get("display_name") or "").strip()
-        row["base_symbol"] = str(meta.get("base_symbol") or "").strip() or None
-        row["quote_symbol"] = quote_symbol
-        row["base_name"] = str(meta.get("base_name") or "").strip() or None
-        row["quote_name"] = str(meta.get("quote_name") or "").strip() or None
-        row["base_token"] = meta.get("base_token")
-        row["quote_token"] = meta.get("quote_token")
-        filtered.append(row)
+        if meta:
+            quote_symbol = str(
+                meta.get("quote_symbol") or ""
+            ).strip().upper()
+            base_symbol = str(
+                meta.get("base_symbol") or ""
+            ).strip().upper()
 
-    payload["rows"] = filtered
+            row["display_name"] = str(
+                meta.get("display_name") or ""
+            ).strip() or row.get("display_name")
+            row["base_symbol"] = (
+                base_symbol or None
+            )
+            row["quote_symbol"] = (
+                quote_symbol or None
+            )
+            row["base_name"] = str(
+                meta.get("base_name") or ""
+            ).strip() or None
+            row["quote_name"] = str(
+                meta.get("quote_name") or ""
+            ).strip() or None
+            row["base_token"] = (
+                meta.get("base_token")
+                or row.get("base_token")
+            )
+            row["quote_token"] = (
+                meta.get("quote_token")
+                or row.get("quote_token")
+            )
+            row["paper_quote_eligible"] = bool(
+                quote_symbol in ALLOWED_QUOTES
+                and base_symbol != "WBNB"
+            )
+            metadata_matches += 1
+        else:
+            row["paper_quote_eligible"] = False
+
+        enriched.append(row)
+
+    payload["rows"] = enriched
     payload["display_name_source"] = "UNIVERSE_POOL_DISPLAY_METADATA_V1"
-    payload["display_name_matches"] = len(filtered)
+    payload["display_name_matches"] = metadata_matches
     payload["allowed_quote_symbols"] = sorted(ALLOWED_QUOTES)
-    payload["stable_quote_filtered"] = True
+    payload["stable_quote_filtered"] = False
     return payload
 
 

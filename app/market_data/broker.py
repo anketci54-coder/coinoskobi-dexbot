@@ -1,6 +1,7 @@
 """Canonical market-data boundary for runtime consumers."""
 
 import sqlite3
+import threading
 from pathlib import Path
 
 from app.scanner.followup_snapshot_cache import (
@@ -39,6 +40,7 @@ class MarketDataBroker:
         identity_db_path=None,
     ):
         self._scanner = scanner
+        self._stop_event = threading.Event()
         self._snapshot_client = snapshot_client or self._shared_snapshot_client
         self._identity_db_path = Path(
             identity_db_path or self._default_identity_db_path
@@ -47,6 +49,17 @@ class MarketDataBroker:
             binder = getattr(scanner, "bind_market_data_broker", None)
             if callable(binder):
                 binder(self)
+
+    def request_stop(self):
+        self._stop_event.set()
+        for client in (self._scanner, self._snapshot_client):
+            stop = getattr(client, "request_stop", None)
+            if callable(stop):
+                stop()
+        return True
+
+    def is_stopping(self):
+        return self._stop_event.is_set()
 
     @staticmethod
     def _canonical_pool(value):
@@ -137,10 +150,14 @@ class MarketDataBroker:
 
     def fetch(self, pools, *, max_pools=30, persist_followups=False):
         """Fetch canonical exact-pool snapshots through the broker boundary."""
+        if self.is_stopping():
+            return []
         if len(pools or []) > int(max_pools):
             raise ValueError("invalid bounded pool list")
         identities = self._resolve_pool_identities(pools)
         snapshots = self._snapshot_client.fetch(identities)
+        if self.is_stopping():
+            return []
         if persist_followups and snapshots:
             persist_registered_followup_snapshots(snapshots)
         return snapshots

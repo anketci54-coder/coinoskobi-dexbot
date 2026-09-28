@@ -4118,6 +4118,7 @@ class PipelineEngine:
         summary,
         *,
         now=None,
+        include_status=True,
     ):
         store = getattr(
             self,
@@ -4177,7 +4178,7 @@ class PipelineEngine:
                     "state": "INVALID_OBSERVATION_TIME",
                     "created": False,
                 },
-                "status": store.status(),
+                "status": store.status() if include_status else {},
             }
 
         now = evidence_at
@@ -4206,7 +4207,7 @@ class PipelineEngine:
                     "state": "STALE_OBSERVATION",
                     "created": False,
                 },
-                "status": store.status(),
+                "status": store.status() if include_status else {},
             }
 
         probe_observation = probe_store.observe(
@@ -4238,7 +4239,7 @@ class PipelineEngine:
                     "state": "NOT_ELIGIBLE",
                     "created": False,
                 },
-                "status": store.status(),
+                "status": store.status() if include_status else {},
             }
 
         record = store.record(
@@ -4407,7 +4408,7 @@ class PipelineEngine:
             "record": record,
             "probe_observation": probe_observation,
             "probe_open": probe_open,
-            "status": store.status(),
+            "status": store.status() if include_status else {},
         }
 
     def unified_outcome_snapshot(self):
@@ -5358,6 +5359,11 @@ class PipelineEngine:
                     self.observe_counterfactual_candidate(
                         row,
                         summary,
+                        # Global diagnostics serialize full-history scans
+                        # behind the store lock. Only the cycle summary uses
+                        # them; workers must finish durable writes without
+                        # queuing unused scans that outlive shutdown.
+                        include_status=False,
                     )
                 )
 
@@ -5503,6 +5509,9 @@ class PipelineEngine:
             self.candidate_queue,
             process_row,
         )
+
+        if self._shutdown_requested():
+            return self._stopped_cycle_status("ANALYSIS_DRAINED")
 
         manager_results = []
         manager_error = None

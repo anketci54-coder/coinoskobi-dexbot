@@ -66,7 +66,7 @@ def test_second_cycle_processes_backlog_not_same_first_batch(
     )
 
     engine.observe_counterfactual_candidate = (
-        lambda row, summary: {
+        lambda row, summary, **kwargs: {
             "evaluation": {
                 "state": "NOT_ELIGIBLE",
             },

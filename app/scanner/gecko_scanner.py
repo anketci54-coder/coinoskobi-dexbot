@@ -5,6 +5,8 @@ from datetime import datetime, timezone
 
 import requests
 
+from app.market_data.http_reader import CancellableHTTPReader, HTTPReadCancelled
+
 from app.config.scanner import (
     HTTP_429_BACKOFF_SECONDS,
     HTTP_429_MAX_RETRIES,
@@ -43,6 +45,7 @@ class GeckoScanner:
         }
         self._market_data_broker = None
         self._stop_event = threading.Event()
+        self._http = CancellableHTTPReader(self._stop_event)
 
     def request_stop(self):
         self._stop_event.set()
@@ -216,7 +219,8 @@ class GeckoScanner:
             if self._stop_event.is_set():
                 return None
 
-            response = requests.get(
+            response = self._http.get(
+                requests.get,
                 url,
                 headers={
                     "Accept": (
@@ -259,7 +263,8 @@ class GeckoScanner:
         if not self._provider_available("dexscreener"):
             raise RuntimeError("dexscreener provider cooling down")
 
-        response = requests.get(
+        response = self._http.get(
+            requests.get,
             DEXSCREENER_URL + "/" + ",".join(addresses),
             headers={"Accept": "application/json"},
             timeout=HTTP_TIMEOUT,
@@ -281,7 +286,8 @@ class GeckoScanner:
             if self._stop_event.is_set():
                 return None
 
-            response = requests.get(
+            response = self._http.get(
+                requests.get,
                 URL,
                 headers={
                     "Accept": (
@@ -358,6 +364,8 @@ class GeckoScanner:
         persist_followups=True,
     ):
         """Return exact-pool market facts through the canonical broker."""
+        if self.is_stopping():
+            return []
         if self._market_data_broker is not None:
             return self._market_data_broker.pool_snapshots(
                 pools,
@@ -379,7 +387,7 @@ class GeckoScanner:
                 exc,
             )
 
-        if not snapshots:
+        if not snapshots and not self.is_stopping():
             try:
                 snapshots = self._pool_snapshots_dexscreener(addresses)
             except Exception as exc:
@@ -388,6 +396,9 @@ class GeckoScanner:
                     exc,
                 )
                 snapshots = []
+
+        if self.is_stopping():
+            return []
 
         if persist_followups and snapshots:
             persist_registered_followup_snapshots(
@@ -462,7 +473,10 @@ class GeckoScanner:
         return prices[pool]
 
     def scan(self):
-        response = self._fetch()
+        try:
+            response = self._fetch()
+        except HTTPReadCancelled:
+            return []
         if response is None:
             return []
 

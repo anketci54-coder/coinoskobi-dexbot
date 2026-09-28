@@ -32,7 +32,6 @@ def provider(entry, monkeypatch, tmp_path):
 
     def get(url, **kwargs):
         assert len(entry.buys) == 1
-        assert entry.db.open_positions() == []
         assert url.endswith("/" + POOL)
         state.calls.append(url)
         if state.unavailable:
@@ -42,6 +41,16 @@ def provider(entry, monkeypatch, tmp_path):
 
     client = DexScreenerSnapshotClient(session=SimpleNamespace(get=get),
                                       now_func=lambda: state.observed_at)
+    fetch = client.fetch
+
+    def checked_fetch(pools):
+        # Admission remains on the caller thread; only the HTTP transport
+        # moves to a cancellable reader. Keep SQLite ownership here.
+        assert len(entry.buys) == 1
+        assert entry.db.open_positions() == []
+        return fetch(pools)
+
+    monkeypatch.setattr(client, "fetch", checked_fetch)
     entry.job.pipeline.scanner = MarketDataBroker(snapshot_client=client)
     state.cache, state.reader = cache, reader
     yield state

@@ -2,6 +2,7 @@ from datetime import datetime, timedelta, timezone
 
 import requests
 
+from app.market_data.http_reader import CancellableHTTPReader
 from app.universe.schema import canonical_address, canonical_dex
 
 
@@ -99,12 +100,16 @@ class DexScreenerSnapshotClient:
     def __init__(self, *, session=None, timeout=DEXSCREENER_TIMEOUT_SECONDS,
                  now_func=None):
         self.session = session or requests.Session()
+        self._http = CancellableHTTPReader()
         self.timeout = float(timeout)
         if self.timeout <= 0:
             raise ValueError("positive timeout required")
         self.now_func = now_func or (
             lambda: datetime.now(timezone.utc).isoformat()
         )
+
+    def request_stop(self):
+        return self._http.request_stop()
 
     @staticmethod
     def _requested(pools):
@@ -123,11 +128,13 @@ class DexScreenerSnapshotClient:
         return requested
 
     def fetch(self, pools):
+        self._http.raise_if_stopping()
         requested = self._requested(pools)
         if not requested:
             return []
 
-        response = self.session.get(
+        response = self._http.get(
+            self.session.get,
             DEXSCREENER_PAIRS_URL + "/" + ",".join(requested),
             headers={"Accept": "application/json"},
             timeout=self.timeout,
@@ -211,6 +218,7 @@ class GeckoTerminalSnapshotClient:
                  now_func=None, rate_limit_cooldown_seconds=
                  GECKOTERMINAL_RATE_LIMIT_COOLDOWN_SECONDS):
         self.session = session or requests.Session()
+        self._http = CancellableHTTPReader()
         self.timeout = float(timeout)
         if self.timeout <= 0:
             raise ValueError("positive timeout required")
@@ -231,6 +239,9 @@ class GeckoTerminalSnapshotClient:
         if parsed.tzinfo is None:
             parsed = parsed.replace(tzinfo=timezone.utc)
         return parsed
+
+    def request_stop(self):
+        return self._http.request_stop()
 
     def _rate_limit_active(self):
         if self._rate_limited_until is None:
@@ -272,11 +283,13 @@ class GeckoTerminalSnapshotClient:
         return requested
 
     def fetch(self, pools):
+        self._http.raise_if_stopping()
         requested = self._requested(pools)
         if not requested or self._rate_limit_active():
             return []
 
-        response = self.session.get(
+        response = self._http.get(
+            self.session.get,
             GECKOTERMINAL_POOLS_URL + "/" + ",".join(requested),
             headers={"Accept": "application/json;version=20230302"},
             timeout=self.timeout,
@@ -381,6 +394,13 @@ class ProviderStickySnapshotClient:
     def __init__(self, *, primary=None, fallback=None):
         self.primary = primary or DexScreenerSnapshotClient()
         self.fallback = fallback or GeckoTerminalSnapshotClient()
+
+    def request_stop(self):
+        for client in (self.primary, self.fallback):
+            stop = getattr(client, "request_stop", None)
+            if callable(stop):
+                stop()
+        return True
 
     @staticmethod
     def _requested(pools):

@@ -2033,163 +2033,20 @@ class PaperManager:
                         },
                     }
 
-        realized_proceeds = float(
-            pos.get(
-                "realized_proceeds_usdt"
+        # NORMAL V4 lifecycle: TP1 is the only planned partial realization.
+        # Once TP1 is complete, preserve all remaining inventory for the runner.
+        # tp2_done remains historical/accounting state only; no new TP2 sale occurs.
+        if int(pos.get("tp1_done") or 0) and not bool(pos.get("runner_active")):
+            state["normal_lifecycle"] = "TP1_PLUS_RUNNER"
+            state["tp2_disabled"] = True
+            self.db.update_position(
+                pos["id"],
+                {
+                    "runner_active": 1,
+                    "math_state_json": json.dumps(state, sort_keys=True),
+                },
             )
-            or 0.0
-        )
-
-        if (
-            int(
-                pos.get(
-                    "tp1_done"
-                )
-                or 0
-            )
-            and not int(
-                pos.get(
-                    "tp2_done"
-                )
-                or 0
-            )
-        ):
-            fraction = (
-                tp2_required_fraction(
-                    token_amount=tokens,
-                    current_price=current,
-                    original_entry_usdt=(
-                        pos.get(
-                            "entry_amount_usdt"
-                        )
-                    ),
-                    realized_proceeds_usdt=(
-                        realized_proceeds
-                    ),
-                    cost_model=cost_model,
-                )
-            )
-
-            state[
-                "tp2_required_fraction"
-            ] = fraction
-
-            if fraction == 0:
-                self.db.update_position(
-                    pos["id"],
-                    {
-                        "tp2_done": 1,
-                        "runner_active": 1,
-                        "math_state_json": (
-                            json.dumps(
-                                state,
-                                sort_keys=True,
-                            )
-                        ),
-                    },
-                )
-
-                pos["tp2_done"] = 1
-                pos["runner_active"] = 1
-
-            elif (
-                fraction is not None
-                and 0 < fraction < 1
-            ):
-                realization = (
-                    realization_values(
-                        token_amount=tokens,
-                        fraction=fraction,
-                        current_price=current,
-                        remaining_cost_basis_usdt=basis,
-                        cost_model=cost_model,
-                    )
-                )
-
-                phase15h_execution = None
-                if realization:
-                    phase15h_execution = (
-                        self._runtime_phase15h_sell_evidence(
-                            pos=pos,
-                            current_price=current,
-                            stage="NORMAL_TP2",
-                            exit_fraction=(
-                                realization.get(
-                                    "fraction"
-                                )
-                            ),
-                            exit_notional_usdt=(
-                                realization.get(
-                                    "gross_proceeds_usdt"
-                                )
-                            ),
-                        )
-                    )
-
-                    if not self._phase15h_sell_succeeded(
-                        phase15h_execution
-                    ):
-                        return {
-                            "success": True,
-                            "source": "paper",
-                            "data": {
-                                "action": "SKIP",
-                                "token": pos["token"],
-                                "entry_price": pos["entry_price"],
-                                "current_price": current,
-                                "status": "OPEN",
-                                "reason": "PHASE15H_SELL_NOT_PROVEN",
-                                "trade_type": "NORMAL",
-                                "mathematical_exit": True,
-                                "phase15h_execution": phase15h_execution,
-                            },
-                        }
-
-                if (
-                    realization
-                    and self.db.apply_partial_realization(
-                        pos["id"],
-                        stage="TP2",
-                        price=current,
-                        realization={**realization, "phase15h_execution": phase15h_execution},
-                        math_state_json=json.dumps(
-                            state,
-                            sort_keys=True,
-                        ),
-                    )
-                ):
-                    self.db.update_position(
-                        pos["id"],
-                        {
-                            "highest_price": highest,
-                            "lowest_price": lowest,
-                            "sl_price": static_stop,
-                        },
-                    )
-
-                    return {
-                        "success": True,
-                        "source": "paper",
-                        "data": {
-                            "action": "PARTIAL_TP2",
-                            "token": pos["token"],
-                            "entry_price": pos[
-                                "entry_price"
-                            ],
-                            "current_price": current,
-                            "status": "OPEN",
-                            "reason": (
-                                "NORMAL_PRINCIPAL_RECOVERY"
-                            ),
-                            "realization": realization,
-                            "runner_active": True,
-                            "trade_type": "NORMAL",
-                            "mathematical_exit": True,
-                            "phase15h_execution": (
-                                phase15h_execution
-                            ),
-                        },
-                    }
+            pos["runner_active"] = 1
 
         runner_active = bool(
             pos.get(

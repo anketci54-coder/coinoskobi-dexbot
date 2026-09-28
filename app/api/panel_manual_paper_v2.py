@@ -891,10 +891,7 @@ def _prepare_manual_buy(
         ),
         "sl_source": sl_source,
         "tp1_source": tp1_source,
-        "tp2_mode": (
-            "DYNAMIC_PRINCIPAL_RECOVERY"
-        ),
-        "tp3_mode": (
+        "runner_mode": (
             "TREND_RUNNER"
         ),
         "hard_safety_bypassed": False,
@@ -1013,10 +1010,7 @@ def _preview_buy(
         "tp1_price": prepared[
             "tp1_price"
         ],
-        "tp2_mode": (
-            "DYNAMIC_PRINCIPAL_RECOVERY"
-        ),
-        "tp3_mode": (
+        "runner_mode": (
             "TREND_RUNNER"
         ),
         "control_mode": "MANUAL",
@@ -1360,10 +1354,7 @@ def _buy(
             ),
             "sl_price": sl_price,
             "tp1_price": tp1_price,
-            "tp2_mode": (
-                "DYNAMIC_PRINCIPAL_RECOVERY"
-            ),
-            "tp3_mode": (
+            "runner_mode": (
                 "TREND_RUNNER"
             ),
             "control_mode": (

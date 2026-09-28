@@ -80,16 +80,16 @@ def test_manual_normal_position_table_shows_lifecycle():
         "<th>CURRENT</th>",
         "<th>SL</th>",
         "<th>TP1</th>",
-        "<th>TP2</th>",
-        "<th>TP3 / TREND</th>",
+        "<th>RUNNER / TREND</th>",
     ):
         assert label in html
 
+    assert "<th>TP2</th>" not in html
     assert "row.tp1_done" in js
-    assert "row.tp2_done" in js
+    assert "row.tp2_done" not in js
     assert "row.runner_active" in js
 
-    assert "ANA PARA ALINDI" in js
+    assert "ANA PARA ALINDI" not in js
     assert "TREND AKTİF" in js
 
     assert (
@@ -160,7 +160,7 @@ def test_vur_kac_position_does_not_render_normal_tp_lifecycle():
 
     assert (
         "const tp2State=isVurKac"
-        in js
+        not in js
     )
 
     assert (

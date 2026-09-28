@@ -762,12 +762,11 @@ def test_manual_buy_preview_returns_canonical_normal_plan(
         "reference_price"
     ]
 
-    assert preview[
-        "tp2_mode"
-    ] == "DYNAMIC_PRINCIPAL_RECOVERY"
+    assert "tp2_mode" not in preview
+    assert "tp3_mode" not in preview
 
     assert preview[
-        "tp3_mode"
+        "runner_mode"
     ] == "TREND_RUNNER"
 
 

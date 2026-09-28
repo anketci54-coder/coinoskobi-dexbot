@@ -221,9 +221,6 @@
           const tp1Done=
             Number(row.tp1_done||0)===1;
 
-          const tp2Done=
-            Number(row.tp2_done||0)===1;
-
           const runner=
             Number(row.runner_active||0)===1;
 
@@ -236,14 +233,6 @@
               tp1Done
                 ? 'ALINDI'
                 : num(row.tp_price)
-            );
-
-          const tp2State=isVurKac
-            ? '—'
-            : (
-              tp2Done
-                ? 'ANA PARA ALINDI'
-                : 'BEKLİYOR'
             );
 
           const tp3State=isVurKac
@@ -285,7 +274,6 @@
 
             <td>${esc(tp1State)}</td>
 
-            <td>${esc(tp2State)}</td>
 
             <td>${esc(tp3State)}</td>
 
@@ -1074,11 +1062,6 @@
           </div>
 
           <div class="v61-box">
-            <small>TP2</small>
-            <b>ANA PARA GERİ ALIMI</b>
-          </div>
-
-          <div class="v61-box">
             <small>TP3</small>
             <b>TREND RUNNER</b>
           </div>
@@ -1089,9 +1072,7 @@
           <p>SL: ${esc(data.system_sl_price)}</p>
           <p>TP1: ${esc(data.system_tp1_price)}</p>
           <p>
-            TP2 ve TP3 sabit fiyat değildir.
-            TP2 matematiksel ana para geri alımı,
-            TP3 dinamik trend runner olarak yönetilir.
+            TP1 sonrası kalan pozisyon dinamik trend runner olarak yönetilir.
           </p>
         </div>
 
@@ -1275,8 +1256,7 @@
           <p>Yatırım: ${money(data.amount_usdt)}</p>
           <p>SL: ${esc(data.sl_price)}</p>
           <p>TP1: ${esc(data.tp1_price)}</p>
-          <p>TP2: Dinamik principal recovery</p>
-          <p>TP3: Trend runner</p>
+          <p>TP1 sonrası: Trend runner</p>
           <p>Seviye kaynağı: ${esc(data.level_source)}</p>
           <p>Paper bakiye: ${money(data.paper_balance_after)}</p>
         </div>`

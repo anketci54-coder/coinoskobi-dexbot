@@ -143,47 +143,23 @@ def position(
     }
 
 
-def test_normal_tp2_recovers_principal():
+def test_normal_tp1_transitions_directly_to_runner_without_tp2_sale():
     m = manager()
 
-    result = (
-        m._process_normal_math_position(
-            position(),
-            2.0,
-            2.0,
-            1.0,
-            plan(),
-        )
+    result = m._process_normal_math_position(
+        position(),
+        2.0,
+        2.0,
+        1.0,
+        plan(),
     )
 
-    assert (
-        result["data"]["action"]
-        == "PARTIAL_TP2"
+    assert m.db.partial_calls == []
+    assert any(
+        update.get("runner_active") == 1
+        for _, update in m.db.updates
     )
-
-    assert (
-        result["data"]["reason"]
-        == "NORMAL_PRINCIPAL_RECOVERY"
-    )
-
-    assert len(
-        m.db.partial_calls
-    ) == 1
-
-    assert (
-        m.db.partial_calls[0][
-            "stage"
-        ]
-        == "TP2"
-    )
-
-    assert (
-        result["data"][
-            "runner_active"
-        ]
-        is True
-    )
-
+    assert result["data"]["action"] != "PARTIAL_TP2"
 
 def test_normal_tp3_runner_uses_dynamic_floor(
     monkeypatch,

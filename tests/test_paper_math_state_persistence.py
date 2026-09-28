@@ -1,7 +1,7 @@
 from pathlib import Path
 
 
-def test_normal_tp_state_is_persisted_before_tp2_or_runner_actions():
+def test_normal_tp_state_is_persisted_before_runner_actions():
     source = Path(
         "app/paper/manager.py"
     ).read_text(
@@ -24,21 +24,17 @@ def test_normal_tp_state_is_persisted_before_tp2_or_runner_actions():
         '"tp1_required_fraction"'
     )
 
-    tp2_index = normal_source.index(
-        '"tp2_required_fraction"'
-    )
-
-    tp2_apply_index = normal_source.index(
-        'stage="TP2"'
+    lifecycle_index = normal_source.index(
+        '"normal_lifecycle"'
     )
 
     runner_index = normal_source.index(
         '"tp3_mode"'
     )
 
-    assert tp1_index < tp2_index
-    assert tp2_index < tp2_apply_index
-    assert tp2_apply_index < runner_index
+    assert tp1_index < lifecycle_index
+    assert lifecycle_index < runner_index
+    assert 'stage="TP2"' not in normal_source
 
     assert (
         '"math_state_json"'
@@ -127,6 +123,11 @@ def test_normal_and_vur_kac_have_separate_policy_paths():
 
     assert (
         '"NORMAL_PRINCIPAL_RECOVERY"'
+        not in normal_source
+    )
+
+    assert (
+        '"TP1_PLUS_RUNNER"'
         in normal_source
     )
 

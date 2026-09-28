@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sqlite3
+import time
 from collections import Counter
 from datetime import datetime, timezone
 
@@ -14,6 +15,8 @@ from typing import Any
 ALLOWED_STATES = {"COLD", "WARM", "HOT"}
 DEFAULT_TRANSITION_WINDOW = 1000
 MAX_TRANSITION_WINDOW = 5000
+MOVING_COLD_CACHE_TTL_SECONDS = 60.0
+_moving_cold_cache: dict[str, dict[str, Any]] = {}
 
 # BSC quote assets allowed in the operator-facing COLD list.
 # Discovery remains full-universe; this is panel/read-model filtering only.
@@ -355,6 +358,7 @@ def universe_panel_payload(
     """
 
     path = Path(cache_db)
+    moving_cold_cache_allowed = now is None
     if now is None:
         now = datetime.now(timezone.utc)
     elif now.tzinfo is None:
@@ -430,11 +434,44 @@ def universe_panel_payload(
                     use_snapshot_index=use_snapshot_index,
                 )
             )
-        moving_cold = (
-            _moving_usdt_cold_candidates(
-                connection,
-            )
-        )
+        cache_key = str(path.resolve())
+        moving_cold = None
+
+        if moving_cold_cache_allowed:
+            cached = _moving_cold_cache.get(cache_key) or {}
+            cached_at = float(cached.get("at") or 0.0)
+            if (
+                cached_at > 0.0
+                and time.monotonic() - cached_at
+                < MOVING_COLD_CACHE_TTL_SECONDS
+            ):
+                moving_cold = list(cached.get("rows") or [])
+
+        if moving_cold is None:
+            moving_cold = [
+                dict(row)
+                for row in _moving_usdt_cold_candidates(
+                    connection,
+                )
+            ]
+            if moving_cold_cache_allowed:
+                _moving_cold_cache[cache_key] = {
+                    "at": time.monotonic(),
+                    "rows": moving_cold,
+                }
+
+        active_pools = {
+            str(row["pool"] or "").lower()
+            for row in candidates
+            if row["pool"]
+        }
+        moving_cold = [
+            row
+            for row in moving_cold
+            if str(row.get("pool") or "").lower()
+            not in active_pools
+        ]
+
         counts["COLD"] = len(moving_cold)
         candidates.extend(moving_cold)
 

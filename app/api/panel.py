@@ -35,6 +35,12 @@ INDEX_FILE = STATIC_DIR / "index.html"
 
 PAPER_STARTING_CAPITAL_USDT = 10_000.0
 
+_HEALTH_DATABASE_CACHE_TTL_SECONDS = 60.0
+_health_database_cache = {
+    "checked_at": 0.0,
+    "ok": False,
+}
+
 
 def panel_active_paper_run() -> dict[str, Any]:
     """
@@ -599,27 +605,29 @@ def _dashboard_open_valuation_states(
                 timeout=2,
             )
             connection.row_factory = sqlite3.Row
-            placeholders = ",".join("?" for _ in pools)
-            observed = connection.execute(
-                f"""
-                SELECT
-                    pool,
-                    liquidity_usd,
-                    price_usd,
-                    observed_at
-                FROM market_observation_history
-                WHERE lower(pool) IN ({placeholders})
-                ORDER BY id DESC
-                """,
-                tuple(pools),
-            ).fetchall()
-            for raw in observed:
+            for pool in pools:
+                raw = connection.execute(
+                    """
+                    SELECT
+                        pool,
+                        liquidity_usd,
+                        price_usd,
+                        observed_at
+                    FROM market_observation_history
+                    WHERE pool = ?
+                    ORDER BY observed_at DESC
+                    LIMIT 1
+                    """,
+                    (pool,),
+                ).fetchone()
+                if raw is None:
+                    continue
                 item = dict(raw)
-                pool = str(
+                canonical_pool = str(
                     item.get("pool") or ""
                 ).lower()
-                if pool and pool not in latest_by_pool:
-                    latest_by_pool[pool] = item
+                if canonical_pool:
+                    latest_by_pool[canonical_pool] = item
         except Exception:
             latest_by_pool = {}
         finally:
@@ -1592,22 +1600,40 @@ def api_runtime_candidates() -> list[dict[str, Any]]:
 
 
 def health_payload() -> dict[str, Any]:
-    database_ok = False
-
-    try:
-        row = query_one(
-            "PRAGMA quick_check"
+    now = time.monotonic()
+    cached_at = float(
+        _health_database_cache.get(
+            "checked_at",
+            0.0,
         )
+        or 0.0
+    )
+    database_ok = bool(
+        _health_database_cache.get("ok")
+    )
 
-        database_ok = (
-            "ok" in {
-                str(value).lower()
-                for value in row.values()
-            }
-        )
+    if (
+        cached_at <= 0.0
+        or now - cached_at
+        >= _HEALTH_DATABASE_CACHE_TTL_SECONDS
+    ):
+        try:
+            row = query_one(
+                "PRAGMA quick_check"
+            )
+            database_ok = (
+                "ok" in {
+                    str(value).lower()
+                    for value in row.values()
+                }
+            )
+        except Exception:
+            database_ok = False
 
-    except Exception:
-        database_ok = False
+        _health_database_cache.update({
+            "checked_at": now,
+            "ok": database_ok,
+        })
 
     disk = shutil.disk_usage(BASE_DIR)
 

@@ -38,6 +38,7 @@ from app.paper.database import (
 from app.paper.cache_price import CachePrice
 from app.paper.calibration_provenance import CURRENT_PAPER_MODEL
 from app.paper.manager import PaperManager
+from app.paper.execution_economics import paper_execution_fill
 from app.paper.control_mode import get_control_mode
 
 from app.cache.gecko_cache import GeckoCache
@@ -1357,9 +1358,27 @@ class PipelineEngine:
                 or (chase is not None and price > float(chase))):
             raise ValueError("admission price outside approved entry range")
 
+        economics = opening.get("execution_economics_v4") or {}
+        fill = economics.get("paper_buy_fill")
+        execution_tokens = None
+        if economics.get("admission_enforced"):
+            if not fill or fill.get("state") != "BOUNDED":
+                raise ValueError("PAPER BUY costs are not bounded")
+            execution_tokens = fill["output_floor_amount"]
+            # The proven swap spends the sized notional; native gas is additional
+            # capital, not a fictitious reduction of the received token balance.
+            debit = float(trade["entry_amount_usdt"]) + fill["gas_usd"]
+            if debit > float(trade["capital_before_usdt"]):
+                raise ValueError("PAPER capital cannot cover BUY gas")
+            trade["entry_amount_usdt"] = trade["remaining_cost_basis_usdt"] = debit
+            trade["capital_after_entry_usdt"] = float(trade["capital_before_usdt"]) - debit
+            trade["position_size_pct"] = debit / float(trade["capital_before_usdt"]) * 100
+            plan["cost_model"]["buy_gas_usd"] = fill["gas_usd"]
+            plan["cost_model"]["net_semantics"] = fill["accounting_semantics"]
         plan["entry"]["price"] = price
         bound = _bind_final_trade_plan(
             plan, trade["entry_amount_usdt"], trade["capital_before_usdt"],
+            execution_token_amount=execution_tokens,
         )
         if (bound["token_amount"] <= 0 or bound["initial_net_risk_usdt"] is None
                 or bound["tp1_activation_price"] is None):
@@ -3651,8 +3670,21 @@ class PipelineEngine:
                                         buy_execution_economics
                                     ),
                                     "authority": False,
-                                    "admission_enforced": False,
+                                    "admission_enforced": True,
                                 }
+                                buy = phase15h_buy_gate["buy"]
+                                fill = paper_execution_fill(
+                                    side="BUY", execution=buy, context=local_math_exit,
+                                    amount_in_raw=int(round(entry_amount_usdt * 10 ** local_math_exit["quote_decimals"])),
+                                    known_edge_fraction=(mathematical_plan.get("expected") or {}).get(
+                                        "known_net_edge_fraction"
+                                    ),
+                                )
+                                opening_context["execution_economics_v4"]["paper_buy_fill"] = fill
+                                if buy_execution_economics.get("state") != "READY" or fill["state"] != "BOUNDED":
+                                    pre_reject = "PAPER_BUY_ECONOMICS_NOT_BOUNDED"
+                                elif entry_amount_usdt + fill["gas_usd"] > float(trade_row["capital_before_usdt"]):
+                                    pre_reject = "PAPER_CAPITAL_INSUFFICIENT"
 
                         # BUY execution proof and price provenance are both
                         # required. Always fetch after the slow BUY simulation;
@@ -3679,6 +3711,7 @@ class PipelineEngine:
                                     )
                                     price = trade_row["entry_price"]
                                     token_amount = trade_row["token_amount"]
+                                    entry_amount_usdt = trade_row["entry_amount_usdt"]
                                     tp1_activation = trade_row["tp_price"]
                                     writer = getattr(self.cache, "upsert_tracked_price", None)
                                     if callable(writer):

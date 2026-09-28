@@ -14,7 +14,7 @@ from app.paper import manager as manager_module
 from app.pipeline import engine
 from app.risk import price_integrity as integrity
 from price_integrity_support import POOL, TOKEN, V2RPC, evidence, position
-from test_paper_candidate_pool_binding import lifecycle
+from test_paper_candidate_pool_binding import lifecycle, successful_buy
 
 
 @pytest.fixture
@@ -32,7 +32,7 @@ def entry(lifecycle, monkeypatch):
 
     def buy(**kwargs):
         buys.append(kwargs)
-        return {"buy": {"status": "SUCCESS"}}
+        return successful_buy(**kwargs)
 
     monkeypatch.setattr(engine, "_runtime_phase15h_buy_evidence", buy)
     return SimpleNamespace(job=job, candidate=candidate, db=db,
@@ -111,7 +111,7 @@ def test_entry_reads_evidence_published_during_buy_instead_of_earlier_copy(entry
 
     def buy(**kwargs):
         entry.rows[:] = [published]
-        return {"buy": {"status": "SUCCESS"}}
+        return successful_buy(**kwargs)
 
     monkeypatch.setattr(engine, "_runtime_phase15h_buy_evidence", buy)
     assert entry.job._process(entry.candidate)["data"]["paper"]["action"] == "PAPER_BUY"
@@ -142,7 +142,7 @@ def test_fresh_entry_evidence_cannot_bypass_buy_failure(entry, monkeypatch, stat
 def test_provenance_is_checked_after_slow_buy(entry, monkeypatch):
     def slow_buy(**kwargs):
         reject_evidence(entry.rows, "stale")
-        return {"buy": {"status": "SUCCESS"}}
+        return successful_buy(**kwargs)
 
     monkeypatch.setattr(engine, "_runtime_phase15h_buy_evidence", slow_buy)
     result = entry.job._process(entry.candidate)["data"]["paper"]

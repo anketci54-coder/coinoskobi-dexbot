@@ -13,6 +13,7 @@ from datetime import (
 from app.paper.database import (
     PaperDatabase,
 )
+from app.paper.execution_economics import paper_execution_fill
 from app.paper.cache_price import (
     CachePrice,
 )
@@ -174,6 +175,21 @@ class PaperManager:
             isinstance(sell, dict)
             and sell.get("status") == "SUCCESS"
         )
+
+    @classmethod
+    def _bounded_accounting_required(cls, pos):
+        return bool(((cls._opening_context(pos) or {}).get("execution_economics_v4") or {}).get(
+            "admission_enforced"
+        ))
+
+    @classmethod
+    def _sell_accounting_proven(cls, pos, evidence):
+        if not cls._phase15h_sell_succeeded(evidence):
+            return False
+        fill = evidence["sell"].get("paper_fill")
+        if fill is None:
+            return not cls._bounded_accounting_required(pos)
+        return fill.get("state") == "BOUNDED" and fill.get("net_proceeds_usdt") is not None
 
     def _runtime_phase15h_sell_evidence(
         self,
@@ -442,6 +458,9 @@ class PaperManager:
                 notional_usdt
             ),
         })
+        sell["paper_fill"] = paper_execution_fill(
+            side="SELL", execution=sell, context=context, amount_in_raw=seed_token_raw,
+        )
 
         block = dict(
             sell.get("block")
@@ -1448,8 +1467,8 @@ class PaperManager:
             )
         )
 
-        if not self._phase15h_sell_succeeded(
-            phase15h_execution
+        if not self._sell_accounting_proven(
+            pos, phase15h_execution
         ):
             return {
                 "success": True,
@@ -1463,7 +1482,9 @@ class PaperManager:
                     "status": "OPEN",
                     "opened_at": pos.get("created_at", ""),
                     "closed_at": "",
-                    "reason": "PHASE15H_SELL_NOT_PROVEN",
+                    "reason": ("PAPER_SELL_ECONOMICS_NOT_BOUNDED"
+                               if self._phase15h_sell_succeeded(phase15h_execution)
+                               else "PHASE15H_SELL_NOT_PROVEN"),
                     "account": "PAPER_10K_V2",
                     "gross_pnl_usdt": gross,
                     "net_pnl_usdt": net,
@@ -1473,6 +1494,14 @@ class PaperManager:
                     "phase15h_execution": phase15h_execution,
                 },
             }
+
+        fill = phase15h_execution["sell"].get("paper_fill")
+        if fill is not None:
+            proceeds = float(pos.get("realized_proceeds_usdt") or 0.0) + fill["net_proceeds_usdt"]
+            net = proceeds - entry_amount
+            roi = net / entry_amount if entry_amount > 0 else 0.0
+            close_data.update(net_pnl=net, net_pnl_usdt=net, roi=roi,
+                              realized_proceeds_usdt=proceeds, realized_pnl_usdt=net)
 
         close_data["closing_execution_json"] = json.dumps(
             phase15h_execution, sort_keys=True,
@@ -1919,6 +1948,25 @@ class PaperManager:
             )
             or 0
         ):
+            tp1_cost_model = cost_model
+            if self._bounded_accounting_required(pos):
+                # Full-size impact provides a conservative retention for selecting
+                # the partial. The exact partial is proved again before booking.
+                full_quote = self._runtime_phase15h_sell_evidence(
+                    pos=pos, current_price=current, stage="NORMAL_TP1_SIZING",
+                )
+                if not self._sell_accounting_proven(pos, full_quote):
+                    return {"success": True, "source": "paper", "data": {
+                        "action": "SKIP", "status": "OPEN",
+                        "reason": "PAPER_SELL_ECONOMICS_NOT_BOUNDED",
+                        "phase15h_execution": full_quote,
+                    }}
+                full_fill = full_quote["sell"]["paper_fill"]
+                tp1_cost_model = {
+                    **cost_model,
+                    "sell_retention_known": full_fill["output_floor_amount"] / (tokens * current),
+                    "sell_gas_usd": full_fill["gas_usd"],
+                }
             fraction = (
                 tp1_required_fraction(
                     token_amount=tokens,
@@ -1926,7 +1974,7 @@ class PaperManager:
                     current_price=current,
                     initial_risk_usdt=initial_risk,
                     realized_pnl_usdt=realized_pnl,
-                    cost_model=cost_model,
+                    cost_model=tp1_cost_model,
                 )
             )
 
@@ -1968,8 +2016,8 @@ class PaperManager:
                         )
                     )
 
-                    if not self._phase15h_sell_succeeded(
-                        phase15h_execution
+                    if not self._sell_accounting_proven(
+                        pos, phase15h_execution
                     ):
                         return {
                             "success": True,
@@ -1980,12 +2028,28 @@ class PaperManager:
                                 "entry_price": pos["entry_price"],
                                 "current_price": current,
                                 "status": "OPEN",
-                                "reason": "PHASE15H_SELL_NOT_PROVEN",
+                                "reason": ("PAPER_SELL_ECONOMICS_NOT_BOUNDED"
+                                           if self._phase15h_sell_succeeded(phase15h_execution)
+                                           else "PHASE15H_SELL_NOT_PROVEN"),
                                 "trade_type": "NORMAL",
                                 "mathematical_exit": True,
                                 "phase15h_execution": phase15h_execution,
                             },
                         }
+
+                    fill = phase15h_execution["sell"].get("paper_fill")
+                    if fill is not None:
+                        realization["net_proceeds_usdt"] = fill["net_proceeds_usdt"]
+                        realization["realized_pnl_usdt"] = (
+                            fill["net_proceeds_usdt"] - realization["sold_cost_basis_usdt"]
+                        )
+                        if (self._bounded_accounting_required(pos)
+                                and realization["realized_pnl_usdt"] + realized_pnl + 1e-9 < initial_risk):
+                            return {"success": True, "source": "paper", "data": {
+                                "action": "SKIP", "status": "OPEN",
+                                "reason": "TP1_EXECUTABLE_PROFIT_BELOW_RISK",
+                                "phase15h_execution": phase15h_execution,
+                            }}
 
                 if (
                     realization

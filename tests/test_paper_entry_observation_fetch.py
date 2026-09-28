@@ -84,7 +84,6 @@ def test_buy_success_fetches_and_persists_exact_pool_envelope(entry, provider, c
 
 def test_entry_price_binds_to_new_observation_without_changing_quote_sizing(entry, provider, monkeypatch):
     from app.pipeline import engine
-    from app.strategy.mathematical_trade_plan import buy_token_amount
 
     sizing_results = []
     original = engine.calculate_paper_position_size
@@ -101,11 +100,12 @@ def test_entry_price_binds_to_new_observation_without_changing_quote_sizing(entr
     opening = json.loads(stored["opening_context_json"])
     plan = json.loads(stored["mathematical_plan_json"])
     assert len(sizing_results) == 1
-    assert stored["entry_amount_usdt"] == sizing_results[0]["entry_amount_usdt"]
+    fill = opening["execution_economics_v4"]["paper_buy_fill"]
+    assert stored["entry_amount_usdt"] == sizing_results[0]["entry_amount_usdt"] + fill["gas_usd"]
     assert stored["entry_price"] == opening["price_observation"]["price_usd"] == 1.0601
     assert plan["entry"]["price"] == stored["entry_price"]
     assert stored["token_amount"] == stored["initial_token_amount"] == pytest.approx(
-        buy_token_amount(stored["entry_amount_usdt"], stored["entry_price"], plan["cost_model"]))
+        fill["output_floor_amount"])
 
 
 @pytest.mark.parametrize("defect", ["unavailable", "stale", "pool", "token", "quote", "chain"])

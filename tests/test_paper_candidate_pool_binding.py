@@ -14,10 +14,15 @@ from app.paper.database import PaperDatabase
 from app.paper.schema import ensure_paper_schema
 from app.risk import price_integrity
 from price_integrity_support import V2RPC, evidence
+from test_paper_execution_economics import context, execution
 
 TOKEN = "0x" + "11" * 20
 POOL = "0x" + "22" * 20
 OTHER_POOL = "0x" + "33" * 20
+
+
+def successful_buy(**kwargs):
+    return {"buy": execution("BUY", kwargs["entry_amount_usdt"], kwargs["exit_evidence"])}
 
 
 @pytest.mark.parametrize("membership", ["VERIFIED", "FACTORY_MISMATCH", "UNKNOWN"])
@@ -81,13 +86,14 @@ def lifecycle(monkeypatch):
             "local_evidence": {"completed": True,
                 "lp_security": {"lp_protected_fraction": 1.0},
                 "exit_feasibility": {
+                    **context(state["prices"][-1]),
                     "pair": POOL, "spot_price_series_usd": list(state["prices"]),
                     "runtime_spot_price_series_usd": list(state["prices"]),
                     "quote_reserve_usd": 50000, "latest_reserve_change_fraction": 0,
                     "route_friction_fraction": 0, "gas_price_wei": 0,
                     "wbnb_usd_estimate": 600}}}}
     monkeypatch.setattr(engine, "sellability_analyze", sellability)
-    monkeypatch.setattr(engine, "_runtime_phase15h_buy_evidence", lambda **k: {"buy": {"status": "SUCCESS"}})
+    monkeypatch.setattr(engine, "_runtime_phase15h_buy_evidence", successful_buy)
     monkeypatch.setattr("app.risk.paper_position_sizing._empirical_outcome_calibration", lambda **k: {
         "gap_multiplier": 1.0, "cost_uncertainty_fraction": 0.0,
         "account_risk_budget_fraction": .01, "gap_samples": 3,
@@ -170,7 +176,9 @@ def test_partial_sales_and_final_residual_reconcile_in_sqlite(lifecycle):
     manager = PaperManager.__new__(PaperManager)
     manager.db = db
     manager._observe_learning_outcome = lambda *a, **k: None
-    manager._runtime_phase15h_sell_evidence = lambda *a, **k: {"sell": {"status": "SUCCESS"}}
+    final_proceeds = exit_net_proceeds(residual["token_amount"], final_price, plan["cost_model"])
+    manager._runtime_phase15h_sell_evidence = lambda *a, **k: {"sell": {
+        "status": "SUCCESS", "paper_fill": {"state": "BOUNDED", "net_proceeds_usdt": final_proceeds}}}
     manager._close_math(residual, final_price, 1.3, 1.06, plan, "NORMAL_STOP_LOSS")
     closed = dict(db.conn.execute("select * from paper_trades where id=?", (initial["id"],)).fetchone())
     assert closed["status"] == "CLOSED"

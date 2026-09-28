@@ -50,7 +50,7 @@ class FakeDB:
         return True
 
 
-@pytest.mark.parametrize("tp1_done,stage,action", [(0, "TP1", "PARTIAL_TP1"), (1, "TP2", "PARTIAL_TP2")])
+@pytest.mark.parametrize("tp1_done,stage,action", [(0, "TP1", "PARTIAL_TP1")])
 def test_partial_and_final_sell_proofs_survive_database_reopen(tmp_path, tp1_done, stage, action):
     path = tmp_path / "paper.db"
     db = object.__new__(PaperDatabase)
@@ -235,7 +235,7 @@ def test_phase15h_sell_evidence_preserves_trade_type_stage_and_notional(
     assert "stage=NORMAL_TP1" in caplog.text
 
 
-def test_normal_tp1_and_tp2_bind_sell_once_after_realization():
+def test_normal_tp1_binds_sell_and_runner_preserves_remaining_inventory():
     for position, expected_action, expected_stage in (
         (
             _normal_position(),
@@ -247,8 +247,8 @@ def test_normal_tp1_and_tp2_bind_sell_once_after_realization():
                 tp1_done=1,
                 tp2_done=0,
             ),
-            "PARTIAL_TP2",
-            "NORMAL_TP2",
+            "HOLD",
+            None,
         ),
     ):
         manager = _manager()
@@ -275,6 +275,11 @@ def test_normal_tp1_and_tp2_bind_sell_once_after_realization():
         )
 
         assert result["data"]["action"] == expected_action
+        if expected_stage is None:
+            assert calls == []
+            assert manager.db.partial_calls == []
+            assert position["runner_active"] == 1
+            continue
         assert len(calls) == 1
         assert calls[0]["stage"] == expected_stage
         assert 0 < float(calls[0]["exit_fraction"]) < 1
@@ -429,15 +434,9 @@ def test_tp1_realization_is_not_applied_when_phase15h_sell_is_not_proven():
     assert manager.db.partial_calls == []
 
 
-def test_tp2_realization_is_not_applied_when_phase15h_sell_is_not_proven():
+def test_runner_does_not_attempt_a_tp2_sell():
     manager = _manager()
-    manager._runtime_phase15h_sell_evidence = lambda **_kwargs: {
-        "sell": {
-            "status": "REVERT",
-            "trade_type": "NORMAL",
-            "exit_stage": "NORMAL_TP2",
-        }
-    }
+    manager._runtime_phase15h_sell_evidence = lambda **_kwargs: pytest.fail("runner must not sell TP2")
 
     result = manager._process_normal_math_position(
         _normal_position(tp1_done=1, tp2_done=0),
@@ -447,8 +446,6 @@ def test_tp2_realization_is_not_applied_when_phase15h_sell_is_not_proven():
         _plan(),
     )
 
-    assert result["data"]["action"] == "SKIP"
+    assert result["data"]["action"] == "HOLD"
     assert result["data"]["status"] == "OPEN"
-    assert result["data"]["reason"] == "PHASE15H_SELL_NOT_PROVEN"
-    assert result["data"]["phase15h_execution"]["sell"]["status"] == "REVERT"
     assert manager.db.partial_calls == []

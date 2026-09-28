@@ -1204,7 +1204,7 @@ def _zero_result(
     }
 
 
-def _bind_final_trade_plan(plan, amount, available):
+def _bind_final_trade_plan(plan, amount, available, *, execution_token_amount=None):
     if not isinstance(plan, dict):
         return {
             "token_amount": 0.0,
@@ -1255,6 +1255,8 @@ def _bind_final_trade_plan(plan, amount, available):
         if entry_price is not None
         else 0.0
     )
+    if execution_token_amount is not None:
+        token_amount = _positive(execution_token_amount) or 0.0
 
     initial_net_risk = (
         initial_net_risk_usdt(

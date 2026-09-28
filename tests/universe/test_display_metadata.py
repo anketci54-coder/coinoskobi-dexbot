@@ -36,8 +36,11 @@ def test_persist_snapshot_display_metadata_and_overlay_panel(tmp_path):
         "available": True,
         "rows": [
             {
+                "chain": "bsc",
+                "dex": "pancakeswap_v2",
                 "pool": "0x0000000000000000000000000000000000000001",
                 "token0": "0x0000000000000000000000000000000000000002",
+                "state": "WARM",
                 "display_name": None,
             }
         ],

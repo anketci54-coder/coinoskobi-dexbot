@@ -76,8 +76,8 @@ def test_universe_panel_projection_is_real_and_read_only(tmp_path):
 
     assert payload["available"] is True
     assert payload["source"] == "UNIVERSE_CACHE_READ_ONLY"
-    assert payload["counts"] == {"COLD": 1, "WARM": 1, "HOT": 1}
-    assert payload["total_count"] == 3
+    assert payload["counts"] == {"COLD": 0, "WARM": 1, "HOT": 1}
+    assert payload["total_count"] == 2
     # COLD operator list intentionally permits USDT pairs only.
     assert payload["visible_count"] == 2
     assert payload["transition_scope"] == "RECENT_BOUNDED_SEISMIC_EVALUATIONS"

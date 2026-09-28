@@ -4,6 +4,7 @@ import sqlite3
 from collections import Counter
 
 from app.config.scanner import MIN_LIQUIDITY_USD
+from app.universe.display_metadata import TABLE as DISPLAY_METADATA_TABLE
 from pathlib import Path
 from typing import Any
 
@@ -17,7 +18,6 @@ MAX_TRANSITION_WINDOW = 5000
 COLD_QUOTE_TOKENS = {
     "0x55d398326f99059ff775485246999027b3197955",  # USDT
 }
-COLD_SCAN_MULTIPLIER = 5
 
 
 def _connect_readonly(path: str | Path) -> sqlite3.Connection:
@@ -100,6 +100,95 @@ def _recent_registry_candidates(
         """,
         tuple(params),
     ).fetchall()
+
+
+def _moving_usdt_cold_candidates(
+    connection: sqlite3.Connection,
+) -> list[sqlite3.Row]:
+    table_exists = connection.execute(
+        """
+        SELECT 1
+        FROM sqlite_master
+        WHERE type='table' AND name=?
+        """,
+        (DISPLAY_METADATA_TABLE,),
+    ).fetchone()
+    if table_exists is None:
+        return []
+
+    metadata_index = (
+        "INDEXED BY idx_universe_pool_display_quote"
+        if _has_index(
+            connection,
+            table=DISPLAY_METADATA_TABLE,
+            index="idx_universe_pool_display_quote",
+        )
+        else ""
+    )
+    registry_index = (
+        "INDEXED BY idx_universe_pool_dex"
+        if _has_index(
+            connection,
+            table="universe_pool_registry",
+            index="idx_universe_pool_dex",
+        )
+        else ""
+    )
+
+    try:
+        return connection.execute(
+            f"""
+            SELECT
+                r.chain,
+                r.dex,
+                r.pool,
+                r.token0,
+                r.token1,
+                r.market_state,
+                r.latest_liquidity_usd,
+                r.latest_volume_24h,
+                r.latest_price_usd,
+                r.latest_txns_5m,
+                r.latest_change_5m,
+                r.latest_snapshot_at,
+                r.state_changed_at
+            FROM {DISPLAY_METADATA_TABLE} AS m
+            {metadata_index}
+            CROSS JOIN universe_pool_registry AS r
+            {registry_index}
+              ON r.pool=m.pool
+             AND r.dex=m.dex
+            WHERE m.chain='bsc'
+              AND m.dex IN (
+                  'pancakeswap_v2',
+                  'pancakeswap_v3'
+              )
+              AND m.quote_symbol='USDT'
+              AND m.base_symbol NOT IN (
+                  '',
+                  'USDT',
+                  'WBNB'
+              )
+              AND r.chain='bsc'
+              AND r.market_state='COLD'
+              AND r.latest_snapshot_at IS NOT NULL
+              AND COALESCE(
+                  r.latest_liquidity_usd,
+                  0
+              ) >= ?
+              AND (
+                  COALESCE(r.latest_change_5m,0)<>0
+                  OR COALESCE(r.latest_txns_5m,0)>0
+              )
+            ORDER BY
+                COALESCE(r.latest_change_5m,0) DESC,
+                COALESCE(r.latest_liquidity_usd,0) DESC,
+                r.latest_snapshot_at DESC
+            """,
+            (float(MIN_LIQUIDITY_USD),),
+        ).fetchall()
+    except sqlite3.Error:
+        return []
 
 
 def _latest_seismic(
@@ -221,47 +310,64 @@ def universe_panel_payload(
 
     try:
         connection = _connect_readonly(path)
-        use_snapshot_index = _has_index(
-            connection,
-            table="universe_pool_registry",
-            index="idx_universe_snapshot_at",
-        )
+        use_snapshot_index = False
 
+        state_index = (
+            "INDEXED BY idx_universe_state_due"
+            if _has_index(
+                connection,
+                table="universe_pool_registry",
+                index="idx_universe_state_due",
+            )
+            else ""
+        )
         counts = {
-            str(row["market_state"]): int(row["n"])
-            for row in connection.execute(
-                """
-                SELECT market_state, COUNT(*) AS n
-                FROM universe_pool_registry
-                WHERE market_state IN ('COLD','WARM','HOT')
-                GROUP BY market_state
-                """
-            ).fetchall()
+            "COLD": 0,
+            "WARM": int(
+                connection.execute(
+                    f"""
+                    SELECT COUNT(*)
+                    FROM universe_pool_registry
+                    {state_index}
+                    WHERE market_state='WARM'
+                    """
+                ).fetchone()[0]
+            ),
+            "HOT": int(
+                connection.execute(
+                    f"""
+                    SELECT COUNT(*)
+                    FROM universe_pool_registry
+                    {state_index}
+                    WHERE market_state='HOT'
+                    """
+                ).fetchone()[0]
+            ),
         }
 
-        # HOT/WARM is the operator's actionable radar and must be complete.
-        # COLD remains bounded so the panel never walks the multi-million-row
-        # cold universe just to render a screen.
+        # HOT/WARM remains complete. COLD is no longer sampled from the
+        # multi-million-row registry; use the indexed BSC/Pancake/USDT moving
+        # read path so dormant pools never enter the operator radar.
         candidates = []
-        for state in ("HOT", "WARM", "COLD"):
-            if state in {"HOT", "WARM"}:
-                state_limit = max(
-                    1,
-                    int(counts.get(state, 0)),
-                )
-            else:
-                state_limit = (
-                    bounded_limit
-                    * COLD_SCAN_MULTIPLIER
-                )
+        for state in ("HOT", "WARM"):
             candidates.extend(
                 _recent_registry_candidates(
                     connection,
                     state=state,
-                    limit=state_limit,
+                    limit=max(
+                        1,
+                        int(counts.get(state, 0)),
+                    ),
                     use_snapshot_index=use_snapshot_index,
                 )
             )
+        moving_cold = (
+            _moving_usdt_cold_candidates(
+                connection,
+            )
+        )
+        counts["COLD"] = len(moving_cold)
+        candidates.extend(moving_cold)
 
         rows = candidates
         display_names = _gecko_display_names(
@@ -288,12 +394,14 @@ def universe_panel_payload(
                 row.get("pool") or ""
             ).strip().lower()
 
-            seismic_row = _latest_seismic(
-                connection,
-                chain=str(row.get("chain") or ""),
-                dex=str(row.get("dex") or ""),
-                pool=str(row.get("pool") or ""),
-            )
+            seismic_row = None
+            if state in {"HOT", "WARM"}:
+                seismic_row = _latest_seismic(
+                    connection,
+                    chain=str(row.get("chain") or ""),
+                    dex=str(row.get("dex") or ""),
+                    pool=str(row.get("pool") or ""),
+                )
 
             seismic = None
             if seismic_row is not None:
@@ -370,7 +478,7 @@ def universe_panel_payload(
             return (
                 1,
                 0,
-                -liquidity_ratio,
+                -change_5m,
                 -liquidity_usd,
             )
 
@@ -387,7 +495,7 @@ def universe_panel_payload(
             for row in result_rows
             if str(row.get("state") or "").upper()
             == "COLD"
-        ][:bounded_limit]
+        ]
 
         result_rows = active_rows + cold_rows
 

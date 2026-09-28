@@ -45,6 +45,18 @@ def ensure_display_metadata_schema(connection):
             ON {TABLE}(pool)
             """
         )
+        connection.execute(
+            f"""
+            CREATE INDEX IF NOT EXISTS idx_universe_pool_display_quote
+            ON {TABLE}(
+                chain,
+                dex,
+                quote_symbol,
+                base_symbol,
+                pool
+            )
+            """
+        )
 
 
 def persist_snapshot_display_metadata(connection, snapshots):

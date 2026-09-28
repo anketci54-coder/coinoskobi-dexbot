@@ -32,6 +32,7 @@ class V2RPC:
         self.token0, self.token1 = (USDT.lower(), self.token) if reverse else (self.token, USDT.lower())
         self.token_decimals, self.usdt_decimals = token_decimals, usdt_decimals
         self.price = Decimal(str(price))
+        self.token_raw = 10**24
         self.calls = []
         self.fail = False
         self.zero = False
@@ -55,7 +56,7 @@ class V2RPC:
             return SimpleNamespace(call=read)
 
         def reserves():
-            token_raw = 10**24
+            token_raw = rpc.token_raw
             usdt_raw = int(Decimal(token_raw) * rpc.price * Decimal(10)**(rpc.usdt_decimals-rpc.token_decimals))
             values = (token_raw, usdt_raw if not rpc.zero else 0)
             return (*((values[::-1]) if rpc.token0 == USDT.lower() else values), 123)

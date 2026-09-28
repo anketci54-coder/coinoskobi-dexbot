@@ -241,3 +241,43 @@ def test_http_evidence_older_than_freshness_window_still_fails_closed():
         "state": "PRICE_UNVERIFIED",
         "reason": "INVALID_PROVENANCE_OR_PRICE",
     }
+
+
+def test_catastrophic_entry_reserve_collapse_rejects_dust_ratio_price():
+    rpc = V2RPC(1)
+    rpc.token_raw = 10**9
+    pos = position(
+        opening_context_json=json.dumps({
+            "mathematical_trade_plan": {
+                "capital": {
+                    "observed_min_quote_reserve_usd": 100_000.0,
+                }
+            }
+        })
+    )
+
+    result = PriceIntegrityGate(rpc).evaluate(pos, evidence(1))
+
+    assert result["state"] == "PRICE_UNVERIFIED"
+    assert result["reason"] == "CATASTROPHIC_RESERVE_COLLAPSE"
+    collapse = result["reserve_collapse"]
+    assert collapse["catastrophic_reserve_collapse"] is True
+    assert collapse["withdrawal_fraction"] >= 0.99
+
+
+def test_non_catastrophic_entry_reserve_change_preserves_price_verification():
+    rpc = V2RPC(1)
+    pos = position(
+        opening_context_json=json.dumps({
+            "mathematical_trade_plan": {
+                "capital": {
+                    "observed_min_quote_reserve_usd": 100_000.0,
+                }
+            }
+        })
+    )
+
+    result = PriceIntegrityGate(rpc).evaluate(pos, evidence(1))
+
+    assert result["state"] == "VERIFIED_EXTREME"
+    assert result["reason"] == "PAPER_USDT_USD_V1"

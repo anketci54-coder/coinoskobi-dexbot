@@ -11,6 +11,7 @@ from app.chains.bsc import w3
 from app.config.contracts import USDT
 from app.dex.pair_membership import verify_pair_membership
 from app.risk.exit_feasibility import PAIR_ABI, ERC20_ABI
+from app.risk.reserve_collapse import classify_reserve_collapse
 from web3 import Web3
 
 EXTREME_RATIO = Decimal('2.0')
@@ -141,6 +142,39 @@ class PriceIntegrityGate:
             # Multiplication avoids rounding error at the inclusive boundary.
             if max(price, chain_price) > min(price, chain_price) * MAX_DIVERGENCE:
                 return verdict('PRICE_CONFLICT', 'ONCHAIN_PRICE_DISAGREEMENT')
+
+            # A drained V2 pool can leave tiny dust reserves whose ratio is
+            # mathematically valid but economically unusable as mark-to-market
+            # price. Compare the current pinned USDT reserve with the durable
+            # reserve evidence captured at entry and fail closed on the
+            # existing catastrophic-collapse definition.
+            capital = (
+                (context(position).get('mathematical_trade_plan') or {})
+                .get('capital') or {}
+            )
+            entry_quote_reserve = number(
+                capital.get('observed_min_quote_reserve_usd')
+                or capital.get('safe_quote_reserve_usd')
+                or capital.get('verified_quote_reserve_usd')
+            )
+            current_quote_reserve = number(
+                proof.get('quote_reserve')
+            )
+            if (
+                entry_quote_reserve is not None
+                and current_quote_reserve is not None
+            ):
+                collapse = classify_reserve_collapse(
+                    previous_quote_reserve=float(entry_quote_reserve),
+                    current_quote_reserve=float(current_quote_reserve),
+                )
+                if collapse.get('catastrophic_reserve_collapse'):
+                    return verdict(
+                        'PRICE_UNVERIFIED',
+                        'CATASTROPHIC_RESERVE_COLLAPSE',
+                        reserve_collapse=collapse,
+                    )
+
             result.update(proof)
         # RPC verification can consume the remaining observation lifetime.
         # Both admission and runtime must reject before accepting or mutating.
@@ -182,7 +216,12 @@ class PriceIntegrityGate:
         with localcontext() as ctx:
             ctx.prec = 100
             price = Decimal(r_usdt) / Decimal(r_token) * Decimal(10) ** (decimals[0] - decimals[1])
+        quote_reserve = (
+            Decimal(r_usdt)
+            / (Decimal(10) ** decimals[1])
+        )
         return verdict('VERIFIED', 'HTTP_PINNED_V2_RESERVES', chain_price=price,
+                       quote_reserve=quote_reserve,
                        token0=token0, token1=token1, block_hash=block_id,
                        block_number=block['number'], ratio_raw=r_usdt / r_token)
 

@@ -131,6 +131,24 @@ def enrich_universe_display_names(payload, cache_db):
         enriched.append(row)
 
     payload["rows"] = enriched
+
+    filtered_counts = {
+        "COLD": 0,
+        "WARM": 0,
+        "HOT": 0,
+    }
+    for row in enriched:
+        state = str(
+            row.get("state") or ""
+        ).upper()
+        if state in filtered_counts:
+            filtered_counts[state] += 1
+
+    payload["counts"] = filtered_counts
+    payload["total_count"] = sum(
+        filtered_counts.values()
+    )
+    payload["visible_count"] = len(enriched)
     payload["display_name_source"] = "UNIVERSE_POOL_DISPLAY_METADATA_V1"
     payload["display_name_matches"] = metadata_matches
     payload["allowed_quote_symbols"] = sorted(ALLOWED_QUOTES)

@@ -10,6 +10,7 @@ from app.paper.database import PaperDatabase
 from app.paper.run_boundary import start_paper_run
 from app.paper.schema import ensure_paper_schema
 from app.risk.paper_position_sizing import paper_available_capital_usdt
+from tests.paper_calibration_fixtures import TOKEN, POOL, opening
 
 
 @pytest.fixture
@@ -134,3 +135,104 @@ def test_boundary_cannot_pass_a_concurrent_entry(database):
         boundary.join(3)
     assert not entry.is_alive() and not boundary.is_alive()
     assert results == ["PAPER_RUN_BOUNDARY_HAS_OPEN_POSITIONS"]
+
+def test_explicit_quarantine_preserves_legacy_open_economics_and_starts_clean_run(database):
+    path, db = database
+    db.execute(
+        """INSERT INTO paper_trades (
+            token, pool, status, paper_account_version, entry_price,
+            entry_amount_usdt, token_amount, remaining_cost_basis_usdt,
+            realized_pnl_usdt, opening_context_json
+        ) VALUES ('legacy', 'legacy-pool', 'OPEN', 'PAPER_10K_V2', 2,
+                  321, 123, 111, 7, '{}')"""
+    )
+    db.commit()
+    position_id = db.execute(
+        "SELECT id FROM paper_trades WHERE token='legacy'"
+    ).fetchone()[0]
+    economics_before = db.execute(
+        """SELECT entry_price, entry_amount_usdt, token_amount,
+                  remaining_cost_basis_usdt, realized_pnl_usdt
+           FROM paper_trades WHERE id=?""",
+        (position_id,),
+    ).fetchone()
+
+    preview = start_paper_run(
+        path, "clean-quarantine", quarantine_unproven_open=True
+    )
+    assert preview["state"] == "PREVIEW"
+    assert preview["quarantine"]["position_ids"] == [position_id]
+    assert db.execute(
+        "SELECT status FROM paper_trades WHERE id=?", (position_id,)
+    ).fetchone()[0] == "OPEN"
+    assert db.execute(
+        "SELECT count(*) FROM paper_position_quarantines"
+    ).fetchone()[0] == 0
+
+    result = start_paper_run(
+        path, "clean-quarantine", apply=True, quarantine_unproven_open=True
+    )
+    assert result["state"] == "CREATED"
+    assert result["quarantine"]["position_ids"] == [position_id]
+    assert result["run"]["start_trade_id"] == position_id
+    assert db.execute(
+        "SELECT status FROM paper_trades WHERE id=?", (position_id,)
+    ).fetchone()[0] == "QUARANTINED"
+    assert db.execute(
+        """SELECT entry_price, entry_amount_usdt, token_amount,
+                  remaining_cost_basis_usdt, realized_pnl_usdt
+           FROM paper_trades WHERE id=?""",
+        (position_id,),
+    ).fetchone() == economics_before
+    audit = db.execute(
+        """SELECT previous_status, reason, previous_run_id, metadata_json
+           FROM paper_position_quarantines WHERE position_id=?""",
+        (position_id,),
+    ).fetchone()
+    assert audit["previous_status"] == "OPEN"
+    assert audit["reason"] == "UNPROVEN_LEGACY_OPEN_AT_CORRECTED_RUN_BOUNDARY"
+    assert json.loads(audit["metadata_json"])["economic_fields_rewritten"] is False
+    assert db.execute(
+        "SELECT count(*) FROM paper_trades WHERE status='OPEN'"
+    ).fetchone()[0] == 0
+    assert paper_available_capital_usdt(db) == 10000
+
+
+def test_quarantine_refuses_any_current_model_open_position(database):
+    path, db = database
+    db.execute(
+        """INSERT INTO paper_trades (
+            token, pool, status, paper_account_version, entry_price,
+            entry_amount_usdt, opening_context_json
+        ) VALUES (?, ?, 'OPEN', 'PAPER_10K_V2', 1, 100, ?)""",
+        (TOKEN, POOL, json.dumps(opening(1.0))),
+    )
+    db.execute(
+        """INSERT INTO paper_trades (
+            token, pool, status, paper_account_version, entry_price,
+            entry_amount_usdt, opening_context_json
+        ) VALUES ('legacy', 'legacy-pool', 'OPEN', 'PAPER_10K_V2', 1, 50, '{}')"""
+    )
+    db.commit()
+    before = db.execute(
+        "SELECT id, status, entry_amount_usdt FROM paper_trades ORDER BY id"
+    ).fetchall()
+
+    for apply in (False, True):
+        with pytest.raises(
+            ValueError, match="HAS_CURRENT_MODEL_OPEN_POSITIONS"
+        ):
+            start_paper_run(
+                path,
+                "must-refuse",
+                apply=apply,
+                quarantine_unproven_open=True,
+            )
+
+    assert db.execute(
+        "SELECT id, status, entry_amount_usdt FROM paper_trades ORDER BY id"
+    ).fetchall() == before
+    assert db.execute(
+        "SELECT count(*) FROM paper_position_quarantines"
+    ).fetchone()[0] == 0
+    assert db.execute("SELECT count(*) FROM paper_runs").fetchone()[0] == 0

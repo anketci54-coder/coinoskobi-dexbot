@@ -76,7 +76,7 @@
 
   function accountingSummary(rows,dashboardSummary={}){
     const source=Array.isArray(rows)?rows:[];
-    const openRows=source.filter(row=>String(row?.status||'OPEN').toUpperCase()!=='CLOSED');
+    const openRows=source.filter(row=>String(row?.status||'').toUpperCase()==='OPEN');
     const closedRows=source.filter(row=>String(row?.status||'').toUpperCase()==='CLOSED');
     const openInvestment=openRows.reduce((sum,row)=>sum+(n(row?.entry_amount_usdt??row?.amount_usdt)||0),0);
     const realizedNet=closedRows.reduce((sum,row)=>sum+(n(row?.net_pnl_usdt??row?.net_pnl)||0),0);

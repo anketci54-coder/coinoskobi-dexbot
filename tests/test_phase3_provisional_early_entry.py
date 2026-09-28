@@ -3,7 +3,7 @@ from app.pipeline.paper_admission import (
 )
 
 
-def test_unknown_without_local_evidence_stays_watch():
+def test_unknown_without_local_evidence_remains_paper_observation():
     result = (
         paper_admission_decision(
             {
@@ -32,10 +32,10 @@ def test_unknown_without_local_evidence_stays_watch():
         )
     )
 
-    assert result == "WATCH"
+    assert result == "PAPER_BUY"
 
 
-def test_unknown_with_local_evidence_stays_watch():
+def test_unknown_with_local_evidence_remains_paper_observation():
     result = paper_admission_decision(
         {"decision": "PAPER_BUY"},
         {"decision": "PAPER_BUY_CANDIDATE"},
@@ -45,7 +45,7 @@ def test_unknown_with_local_evidence_stays_watch():
         },
         sellability_status="SELLABILITY_UNKNOWN",
     )
-    assert result == "WATCH"
+    assert result == "PAPER_BUY"
 
 
 

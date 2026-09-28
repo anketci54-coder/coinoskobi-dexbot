@@ -10,7 +10,7 @@ def test_auto_manual_selector_present():
 
     assert 'data-control-mode="AUTO"' in html
     assert 'data-control-mode="MANUAL"' in html
-    assert "dex-terminal.js?v=4" in html
+    assert "dex-terminal.js?v=5" in html
 
 
 def test_selector_reads_and_writes_control_mode_api():

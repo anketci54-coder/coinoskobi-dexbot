@@ -75,6 +75,21 @@ def panel_db(tmp_path, monkeypatch):
             "paper_account_version": "PAPER_10K_V2",
             "net_pnl_usdt": 0.0,
         },
+        {
+            "token": "0xlegacyquarantine",
+            "symbol": "LEGACY_QUARANTINE",
+            "status": "QUARANTINED",
+            "entry_price": 1.0,
+            "current_price": 0.5,
+            "highest_price": 1.1,
+            "lowest_price": 0.4,
+            "token_amount": 100.0,
+            "net_pnl": -50.0,
+            "roi": -0.5,
+            "close_reason": None,
+            "paper_account_version": "PAPER_10K_V2",
+            "net_pnl_usdt": -50.0,
+        },
     ]
 
     for row in rows:
@@ -104,8 +119,8 @@ def panel_db(tmp_path, monkeypatch):
 def test_status_counts_only_paper_10k_generation(panel_db):
     result = panel_module.status()
 
-    assert result["total"] == 3
-    assert result["new_generation"] == 3
+    assert result["total"] == 4
+    assert result["new_generation"] == 4
     assert result["open_positions"] == 1
     assert result["closed_positions"] == 2
 

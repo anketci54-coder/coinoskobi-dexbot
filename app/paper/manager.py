@@ -354,6 +354,8 @@ class PaperManager:
             ).timestamp()
         ) + 300
 
+        prefer_fee_on_transfer = sell_tax > 0
+
         try:
             sell = simulate_paper_sell(
                 token=token,
@@ -362,10 +364,53 @@ class PaperManager:
                 block_number=block_number,
                 deadline=deadline,
                 seed_token_raw=seed_token_raw,
-                fee_on_transfer=(
-                    sell_tax > 0
-                ),
+                fee_on_transfer=prefer_fee_on_transfer,
             )
+
+            # Tax metadata is often unavailable for new/obscure tokens. A
+            # standard Pancake V2 sell can therefore fail with Pancake: K even
+            # though the same pinned block/amount is sellable through the
+            # router's fee-on-transfer supporting path. Prove that alternate
+            # path on the local fork before treating the position as unsellable.
+            if (
+                not prefer_fee_on_transfer
+                and isinstance(sell, dict)
+                and str(sell.get("status") or "").upper() == "REVERT"
+            ):
+                standard_sell = dict(sell)
+                fot_sell = simulate_paper_sell(
+                    token=token,
+                    pool=pool,
+                    quote_token=USDT,
+                    block_number=block_number,
+                    deadline=deadline,
+                    seed_token_raw=seed_token_raw,
+                    fee_on_transfer=True,
+                )
+                if (
+                    isinstance(fot_sell, dict)
+                    and str(fot_sell.get("status") or "").upper() == "SUCCESS"
+                ):
+                    sell = dict(fot_sell)
+                    sell["sell_route_mode"] = (
+                        "FOT_FALLBACK_AFTER_STANDARD_REVERT"
+                    )
+                    sell["standard_route_revert"] = standard_sell
+                else:
+                    sell = standard_sell
+                    sell["sell_route_mode"] = (
+                        "STANDARD_REVERT_FOT_NOT_PROVEN"
+                    )
+                    sell["fot_fallback_attempt"] = dict(
+                        fot_sell or {}
+                    )
+            elif isinstance(sell, dict):
+                sell = dict(sell)
+                sell["sell_route_mode"] = (
+                    "FOT_METADATA"
+                    if prefer_fee_on_transfer
+                    else "STANDARD"
+                )
         except Exception:
             logger.exception(
                 (

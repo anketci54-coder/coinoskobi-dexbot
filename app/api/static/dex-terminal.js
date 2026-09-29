@@ -277,6 +277,15 @@
 
             <td>${esc(tp3State)}</td>
 
+            <td>${(()=>{
+              const econ=row.execution_economics_v4||{};
+              if(econ.admission_enforced!==true) return 'LEGACY';
+              const state=String(econ.entry_state||'UNKNOWN').toUpperCase();
+              const gas=money(econ.entry_gas_usd);
+              const drift=n(econ.entry_adverse_drift_bps);
+              return `${esc(state)}<br><small>GAS ${gas}${drift!==null?` · DRIFT ${drift.toFixed(1)} bps`:''}</small>`;
+            })()}</td>
+
             <td class="${
               valuationUnverified
                 ? ''

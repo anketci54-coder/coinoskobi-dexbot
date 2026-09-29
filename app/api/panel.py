@@ -522,7 +522,14 @@ def paper_rows(
             position_size_pct,
             sizing_reason,
             gross_pnl_usdt,
-            net_pnl_usdt
+            net_pnl_usdt,
+            initial_token_amount,
+            remaining_cost_basis_usdt,
+            realized_gross_proceeds_usdt,
+            realized_proceeds_usdt,
+            realized_pnl_usdt,
+            tp1_done,
+            runner_active
         FROM paper_trades
         {where_clause}
         ORDER BY id DESC
@@ -544,14 +551,22 @@ def paper_rows(
             roi * 100.0
         )
 
-        item["entry_evidence"] = (
-            extract_entry_evidence(
-                item.pop(
-                    "opening_context_json",
-                    None,
-                )
-            )
+        opening_context = parse_json_object(
+            item.pop("opening_context_json", None)
         )
+        item["entry_evidence"] = extract_entry_evidence(opening_context)
+        economics = parse_json_object(
+            opening_context.get("execution_economics_v4")
+        )
+        buy_fill = parse_json_object(economics.get("paper_buy_fill"))
+        item["execution_economics_v4"] = {
+            "admission_enforced": economics.get("admission_enforced"),
+            "entry_state": buy_fill.get("state"),
+            "entry_gas_usd": buy_fill.get("gas_usd"),
+            "entry_output_floor_amount": buy_fill.get("output_floor_amount"),
+            "entry_baseline_output_amount": buy_fill.get("baseline_output_amount"),
+            "entry_adverse_drift_bps": buy_fill.get("adverse_drift_bps"),
+        }
 
         result.append(item)
 

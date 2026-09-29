@@ -302,19 +302,21 @@ def test_run_cycle_continues_after_single_token_exception():
     }
 
     assert len(called) == 2
-    assert engine.manager.called is True
+    assert engine.manager.called is False
 
 
-def test_run_cycle_survives_manager_exception():
+def test_run_cycle_does_not_mutate_open_position_lifecycle():
     engine = PipelineEngine.__new__(PipelineEngine)
 
     engine.cache = FakeCache([])
     engine.filter = FakeFilter()
     engine.manager = FakeManager(should_fail=True)
 
-    engine.run_cycle()
+    result = engine.run_cycle()
 
-    assert engine.manager.called is True
+    assert engine.manager.called is False
+    assert result["paper_manager_count"] == 0
+    assert result["paper_manager_error"] is None
 
 
 def test_honeypot_hard_block_overrides_high_strategy_score(

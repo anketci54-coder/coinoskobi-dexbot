@@ -5241,7 +5241,7 @@ class PipelineEngine:
         logger.info(
             (
                 "Cache=%s Active=%s Deferred=%s "
-                "Dropped=%s Warm=%s Partial=%s Cold=%s "
+                "Dropped=%s CacheWarm=%s CachePartial=%s CacheCold=%s "
                 "PendingBefore=%s "
                 "Duplicates=%s CooldownSkipped=%s"
             ),
@@ -5596,28 +5596,12 @@ class PipelineEngine:
         if self._shutdown_requested():
             return self._stopped_cycle_status("ANALYSIS_DRAINED")
 
+        # Open-position lifecycle is owned by Runner's canonical paper jobs:
+        # WSS-driven paper_hot_manager plus the 10s paper_manager fallback.
+        # Scanner cycles only produce/analyze candidates; they must not mutate
+        # or re-evaluate open PAPER positions as a side effect.
         manager_results = []
         manager_error = None
-
-        if not self.work_scheduler.is_stopping():
-            try:
-                # Scanner cycle must use the same position
-                # lifecycle entrypoint as the scheduled
-                # paper-manager job. This guarantees that
-                # bounded open-position prices are refreshed
-                # before TP/SL/trailing evaluation.
-                manager_results = (
-                    self.process_positions()
-                    or []
-                )
-            except Exception as exc:
-                manager_error = (
-                    f"{type(exc).__name__}: {exc}"
-                )
-
-                logger.exception(
-                    "Paper manager exception"
-                )
 
         paper_counts = {}
 

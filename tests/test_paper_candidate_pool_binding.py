@@ -1,4 +1,5 @@
 """Candidate identity must survive discovery, revisit and admission."""
+import json
 from types import SimpleNamespace
 from decimal import Decimal
 import sqlite3
@@ -229,6 +230,37 @@ def test_v4_admission_persists_viable_exit_proof_before_insert(lifecycle):
     assert result["action"] == "PAPER_BUY"
     opening = __import__("json").loads(db.open_positions()[0]["opening_context_json"])
     economics = opening["execution_economics_v4"]
+    assert economics["admission_full_exit_fill"]["state"] == "BOUNDED"
+    assert economics["economically_viable_exit"] is True
+    assert 0.0 < economics["admission_tp1_required_fraction"] < 1.0
+
+
+def test_v4_admission_rejects_economically_unviable_normal_position(lifecycle, monkeypatch):
+    from app.strategy.mathematical_trade_plan import tp1_required_fraction as real_tp1
+    job, state, row, db = lifecycle
+    state["prices"] = [1, 1.04, 1.06]
+    monkeypatch.setattr(engine, "tp1_required_fraction", real_tp1)
+    def expensive_sell(*, pos, current_price, **kwargs):
+        tokens = float(pos.get("token_amount") or 0.0)
+        gross = tokens * float(current_price) * 0.995
+        gas = gross * 0.9
+        return {"sell": {"status": "SUCCESS", "paper_fill": {
+            "state": "BOUNDED", "output_floor_amount": gross,
+            "gas_usd": gas, "net_proceeds_usdt": gross - gas,
+        }}}
+    job.pipeline.manager._runtime_phase15h_sell_evidence = expensive_sell
+    result = job._process(row)["data"]["paper"]
+    assert result["action"] == "SKIP"
+    assert result["reason"] == "POSITION_TOO_SMALL_FOR_EXECUTION_ECONOMICS"
+    assert db.open_positions() == []
+
+
+def test_v4_admission_persists_bounded_exit_and_viable_tp1(lifecycle):
+    job, state, row, db = lifecycle
+    state["prices"] = [1, 1.04, 1.06]
+    result = job._process(row)["data"]["paper"]
+    assert result["action"] == "PAPER_BUY"
+    economics = json.loads(db.open_positions()[0]["opening_context_json"])["execution_economics_v4"]
     assert economics["admission_full_exit_fill"]["state"] == "BOUNDED"
     assert economics["economically_viable_exit"] is True
     assert 0.0 < economics["admission_tp1_required_fraction"] < 1.0

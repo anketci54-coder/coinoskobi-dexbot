@@ -54,7 +54,7 @@ def test_history_kpis_are_derived_from_complete_ledger():
     assert "function accountingSummary(rows,dashboardSummary={})" in js
     assert "const openRows=source.filter" in js
     assert "toUpperCase()==='OPEN'" in js
-    assert "!=='CLOSED'" not in js
+    assert "!==\'CLOSED\'" not in js
     assert "const closedRows=source.filter" in js
     assert "row?.entry_amount_usdt??row?.amount_usdt" in js
     assert "row?.net_pnl_usdt??row?.net_pnl" in js

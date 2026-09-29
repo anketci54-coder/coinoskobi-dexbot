@@ -281,9 +281,12 @@
               const econ=row.execution_economics_v4||{};
               if(econ.admission_enforced!==true) return 'LEGACY';
               const state=String(econ.entry_state||'UNKNOWN').toUpperCase();
+              const exitState=String(econ.exit_state||'UNKNOWN').toUpperCase();
               const gas=money(econ.entry_gas_usd);
+              const exitGas=money(econ.exit_gas_usd);
               const drift=n(econ.entry_adverse_drift_bps);
-              return `${esc(state)}<br><small>GAS ${gas}${drift!==null?` · DRIFT ${drift.toFixed(1)} bps`:''}</small>`;
+              const viable=econ.economically_viable_exit===true?'EXIT OK':(econ.economically_viable_exit===false?'EXIT BLOCK':'EXIT ?');
+              return `${esc(state)} · ${esc(viable)}<br><small>BUY GAS ${gas} · SELL ${esc(exitState)} / ${exitGas}${drift!==null?` · DRIFT ${drift.toFixed(1)} bps`:''}</small>`;
             })()}</td>
 
             <td class="${

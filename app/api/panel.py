@@ -559,6 +559,7 @@ def paper_rows(
             opening_context.get("execution_economics_v4")
         )
         buy_fill = parse_json_object(economics.get("paper_buy_fill"))
+        exit_fill = parse_json_object(economics.get("admission_full_exit_fill"))
         item["execution_economics_v4"] = {
             "admission_enforced": economics.get("admission_enforced"),
             "entry_state": buy_fill.get("state"),
@@ -566,6 +567,11 @@ def paper_rows(
             "entry_output_floor_amount": buy_fill.get("output_floor_amount"),
             "entry_baseline_output_amount": buy_fill.get("baseline_output_amount"),
             "entry_adverse_drift_bps": buy_fill.get("adverse_drift_bps"),
+            "exit_state": exit_fill.get("state"),
+            "exit_gas_usd": exit_fill.get("gas_usd"),
+            "exit_net_proceeds_usdt": exit_fill.get("net_proceeds_usdt"),
+            "tp1_required_fraction": economics.get("admission_tp1_required_fraction"),
+            "economically_viable_exit": economics.get("economically_viable_exit"),
         }
 
         result.append(item)

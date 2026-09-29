@@ -59,6 +59,19 @@ def lifecycle(monkeypatch):
     db._db_lock = threading.RLock()
     ensure_paper_schema(db.conn)
     pipeline.paper_db = db
+
+    def bounded_admission_sell(*, pos, current_price, **kwargs):
+        tokens = float(pos.get("token_amount") or 0.0)
+        gross = tokens * float(current_price)
+        gas = 0.001
+        return {"sell": {"status": "SUCCESS", "paper_fill": {
+            "state": "BOUNDED", "output_floor_amount": gross,
+            "gas_usd": gas, "net_proceeds_usdt": gross - gas,
+        }}}
+
+    pipeline.manager = SimpleNamespace(
+        _runtime_phase15h_sell_evidence=bounded_admission_sell
+    )
     pipeline.observe_counterfactual_candidate = lambda *a, **k: None
     pipeline.cache = SimpleNamespace(all=lambda: [], history_for_pool=lambda *a, **k: [])
     pipeline._hybrid_exit_runtime_evidence = lambda *a, **k: {}
@@ -187,3 +200,35 @@ def test_partial_sales_and_final_residual_reconcile_in_sqlite(lifecycle):
     assert closed["net_pnl_usdt"] == pytest.approx(proceeds - initial["entry_amount_usdt"])
     assert closed["roi"] == pytest.approx(closed["net_pnl_usdt"] / initial["entry_amount_usdt"])
     assert closed["exit_price"] == final_price
+
+
+def test_v4_admission_rejects_position_without_viable_tp1_execution(lifecycle):
+    job, state, row, db = lifecycle
+    state["prices"] = [1, 1.04, 1.06]
+
+    def expensive_sell(*, pos, current_price, **kwargs):
+        tokens = float(pos.get("token_amount") or 0.0)
+        gross = tokens * float(current_price) * 0.995
+        gas = gross * 10.0
+        return {"sell": {"status": "SUCCESS", "paper_fill": {
+            "state": "BOUNDED", "output_floor_amount": gross,
+            "gas_usd": gas, "net_proceeds_usdt": gross - gas,
+        }}}
+
+    job.pipeline.manager._runtime_phase15h_sell_evidence = expensive_sell
+    result = job._process(row)["data"]["paper"]
+    assert result["action"] != "PAPER_BUY"
+    assert result["reason"] == "POSITION_TOO_SMALL_FOR_EXECUTION_ECONOMICS"
+    assert db.open_positions() == []
+
+
+def test_v4_admission_persists_viable_exit_proof_before_insert(lifecycle):
+    job, state, row, db = lifecycle
+    state["prices"] = [1, 1.04, 1.06]
+    result = job._process(row)["data"]["paper"]
+    assert result["action"] == "PAPER_BUY"
+    opening = __import__("json").loads(db.open_positions()[0]["opening_context_json"])
+    economics = opening["execution_economics_v4"]
+    assert economics["admission_full_exit_fill"]["state"] == "BOUNDED"
+    assert economics["economically_viable_exit"] is True
+    assert 0.0 < economics["admission_tp1_required_fraction"] < 1.0

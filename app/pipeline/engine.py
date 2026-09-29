@@ -29,7 +29,7 @@ from app.strategy.engine import StrategyEngine
 from app.strategy.unified_score import UnifiedScoreEngine
 from app.strategy.decision import UnifiedDecisionEngine
 from app.strategy.execution_cost import ExecutionCostEngine
-from app.strategy.mathematical_trade_plan import build_trade_plan
+from app.strategy.mathematical_trade_plan import build_trade_plan, tp1_required_fraction
 
 from app.paper.database import (
     DB as PAPER_DB,
@@ -3686,6 +3686,7 @@ class PipelineEngine:
                                 elif entry_amount_usdt + fill["gas_usd"] > float(trade_row["capital_before_usdt"]):
                                     pre_reject = "PAPER_CAPITAL_INSUFFICIENT"
 
+
                         # BUY execution proof and price provenance are both
                         # required. Always fetch after the slow BUY simulation;
                         # the earlier reserve/sizing price is not an observation
@@ -3713,6 +3714,71 @@ class PipelineEngine:
                                     token_amount = trade_row["token_amount"]
                                     entry_amount_usdt = trade_row["entry_amount_usdt"]
                                     tp1_activation = trade_row["tp_price"]
+                                    economics = opening_context.get("execution_economics_v4") or {}
+                                    # Only after the BUY inventory and fresh verified entry price
+                                    # are bound may admission prove the matching full SELL.
+                                    provisional = {
+                                        **trade_row,
+                                        "opening_context_json": json.dumps(
+                                            opening_context, sort_keys=True, separators=(",", ":"), default=str
+                                        ),
+                                    }
+                                    try:
+                                        exit_proof = self.manager._runtime_phase15h_sell_evidence(
+                                            pos=provisional,
+                                            current_price=float(price),
+                                            stage="ADMISSION_FULL_EXIT",
+                                            exit_fraction=1.0,
+                                            exit_notional_usdt=float(token_amount) * float(price),
+                                        )
+                                    except Exception:
+                                        logger.exception(
+                                            "PAPER_ADMISSION_FULL_EXIT_FAILED token=%s pool=%s",
+                                            token_address, trade_row.get("pool"),
+                                        )
+                                        exit_proof = None
+                                    exit_fill = (
+                                        ((exit_proof or {}).get("sell") or {}).get("paper_fill")
+                                        if isinstance(exit_proof, dict) else None
+                                    )
+                                    economics["admission_full_exit"] = exit_proof
+                                    economics["admission_full_exit_fill"] = exit_fill
+                                    if (
+                                        not isinstance(exit_fill, dict)
+                                        or exit_fill.get("state") != "BOUNDED"
+                                        or exit_fill.get("net_proceeds_usdt") is None
+                                    ):
+                                        pre_reject = "PAPER_EXIT_ECONOMICS_NOT_BOUNDED"
+                                    if pre_reject is None and selected_trade_type == "NORMAL":
+                                        measured_gross = float(exit_fill.get("output_floor_amount") or 0.0)
+                                        measured_tokens = float(token_amount or 0.0)
+                                        measured_entry_price = float(price or 0.0)
+                                        retention = (
+                                            measured_gross / (measured_tokens * measured_entry_price)
+                                            if measured_tokens > 0 and measured_entry_price > 0 else 0.0
+                                        )
+                                        admission_cost_model = {
+                                            **(mathematical_plan.get("cost_model") or {}),
+                                            "sell_retention_known": retention,
+                                            "sell_gas_usd": float(exit_fill.get("gas_usd") or 0.0),
+                                        }
+                                        state = json.loads(trade_row.get("math_state_json") or "{}")
+                                        viable_fraction = tp1_required_fraction(
+                                            token_amount=token_amount,
+                                            remaining_cost_basis_usdt=entry_amount_usdt,
+                                            current_price=tp1_activation,
+                                            initial_risk_usdt=float(state.get("initial_net_risk_usdt") or trade_row.get("risk_amount_usdt") or 0.0),
+                                            realized_pnl_usdt=0.0,
+                                            cost_model=admission_cost_model,
+                                        )
+                                        economics["admission_tp1_required_fraction"] = viable_fraction
+                                        economics["economically_viable_exit"] = bool(
+                                            viable_fraction is not None and 0.0 < float(viable_fraction) < 1.0
+                                        )
+                                        if not economics["economically_viable_exit"]:
+                                            pre_reject = "POSITION_TOO_SMALL_FOR_EXECUTION_ECONOMICS"
+                                    elif pre_reject is None:
+                                        economics["economically_viable_exit"] = True
                                     writer = getattr(self.cache, "upsert_tracked_price", None)
                                     if callable(writer):
                                         writer(trade_row["pool"], token_address, verified_price,

@@ -203,3 +203,30 @@ def test_unbounded_final_sell_keeps_inventory_and_capital(state):
     assert result["data"]["reason"] == "PAPER_SELL_ECONOMICS_NOT_BOUNDED"
     assert manager.db.closed == []
     assert pos == before
+
+
+def test_tp1_viability_rejects_tiny_position_with_realistic_fixed_sell_gas():
+    from app.strategy.mathematical_trade_plan import tp1_required_fraction
+    fraction = tp1_required_fraction(
+        token_amount=5212.348032750277,
+        remaining_cost_basis_usdt=1.426422139281968,
+        current_price=0.0002771,
+        initial_risk_usdt=1.06843777759521,
+        realized_pnl_usdt=0.0,
+        cost_model={"sell_retention_known": 0.98, "sell_gas_usd": 0.25},
+    )
+    assert fraction is None
+
+
+def test_tp1_viability_accepts_position_when_partial_can_recover_initial_risk():
+    from app.strategy.mathematical_trade_plan import tp1_required_fraction
+    fraction = tp1_required_fraction(
+        token_amount=104016.50346709379,
+        remaining_cost_basis_usdt=24.36368333622078,
+        current_price=0.0002562,
+        initial_risk_usdt=0.9406673320932626,
+        realized_pnl_usdt=0.0,
+        cost_model={"sell_retention_known": 0.987, "sell_gas_usd": 0.16},
+    )
+    assert fraction is not None
+    assert 0.0 < fraction < 1.0

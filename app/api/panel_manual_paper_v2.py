@@ -88,14 +88,25 @@ def _cache_quotes(
         }
 
         if "universe_pool_registry" in tables and pool:
+            registry_columns = {
+                str(info["name"])
+                for info in connection.execute(
+                    "PRAGMA table_info(universe_pool_registry)"
+                ).fetchall()
+            }
+            quote_expr = (
+                "quote_token"
+                if "quote_token" in registry_columns
+                else "NULL"
+            )
             row = connection.execute(
-                """
+                f"""
                 SELECT
                     pool,
                     token0 AS token,
                     NULL AS name,
                     dex,
-                    quote_token,
+                    {quote_expr} AS quote_token,
                     latest_price_usd AS price_usd,
                     latest_snapshot_at AS updated_at
                 FROM universe_pool_registry

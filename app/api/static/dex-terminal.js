@@ -368,7 +368,9 @@
         {question:vezirQuestionWithContext(q)}
       );
 
-      rememberVezirIntent(data.ai_routed_intent);
+      rememberVezirIntent(
+        data.ai_routed_intent || data.intent
+      );
 
       addChat(data.answer||'Yanıt alınamadı.');
       $('homeVezirAnswer').textContent=data.answer||'Yanıt alınamadı.';
